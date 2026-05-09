@@ -37,6 +37,7 @@ struct SearchEngine {
     index: Index,
     reader: IndexReader,
     path_field: Field,
+    name_field: Field,
     content_field: Field,
 }
 
@@ -56,6 +57,7 @@ impl SearchEngine {
 
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
+        let name_field = schema_builder.add_text_field("name", TEXT | STORED);
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
         let schema = schema_builder.build();
 
@@ -63,13 +65,13 @@ impl SearchEngine {
 
         {
             let mut writer = index.writer(50_000_000)?;
-            index_files(&mut writer, root, path_field, content_field)?;
+            index_files(&mut writer, root, path_field, name_field, content_field)?;
             writer.commit()?;
         }
 
         let reader = index.reader()?;
 
-        Ok(Self { index, reader, path_field, content_field })
+        Ok(Self { index, reader, path_field, name_field, content_field })
     }
 
     fn search(&self, query_str: &str) -> Vec<SearchResult> {
@@ -113,8 +115,12 @@ impl SearchEngine {
         let subqueries: Vec<_> = query_str
             .split_whitespace()
             .map(|word| {
-                let term = Term::from_field_text(self.content_field, &word.to_lowercase());
-                (Occur::Must, Box::new(FuzzyTermQuery::new_prefix(term, 2, true)) as Box<dyn Query>)
+                let word_lower = word.to_lowercase();
+                let name_term = Term::from_field_text(self.name_field, &word_lower);
+                let content_term = Term::from_field_text(self.content_field, &word_lower);
+                let name_clause = (Occur::Should, Box::new(FuzzyTermQuery::new_prefix(name_term, 2, true)) as Box<dyn Query>);
+                let content_clause = (Occur::Should, Box::new(FuzzyTermQuery::new_prefix(content_term, 2, true)) as Box<dyn Query>);
+                (Occur::Must, Box::new(BooleanQuery::new(vec![name_clause, content_clause])) as Box<dyn Query>)
             })
             .collect();
 
@@ -122,7 +128,13 @@ impl SearchEngine {
     }
 }
 
-fn index_files(writer: &mut tantivy::IndexWriter, dir: &Path, path_field: Field, content_field: Field) -> tantivy::Result<()> {
+fn index_files(
+    writer: &mut tantivy::IndexWriter,
+    dir: &Path,
+    path_field: Field,
+    name_field: Field,
+    content_field: Field,
+) -> tantivy::Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -130,13 +142,18 @@ fn index_files(writer: &mut tantivy::IndexWriter, dir: &Path, path_field: Field,
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                index_files(writer, &path, path_field, content_field)?;
+                index_files(writer, &path, path_field, name_field, content_field)?;
             } else {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                 if ext == "txt" || ext == "md" {
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
                     let content = fs::read_to_string(&path).unwrap_or_default();
                     writer.add_document(doc!(
                         path_field => path.to_string_lossy().as_ref(),
+                        name_field => name,
                         content_field => content.as_str(),
                     ))?;
                 }
