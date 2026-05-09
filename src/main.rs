@@ -19,9 +19,9 @@ use tantivy::doc;
 use tantivy::{
     self,
     collector::TopDocs,
-    query::QueryParser,
+    query::Query,
     schema::*,
-    Index, IndexReader, ReloadPolicy, TantivyDocument,
+    Index, IndexReader, TantivyDocument,
 };
 
 actions!(datalith, [OpenCodex, ToggleSearch, CloseSearch]);
@@ -32,6 +32,7 @@ struct AppState {
 
 impl Global for AppState {}
 
+#[allow(dead_code)]
 struct SearchEngine {
     index: Index,
     reader: IndexReader,
@@ -47,29 +48,33 @@ struct SearchResult {
 
 impl SearchEngine {
     fn new(root: &Path) -> tantivy::Result<Self> {
+        let index_path = root.join(".datalith").join("search_index");
+        let _ = fs::remove_dir_all(&index_path);
+        fs::create_dir_all(&index_path).map_err(|e| {
+            tantivy::TantivyError::InvalidArgument(format!("Failed to create index dir: {e}"))
+        })?;
+
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
         let schema = schema_builder.build();
-        let index = Index::create_in_ram(schema);
 
-        let mut writer = index.writer(100_000_000)?;
-        index_files(&mut writer, root, path_field, content_field)?;
-        writer.commit()?;
+        let index = Index::create_in_dir(&index_path, schema)?;
 
-        let reader = index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()?;
+        {
+            let mut writer = index.writer(50_000_000)?;
+            index_files(&mut writer, root, path_field, content_field)?;
+            writer.commit()?;
+        }
+
+        let reader = index.reader()?;
 
         Ok(Self { index, reader, path_field, content_field })
     }
 
     fn search(&self, query_str: &str) -> Vec<SearchResult> {
         let searcher = self.reader.searcher();
-        let query_parser = QueryParser::for_index(&self.index, vec![self.content_field]);
-        let (query, _parse_errors) = query_parser.parse_query_lenient(query_str);
-
+        let query = self.build_query(query_str);
         let top_docs = match searcher.search(&query, &TopDocs::with_limit(20).order_by_score()) {
             Ok(docs) => docs,
             Err(_) => return Vec::new(),
@@ -88,13 +93,9 @@ impl SearchEngine {
                         &searcher, &query, self.content_field,
                     )
                     .ok()
-                    .and_then(|generator| {
+                    .map(|generator| {
                         let snip = generator.snippet_from_doc(&doc);
-                        if snip.fragment().is_empty() {
-                            None
-                        } else {
-                            Some(snip.fragment().to_string())
-                        }
+                        snip.fragment().to_string()
                     })
                     .unwrap_or_default();
 
@@ -103,6 +104,21 @@ impl SearchEngine {
             }
         }
         results
+    }
+
+    fn build_query(&self, query_str: &str) -> Box<dyn Query> {
+        use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur};
+        use tantivy::Term;
+
+        let subqueries: Vec<_> = query_str
+            .split_whitespace()
+            .map(|word| {
+                let term = Term::from_field_text(self.content_field, &word.to_lowercase());
+                (Occur::Must, Box::new(FuzzyTermQuery::new_prefix(term, 2, true)) as Box<dyn Query>)
+            })
+            .collect();
+
+        Box::new(BooleanQuery::new(subqueries))
     }
 }
 
@@ -182,7 +198,13 @@ impl DatalithView {
             state.set_items(items, cx);
         });
 
-        self.search_engine = SearchEngine::new(&path).ok().map(Arc::new);
+        self.search_engine = match SearchEngine::new(&path) {
+            Ok(engine) => Some(Arc::new(engine)),
+            Err(e) => {
+                eprintln!("Failed to build search index: {e}");
+                None
+            }
+        };
 
         _cx.notify();
     }
