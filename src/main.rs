@@ -50,10 +50,6 @@ struct SearchResult {
 impl SearchEngine {
     fn new(root: &Path) -> tantivy::Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
-        let _ = fs::remove_dir_all(&index_path);
-        fs::create_dir_all(&index_path).map_err(|e| {
-            tantivy::TantivyError::InvalidArgument(format!("Failed to create index dir: {e}"))
-        })?;
 
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
@@ -61,10 +57,22 @@ impl SearchEngine {
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
         let schema = schema_builder.build();
 
-        let index = Index::create_in_dir(&index_path, schema)?;
+        let index = if index_path.exists() {
+            Index::open_in_dir(&index_path)?
+        } else {
+            fs::create_dir_all(&index_path).map_err(|e| {
+                tantivy::TantivyError::InvalidArgument(format!("Failed to create index dir: {e}"))
+            })?;
+            Index::create_in_dir(&index_path, schema)?
+        };
 
-        {
+        let reader = index.reader()?;
+        let indexed_count = reader.searcher().num_docs() as usize;
+        let file_count = count_indexable_files(root);
+
+        if indexed_count != file_count {
             let mut writer = index.writer(50_000_000)?;
+            writer.delete_all_documents()?;
             index_files(&mut writer, root, path_field, name_field, content_field)?;
             writer.commit()?;
         }
@@ -126,6 +134,27 @@ impl SearchEngine {
 
         Box::new(BooleanQuery::new(subqueries))
     }
+}
+
+fn count_indexable_files(dir: &Path) -> usize {
+    if !dir.is_dir() {
+        return 0;
+    }
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                count += count_indexable_files(&path);
+            } else {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if ext == "txt" || ext == "md" {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
 }
 
 fn index_files(
