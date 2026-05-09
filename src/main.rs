@@ -8,6 +8,7 @@ use gpui_component::{
     ActiveTheme, Icon, IconName, Root,
 };
 
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +36,7 @@ impl DatalithView {
             .unwrap_or("Unknown")
             .into();
         self.root_path = Some(path.clone());
+        save_last_folder(&path);
         let items = build_file_items(&path);
         self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
@@ -166,6 +168,42 @@ impl Render for DatalithView {
     }
 }
 
+#[derive(Serialize, Deserialize, Default)]
+struct Config {
+    last_folder: Option<String>,
+}
+
+fn config_file() -> PathBuf {
+    dirs::data_dir().unwrap_or_default().join("datalith").join("config.json")
+}
+
+fn save_config(config: &Config) {
+    let file = config_file();
+    let _ = fs::create_dir_all(file.parent().unwrap());
+    let _ = fs::write(&file, serde_json::to_string(config).unwrap_or_default());
+}
+
+fn load_config() -> Config {
+    fs::read_to_string(config_file())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_last_folder(path: &Path) {
+    let mut config = load_config();
+    config.last_folder = Some(path.to_string_lossy().to_string());
+    save_config(&config);
+}
+
+fn load_last_folder() -> Option<PathBuf> {
+    let config = load_config();
+    config
+        .last_folder
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+}
+
 fn build_file_items(path: &Path) -> Vec<TreeItem> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
@@ -205,6 +243,8 @@ fn main() {
             MenuItem::action("Open codex", OpenCodex),
         ])]);
 
+        let last_folder = load_last_folder();
+
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
                 let view = cx.new(|cx| DatalithView {
@@ -217,6 +257,11 @@ fn main() {
                 cx.update_global(|state: &mut AppState, _| {
                     state.view = Some(view.clone());
                 });
+                if let Some(ref path) = last_folder {
+                    view.update(cx, |view, cx| {
+                        view.set_root_path(path.clone(), cx);
+                    });
+                }
                 cx.new(|cx| Root::new(view, window, cx))
             })
             .expect("Failed to open window");
