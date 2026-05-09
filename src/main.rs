@@ -1,27 +1,26 @@
 use gpui::*;
 use gpui_component::{
-    h_flex, v_flex,
+    ActiveTheme, Icon, IconName, Root,
     button::{Button, ButtonVariants as _},
+    h_flex,
     input::{Input, InputEvent, InputState},
     list::ListItem,
     popover::Popover,
     scroll::ScrollableElement,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
-    ActiveTheme, Icon, IconName, Root,
+    v_flex,
 };
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tantivy::doc;
 use tantivy::{
-    self,
-    collector::TopDocs,
-    query::Query,
+    self, DocAddress, Index, IndexReader, TantivyDocument, collector::TopDocs, query::Query,
     schema::*,
-    Index, IndexReader, TantivyDocument,
 };
 
 actions!(datalith, [OpenCodex, ToggleSearch, CloseSearch]);
@@ -39,6 +38,7 @@ struct SearchEngine {
     path_field: Field,
     name_field: Field,
     content_field: Field,
+    fingerprint_field: Field,
 }
 
 #[derive(Clone)]
@@ -55,31 +55,51 @@ impl SearchEngine {
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
         let name_field = schema_builder.add_text_field("name", TEXT | STORED);
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
+        let fingerprint_field = schema_builder.add_text_field("fingerprint", STRING | STORED);
         let schema = schema_builder.build();
 
-        let index = if index_path.exists() {
-            Index::open_in_dir(&index_path)?
+        let (index, needs_build) = if index_path.exists() {
+            (Index::open_in_dir(&index_path)?, false)
         } else {
             fs::create_dir_all(&index_path).map_err(|e| {
                 tantivy::TantivyError::InvalidArgument(format!("Failed to create index dir: {e}"))
             })?;
-            Index::create_in_dir(&index_path, schema)?
+            (Index::create_in_dir(&index_path, schema)?, true)
         };
 
-        let reader = index.reader()?;
-        let indexed_count = reader.searcher().num_docs() as usize;
-        let file_count = count_indexable_files(root);
-
-        if indexed_count != file_count {
+        if needs_build {
             let mut writer = index.writer(50_000_000)?;
-            writer.delete_all_documents()?;
-            index_files(&mut writer, root, path_field, name_field, content_field)?;
+            index_files(
+                &mut writer,
+                root,
+                path_field,
+                name_field,
+                content_field,
+                fingerprint_field,
+            )?;
             writer.commit()?;
+        } else {
+            println!("Update");
+            incremental_update(
+                &index,
+                root,
+                path_field,
+                name_field,
+                content_field,
+                fingerprint_field,
+            )?;
         }
 
         let reader = index.reader()?;
 
-        Ok(Self { index, reader, path_field, name_field, content_field })
+        Ok(Self {
+            index,
+            reader,
+            path_field,
+            name_field,
+            content_field,
+            fingerprint_field,
+        })
     }
 
     fn search(&self, query_str: &str) -> Vec<SearchResult> {
@@ -100,7 +120,9 @@ impl SearchEngine {
 
                 if let Some(path) = path {
                     let snippet = tantivy::snippet::SnippetGenerator::create(
-                        &searcher, &query, self.content_field,
+                        &searcher,
+                        &query,
+                        self.content_field,
                     )
                     .ok()
                     .map(|generator| {
@@ -117,8 +139,8 @@ impl SearchEngine {
     }
 
     fn build_query(&self, query_str: &str) -> Box<dyn Query> {
-        use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur};
         use tantivy::Term;
+        use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur};
 
         let subqueries: Vec<_> = query_str
             .split_whitespace()
@@ -126,9 +148,19 @@ impl SearchEngine {
                 let word_lower = word.to_lowercase();
                 let name_term = Term::from_field_text(self.name_field, &word_lower);
                 let content_term = Term::from_field_text(self.content_field, &word_lower);
-                let name_clause = (Occur::Should, Box::new(FuzzyTermQuery::new_prefix(name_term, 2, true)) as Box<dyn Query>);
-                let content_clause = (Occur::Should, Box::new(FuzzyTermQuery::new_prefix(content_term, 2, true)) as Box<dyn Query>);
-                (Occur::Must, Box::new(BooleanQuery::new(vec![name_clause, content_clause])) as Box<dyn Query>)
+                let name_clause = (
+                    Occur::Should,
+                    Box::new(FuzzyTermQuery::new_prefix(name_term, 2, true)) as Box<dyn Query>,
+                );
+                let content_clause = (
+                    Occur::Should,
+                    Box::new(FuzzyTermQuery::new_prefix(content_term, 2, true)) as Box<dyn Query>,
+                );
+                (
+                    Occur::Must,
+                    Box::new(BooleanQuery::new(vec![name_clause, content_clause]))
+                        as Box<dyn Query>,
+                )
             })
             .collect();
 
@@ -136,25 +168,129 @@ impl SearchEngine {
     }
 }
 
-fn count_indexable_files(dir: &Path) -> usize {
-    if !dir.is_dir() {
-        return 0;
+fn file_fingerprint(path: &Path) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    if let Ok(meta) = fs::metadata(path) {
+        meta.len().hash(&mut hasher);
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                dur.as_secs().hash(&mut hasher);
+            }
+        }
     }
-    let mut count = 0;
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                count += count_indexable_files(&path);
-            } else {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                if ext == "txt" || ext == "md" {
-                    count += 1;
+    hasher.finish()
+}
+
+fn is_indexable(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("txt" | "md")
+    )
+}
+
+fn incremental_update(
+    index: &Index,
+    root: &Path,
+    path_field: Field,
+    name_field: Field,
+    content_field: Field,
+    fingerprint_field: Field,
+) -> tantivy::Result<()> {
+    use std::collections::HashMap;
+    use tantivy::Term;
+
+    let reader = index.reader()?;
+    let searcher = reader.searcher();
+
+    let mut current: HashMap<PathBuf, u64> = HashMap::new();
+    collect_files(root, &mut current);
+
+    let mut writer = index.writer(50_000_000)?;
+
+    for (segment_ord, seg_reader) in searcher.segment_readers().iter().enumerate() {
+        let segment_ord = segment_ord as u32;
+        for doc_id in 0..seg_reader.max_doc() {
+            if seg_reader.is_deleted(doc_id) {
+                continue;
+            }
+            let addr = DocAddress::new(segment_ord, doc_id);
+            let doc: TantivyDocument = match searcher.doc(addr) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let path_str = doc.get_first(path_field).and_then(|v| v.as_str());
+            let old_fp = doc
+                .get_first(fingerprint_field)
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u64>().ok());
+
+            let Some((path_str, old_fp)) = path_str.zip(old_fp) else {
+                continue;
+            };
+            let path = PathBuf::from(path_str);
+
+            match current.remove(&path) {
+                Some(new_fp) if new_fp == old_fp => {} // unchanged
+                _ => {
+                    writer.delete_term(Term::from_field_text(path_field, path_str));
                 }
             }
         }
     }
-    count
+
+    drop(searcher);
+    drop(reader);
+
+    add_files(
+        &mut writer,
+        &current,
+        path_field,
+        name_field,
+        content_field,
+        fingerprint_field,
+    )?;
+
+    writer.commit()?;
+    Ok(())
+}
+
+fn collect_files(dir: &Path, files: &mut HashMap<PathBuf, u64>) {
+    if !dir.is_dir() {
+        return;
+    }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files(&path, files);
+            } else if is_indexable(&path) {
+                files.insert(path.clone(), file_fingerprint(&path));
+            }
+        }
+    }
+}
+
+fn add_files(
+    writer: &mut tantivy::IndexWriter,
+    files: &HashMap<PathBuf, u64>,
+    path_field: Field,
+    name_field: Field,
+    content_field: Field,
+    fingerprint_field: Field,
+) -> tantivy::Result<()> {
+    for (path, fp) in files {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let content = fs::read_to_string(path).unwrap_or_default();
+        writer.add_document(doc!(
+            path_field => path.to_string_lossy().as_ref(),
+            name_field => name,
+            content_field => content.as_str(),
+            fingerprint_field => fp.to_string(),
+        ))?;
+    }
+    Ok(())
 }
 
 fn index_files(
@@ -163,6 +299,7 @@ fn index_files(
     path_field: Field,
     name_field: Field,
     content_field: Field,
+    fingerprint_field: Field,
 ) -> tantivy::Result<()> {
     if !dir.is_dir() {
         return Ok(());
@@ -171,19 +308,29 @@ fn index_files(
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                index_files(writer, &path, path_field, name_field, content_field)?;
+                index_files(
+                    writer,
+                    &path,
+                    path_field,
+                    name_field,
+                    content_field,
+                    fingerprint_field,
+                )?;
             } else {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 if ext == "txt" || ext == "md" {
-                    let name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("");
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                     let content = fs::read_to_string(&path).unwrap_or_default();
+                    let fp = file_fingerprint(&path);
                     writer.add_document(doc!(
                         path_field => path.to_string_lossy().as_ref(),
                         name_field => name,
                         content_field => content.as_str(),
+                        fingerprint_field => fp.to_string(),
                     ))?;
                 }
             }
@@ -208,13 +355,17 @@ pub struct DatalithView {
 impl DatalithView {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search files..."));
-        let search_sub = cx.subscribe_in(&search_input, window, move |this, input, event, _window, cx| {
-            if let InputEvent::Change = event {
-                let query = input.read(cx).value();
-                this.search(query);
-                cx.notify();
-            }
-        });
+        let search_sub = cx.subscribe_in(
+            &search_input,
+            window,
+            move |this, input, event, _window, cx| {
+                if let InputEvent::Change = event {
+                    let query = input.read(cx).value();
+                    this.search(query);
+                    cx.notify();
+                }
+            },
+        );
 
         Self {
             tree_state: cx.new(|cx| TreeState::new(cx)),
@@ -321,159 +472,132 @@ impl Render for DatalithView {
                     .border_r_1()
                     .border_color(cx.theme().border)
                     .child(
-                        SidebarHeader::new()
-                            .p_2()
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .w_full()
+                        SidebarHeader::new().p_2().child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .w_full()
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(Icon::new(IconName::Folder))
+                                        .child(self.root_name.clone()),
+                                )
+                                .child(div().flex_1())
+                                .child(
+                                    Popover::new("search-popover")
+                                        .trigger(
+                                            Button::new("search-trigger")
+                                                .ghost()
+                                                .icon(IconName::Search),
+                                        )
+                                        .anchor(Anchor::TopCenter)
+                                        .open(search_open)
+                                        .on_open_change(cx.listener(|this, open, _window, cx| {
+                                            this.search_open = *open;
+                                            cx.notify();
+                                        }))
+                                        .w(px(600.))
+                                        .child(v_flex().child(Input::new(&search_input)).child(
+                                            div().overflow_y_scrollbar().max_h(px(400.)).children(
+                                                results.iter().enumerate().map(|(i, r)| {
+                                                    let path_clone = r.path.clone();
+                                                    let file_name = r
+                                                        .path
+                                                        .file_name()
+                                                        .and_then(|n| n.to_str())
+                                                        .unwrap_or("")
+                                                        .to_string();
+                                                    div()
+                                                        .px_2()
+                                                        .py_1()
+                                                        .hover(|s| s.bg(cx.theme().muted))
+                                                        .cursor_pointer()
+                                                        .child(
+                                                            v_flex()
+                                                                .child(
+                                                                    h_flex()
+                                                                        .gap_2()
+                                                                        .items_center()
+                                                                        .child(
+                                                                            Icon::new(
+                                                                                IconName::File,
+                                                                            )
+                                                                            .size_3(),
+                                                                        )
+                                                                        .child(file_name),
+                                                                )
+                                                                .child(
+                                                                    div()
+                                                                        .text_sm()
+                                                                        .text_color(
+                                                                            cx.theme()
+                                                                                .muted_foreground,
+                                                                        )
+                                                                        .pl_5()
+                                                                        .child(r.snippet.clone()),
+                                                                ),
+                                                        )
+                                                        .id(format!("result-{}", i))
+                                                        .on_click(cx.listener({
+                                                            let path = path_clone;
+                                                            move |this, _, window, cx| {
+                                                                this.search_open = false;
+                                                                this.open_file(
+                                                                    path.clone(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            }
+                                                        }))
+                                                }),
+                                            ),
+                                        )),
+                                ),
+                        ),
+                    )
+                    .child(div().flex_1().child(tree::tree(&self.tree_state, {
+                        let view = cx.entity();
+                        move |ix, entry, selected, _window, cx| {
+                            let is_folder = entry.is_folder();
+                            let is_expanded = entry.is_expanded();
+                            let item_id = entry.item().id.clone();
+                            let item_label = entry.item().label.clone();
+                            let depth = entry.depth();
+
+                            view.update(cx, move |_this, cx| {
+                                let icon = if !is_folder {
+                                    IconName::File
+                                } else if is_expanded {
+                                    IconName::FolderOpen
+                                } else {
+                                    IconName::Folder
+                                };
+
+                                ListItem::new(ix)
+                                    .selected(selected)
+                                    .pl(px(16.) * depth + px(12.))
                                     .child(
                                         h_flex()
                                             .gap_2()
                                             .items_center()
-                                            .child(Icon::new(IconName::Folder))
-                                            .child(self.root_name.clone()),
+                                            .child(Icon::new(icon).size_4())
+                                            .child(item_label.clone()),
                                     )
-                                    .child(div().flex_1())
-                                    .child(
-                                        Popover::new("search-popover")
-                                            .trigger(
-                                                Button::new("search-trigger")
-                                                    .ghost()
-                                                    .icon(IconName::Search),
-                                            )
-                                            .anchor(Anchor::TopCenter)
-                                            .open(search_open)
-                                            .on_open_change(cx.listener(
-                                                |this, open, _window, cx| {
-                                                    this.search_open = *open;
-                                                    cx.notify();
-                                                },
-                                            ))
-                                            .w(px(600.))
-                                            .child(
-                                                v_flex()
-                                                    .child(Input::new(&search_input))
-                                                    .child(
-                                                        div()
-                                                            .overflow_y_scrollbar()
-                                                            .max_h(px(400.))
-                                                            .children(
-                                                                results
-                                                                    .iter()
-                                                                    .enumerate()
-                                                                    .map(|(i, r)| {
-                                                                        let path_clone =
-                                                                            r.path.clone();
-                                                                        let file_name = r
-                                                                            .path
-                                                                            .file_name()
-                                                                            .and_then(|n| {
-                                                                                n.to_str()
-                                                                            })
-                                                                            .unwrap_or("")
-                                                                            .to_string();
-                                                                        div()
-                                                                .px_2()
-                                                                .py_1()
-                                                                .hover(|s| {
-                                                                    s.bg(cx.theme().muted)
-                                                                })
-                                                                .cursor_pointer()
-                                                                .child(
-                                                                    v_flex()
-                                                                .child(
-                                                                    h_flex()
-                                                                    .gap_2()
-                                                                    .items_center()
-                                                                    .child(
-                                                                        Icon::new(
-                                                                            IconName::File,
-                                                                        )
-                                                                        .size_3(),
-                                                                    )
-                                                                    .child(file_name),
-                                                                )
-                                                                .child(
-                                                                    div()
-                                                                    .text_sm()
-                                                                    .text_color(
-                                                                        cx.theme()
-                                                                            .muted_foreground,
-                                                                    )
-                                                                    .pl_5()
-                                                                    .child(
-                                                                        r.snippet.clone(),
-                                                                    ),
-                                                                ),
-                                                                )
-                                                                .id(format!(
-                                                                    "result-{}",
-                                                                    i
-                                                                ))
-                                                                 .on_click(cx.listener({
-                                                                             let path = path_clone;
-                                                                             move |this, _, window, cx| {
-                                                                                 this.search_open = false;
-                                                                                 this.open_file(path.clone(), window, cx);
-                                                                             }
-                                                                         }))
-                                                                    }),
-                                                            ),
-                                                    ),
-                                            ),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .child(tree::tree(
-                                &self.tree_state,
-                                {
-                                    let view = cx.entity();
-                                    move |ix, entry, selected, _window, cx| {
-                                        let is_folder = entry.is_folder();
-                                        let is_expanded = entry.is_expanded();
-                                        let item_id = entry.item().id.clone();
-                                        let item_label = entry.item().label.clone();
-                                        let depth = entry.depth();
-
-                                        view.update(cx, move |_this, cx| {
-                                            let icon = if !is_folder {
-                                                IconName::File
-                                            } else if is_expanded {
-                                                IconName::FolderOpen
-                                            } else {
-                                                IconName::Folder
-                                            };
-
-                                            ListItem::new(ix)
-                                                .selected(selected)
-                                                .pl(px(16.) * depth + px(12.))
-                                                .child(
-                                                    h_flex()
-                                                        .gap_2()
-                                                        .items_center()
-                                                        .child(Icon::new(icon).size_4())
-                                                        .child(item_label.clone()),
-                                                )
-                                                .on_click(cx.listener({
-                                                    let item_id = item_id.clone();
-                                                    let is_folder = is_folder;
-                                                    move |this, _, window, cx| {
-                                                        if !is_folder {
-                                                            let path = PathBuf::from(item_id.to_string());
-                                                            this.open_file(path, window, cx);
-                                                        }
-                                                    }
-                                                }))
-                                        })
-                                    }
-                                },
-                            )),
-                    ),
+                                    .on_click(cx.listener({
+                                        let item_id = item_id.clone();
+                                        let is_folder = is_folder;
+                                        move |this, _, window, cx| {
+                                            if !is_folder {
+                                                let path = PathBuf::from(item_id.to_string());
+                                                this.open_file(path, window, cx);
+                                            }
+                                        }
+                                    }))
+                            })
+                        }
+                    }))),
             )
             .child(
                 Popover::new("search-popover")
@@ -484,57 +608,52 @@ impl Render for DatalithView {
                         cx.notify();
                     }))
                     .w(px(600.))
-                    .child(
-                        v_flex()
-                            .child(Input::new(&search_input))
-                            .child(
+                    .child(v_flex().child(Input::new(&search_input)).child(
+                        div().overflow_y_scrollbar().max_h(px(400.)).children(
+                            results.iter().enumerate().map(|(i, r)| {
+                                let path_clone = r.path.clone();
+                                let file_name = r
+                                    .path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("")
+                                    .to_string();
                                 div()
-                                    .overflow_y_scrollbar()
-                                    .max_h(px(400.))
-                                    .children(results.iter().enumerate().map(|(i, r)| {
-                                        let path_clone = r.path.clone();
-                                        let file_name = r
-                                            .path
-                                            .file_name()
-                                            .and_then(|n| n.to_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        div()
-                                            .px_2()
-                                            .py_1()
-                                            .hover(|s| s.bg(cx.theme().muted))
-                                            .cursor_pointer()
+                                    .px_2()
+                                    .py_1()
+                                    .hover(|s| s.bg(cx.theme().muted))
+                                    .cursor_pointer()
+                                    .child(
+                                        v_flex()
                                             .child(
-                                                v_flex()
-                                                    .child(
-                                                        h_flex()
-                                                            .gap_2()
-                                                            .items_center()
-                                                            .child(Icon::new(IconName::File).size_3())
-                                                            .child(file_name),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .text_color(cx.theme().muted_foreground)
-                                                            .pl_5()
-                                                            .child(r.snippet.clone()),
-                                                    ),
+                                                h_flex()
+                                                    .gap_2()
+                                                    .items_center()
+                                                    .child(Icon::new(IconName::File).size_3())
+                                                    .child(file_name),
                                             )
-                                            .id(format!("result-{}", i))
-                                            .on_click(cx.listener({
-                                                let path = path_clone;
-                                                let view = cx.entity().clone();
-                                                move |_, _, window, cx| {
-                                                    view.update(cx, |this, cx| {
-                                                        this.search_open = false;
-                                                        this.open_file(path.clone(), window, cx);
-                                                    });
-                                                }
-                                            }))
-                                    })),
-                            ),
-                    ),
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .pl_5()
+                                                    .child(r.snippet.clone()),
+                                            ),
+                                    )
+                                    .id(format!("result-{}", i))
+                                    .on_click(cx.listener({
+                                        let path = path_clone;
+                                        let view = cx.entity().clone();
+                                        move |_, _, window, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.search_open = false;
+                                                this.open_file(path.clone(), window, cx);
+                                            });
+                                        }
+                                    }))
+                            }),
+                        ),
+                    )),
             )
             .child(match self.editor_state.as_ref() {
                 Some(editor) => Input::new(editor).h_full().into_any_element(),
@@ -558,7 +677,10 @@ struct Config {
 }
 
 fn config_file() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("datalith").join("config.json")
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("datalith")
+        .join("config.json")
 }
 
 fn save_config(config: &Config) {
@@ -582,10 +704,7 @@ fn save_last_folder(path: &Path) {
 
 fn load_last_folder() -> Option<PathBuf> {
     let config = load_config();
-    config
-        .last_folder
-        .map(PathBuf::from)
-        .filter(|p| p.is_dir())
+    config.last_folder.map(PathBuf::from).filter(|p| p.is_dir())
 }
 
 fn build_file_items(path: &Path) -> Vec<TreeItem> {
@@ -602,9 +721,15 @@ fn build_file_items(path: &Path) -> Vec<TreeItem> {
 
             if path.is_dir() {
                 let children = build_file_items(&path);
-                dirs.push((name.clone(), TreeItem::new(path.to_string_lossy().to_string(), name).children(children)));
+                dirs.push((
+                    name.clone(),
+                    TreeItem::new(path.to_string_lossy().to_string(), name).children(children),
+                ));
             } else {
-                files.push((name.clone(), TreeItem::new(path.to_string_lossy().to_string(), name)));
+                files.push((
+                    name.clone(),
+                    TreeItem::new(path.to_string_lossy().to_string(), name),
+                ));
             }
         }
     }
