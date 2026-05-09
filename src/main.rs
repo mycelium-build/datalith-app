@@ -1,6 +1,8 @@
 use gpui::*;
 use gpui_component::{button::*, *};
 
+actions!(datalith, [OpenCodex]);
+
 pub struct HelloWorld;
 
 impl Render for HelloWorld {
@@ -28,6 +30,11 @@ fn main() {
         // This must be called before using any GPUI Component features.
         gpui_component::init(cx);
 
+        cx.on_action(open_codex);
+        cx.set_menus([Menu::new("datalith").items([
+            MenuItem::action("Open codex", OpenCodex),
+        ])]);
+
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
                 let view = cx.new(|_| HelloWorld);
@@ -38,4 +45,21 @@ fn main() {
         })
         .detach();
     });
+}
+
+fn open_codex(_: &OpenCodex, cx: &mut App) {
+    let rx = cx.prompt_for_paths(PathPromptOptions {
+        files: false,
+        directories: true,
+        multiple: false,
+        prompt: Some("Select a folder".into()),
+    });
+    cx.spawn(async move |_| {
+        if let Ok(Ok(Some(paths))) = rx.await {
+            if let Some(path) = paths.into_iter().next() {
+                println!("{}", path.display());
+            }
+        }
+    })
+    .detach();
 }
