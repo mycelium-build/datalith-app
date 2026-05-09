@@ -1,6 +1,7 @@
 use gpui::*;
 use gpui_component::{
     h_flex,
+    input::{Input, InputEvent, InputState},
     list::ListItem,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
@@ -22,6 +23,8 @@ pub struct DatalithView {
     tree_state: Entity<TreeState>,
     root_path: Option<PathBuf>,
     root_name: SharedString,
+    current_file: Option<PathBuf>,
+    editor_state: Option<Entity<InputState>>,
 }
 
 impl DatalithView {
@@ -36,6 +39,40 @@ impl DatalithView {
         self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
         });
+        cx.notify();
+    }
+
+    fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if ext != "txt" && ext != "md" {
+            return;
+        }
+
+        let content = fs::read_to_string(&path).unwrap_or_default();
+        self.current_file = Some(path);
+        self.editor_state = Some(cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .default_value(content)
+        }));
+
+        let _subscription = cx.subscribe_in(
+            self.editor_state.as_ref().unwrap(),
+            window,
+            move |_view, editor, event, _window, _cx| {
+                if let InputEvent::Change = event {
+                    let content = editor.read(_cx).value();
+                    if let Some(ref path) = _view.current_file {
+                        let _ = fs::write(path, content.to_string());
+                    }
+                }
+            },
+        );
+
         cx.notify();
     }
 }
@@ -72,11 +109,16 @@ impl Render for DatalithView {
                                 {
                                     let view = cx.entity();
                                     move |ix, entry, selected, _window, cx| {
-                                        view.update(cx, |_this, _cx| {
-                                            let item = entry.item();
-                                            let icon = if !entry.is_folder() {
+                                        let is_folder = entry.is_folder();
+                                        let is_expanded = entry.is_expanded();
+                                        let item_id = entry.item().id.clone();
+                                        let item_label = entry.item().label.clone();
+                                        let depth = entry.depth();
+
+                                        view.update(cx, move |_this, cx| {
+                                            let icon = if !is_folder {
                                                 IconName::File
-                                            } else if entry.is_expanded() {
+                                            } else if is_expanded {
                                                 IconName::FolderOpen
                                             } else {
                                                 IconName::Folder
@@ -84,28 +126,43 @@ impl Render for DatalithView {
 
                                             ListItem::new(ix)
                                                 .selected(selected)
-                                                .pl(px(16.) * entry.depth() + px(12.))
+                                                .pl(px(16.) * depth + px(12.))
                                                 .child(
                                                     h_flex()
                                                         .gap_2()
                                                         .items_center()
                                                         .child(Icon::new(icon).size_4())
-                                                        .child(item.label.clone()),
+                                                        .child(item_label.clone()),
                                                 )
+                                                .on_click(cx.listener({
+                                                    let item_id = item_id.clone();
+                                                    let is_folder = is_folder;
+                                                    move |this, _, window, cx| {
+                                                        if !is_folder {
+                                                            let path = PathBuf::from(item_id.to_string());
+                                                            this.open_file(path, window, cx);
+                                                        }
+                                                    }
+                                                }))
                                         })
                                     }
                                 },
                             )),
                     ),
             )
-            .child(
-                div()
+            .child(match self.editor_state.as_ref() {
+                Some(editor) => Input::new(editor).h_full().into_any_element(),
+                None => div()
                     .size_full()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child("Select a folder from the menu bar"),
-            )
+                    .child(match self.root_path {
+                        Some(_) => "Select a file from the sidebar",
+                        None => "Select a folder from the menu bar",
+                    })
+                    .into_any_element(),
+            })
     }
 }
 
@@ -154,6 +211,8 @@ fn main() {
                     tree_state: cx.new(|cx| TreeState::new(cx)),
                     root_path: None,
                     root_name: "No folder open".into(),
+                    current_file: None,
+                    editor_state: None,
                 });
                 cx.update_global(|state: &mut AppState, _| {
                     state.view = Some(view.clone());
