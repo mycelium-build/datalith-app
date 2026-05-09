@@ -110,7 +110,8 @@ impl Render for DatalithView {
 }
 
 fn build_file_items(path: &Path) -> Vec<TreeItem> {
-    let mut items = Vec::new();
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -122,14 +123,16 @@ fn build_file_items(path: &Path) -> Vec<TreeItem> {
 
             if path.is_dir() {
                 let children = build_file_items(&path);
-                items.push(
-                    TreeItem::new(path.to_string_lossy().to_string(), name).children(children),
-                );
+                dirs.push((name.clone(), TreeItem::new(path.to_string_lossy().to_string(), name).children(children)));
             } else {
-                items.push(TreeItem::new(path.to_string_lossy().to_string(), name));
+                files.push((name.clone(), TreeItem::new(path.to_string_lossy().to_string(), name)));
             }
         }
     }
+    dirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    files.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    let mut items: Vec<TreeItem> = dirs.into_iter().map(|(_, item)| item).collect();
+    items.extend(files.into_iter().map(|(_, item)| item));
     items
 }
 
