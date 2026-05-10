@@ -79,7 +79,6 @@ impl SearchEngine {
             )?;
             writer.commit()?;
         } else {
-            println!("Update");
             incremental_update(
                 &index,
                 root,
@@ -234,6 +233,7 @@ fn incremental_update(
             match current.remove(&path) {
                 Some(new_fp) if new_fp == old_fp => {} // unchanged
                 _ => {
+                    println!("Update: {}", path_str);
                     writer.delete_term(Term::from_field_text(path_field, path_str));
                 }
             }
@@ -361,27 +361,25 @@ impl DatalithView {
         let search_sub = cx.subscribe_in(
             &search_input,
             window,
-            move |this, input, event, window, cx| {
-                match event {
-                    InputEvent::Change => {
-                        let query = input.read(cx).value();
-                        this.search(query);
-                        cx.notify();
-                    }
-                    InputEvent::PressEnter { .. } => {
-                        if let Some(index) = this.search_selected {
-                            if let Some(result) = this.search_results.get(index) {
-                                let path = result.path.clone();
-                                this.search_open = false;
-                                this.search_selected = None;
-                                this.search_results.clear();
-                                this.open_file(path, window, cx);
-                                cx.notify();
-                            }
+            move |this, input, event, window, cx| match event {
+                InputEvent::Change => {
+                    let query = input.read(cx).value();
+                    this.search(query);
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {
+                    if let Some(index) = this.search_selected {
+                        if let Some(result) = this.search_results.get(index) {
+                            let path = result.path.clone();
+                            this.search_open = false;
+                            this.search_selected = None;
+                            this.search_results.clear();
+                            this.open_file(path, window, cx);
+                            cx.notify();
                         }
                     }
-                    _ => {}
                 }
+                _ => {}
             },
         );
 
@@ -531,20 +529,25 @@ impl Render for DatalithView {
                                                         }
                                                         match event.keystroke.key.as_str() {
                                                             "down" => {
-                                                                let next = match this.search_selected {
-                                                                    Some(i) if i + 1 < count => i + 1,
+                                                                let next = match this
+                                                                    .search_selected
+                                                                {
+                                                                    Some(i) if i + 1 < count => {
+                                                                        i + 1
+                                                                    }
                                                                     None => 0,
                                                                     _ => return,
                                                                 };
                                                                 this.search_selected = Some(next);
                                                                 cx.notify();
                                                             }
-                                                                "up" => {
-                                                                let prev = match this.search_selected {
-                                                                    Some(i) if i > 0 => i - 1,
-                                                                    Some(_) => return,
-                                                                    None => count - 1,
-                                                                };
+                                                            "up" => {
+                                                                let prev =
+                                                                    match this.search_selected {
+                                                                        Some(i) if i > 0 => i - 1,
+                                                                        Some(_) => return,
+                                                                        None => count - 1,
+                                                                    };
                                                                 this.search_selected = Some(prev);
                                                                 cx.notify();
                                                             }
@@ -554,22 +557,26 @@ impl Render for DatalithView {
                                                 ))
                                                 .child(Input::new(&search_input))
                                                 .child(
-                                                    div().overflow_y_scrollbar().max_h(px(400.)).children(
-                                                        results.iter().enumerate().map(|(i, r)| {
-                                                    let selected = self.search_selected == Some(i);
-                                                    let path_clone = r.path.clone();
-                                                    let file_name = r
-                                                        .path
-                                                        .file_name()
-                                                        .and_then(|n| n.to_str())
-                                                        .unwrap_or("")
-                                                        .to_string();
-                                                    let bg = if selected {
-                                                        cx.theme().muted
-                                                    } else {
-                                                        gpui::Hsla::default()
-                                                    };
                                                     div()
+                                                        .overflow_y_scrollbar()
+                                                        .max_h(px(400.))
+                                                        .children(results.iter().enumerate().map(
+                                                            |(i, r)| {
+                                                                let selected =
+                                                                    self.search_selected == Some(i);
+                                                                let path_clone = r.path.clone();
+                                                                let file_name = r
+                                                                    .path
+                                                                    .file_name()
+                                                                    .and_then(|n| n.to_str())
+                                                                    .unwrap_or("")
+                                                                    .to_string();
+                                                                let bg = if selected {
+                                                                    cx.theme().muted
+                                                                } else {
+                                                                    gpui::Hsla::default()
+                                                                };
+                                                                div()
                                                         .px_2()
                                                         .py_1()
                                                         .bg(bg)
@@ -612,9 +619,10 @@ impl Render for DatalithView {
                                                                 );
                                                             }
                                                         }))
-                                                }),
-                                            ),
-                                        )),
+                                                            },
+                                                        )),
+                                                ),
+                                        ),
                                 ),
                         ),
                     )
