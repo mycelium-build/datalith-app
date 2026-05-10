@@ -14,6 +14,10 @@ pub fn build_file_items(path: &Path) -> Vec<TreeItem> {
                 .unwrap_or("Unknown")
                 .to_string();
 
+            if name.starts_with('.') {
+                continue;
+            }
+
             if path.is_dir() {
                 let children = build_file_items(&path);
                 dirs.push((
