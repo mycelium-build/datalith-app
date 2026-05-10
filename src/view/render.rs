@@ -238,8 +238,18 @@ impl DatalithView {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
+
+        let old_ext = if !target.is_dir() {
+            current
+                .rfind('.')
+                .and_then(|dot| if dot > 0 { Some(&current[dot..]) } else { None })
+                .map(|e| e.to_string())
+        } else {
+            None
+        };
+
         let state = cx.new(|cx| {
-            gpui_component::input::InputState::new(window, cx).default_value(current)
+            gpui_component::input::InputState::new(window, cx).default_value(current.as_str())
         });
         let dir = target.parent().map(|p| p.to_path_buf());
         let target_clone = target.clone();
@@ -249,8 +259,13 @@ impl DatalithView {
             window,
             move |this, input, event, _window, cx| match event {
                 InputEvent::PressEnter { .. } => {
-                    let new_name = input.read(cx).value().to_string();
+                    let mut new_name = input.read(cx).value().to_string();
                     if !new_name.is_empty() {
+                        if let Some(ref ext) = old_ext {
+                            if !new_name.contains('.') {
+                                new_name.push_str(ext);
+                            }
+                        }
                         if let Some(parent) = &dir {
                             let new_path = parent.join(&new_name);
                             if new_path != target_clone {
@@ -274,7 +289,8 @@ impl DatalithView {
         ));
 
         state.focus_handle(cx).focus(window, cx);
-        self.rename_state = Some(state);
+        self.rename_state = Some(state.clone());
+        window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
     }
 
     fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
