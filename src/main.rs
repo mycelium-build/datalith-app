@@ -4,16 +4,16 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     list::ListItem,
     popover::Popover,
-    scroll::ScrollableElement,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
-    ActiveTheme, Icon, IconName, Root, h_flex, v_flex,
+    ActiveTheme, Icon, IconName, Root, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 use tantivy::doc;
 use tantivy::{
@@ -348,6 +348,8 @@ pub struct DatalithView {
     search_input: Entity<InputState>,
     search_focus: FocusHandle,
     search_results: Vec<SearchResult>,
+    search_scroll_handle: VirtualListScrollHandle,
+    search_item_sizes: Rc<Vec<Size<Pixels>>>,
     search_selected: Option<usize>,
     _search_sub: Subscription,
 }
@@ -392,6 +394,8 @@ impl DatalithView {
             search_input,
             search_focus,
             search_results: Vec::new(),
+            search_scroll_handle: VirtualListScrollHandle::new(),
+            search_item_sizes: Rc::new(Vec::new()),
             search_selected: None,
             _search_sub: search_sub,
         }
@@ -456,6 +460,11 @@ impl DatalithView {
         cx.notify();
     }
 
+    fn scroll_to_selected(&mut self, index: usize) {
+        self.search_scroll_handle.scroll_to_item(index, ScrollStrategy::Nearest);
+    }
+
+
     fn search(&mut self, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.is_empty() {
@@ -467,13 +476,13 @@ impl DatalithView {
                 .unwrap_or_default()
         };
         self.search_selected = None;
+        self.search_item_sizes = Rc::new(vec![size(px(600.), px(70.)); self.search_results.len()]);
     }
 }
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let search_input = self.search_input.clone();
-        let results = self.search_results.clone();
         let root_path = self.root_path.clone();
         let search_open = self.search_open;
 
@@ -521,7 +530,7 @@ impl Render for DatalithView {
                                             v_flex()
                                                 .overflow_hidden()
                                                 .on_key_down(cx.listener(
-                                                    |this, event: &KeyDownEvent, _, cx| {
+                                                    |this, event: &KeyDownEvent, _window, cx| {
                                                         let count = this.search_results.len();
                                                         if count == 0 {
                                                             return;
@@ -538,6 +547,7 @@ impl Render for DatalithView {
                                                                     _ => return,
                                                                 };
                                                                 this.search_selected = Some(next);
+                                                                this.scroll_to_selected(next);
                                                                 cx.notify();
                                                             }
                                                             "up" => {
@@ -548,6 +558,7 @@ impl Render for DatalithView {
                                                                         None => count - 1,
                                                                     };
                                                                 this.search_selected = Some(prev);
+                                                                this.scroll_to_selected(prev);
                                                                 cx.notify();
                                                             }
                                                             _ => {}
@@ -555,68 +566,52 @@ impl Render for DatalithView {
                                                     },
                                                 ))
                                                 .child(Input::new(&search_input))
-                                                .child(div().h(px(400.)).overflow_y_scrollbar().children(
-                                                    results.iter().enumerate().map(
-                                                        |(i, r)| {
-                                                                let selected =
-                                                                    self.search_selected == Some(i);
-                                                                let path_clone = r.path.clone();
-                                                                let file_name = r
-                                                                    .path
-                                                                    .file_name()
-                                                                    .and_then(|n| n.to_str())
-                                                                    .unwrap_or("")
-                                                                    .to_string();
-                                                                let bg = if selected {
-                                                                    cx.theme().muted
-                                                                } else {
-                                                                    gpui::Hsla::default()
-                                                                };
+                                                .child(
+                                                    v_virtual_list(
+                                                        cx.entity().clone(),
+                                                        "search-results",
+                                                        self.search_item_sizes.clone(),
+                                                        move |view, visible_range, _, cx| {
+                                                            let selected_idx = view.search_selected;
+                                                            visible_range.map(move |i| {
+                                                                let r = &view.search_results[i];
+                                                                let file_name = r.path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                                                                let bg = if Some(i) == selected_idx { cx.theme().muted } else { gpui::Hsla::default() };
+                                                                let path = r.path.clone();
+                                                                let snippet = r.snippet.clone();
                                                                 div()
-                                                        .px_2()
-                                                        .py_1()
-                                                        .bg(bg)
-                                                        .hover(|s| s.bg(cx.theme().muted))
-                                                        .cursor_pointer()
-                                                        .child(
-                                                            v_flex()
-                                                                .child(
-                                                                    h_flex()
-                                                                        .gap_2()
-                                                                        .items_center()
-                                                                        .child(
-                                                                            Icon::new(
-                                                                                IconName::File,
+                                                                    .px_2()
+                                                                    .py_1()
+                                                                    .bg(bg)
+                                                                    .hover(|s| s.bg(cx.theme().muted))
+                                                                    .cursor_pointer()
+                                                                    .child(
+                                                                        v_flex()
+                                                                            .child(
+                                                                                h_flex()
+                                                                                    .gap_2()
+                                                                                    .items_center()
+                                                                                    .child(Icon::new(IconName::File).size_3())
+                                                                                    .child(file_name),
                                                                             )
-                                                                            .size_3(),
-                                                                        )
-                                                                        .child(file_name),
-                                                                )
-                                                                .child(
-                                                                    div()
-                                                                        .text_sm()
-                                                                        .text_color(
-                                                                            cx.theme()
-                                                                                .muted_foreground,
-                                                                        )
-                                                                        .pl_5()
-                                                                        .child(r.snippet.clone()),
-                                                                ),
-                                                        )
-                                                        .id(format!("result-{}", i))
-                                                        .on_click(cx.listener({
-                                                            let path = path_clone;
-                                                            move |this, _, window, cx| {
-                                                                this.search_open = false;
-                                                                this.open_file(
-                                                                    path.clone(),
-                                                                    window,
-                                                                    cx,
-                                                                );
-                                                            }
-                                                        }))
-                                                            },
-                                                        )),
+                                                                            .child(
+                                                                                div()
+                                                                                    .text_sm()
+                                                                                    .text_color(cx.theme().muted_foreground)
+                                                                                    .pl_5()
+                                                                                    .child(snippet),
+                                                                            ),
+                                                                    )
+                                                                    .id(ElementId::Name(format!("result-{i}").into()))
+                                                                    .on_click(cx.listener(move |view, _, window, cx| {
+                                                                        view.search_open = false;
+                                                                        view.open_file(path.clone(), window, cx);
+                                                                    }))
+                                                            }).collect()
+                                                        },
+                                                    )
+                                                    .track_scroll(&self.search_scroll_handle)
+                                                    .h(px(400.)),
                                                 ),
                                         ),
                                 ),
