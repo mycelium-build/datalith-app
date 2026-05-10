@@ -357,6 +357,7 @@ impl DatalithView {
                                 h_flex()
                                     .gap_2()
                                     .items_center()
+                                    .overflow_hidden()
                                     .child(Icon::new(icon).size_4())
                                     .child(Input::new(&rename_state)),
                             );
@@ -369,8 +370,9 @@ impl DatalithView {
                             h_flex()
                                 .gap_2()
                                 .items_center()
+                                .overflow_hidden()
                                 .child(Icon::new(icon).size_4())
-                                .child(item_label.clone()),
+                                .child(div().flex_1().truncate().child(item_label.clone())),
                         )
                         .on_click(cx.listener({
                             let item_id = item_id.clone();
