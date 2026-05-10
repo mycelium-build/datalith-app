@@ -122,6 +122,12 @@ impl DatalithView {
                 .default_value(content)
         }));
 
+        self.editor_state
+            .as_ref()
+            .unwrap()
+            .focus_handle(cx)
+            .focus(window, cx);
+
         let _subscription = cx.subscribe_in(
             self.editor_state.as_ref().unwrap(),
             window,
