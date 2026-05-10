@@ -23,6 +23,13 @@ fn main() {
         cx.on_action(open_codex);
         cx.on_action(toggle_search);
         cx.on_action(close_search);
+        cx.on_action(handle_new_file);
+        cx.on_action(handle_new_folder);
+        cx.on_action(handle_rename);
+        cx.on_action(handle_delete);
+        cx.on_action(handle_duplicate);
+        cx.on_action(handle_open_in_explorer);
+        cx.on_action(handle_copy_path);
         cx.set_menus([Menu::new("datalith").items([
             MenuItem::action("Open codex", OpenCodex),
             MenuItem::action("Search files...", ToggleSearch),

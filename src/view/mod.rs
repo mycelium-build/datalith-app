@@ -1,7 +1,7 @@
 pub mod render;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -32,6 +32,10 @@ pub struct DatalithView {
     pub search_selected: Option<usize>,
     pub _search_sub: Subscription,
     _editor_sub: Option<Subscription>,
+    _rename_sub: Option<Subscription>,
+    pub context_menu_target: Option<PathBuf>,
+    pub rename_target: Option<PathBuf>,
+    pub rename_state: Option<Entity<InputState>>,
 }
 
 impl DatalithView {
@@ -78,6 +82,10 @@ impl DatalithView {
             search_selected: None,
             _search_sub: search_sub,
             _editor_sub: None,
+            _rename_sub: None,
+            context_menu_target: None,
+            rename_target: None,
+            rename_state: None,
         }
     }
 
@@ -163,5 +171,135 @@ impl DatalithView {
         };
         self.search_selected = None;
         self.search_item_sizes = Rc::new(vec![size(px(600.), px(70.)); self.search_results.len()]);
+    }
+
+    fn parent_dir_for_target(&self, target: &Path) -> PathBuf {
+        if target.is_dir() {
+            target.to_path_buf()
+        } else {
+            target
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("/"))
+        }
+    }
+
+    fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
+        let (stem, ext) = if let Some(dot) = name.rfind('.') {
+            (&name[..dot], &name[dot..])
+        } else {
+            (name, "")
+        };
+        let mut candidate = base_dir.join(name);
+        let mut counter = 1;
+        while candidate.exists() {
+            candidate = base_dir.join(format!("{stem} {counter}{ext}"));
+            counter += 1;
+        }
+        candidate
+    }
+
+    pub fn new_file_from_target(&mut self, target: &Path) {
+        let dir = self.parent_dir_for_target(target);
+        let path = Self::unique_name(&dir, "untitled.txt");
+        if let Err(e) = fs::write(&path, "") {
+            eprintln!("Failed to create file {:?}: {e}", path);
+        }
+    }
+
+    pub fn new_folder_from_target(&mut self, target: &Path) {
+        let dir = self.parent_dir_for_target(target);
+        let path = Self::unique_name(&dir, "untitled");
+        if let Err(e) = fs::create_dir(&path) {
+            eprintln!("Failed to create folder {:?}: {e}", path);
+        }
+    }
+
+    pub fn delete_target(&mut self, target: &Path) {
+        let result = if target.is_dir() {
+            fs::remove_dir_all(target)
+        } else {
+            fs::remove_file(target)
+        };
+        if let Err(e) = result {
+            eprintln!("Failed to delete {:?}: {e}", target);
+        }
+    }
+
+    pub fn duplicate_target(&mut self, target: &Path) {
+        if target.is_dir() {
+            let parent = target
+                .parent()
+                .unwrap_or_else(|| Path::new("/"));
+            let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+            let new_path = Self::unique_name(parent, name);
+            if let Err(e) = Self::copy_dir(target, &new_path) {
+                eprintln!("Failed to duplicate dir {:?}: {e}", target);
+            }
+        } else {
+            let parent = target
+                .parent()
+                .unwrap_or_else(|| Path::new("/"));
+            let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+            let new_path = Self::unique_name(parent, name);
+            if let Err(e) = fs::copy(target, &new_path) {
+                eprintln!("Failed to duplicate file {:?}: {e}", target);
+            }
+        }
+    }
+
+    fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let path = entry.path();
+            let dest = dst.join(entry.file_name());
+            if path.is_dir() {
+                Self::copy_dir(&path, &dest)?;
+            } else {
+                fs::copy(&path, &dest)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn open_in_explorer(target: &Path) {
+        let path_to_open = if target.is_dir() {
+            target.to_path_buf()
+        } else {
+            target
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| target.to_path_buf())
+        };
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open")
+                .arg(&path_to_open)
+                .spawn();
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&path_to_open)
+                .spawn();
+        }
+    }
+
+    pub fn copy_path(target: &Path) {
+        let path_str = target.to_string_lossy().to_string();
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(&path_str);
+        }
+    }
+
+    pub fn refresh_tree(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref root) = self.root_path.clone() {
+            let items = build_file_items(root);
+            self.tree_state.update(cx, |state, cx| {
+                state.set_items(items, cx);
+            });
+            cx.notify();
+        }
     }
 }

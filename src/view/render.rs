@@ -5,9 +5,14 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     input::Input,
     list::ListItem,
+    menu::ContextMenuExt,
     sidebar::SidebarHeader,
     tree::{self},
     ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list,
+};
+
+use crate::actions::{
+    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
 };
 
 use super::DatalithView;
@@ -159,14 +164,21 @@ impl Render for DatalithView {
         }
 
         layout
-            .child(self.render_sidebar(cx))
+            .child(self.render_sidebar(_window, cx))
             .child(self.render_editor())
     }
 }
 
 impl DatalithView {
-    fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+    fn render_sidebar(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let tree_state = self.tree_state.clone();
+        let view = cx.entity().clone();
+
+        let mut sidebar = div()
             .flex()
             .flex_col()
             .w(px(260.))
@@ -174,8 +186,112 @@ impl DatalithView {
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
-            .child(self.render_sidebar_header(cx))
+            .child(self.render_sidebar_header(cx));
+
+        if let Some(ref rename) = self.rename_target.clone() {
+            sidebar = sidebar.child(self.render_rename_bar(window, cx, rename));
+        }
+
+        sidebar
             .child(div().flex_1().child(self.render_file_tree(cx)))
+            .context_menu({
+                let view = view.clone();
+                move |menu, _window, cx| {
+                    if let Some(entry) = tree_state.read(cx).right_clicked_entry() {
+                        let item_id = entry.item().id.to_string();
+                        let path = PathBuf::from(&item_id);
+                        view.update(cx, |v, _| {
+                            v.context_menu_target = Some(path);
+                        });
+                        menu.menu("New File", Box::new(NewFile))
+                            .menu("New Folder", Box::new(NewFolder))
+                            .separator()
+                            .menu("Rename", Box::new(Rename))
+                            .menu("Delete", Box::new(Delete))
+                            .menu("Duplicate", Box::new(Duplicate))
+                            .separator()
+                            .menu("Open in Explorer", Box::new(OpenInExplorer))
+                            .menu("Copy Path", Box::new(CopyPath))
+                    } else {
+                        view.update(cx, |v, _| {
+                            if let Some(ref root) = v.root_path {
+                                v.context_menu_target = Some(root.clone());
+                            }
+                        });
+                        menu.menu("New File", Box::new(NewFile))
+                            .menu("New Folder", Box::new(NewFolder))
+                            .separator()
+                            .menu("Open in Explorer", Box::new(OpenInExplorer))
+                            .menu("Copy Path", Box::new(CopyPath))
+                    }
+                }
+            })
+    }
+
+    fn render_rename_bar(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        rename_target: &PathBuf,
+    ) -> impl IntoElement {
+        let dir = rename_target.parent().map(|p| p.to_path_buf());
+        let rename_id = rename_target.clone();
+
+        if self.rename_state.is_none() {
+            let current = rename_target
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let state = cx.new(|cx| {
+                gpui_component::input::InputState::new(window, cx).default_value(current)
+            });
+            let dir_clone = dir.clone();
+            let rid = rename_id.clone();
+            self._rename_sub = Some(cx.subscribe_in(
+                &state,
+                window,
+                move |this, input, event, _window, cx| {
+                    if let gpui_component::input::InputEvent::PressEnter { .. } = event {
+                        let new_name = input.read(cx).value().to_string();
+                        if !new_name.is_empty() {
+                            if let Some(parent) = &dir_clone {
+                                let new_path = parent.join(&new_name);
+                                if new_path != rid {
+                                    let _ = std::fs::rename(&rid, &new_path);
+                                }
+                            }
+                        }
+                        this.rename_target = None;
+                        this.rename_state = None;
+                        this._rename_sub = None;
+                        this.refresh_tree(cx);
+                    }
+                },
+            ));
+            self.rename_state = Some(state);
+        }
+
+        let rename_state = self.rename_state.clone().unwrap();
+
+        h_flex()
+            .px_2()
+            .py_1()
+            .gap_1()
+            .items_center()
+            .bg(cx.theme().muted)
+            .child("Rename:")
+            .child(Input::new(&rename_state))
+            .child(
+                Button::new("cancel-rename")
+                    .ghost()
+                    .child("Cancel")
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.rename_target = None;
+                        this.rename_state = None;
+                        cx.notify();
+                    })),
+            )
     }
 
     fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -206,8 +322,10 @@ impl DatalithView {
     }
 
     fn render_file_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+
         tree::tree(&self.tree_state, {
-            let view = cx.entity();
+            let view = view.clone();
             move |ix, entry, selected, _window, cx| {
                 let is_folder = entry.is_folder();
                 let is_expanded = entry.is_expanded();
