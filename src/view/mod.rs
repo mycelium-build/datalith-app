@@ -1,9 +1,11 @@
 pub mod render;
 
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 
 use gpui::*;
 use gpui_component::{
@@ -36,6 +38,7 @@ pub struct DatalithView {
     pub context_menu_target: Option<PathBuf>,
     pub rename_target: Option<PathBuf>,
     pub rename_state: Option<Entity<InputState>>,
+    pub drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
 }
 
 impl DatalithView {
@@ -86,6 +89,7 @@ impl DatalithView {
             context_menu_target: None,
             rename_target: None,
             rename_state: None,
+            drag_hover: Rc::new(RefCell::new(None)),
         }
     }
 

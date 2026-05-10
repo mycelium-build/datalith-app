@@ -1,4 +1,7 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gpui::*;
 use gpui_component::{
@@ -213,7 +216,11 @@ impl DatalithView {
             .border_r_1()
             .border_color(cx.theme().border)
             .child(self.render_sidebar_header(cx))
-            .child(div().flex_1().child(self.render_file_tree(cx)))
+            .child(
+                div()
+                    .flex_1()
+                    .child(self.render_file_tree(cx, &self.tree_state, &self.drag_hover)),
+            )
             .context_menu({
                 let view = view.clone();
                 move |menu, _window, cx| {
@@ -344,11 +351,20 @@ impl DatalithView {
         )
     }
 
-    fn render_file_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_tree(
+        &self,
+        cx: &mut Context<Self>,
+        tree_state_entity: &Entity<gpui_component::tree::TreeState>,
+        drag_hover: &Rc<RefCell<Option<(PathBuf, Instant)>>>,
+    ) -> impl IntoElement {
         let view = cx.entity();
+        let drag_hover = drag_hover.clone();
+        let tree_state = tree_state_entity.clone();
 
-        tree::tree(&self.tree_state, {
+        tree::tree(tree_state_entity, {
             let view = view.clone();
+            let drag_hover = drag_hover.clone();
+            let tree_state = tree_state.clone();
             move |ix, entry, selected, _window, cx| {
                 let is_folder = entry.is_folder();
                 let is_expanded = entry.is_expanded();
@@ -357,6 +373,8 @@ impl DatalithView {
                 let depth = entry.depth();
 
                 let v = view.clone();
+                let dh = drag_hover.clone();
+                let ts = tree_state.clone();
                 view.update(cx, move |this, cx| {
                     let is_renaming = this
                         .rename_target
@@ -412,8 +430,41 @@ impl DatalithView {
 
                     if is_folder {
                         list_item = list_item
-                            .drag_over::<DragFile>(|this, _drag, _window, cx| {
-                                this.bg(cx.theme().drop_target)
+                            .drag_over::<DragFile>({
+                                let folder_path = drag_path.clone();
+                                let drag_hover = dh.clone();
+                                let tree_state = ts.clone();
+                                let eid = v.entity_id();
+                                move |mut style, _drag, _window, cx| {
+                                    style = style.bg(cx.theme().drop_target);
+
+                                    let mut hover = drag_hover.borrow_mut();
+                                    match &*hover {
+                                        Some((path, instant))
+                                            if path == &folder_path =>
+                                        {
+                                            if instant.elapsed() > Duration::from_millis(800) {
+                                                *hover = None;
+                                                let id: SharedString = folder_path
+                                                    .to_string_lossy()
+                                                    .to_string()
+                                                    .into();
+                                                tree_state.update(cx, |state, cx| {
+                                                    state.expand_by_id(&id, cx);
+                                                });
+                                            }
+                                        }
+                                        _ => {
+                                            *hover = Some((
+                                                folder_path.clone(),
+                                                Instant::now(),
+                                            ));
+                                        }
+                                    }
+
+                                    cx.notify(eid);
+                                    style
+                                }
                             })
                             .on_drop(cx.listener({
                                 let v2 = v.clone();
