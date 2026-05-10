@@ -820,7 +820,10 @@ fn toggle_search(_: &ToggleSearch, cx: &mut App) {
         view.update(cx, |view, cx| {
             view.search_open = !view.search_open;
             if view.search_open {
-                view.search_results.clear();
+                let query = view.search_input.read(cx).value();
+                if !query.trim().is_empty() {
+                    view.search(query);
+                }
             }
             cx.notify();
         });
