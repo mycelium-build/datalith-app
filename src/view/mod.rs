@@ -31,6 +31,7 @@ pub struct DatalithView {
     pub search_item_sizes: Rc<Vec<Size<Pixels>>>,
     pub search_selected: Option<usize>,
     pub _search_sub: Subscription,
+    _editor_sub: Option<Subscription>,
 }
 
 impl DatalithView {
@@ -76,6 +77,7 @@ impl DatalithView {
             search_item_sizes: Rc::new(Vec::new()),
             search_selected: None,
             _search_sub: search_sub,
+            _editor_sub: None,
         }
     }
 
@@ -128,7 +130,7 @@ impl DatalithView {
             .focus_handle(cx)
             .focus(window, cx);
 
-        let _subscription = cx.subscribe_in(
+        self._editor_sub = Some(cx.subscribe_in(
             self.editor_state.as_ref().unwrap(),
             window,
             move |_view, editor, event, _window, _cx| {
@@ -139,7 +141,7 @@ impl DatalithView {
                     }
                 }
             },
-        );
+        ));
 
         cx.notify();
     }
