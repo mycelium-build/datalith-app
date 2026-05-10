@@ -199,19 +199,27 @@ impl DatalithView {
         candidate
     }
 
-    pub fn new_file_from_target(&mut self, target: &Path) {
+    pub fn new_file_from_target(&mut self, target: &Path) -> Option<PathBuf> {
         let dir = self.parent_dir_for_target(target);
-        let path = Self::unique_name(&dir, "untitled.txt");
-        if let Err(e) = fs::write(&path, "") {
-            eprintln!("Failed to create file {:?}: {e}", path);
+        let path = Self::unique_name(&dir, "untitled.md");
+        match fs::write(&path, "") {
+            Ok(()) => Some(path),
+            Err(e) => {
+                eprintln!("Failed to create file {:?}: {e}", path);
+                None
+            }
         }
     }
 
-    pub fn new_folder_from_target(&mut self, target: &Path) {
+    pub fn new_folder_from_target(&mut self, target: &Path) -> Option<PathBuf> {
         let dir = self.parent_dir_for_target(target);
         let path = Self::unique_name(&dir, "untitled");
-        if let Err(e) = fs::create_dir(&path) {
-            eprintln!("Failed to create folder {:?}: {e}", path);
+        match fs::create_dir(&path) {
+            Ok(()) => Some(path),
+            Err(e) => {
+                eprintln!("Failed to create folder {:?}: {e}", path);
+                None
+            }
         }
     }
 

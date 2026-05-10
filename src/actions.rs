@@ -69,9 +69,13 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
         let target = view.read(cx).context_menu_target.clone();
         if let Some(target) = target {
             view.update(cx, |view, cx| {
-                view.new_file_from_target(&target);
+                let created = view.new_file_from_target(&target);
                 view.context_menu_target = None;
                 view.refresh_tree(cx);
+                if let Some(path) = created {
+                    view.rename_target = Some(path);
+                    cx.notify();
+                }
             });
         }
     }
@@ -82,9 +86,13 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
         let target = view.read(cx).context_menu_target.clone();
         if let Some(target) = target {
             view.update(cx, |view, cx| {
-                view.new_folder_from_target(&target);
+                let created = view.new_folder_from_target(&target);
                 view.context_menu_target = None;
                 view.refresh_tree(cx);
+                if let Some(path) = created {
+                    view.rename_target = Some(path);
+                    cx.notify();
+                }
             });
         }
     }
