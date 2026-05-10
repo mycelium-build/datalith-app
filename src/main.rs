@@ -1,12 +1,14 @@
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, Icon, IconName, Root, VirtualListScrollHandle,
     button::{Button, ButtonVariants as _},
+    h_flex,
     input::{Input, InputEvent, InputState},
     list::ListItem,
     popover::Popover,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
-    ActiveTheme, Icon, IconName, Root, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
+    v_flex, v_virtual_list,
 };
 
 use serde::{Deserialize, Serialize};
@@ -461,9 +463,9 @@ impl DatalithView {
     }
 
     fn scroll_to_selected(&mut self, index: usize) {
-        self.search_scroll_handle.scroll_to_item(index, ScrollStrategy::Nearest);
+        self.search_scroll_handle
+            .scroll_to_item(index, ScrollStrategy::Nearest);
     }
-
 
     fn search(&mut self, query: SharedString) {
         let query = query.trim().to_string();
