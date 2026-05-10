@@ -347,6 +347,7 @@ pub struct DatalithView {
     editor_state: Option<Entity<InputState>>,
     search_engine: Option<Arc<SearchEngine>>,
     search_open: bool,
+    needs_search_focus: bool,
     search_input: Entity<InputState>,
     search_focus: FocusHandle,
     search_results: Vec<SearchResult>,
@@ -393,6 +394,7 @@ impl DatalithView {
             editor_state: None,
             search_engine: None,
             search_open: false,
+            needs_search_focus: false,
             search_input,
             search_focus,
             search_results: Vec::new(),
@@ -484,6 +486,11 @@ impl DatalithView {
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.needs_search_focus {
+            self.needs_search_focus = false;
+            self.search_input.focus_handle(cx).focus(_window, cx);
+        }
+
         let search_input = self.search_input.clone();
         let root_path = self.root_path.clone();
         let search_open = self.search_open;
@@ -813,6 +820,7 @@ fn toggle_search(_: &ToggleSearch, cx: &mut App) {
         view.update(cx, |view, cx| {
             view.search_open = !view.search_open;
             if view.search_open {
+                view.needs_search_focus = true;
                 let query = view.search_input.read(cx).value();
                 if !query.trim().is_empty() {
                     view.search(query);
