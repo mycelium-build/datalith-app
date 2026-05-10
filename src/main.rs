@@ -1,15 +1,13 @@
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, Icon, IconName, Root,
     button::{Button, ButtonVariants as _},
-    h_flex,
     input::{Input, InputEvent, InputState},
     list::ListItem,
     popover::Popover,
     scroll::ScrollableElement,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
-    v_flex,
+    ActiveTheme, Icon, IconName, Root, h_flex, v_flex,
 };
 
 use serde::{Deserialize, Serialize};
@@ -521,6 +519,7 @@ impl Render for DatalithView {
                                         .w(px(600.))
                                         .child(
                                             v_flex()
+                                                .overflow_hidden()
                                                 .on_key_down(cx.listener(
                                                     |this, event: &KeyDownEvent, _, cx| {
                                                         let count = this.search_results.len();
@@ -556,12 +555,9 @@ impl Render for DatalithView {
                                                     },
                                                 ))
                                                 .child(Input::new(&search_input))
-                                                .child(
-                                                    div()
-                                                        .overflow_y_scrollbar()
-                                                        .max_h(px(400.))
-                                                        .children(results.iter().enumerate().map(
-                                                            |(i, r)| {
+                                                .child(div().h(px(400.)).overflow_y_scrollbar().children(
+                                                    results.iter().enumerate().map(
+                                                        |(i, r)| {
                                                                 let selected =
                                                                     self.search_selected == Some(i);
                                                                 let path_clone = r.path.clone();
