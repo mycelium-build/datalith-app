@@ -121,6 +121,7 @@ impl DatalithView {
         self.editor_state = Some(cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
+                .searchable(true)
                 .default_value(content)
         }));
 
