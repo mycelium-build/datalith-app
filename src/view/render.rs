@@ -17,6 +17,30 @@ use crate::actions::{
 
 use super::DatalithView;
 
+#[derive(Clone)]
+struct DragFile {
+    path: PathBuf,
+}
+
+impl Render for DragFile {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = self
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        div()
+            .px_2()
+            .py_1()
+            .bg(cx.theme().accent)
+            .text_color(cx.theme().accent_foreground)
+            .rounded_sm()
+            .text_sm()
+            .child(name)
+    }
+}
+
 impl DatalithView {
     pub fn render_search_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -332,6 +356,7 @@ impl DatalithView {
                 let item_label = entry.item().label.clone();
                 let depth = entry.depth();
 
+                let v = view.clone();
                 view.update(cx, move |this, cx| {
                     let is_renaming = this
                         .rename_target
@@ -353,7 +378,7 @@ impl DatalithView {
 
                     if is_renaming {
                         if let Some(rename_state) = this.rename_state.clone() {
-                            list_item = list_item.child(
+                            return list_item.child(
                                 h_flex()
                                     .gap_2()
                                     .items_center()
@@ -361,11 +386,12 @@ impl DatalithView {
                                     .child(Icon::new(icon).size_4())
                                     .child(Input::new(&rename_state)),
                             );
-                            return list_item;
                         }
                     }
 
-                    list_item
+                    let drag_path = PathBuf::from(item_id.to_string());
+
+                    list_item = list_item
                         .child(
                             h_flex()
                                 .gap_2()
@@ -374,16 +400,51 @@ impl DatalithView {
                                 .child(Icon::new(icon).size_4())
                                 .child(div().flex_1().truncate().child(item_label.clone())),
                         )
-                        .on_click(cx.listener({
-                            let item_id = item_id.clone();
-                            let is_folder = is_folder;
+                        .on_drag(
+                            DragFile {
+                                path: drag_path.clone(),
+                            },
+                            |drag, _offset, _window, cx| {
+                                cx.stop_propagation();
+                                cx.new(|_| drag.clone())
+                            },
+                        );
+
+                    if is_folder {
+                        list_item = list_item
+                            .drag_over::<DragFile>(|this, _drag, _window, cx| {
+                                this.bg(cx.theme().drop_target)
+                            })
+                            .on_drop(cx.listener({
+                                let v2 = v.clone();
+                                let target_dir = drag_path.clone();
+                                move |_this, drag: &DragFile, window, cx| {
+                                    if let Some(name) = drag.path.file_name() {
+                                        let new_path = target_dir.join(name);
+                                        if new_path != drag.path {
+                                            let _ = std::fs::rename(&drag.path, &new_path);
+                                        }
+                                    }
+                                    let view = v2.clone();
+                                    window.defer(cx, move |_window, cx| {
+                                        view.update(cx, |view, cx| {
+                                            view.refresh_tree(cx);
+                                        });
+                                    });
+                                }
+                            }));
+                    }
+
+                    list_item.on_click(
+                        cx.listener({
+                            let drag_path = drag_path.clone();
                             move |this, _, window, cx| {
                                 if !is_folder {
-                                    let path = PathBuf::from(item_id.to_string());
-                                    this.open_file(path, window, cx);
+                                    this.open_file(drag_path.clone(), window, cx);
                                 }
                             }
-                        }))
+                        }),
+                    )
                 })
             }
         })
