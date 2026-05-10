@@ -1,15 +1,15 @@
 mod index;
 mod query;
 
-use index::{index_files, incremental_update};
+use index::{incremental_update, index_files};
 use query::build_query;
+
+const MAX_SEARCH_RESULTS: usize = 25;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tantivy::{
-    self, collector::TopDocs, schema::*, Index, IndexReader, TantivyDocument,
-};
+use tantivy::{self, Index, IndexReader, TantivyDocument, collector::TopDocs, schema::*};
 
 #[derive(Clone)]
 pub struct SearchResult {
@@ -84,7 +84,10 @@ impl SearchEngine {
     pub fn search(&self, query_str: &str) -> Vec<SearchResult> {
         let searcher = self.reader.searcher();
         let query = build_query(query_str, self.name_field, self.content_field);
-        let top_docs = match searcher.search(&query, &TopDocs::with_limit(20).order_by_score()) {
+        let top_docs = match searcher.search(
+            &query,
+            &TopDocs::with_limit(MAX_SEARCH_RESULTS).order_by_score(),
+        ) {
             Ok(docs) => docs,
             Err(_) => return Vec::new(),
         };
