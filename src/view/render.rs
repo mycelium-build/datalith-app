@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    input::Input,
+    input::{Input, InputEvent},
     list::ListItem,
     menu::ContextMenuExt,
     sidebar::SidebarHeader,
@@ -178,7 +178,9 @@ impl DatalithView {
         let tree_state = self.tree_state.clone();
         let view = cx.entity().clone();
 
-        let mut sidebar = div()
+        self.ensure_rename_state(window, cx);
+
+        div()
             .flex()
             .flex_col()
             .w(px(260.))
@@ -186,13 +188,7 @@ impl DatalithView {
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
-            .child(self.render_sidebar_header(cx));
-
-        if let Some(ref rename) = self.rename_target.clone() {
-            sidebar = sidebar.child(self.render_rename_bar(window, cx, rename));
-        }
-
-        sidebar
+            .child(self.render_sidebar_header(cx))
             .child(div().flex_1().child(self.render_file_tree(cx)))
             .context_menu({
                 let view = view.clone();
@@ -228,70 +224,57 @@ impl DatalithView {
             })
     }
 
-    fn render_rename_bar(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        rename_target: &PathBuf,
-    ) -> impl IntoElement {
-        let dir = rename_target.parent().map(|p| p.to_path_buf());
-        let rename_id = rename_target.clone();
-
-        if self.rename_state.is_none() {
-            let current = rename_target
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
-            let state = cx.new(|cx| {
-                gpui_component::input::InputState::new(window, cx).default_value(current)
-            });
-            let dir_clone = dir.clone();
-            let rid = rename_id.clone();
-            self._rename_sub = Some(cx.subscribe_in(
-                &state,
-                window,
-                move |this, input, event, _window, cx| {
-                    if let gpui_component::input::InputEvent::PressEnter { .. } = event {
-                        let new_name = input.read(cx).value().to_string();
-                        if !new_name.is_empty() {
-                            if let Some(parent) = &dir_clone {
-                                let new_path = parent.join(&new_name);
-                                if new_path != rid {
-                                    let _ = std::fs::rename(&rid, &new_path);
-                                }
-                            }
-                        }
-                        this.rename_target = None;
-                        this.rename_state = None;
-                        this._rename_sub = None;
-                        this.refresh_tree(cx);
-                    }
-                },
-            ));
-            self.rename_state = Some(state);
+    fn ensure_rename_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ref target) = self.rename_target.clone() else {
+            self.rename_state = None;
+            return;
+        };
+        if self.rename_state.is_some() {
+            return;
         }
 
-        let rename_state = self.rename_state.clone().unwrap();
+        let current = target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        let state = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx).default_value(current)
+        });
+        let dir = target.parent().map(|p| p.to_path_buf());
+        let target_clone = target.clone();
 
-        h_flex()
-            .px_2()
-            .py_1()
-            .gap_1()
-            .items_center()
-            .bg(cx.theme().muted)
-            .child("Rename:")
-            .child(Input::new(&rename_state))
-            .child(
-                Button::new("cancel-rename")
-                    .ghost()
-                    .child("Cancel")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.rename_target = None;
-                        this.rename_state = None;
-                        cx.notify();
-                    })),
-            )
+        self._rename_sub = Some(cx.subscribe_in(
+            &state,
+            window,
+            move |this, input, event, _window, cx| match event {
+                InputEvent::PressEnter { .. } => {
+                    let new_name = input.read(cx).value().to_string();
+                    if !new_name.is_empty() {
+                        if let Some(parent) = &dir {
+                            let new_path = parent.join(&new_name);
+                            if new_path != target_clone {
+                                let _ = std::fs::rename(&target_clone, &new_path);
+                            }
+                        }
+                    }
+                    this.rename_target = None;
+                    this.rename_state = None;
+                    this._rename_sub = None;
+                    this.refresh_tree(cx);
+                }
+                InputEvent::Blur => {
+                    this.rename_target = None;
+                    this.rename_state = None;
+                    this._rename_sub = None;
+                    cx.notify();
+                }
+                _ => {}
+            },
+        ));
+
+        state.focus_handle(cx).focus(window, cx);
+        self.rename_state = Some(state);
     }
 
     fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -333,7 +316,13 @@ impl DatalithView {
                 let item_label = entry.item().label.clone();
                 let depth = entry.depth();
 
-                view.update(cx, move |_this, cx| {
+                view.update(cx, move |this, cx| {
+                    let is_renaming = this
+                        .rename_target
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string() == item_id.to_string())
+                        .unwrap_or(false);
+
                     let icon = if !is_folder {
                         IconName::File
                     } else if is_expanded {
@@ -342,9 +331,24 @@ impl DatalithView {
                         IconName::Folder
                     };
 
-                    ListItem::new(ix)
+                    let mut list_item = ListItem::new(ix)
                         .selected(selected)
-                        .pl(px(16.) * depth + px(12.))
+                        .pl(px(16.) * depth + px(12.));
+
+                    if is_renaming {
+                        if let Some(rename_state) = this.rename_state.clone() {
+                            list_item = list_item.child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(Icon::new(icon).size_4())
+                                    .child(Input::new(&rename_state)),
+                            );
+                            return list_item;
+                        }
+                    }
+
+                    list_item
                         .child(
                             h_flex()
                                 .gap_2()
