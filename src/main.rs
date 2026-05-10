@@ -1,14 +1,11 @@
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, Icon, IconName, Root, VirtualListScrollHandle,
     button::{Button, ButtonVariants as _},
-    h_flex,
     input::{Input, InputEvent, InputState},
     list::ListItem,
-    popover::Popover,
     sidebar::SidebarHeader,
     tree::{self, TreeItem, TreeState},
-    v_flex, v_virtual_list,
+    ActiveTheme, Icon, IconName, Root, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 
 use serde::{Deserialize, Serialize};
@@ -349,7 +346,6 @@ pub struct DatalithView {
     search_open: bool,
     needs_search_focus: bool,
     search_input: Entity<InputState>,
-    search_focus: FocusHandle,
     search_results: Vec<SearchResult>,
     search_scroll_handle: VirtualListScrollHandle,
     search_item_sizes: Rc<Vec<Size<Pixels>>>,
@@ -360,7 +356,6 @@ pub struct DatalithView {
 impl DatalithView {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search files..."));
-        let search_focus = search_input.read(cx).focus_handle(cx);
         let search_sub = cx.subscribe_in(
             &search_input,
             window,
@@ -396,7 +391,6 @@ impl DatalithView {
             search_open: false,
             needs_search_focus: false,
             search_input,
-            search_focus,
             search_results: Vec::new(),
             search_scroll_handle: VirtualListScrollHandle::new(),
             search_item_sizes: Rc::new(Vec::new()),
@@ -465,8 +459,119 @@ impl DatalithView {
     }
 
     fn scroll_to_selected(&mut self, index: usize) {
-        self.search_scroll_handle
-            .scroll_to_item(index, ScrollStrategy::Nearest);
+        self.search_scroll_handle.scroll_to_item(index, ScrollStrategy::Nearest);
+    }
+
+    fn render_search_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let search_input = self.search_input.clone();
+        div()
+            .absolute()
+            .inset_0()
+            .bg(gpui::black().opacity(0.3))
+            .flex()
+            .items_center()
+            .justify_center()
+            .id("search-backdrop")
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.search_open = false;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .w(px(600.))
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded_md()
+                    .shadow_lg()
+                    .id("search-panel")
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation();
+                    }))
+                    .child(
+                        v_flex()
+                            .overflow_hidden()
+                            .on_key_down(cx.listener(
+                                |this, event: &KeyDownEvent, _window, cx| {
+                                    let count = this.search_results.len();
+                                    if count == 0 {
+                                        return;
+                                    }
+                                    match event.keystroke.key.as_str() {
+                                        "down" => {
+                                            let next = match this.search_selected {
+                                                Some(i) if i + 1 < count => i + 1,
+                                                None => 0,
+                                                _ => return,
+                                            };
+                                            this.search_selected = Some(next);
+                                            this.scroll_to_selected(next);
+                                            cx.notify();
+                                        }
+                                        "up" => {
+                                            let prev = match this.search_selected {
+                                                Some(i) if i > 0 => i - 1,
+                                                Some(_) => return,
+                                                None => count - 1,
+                                            };
+                                            this.search_selected = Some(prev);
+                                            this.scroll_to_selected(prev);
+                                            cx.notify();
+                                        }
+                                        _ => {}
+                                    }
+                                },
+                            ))
+                            .child(Input::new(&search_input))
+                            .child(
+                                v_virtual_list(
+                                    cx.entity().clone(),
+                                    "search-results",
+                                    self.search_item_sizes.clone(),
+                                    move |view, visible_range, _, cx| {
+                                        let selected_idx = view.search_selected;
+                                        visible_range.map(move |i| {
+                                            let r = &view.search_results[i];
+                                            let file_name = r.path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                                            let bg = if Some(i) == selected_idx { cx.theme().muted } else { gpui::Hsla::default() };
+                                            let path = r.path.clone();
+                                            let snippet = r.snippet.clone();
+                                            div()
+                                                .px_2()
+                                                .py_1()
+                                                .bg(bg)
+                                                .hover(|s| s.bg(cx.theme().muted))
+                                                .cursor_pointer()
+                                                .child(
+                                                    v_flex()
+                                                        .child(
+                                                            h_flex()
+                                                                .gap_2()
+                                                                .items_center()
+                                                                .child(Icon::new(IconName::File).size_3())
+                                                                .child(file_name),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .text_color(cx.theme().muted_foreground)
+                                                                .pl_5()
+                                                                .child(snippet),
+                                                        ),
+                                                )
+                                                .id(ElementId::Name(format!("result-{i}").into()))
+                                                .on_click(cx.listener(move |view, _, window, cx| {
+                                                    view.search_open = false;
+                                                    view.open_file(path.clone(), window, cx);
+                                                }))
+                                        }).collect()
+                                    },
+                                )
+                                .track_scroll(&self.search_scroll_handle)
+                                .h(px(400.)),
+                            ),
+                    )
+            )
     }
 
     fn search(&mut self, query: SharedString) {
@@ -491,12 +596,20 @@ impl Render for DatalithView {
             self.search_input.focus_handle(cx).focus(_window, cx);
         }
 
-        let search_input = self.search_input.clone();
         let root_path = self.root_path.clone();
         let search_open = self.search_open;
 
-        h_flex()
+        let mut layout = h_flex()
             .size_full()
+            .relative();
+
+        if search_open {
+            layout = layout.child(
+                deferred(self.render_search_overlay(cx))
+            );
+        }
+
+        layout
             .child(
                 div()
                     .flex()
@@ -521,108 +634,14 @@ impl Render for DatalithView {
                                 )
                                 .child(div().flex_1())
                                 .child(
-                                    Popover::new("search-popover")
-                                        .trigger(
-                                            Button::new("search-trigger")
-                                                .ghost()
-                                                .icon(IconName::Search),
-                                        )
-                                        .anchor(Anchor::TopCenter)
-                                        .open(search_open)
-                                        .track_focus(&self.search_focus)
-                                        .on_open_change(cx.listener(|this, open, _window, cx| {
-                                            this.search_open = *open;
+                                    Button::new("search-trigger")
+                                        .ghost()
+                                        .icon(IconName::Search)
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.search_open = true;
+                                            this.needs_search_focus = true;
                                             cx.notify();
-                                        }))
-                                        .w(px(600.))
-                                        .child(
-                                            v_flex()
-                                                .overflow_hidden()
-                                                .on_key_down(cx.listener(
-                                                    |this, event: &KeyDownEvent, _window, cx| {
-                                                        let count = this.search_results.len();
-                                                        if count == 0 {
-                                                            return;
-                                                        }
-                                                        match event.keystroke.key.as_str() {
-                                                            "down" => {
-                                                                let next = match this
-                                                                    .search_selected
-                                                                {
-                                                                    Some(i) if i + 1 < count => {
-                                                                        i + 1
-                                                                    }
-                                                                    None => 0,
-                                                                    _ => return,
-                                                                };
-                                                                this.search_selected = Some(next);
-                                                                this.scroll_to_selected(next);
-                                                                cx.notify();
-                                                            }
-                                                            "up" => {
-                                                                let prev =
-                                                                    match this.search_selected {
-                                                                        Some(i) if i > 0 => i - 1,
-                                                                        Some(_) => return,
-                                                                        None => count - 1,
-                                                                    };
-                                                                this.search_selected = Some(prev);
-                                                                this.scroll_to_selected(prev);
-                                                                cx.notify();
-                                                            }
-                                                            _ => {}
-                                                        }
-                                                    },
-                                                ))
-                                                .child(Input::new(&search_input))
-                                                .child(
-                                                    v_virtual_list(
-                                                        cx.entity().clone(),
-                                                        "search-results",
-                                                        self.search_item_sizes.clone(),
-                                                        move |view, visible_range, _, cx| {
-                                                            let selected_idx = view.search_selected;
-                                                            visible_range.map(move |i| {
-                                                                let r = &view.search_results[i];
-                                                                let file_name = r.path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                                                                let bg = if Some(i) == selected_idx { cx.theme().muted } else { gpui::Hsla::default() };
-                                                                let path = r.path.clone();
-                                                                let snippet = r.snippet.clone();
-                                                                div()
-                                                                    .px_2()
-                                                                    .py_1()
-                                                                    .bg(bg)
-                                                                    .hover(|s| s.bg(cx.theme().muted))
-                                                                    .cursor_pointer()
-                                                                    .child(
-                                                                        v_flex()
-                                                                            .child(
-                                                                                h_flex()
-                                                                                    .gap_2()
-                                                                                    .items_center()
-                                                                                    .child(Icon::new(IconName::File).size_3())
-                                                                                    .child(file_name),
-                                                                            )
-                                                                            .child(
-                                                                                div()
-                                                                                    .text_sm()
-                                                                                    .text_color(cx.theme().muted_foreground)
-                                                                                    .pl_5()
-                                                                                    .child(snippet),
-                                                                            ),
-                                                                    )
-                                                                    .id(ElementId::Name(format!("result-{i}").into()))
-                                                                    .on_click(cx.listener(move |view, _, window, cx| {
-                                                                        view.search_open = false;
-                                                                        view.open_file(path.clone(), window, cx);
-                                                                    }))
-                                                            }).collect()
-                                                        },
-                                                    )
-                                                    .track_scroll(&self.search_scroll_handle)
-                                                    .h(px(400.)),
-                                                ),
-                                        ),
+                                        })),
                                 ),
                         ),
                     )
