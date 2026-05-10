@@ -348,21 +348,39 @@ pub struct DatalithView {
     search_engine: Option<Arc<SearchEngine>>,
     search_open: bool,
     search_input: Entity<InputState>,
+    search_focus: FocusHandle,
     search_results: Vec<SearchResult>,
+    search_selected: Option<usize>,
     _search_sub: Subscription,
 }
 
 impl DatalithView {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search files..."));
+        let search_focus = search_input.read(cx).focus_handle(cx);
         let search_sub = cx.subscribe_in(
             &search_input,
             window,
-            move |this, input, event, _window, cx| {
-                if let InputEvent::Change = event {
-                    let query = input.read(cx).value();
-                    this.search(query);
-                    cx.notify();
+            move |this, input, event, window, cx| {
+                match event {
+                    InputEvent::Change => {
+                        let query = input.read(cx).value();
+                        this.search(query);
+                        cx.notify();
+                    }
+                    InputEvent::PressEnter { .. } => {
+                        if let Some(index) = this.search_selected {
+                            if let Some(result) = this.search_results.get(index) {
+                                let path = result.path.clone();
+                                this.search_open = false;
+                                this.search_selected = None;
+                                this.search_results.clear();
+                                this.open_file(path, window, cx);
+                                cx.notify();
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             },
         );
@@ -376,7 +394,9 @@ impl DatalithView {
             search_engine: None,
             search_open: false,
             search_input,
+            search_focus,
             search_results: Vec::new(),
+            search_selected: None,
             _search_sub: search_sub,
         }
     }
@@ -450,6 +470,7 @@ impl DatalithView {
                 .map(|engine| engine.search(&query))
                 .unwrap_or_default()
         };
+        self.search_selected = None;
     }
 }
 
@@ -494,14 +515,48 @@ impl Render for DatalithView {
                                         )
                                         .anchor(Anchor::TopCenter)
                                         .open(search_open)
+                                        .track_focus(&self.search_focus)
                                         .on_open_change(cx.listener(|this, open, _window, cx| {
                                             this.search_open = *open;
                                             cx.notify();
                                         }))
                                         .w(px(600.))
-                                        .child(v_flex().child(Input::new(&search_input)).child(
-                                            div().overflow_y_scrollbar().max_h(px(400.)).children(
-                                                results.iter().enumerate().map(|(i, r)| {
+                                        .child(
+                                            v_flex()
+                                                .on_key_down(cx.listener(
+                                                    |this, event: &KeyDownEvent, _, cx| {
+                                                        let count = this.search_results.len();
+                                                        if count == 0 {
+                                                            return;
+                                                        }
+                                                        match event.keystroke.key.as_str() {
+                                                            "down" => {
+                                                                let next = match this.search_selected {
+                                                                    Some(i) if i + 1 < count => i + 1,
+                                                                    None => 0,
+                                                                    _ => return,
+                                                                };
+                                                                this.search_selected = Some(next);
+                                                                cx.notify();
+                                                            }
+                                                                "up" => {
+                                                                let prev = match this.search_selected {
+                                                                    Some(i) if i > 0 => i - 1,
+                                                                    Some(_) => return,
+                                                                    None => count - 1,
+                                                                };
+                                                                this.search_selected = Some(prev);
+                                                                cx.notify();
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    },
+                                                ))
+                                                .child(Input::new(&search_input))
+                                                .child(
+                                                    div().overflow_y_scrollbar().max_h(px(400.)).children(
+                                                        results.iter().enumerate().map(|(i, r)| {
+                                                    let selected = self.search_selected == Some(i);
                                                     let path_clone = r.path.clone();
                                                     let file_name = r
                                                         .path
@@ -509,9 +564,15 @@ impl Render for DatalithView {
                                                         .and_then(|n| n.to_str())
                                                         .unwrap_or("")
                                                         .to_string();
+                                                    let bg = if selected {
+                                                        cx.theme().muted
+                                                    } else {
+                                                        gpui::Hsla::default()
+                                                    };
                                                     div()
                                                         .px_2()
                                                         .py_1()
+                                                        .bg(bg)
                                                         .hover(|s| s.bg(cx.theme().muted))
                                                         .cursor_pointer()
                                                         .child(
@@ -598,62 +659,6 @@ impl Render for DatalithView {
                             })
                         }
                     }))),
-            )
-            .child(
-                Popover::new("search-popover")
-                    .anchor(Anchor::TopCenter)
-                    .open(search_open)
-                    .on_open_change(cx.listener(|this, open, _window, cx| {
-                        this.search_open = *open;
-                        cx.notify();
-                    }))
-                    .w(px(600.))
-                    .child(v_flex().child(Input::new(&search_input)).child(
-                        div().overflow_y_scrollbar().max_h(px(400.)).children(
-                            results.iter().enumerate().map(|(i, r)| {
-                                let path_clone = r.path.clone();
-                                let file_name = r
-                                    .path
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .hover(|s| s.bg(cx.theme().muted))
-                                    .cursor_pointer()
-                                    .child(
-                                        v_flex()
-                                            .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .items_center()
-                                                    .child(Icon::new(IconName::File).size_3())
-                                                    .child(file_name),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .pl_5()
-                                                    .child(r.snippet.clone()),
-                                            ),
-                                    )
-                                    .id(format!("result-{}", i))
-                                    .on_click(cx.listener({
-                                        let path = path_clone;
-                                        let view = cx.entity().clone();
-                                        move |_, _, window, cx| {
-                                            view.update(cx, |this, cx| {
-                                                this.search_open = false;
-                                                this.open_file(path.clone(), window, cx);
-                                            });
-                                        }
-                                    }))
-                            }),
-                        ),
-                    )),
             )
             .child(match self.editor_state.as_ref() {
                 Some(editor) => Input::new(editor).h_full().into_any_element(),
