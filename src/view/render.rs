@@ -215,6 +215,29 @@ impl DatalithView {
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
+            .drag_over::<DragFile>(|style, _drag, _window, cx| {
+                style.bg(cx.theme().drop_target)
+            })
+            .on_drop({
+                let view = view.clone();
+                let root_path = self.root_path.clone();
+                move |drag: &DragFile, window, cx| {
+                    if let (Some(root), Some(name)) =
+                        (&root_path, drag.path.file_name())
+                    {
+                        let new_path = root.join(name);
+                        if new_path != drag.path {
+                            let _ = std::fs::rename(&drag.path, &new_path);
+                        }
+                    }
+                    let v = view.clone();
+                    window.defer(cx, move |_window, cx| {
+                        v.update(cx, |view, cx| {
+                            view.refresh_tree(cx);
+                        });
+                    });
+                }
+            })
             .child(self.render_sidebar_header(cx))
             .child(
                 div()
