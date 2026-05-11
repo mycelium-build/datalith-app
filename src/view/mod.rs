@@ -307,7 +307,13 @@ impl DatalithView {
 
     pub fn refresh_tree(&mut self, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path.clone() {
-            let items = build_file_items(root);
+            let expanded_ids = self.tree_state.read(cx).expanded_ids();
+            let mut items = build_file_items(root);
+            for item in &mut items {
+                if expanded_ids.contains(&item.id) {
+                    item.set_expanded(true);
+                }
+            }
             self.tree_state.update(cx, |state, cx| {
                 state.set_items(items, cx);
             });
