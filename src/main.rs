@@ -30,7 +30,7 @@ fn main() {
         cx.on_action(handle_duplicate);
         cx.on_action(handle_open_in_explorer);
         cx.on_action(handle_copy_path);
-        cx.set_menus([Menu::new("datalith").items([
+        cx.set_menus([Menu::new("File").items([
             MenuItem::action("Open codex", OpenCodex),
             MenuItem::action("Search files...", ToggleSearch),
         ])]);
