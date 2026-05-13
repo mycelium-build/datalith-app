@@ -16,46 +16,22 @@ use gpui_component::{
 
 use crate::config::save_last_folder;
 use crate::filetree::build_file_items;
-use crate::search::{SearchEngine, SearchResult};
+use crate::search::SearchEngine;
 use palette::Palette;
 
-#[derive(Clone)]
-pub struct QuickSwitcherEntry {
-    pub path: PathBuf,
-    pub name: String,
-    pub open: bool,
-}
-
-fn fuzzy_match(query: &str, target: &str) -> bool {
-    let query = query.to_lowercase();
-    let target = target.to_lowercase();
-    let mut qi = query.chars().peekable();
-    for tc in target.chars() {
-        if let Some(&qc) = qi.peek()
-            && qc == tc
-        {
-            qi.next();
-        }
-    }
-    qi.next().is_none()
-}
-
-struct OpenFile {
-    path: PathBuf,
-    state: Entity<InputState>,
-    _sub: Subscription,
+pub(crate) struct OpenFile {
+    pub(crate) path: PathBuf,
+    pub(crate) state: Entity<InputState>,
+    pub(crate) _sub: Subscription,
 }
 
 pub struct DatalithView {
     pub tree_state: Entity<TreeState>,
     pub root_path: Option<PathBuf>,
     pub root_name: SharedString,
-    open_files: Vec<OpenFile>,
+    pub(crate) open_files: Vec<OpenFile>,
     pub active_tab: usize,
     pub search_engine: Option<Arc<SearchEngine>>,
-    pub search_results: Vec<SearchResult>,
-    pub quick_switcher_entries: Vec<QuickSwitcherEntry>,
-    quick_switcher_all_files: Vec<QuickSwitcherEntry>,
     pub palette: Palette,
     _palette_sub: Subscription,
     _rename_sub: Option<Subscription>,
@@ -77,9 +53,6 @@ impl DatalithView {
             open_files: Vec::new(),
             active_tab: 0,
             search_engine: None,
-            search_results: Vec::new(),
-            quick_switcher_entries: Vec::new(),
-            quick_switcher_all_files: Vec::new(),
             palette,
             _palette_sub: palette_sub,
             _rename_sub: None,
@@ -112,7 +85,7 @@ impl DatalithView {
             }
         };
 
-        self.quick_switcher_all_files = Self::collect_files(&path);
+        self.palette.set_root(&path);
 
         _cx.notify();
     }
@@ -197,19 +170,6 @@ impl DatalithView {
             self.active_tab = self.open_files.len() - 1;
         }
         cx.notify();
-    }
-
-    pub fn search(&mut self, query: SharedString) {
-        let query = query.trim().to_string();
-        self.search_results = if query.is_empty() {
-            Vec::new()
-        } else {
-            self.search_engine
-                .as_ref()
-                .map(|engine| engine.search(&query))
-                .unwrap_or_default()
-        };
-        self.palette.set_search_sizes(&self.search_results);
     }
 
     fn parent_dir_for_target(&self, target: &Path) -> PathBuf {
@@ -356,81 +316,5 @@ impl DatalithView {
             });
             cx.notify();
         }
-    }
-
-    pub fn refresh_quick_switcher(&mut self, _cx: &mut Context<Self>) {
-        if let Some(ref root) = self.root_path {
-            self.quick_switcher_all_files = Self::collect_files(root);
-        }
-
-        let open_set: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
-
-        let mut results = self.quick_switcher_all_files.clone();
-        for entry in &mut results {
-            entry.open = open_set.contains(&entry.path);
-        }
-        results.retain(|e| e.open);
-
-        self.quick_switcher_entries = results;
-        self.palette
-            .set_quick_switcher_sizes(self.quick_switcher_entries.len());
-    }
-
-    pub fn filter_quick_switcher(&mut self, query: SharedString) {
-        let query = query.trim();
-        let open_set: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
-
-        let mut results = self.quick_switcher_all_files.clone();
-        for entry in &mut results {
-            entry.open = open_set.contains(&entry.path);
-        }
-
-        if query.is_empty() {
-            results.retain(|e| e.open);
-        } else {
-            results.retain(|e| fuzzy_match(query, &e.name));
-            results.sort_by(|a, b| {
-                b.open
-                    .cmp(&a.open)
-                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-            });
-        }
-        self.quick_switcher_entries = results;
-        self.palette
-            .set_quick_switcher_sizes(self.quick_switcher_entries.len());
-    }
-
-    fn collect_files(root: &Path) -> Vec<QuickSwitcherEntry> {
-        let mut entries = Vec::new();
-        if let Ok(dir_entries) = fs::read_dir(root) {
-            for entry in dir_entries.flatten() {
-                let path = entry.path();
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                if name.starts_with('.') {
-                    continue;
-                }
-                if path.is_dir() {
-                    entries.extend(Self::collect_files(&path));
-                } else {
-                    let ext = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    if ext == "txt" || ext == "md" {
-                        entries.push(QuickSwitcherEntry {
-                            path,
-                            name,
-                            open: false,
-                        });
-                    }
-                }
-            }
-        }
-        entries
     }
 }

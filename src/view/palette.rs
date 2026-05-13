@@ -1,4 +1,6 @@
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
@@ -7,7 +9,7 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::search::SearchResult;
+use crate::search::{SearchEngine, SearchResult, picker};
 
 use super::DatalithView;
 
@@ -17,6 +19,7 @@ pub enum PaletteKind {
     QuickSwitcher,
 }
 
+#[derive(Clone)]
 pub struct Palette {
     pub kind: PaletteKind,
     pub open: bool,
@@ -25,6 +28,9 @@ pub struct Palette {
     pub selected: Option<usize>,
     pub scroll_handle: VirtualListScrollHandle,
     pub item_sizes: Rc<Vec<Size<Pixels>>>,
+    pub search_results: Vec<SearchResult>,
+    pub quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
+    quick_switcher_all_files: Vec<picker::QuickSwitcherEntry>,
 }
 
 impl Palette {
@@ -37,6 +43,9 @@ impl Palette {
             selected: None,
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Rc::new(Vec::new()),
+            search_results: Vec::new(),
+            quick_switcher_entries: Vec::new(),
+            quick_switcher_all_files: Vec::new(),
         }
     }
 
@@ -55,26 +64,51 @@ impl Palette {
         self.open = false;
     }
 
-    pub fn set_search_sizes(&mut self, results: &[SearchResult]) {
-        self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); results.len()]);
+    pub fn set_root(&mut self, path: &Path) {
+        self.quick_switcher_all_files = picker::collect_files(path);
     }
 
-    pub fn set_quick_switcher_sizes(&mut self, count: usize) {
-        self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); count]);
+    pub fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
+        let query = query.trim().to_string();
+        self.search_results = if query.is_empty() {
+            Vec::new()
+        } else {
+            engine
+                .as_ref()
+                .map(|e| e.search(&query))
+                .unwrap_or_default()
+        };
+        self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); self.search_results.len()]);
+    }
+
+    pub fn refresh_quick_switcher(&mut self, root_path: &Path, open_files: &[PathBuf]) {
+        self.quick_switcher_all_files = picker::collect_files(root_path);
+
+        let mut results = self.quick_switcher_all_files.clone();
+        for entry in &mut results {
+            entry.open = open_files.contains(&entry.path);
+        }
+        results.retain(|e| e.open);
+
+        self.quick_switcher_entries = results;
+        self.item_sizes = Rc::new(vec![
+            size(px(600.), px(28.));
+            self.quick_switcher_entries.len()
+        ]);
+    }
+
+    pub fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
+        self.quick_switcher_entries =
+            picker::filter(&self.quick_switcher_all_files, open_files, &query);
+        self.item_sizes = Rc::new(vec![
+            size(px(600.), px(28.));
+            self.quick_switcher_entries.len()
+        ]);
     }
 
     pub fn scroll_to(&mut self, index: usize) {
         self.scroll_handle
             .scroll_to_item(index, ScrollStrategy::Nearest);
-    }
-
-    pub fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> usize {
-        match (down, selected) {
-            (true, Some(i)) if i + 1 < count => i + 1,
-            (true, _) => 0,
-            (false, Some(i)) if i > 0 => i - 1,
-            (false, _) => count - 1,
-        }
     }
 
     fn render_results(&self, cx: &mut Context<DatalithView>) -> impl IntoElement + use<> {
@@ -91,7 +125,7 @@ impl Palette {
                 visible_range
                     .map(move |i| match kind {
                         PaletteKind::Search => {
-                            let r = &view.search_results[i];
+                            let r = &view.palette.search_results[i];
                             let file_name = r
                                 .path
                                 .file_name()
@@ -124,7 +158,7 @@ impl Palette {
                                 )
                         }
                         PaletteKind::QuickSwitcher => {
-                            let entry = &view.quick_switcher_entries[i];
+                            let entry = &view.palette.quick_switcher_entries[i];
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
@@ -213,13 +247,15 @@ impl Palette {
                                     }
                                     if key == "up" || key == "down" {
                                         let count = match view.palette.kind {
-                                            PaletteKind::Search => view.search_results.len(),
+                                            PaletteKind::Search => {
+                                                view.palette.search_results.len()
+                                            }
                                             PaletteKind::QuickSwitcher => {
-                                                view.quick_switcher_entries.len()
+                                                view.palette.quick_switcher_entries.len()
                                             }
                                         };
                                         if count > 0 {
-                                            let next = Palette::nav_idx(
+                                            let next = picker::nav_idx(
                                                 key == "down",
                                                 view.palette.selected,
                                                 count,
@@ -256,16 +292,19 @@ impl Palette {
                         let trimmed_is_empty = value.trim().is_empty();
                         match view.palette.kind {
                             PaletteKind::Search => {
-                                view.search(value);
+                                let engine = view.search_engine.clone();
+                                view.palette.search(&engine, value);
                             }
                             PaletteKind::QuickSwitcher => {
-                                view.filter_quick_switcher(value);
+                                let open_paths: Vec<PathBuf> =
+                                    view.open_files.iter().map(|f| f.path.clone()).collect();
+                                view.palette.filter_quick_switcher(&open_paths, value);
                             }
                         }
                         view.palette.selected = match view.palette.kind {
                             PaletteKind::Search if !trimmed_is_empty => None,
                             PaletteKind::QuickSwitcher
-                                if view.quick_switcher_entries.is_empty() =>
+                                if view.palette.quick_switcher_entries.is_empty() =>
                             {
                                 None
                             }
@@ -278,12 +317,12 @@ impl Palette {
                             PaletteKind::Search => view
                                 .palette
                                 .selected
-                                .and_then(|i| view.search_results.get(i))
+                                .and_then(|i| view.palette.search_results.get(i))
                                 .map(|r| r.path.clone()),
                             PaletteKind::QuickSwitcher => view
                                 .palette
                                 .selected
-                                .and_then(|i| view.quick_switcher_entries.get(i))
+                                .and_then(|i| view.palette.quick_switcher_entries.get(i))
                                 .map(|e| e.path.clone()),
                         };
                         if let Some(path) = open_path {

@@ -1,4 +1,5 @@
 mod index;
+pub mod picker;
 mod query;
 
 use index::{incremental_update, index_files};

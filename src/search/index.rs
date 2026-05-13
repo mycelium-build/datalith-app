@@ -29,6 +29,28 @@ pub fn is_indexable(path: &Path) -> bool {
     )
 }
 
+pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.starts_with('.') {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                } else if is_indexable(&path) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    paths
+}
+
 pub fn index_files(
     writer: &mut IndexWriter,
     dir: &Path,
@@ -139,22 +161,6 @@ pub fn incremental_update(
     Ok(())
 }
 
-pub fn collect_files(dir: &Path, files: &mut HashMap<PathBuf, u64>) {
-    if !dir.is_dir() {
-        return;
-    }
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_files(&path, files);
-            } else if is_indexable(&path) {
-                files.insert(path.clone(), file_fingerprint(&path));
-            }
-        }
-    }
-}
-
 pub fn add_files(
     writer: &mut IndexWriter,
     files: &HashMap<PathBuf, u64>,
@@ -174,4 +180,10 @@ pub fn add_files(
         ))?;
     }
     Ok(())
+}
+
+fn collect_files(dir: &Path, files: &mut HashMap<PathBuf, u64>) {
+    for path in walk_indexable_files(dir) {
+        files.insert(path.clone(), file_fingerprint(&path));
+    }
 }

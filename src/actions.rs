@@ -1,4 +1,5 @@
 use gpui::*;
+use std::path::PathBuf;
 
 use crate::app::AppState;
 use crate::view::palette::PaletteKind;
@@ -51,7 +52,26 @@ pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
                 view.palette.open_as(PaletteKind::Search);
                 let query = view.palette.input.read(cx).value();
                 if !query.trim().is_empty() {
-                    view.search(query);
+                    let engine = view.search_engine.clone();
+                    view.palette.search(&engine, query);
+                }
+            }
+            cx.notify();
+        });
+    }
+}
+
+pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
+    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
+        view.update(cx, |view, cx| {
+            if view.palette.open {
+                view.palette.close();
+            } else {
+                view.palette.open_as(PaletteKind::QuickSwitcher);
+                if let Some(ref root) = view.root_path {
+                    let open: Vec<PathBuf> =
+                        view.open_files.iter().map(|f| f.path.clone()).collect();
+                    view.palette.refresh_quick_switcher(root, &open);
                 }
             }
             cx.notify();
@@ -151,20 +171,6 @@ pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
                 cx.notify();
             });
         }
-    }
-}
-
-pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
-    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        view.update(cx, |view, cx| {
-            if view.palette.open {
-                view.palette.close();
-            } else {
-                view.palette.open_as(PaletteKind::QuickSwitcher);
-                view.refresh_quick_switcher(cx);
-            }
-            cx.notify();
-        });
     }
 }
 
