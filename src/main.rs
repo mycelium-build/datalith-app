@@ -39,7 +39,6 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("cmd-shift-f", ToggleSearch, None),
             KeyBinding::new("cmd-p", ToggleQuickSwitcher, None),
-            KeyBinding::new("escape", ClosePalette, None),
         ]);
 
         let last_folder = load_last_folder();
