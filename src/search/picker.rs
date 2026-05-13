@@ -33,7 +33,7 @@ pub fn filter(
     query: &str,
 ) -> Vec<QuickSwitcherEntry> {
     let query = query.trim();
-    let mut results: Vec<QuickSwitcherEntry> = all_files.iter().cloned().collect();
+    let mut results: Vec<QuickSwitcherEntry> = all_files.to_vec();
     for entry in &mut results {
         entry.open = open_files.contains(&entry.path);
     }

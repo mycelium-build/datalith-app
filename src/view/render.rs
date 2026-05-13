@@ -278,7 +278,7 @@ impl DatalithView {
                     let is_renaming = this
                         .rename_target
                         .as_ref()
-                        .map(|p| p.to_string_lossy().to_string() == item_id.to_string())
+                        .map(|p| p.to_string_lossy() == item_id.to_string())
                         .unwrap_or(false);
 
                     let icon = if !is_folder {
