@@ -18,12 +18,18 @@ use crate::config::save_last_folder;
 use crate::filetree::build_file_items;
 use crate::search::{SearchEngine, SearchResult};
 
+struct OpenFile {
+    path: PathBuf,
+    state: Entity<InputState>,
+    _sub: Subscription,
+}
+
 pub struct DatalithView {
     pub tree_state: Entity<TreeState>,
     pub root_path: Option<PathBuf>,
     pub root_name: SharedString,
-    pub current_file: Option<PathBuf>,
-    pub editor_state: Option<Entity<InputState>>,
+    open_files: Vec<OpenFile>,
+    pub active_tab: usize,
     pub search_engine: Option<Arc<SearchEngine>>,
     pub search_open: bool,
     pub needs_search_focus: bool,
@@ -33,7 +39,6 @@ pub struct DatalithView {
     pub search_item_sizes: Rc<Vec<Size<Pixels>>>,
     pub search_selected: Option<usize>,
     pub _search_sub: Subscription,
-    _editor_sub: Option<Subscription>,
     _rename_sub: Option<Subscription>,
     pub context_menu_target: Option<PathBuf>,
     pub rename_target: Option<PathBuf>,
@@ -73,8 +78,8 @@ impl DatalithView {
             tree_state: cx.new(|cx| TreeState::new(cx)),
             root_path: None,
             root_name: "No folder open".into(),
-            current_file: None,
-            editor_state: None,
+            open_files: Vec::new(),
+            active_tab: 0,
             search_engine: None,
             search_open: false,
             needs_search_focus: false,
@@ -84,7 +89,6 @@ impl DatalithView {
             search_item_sizes: Rc::new(Vec::new()),
             search_selected: None,
             _search_sub: search_sub,
-            _editor_sub: None,
             _rename_sub: None,
             context_menu_target: None,
             rename_target: None,
@@ -128,34 +132,56 @@ impl DatalithView {
             return;
         }
 
+        if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
+            self.active_tab = index;
+            self.open_files[index]
+                .state
+                .focus_handle(cx)
+                .focus(window, cx);
+            cx.notify();
+            return;
+        }
+
         let content = fs::read_to_string(&path).unwrap_or_default();
-        self.current_file = Some(path);
-        self.editor_state = Some(cx.new(|cx| {
+        let state = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
                 .searchable(true)
                 .default_value(content)
-        }));
+        });
 
-        self.editor_state
-            .as_ref()
-            .unwrap()
-            .focus_handle(cx)
-            .focus(window, cx);
-
-        self._editor_sub = Some(cx.subscribe_in(
-            self.editor_state.as_ref().unwrap(),
-            window,
-            move |_view, editor, event, _window, _cx| {
-                if let InputEvent::Change = event {
-                    let content = editor.read(_cx).value();
-                    if let Some(ref path) = _view.current_file {
-                        let _ = fs::write(path, content.to_string());
+        let sub = {
+            let path = path.clone();
+            cx.subscribe_in(
+                &state,
+                window,
+                move |_view, editor, event, _window, _cx| {
+                    if let InputEvent::Change = event {
+                        let content = editor.read(_cx).value();
+                        let _ = fs::write(&path, content.to_string());
                     }
-                }
-            },
-        ));
+                },
+            )
+        };
 
+        state.focus_handle(cx).focus(window, cx);
+        self.open_files.push(OpenFile { path, state, _sub: sub });
+        self.active_tab = self.open_files.len() - 1;
+        cx.notify();
+    }
+
+    pub fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index >= self.open_files.len() {
+            return;
+        }
+        self.open_files.remove(index);
+        if self.open_files.is_empty() {
+            self.active_tab = 0;
+        } else if self.active_tab > index && self.active_tab > 0 {
+            self.active_tab -= 1;
+        } else if self.active_tab >= self.open_files.len() {
+            self.active_tab = self.open_files.len() - 1;
+        }
         cx.notify();
     }
 

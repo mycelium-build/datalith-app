@@ -10,8 +10,9 @@ use gpui_component::{
     list::ListItem,
     menu::ContextMenuExt,
     sidebar::SidebarHeader,
+    tab::{Tab, TabBar},
     tree::{self},
-    ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list,
+    ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex, v_virtual_list,
 };
 
 use crate::actions::{
@@ -192,7 +193,7 @@ impl Render for DatalithView {
 
         layout
             .child(self.render_sidebar(_window, cx))
-            .child(self.render_editor())
+            .child(self.render_editor(cx))
     }
 }
 
@@ -525,10 +526,9 @@ impl DatalithView {
         })
     }
 
-    fn render_editor(&self) -> impl IntoElement {
-        match self.editor_state.as_ref() {
-            Some(editor) => Input::new(editor).h_full().into_any_element(),
-            None => div()
+    fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.open_files.is_empty() {
+            return div()
                 .size_full()
                 .flex()
                 .items_center()
@@ -537,7 +537,50 @@ impl DatalithView {
                     Some(_) => "Select a file from the sidebar",
                     None => "Select a folder from the menu bar",
                 })
-                .into_any_element(),
+                .into_any_element();
         }
+
+        let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        let active_state = self.open_files[active_tab].state.clone();
+
+        let tab_data: Vec<(usize, SharedString)> = self
+            .open_files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let name: SharedString = f
+                    .path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .into();
+                (i, name)
+            })
+            .collect();
+
+        v_flex()
+            .size_full()
+            .child(
+                TabBar::new("editor-tabs")
+                    .selected_index(active_tab)
+                    .on_click(cx.listener(|view, index, _, cx| {
+                        view.active_tab = *index;
+                        cx.notify();
+                    }))
+                    .children(tab_data.into_iter().map(|(i, name)| {
+                        Tab::new().label(name).suffix(
+                            Button::new(format!("close-tab-{}", i))
+                                .icon(IconName::Close)
+                                .ghost()
+                                .xsmall()
+                                .on_click(cx.listener(move |view, _, _, cx| {
+                                    cx.stop_propagation();
+                                    view.close_tab(i, cx);
+                                })),
+                        )
+                    })),
+            )
+            .child(div().flex_1().child(Input::new(&active_state).h_full()))
+            .into_any_element()
     }
 }
