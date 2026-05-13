@@ -24,6 +24,9 @@ pub struct Palette {
     pub kind: PaletteKind,
     pub open: bool,
     pub needs_focus: bool,
+    pub switching_from: Option<PaletteKind>,
+    pub search_query: SharedString,
+    pub qs_query: SharedString,
     pub input: Entity<InputState>,
     pub selected: Option<usize>,
     pub scroll_handle: VirtualListScrollHandle,
@@ -39,6 +42,9 @@ impl Palette {
             kind: PaletteKind::Search,
             open: false,
             needs_focus: false,
+            switching_from: None,
+            search_query: SharedString::default(),
+            qs_query: SharedString::default(),
             input: cx.new(|cx| InputState::new(window, cx).placeholder("Search files...")),
             selected: None,
             scroll_handle: VirtualListScrollHandle::new(),
@@ -50,6 +56,7 @@ impl Palette {
     }
 
     pub fn open_as(&mut self, kind: PaletteKind) {
+        self.switching_from = (self.kind != kind).then_some(self.kind);
         self.kind = kind;
         self.open = true;
         self.needs_focus = true;
@@ -292,10 +299,12 @@ impl Palette {
                         let trimmed_is_empty = value.trim().is_empty();
                         match view.palette.kind {
                             PaletteKind::Search => {
+                                view.palette.search_query = value.clone();
                                 let engine = view.search_engine.clone();
                                 view.palette.search(&engine, value);
                             }
                             PaletteKind::QuickSwitcher => {
+                                view.palette.qs_query = value.clone();
                                 let open_paths: Vec<PathBuf> =
                                     view.open_files.iter().map(|f| f.path.clone()).collect();
                                 view.palette.filter_quick_switcher(&open_paths, value);
@@ -337,10 +346,21 @@ impl Palette {
         )
     }
 
-    pub fn clear_and_focus(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
-        self.input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
+    pub fn focus_input(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
+        if let Some(from) = self.switching_from.take() {
+            let current = self.input.read(cx).value();
+            match from {
+                PaletteKind::Search => self.search_query = current,
+                PaletteKind::QuickSwitcher => self.qs_query = current,
+            }
+            let restored = match self.kind {
+                PaletteKind::Search => self.search_query.clone(),
+                PaletteKind::QuickSwitcher => self.qs_query.clone(),
+            };
+            self.input.update(cx, |input, cx| {
+                input.set_value(restored, window, cx);
+            });
+        }
         self.input.focus_handle(cx).focus(window, cx);
         self.needs_focus = false;
     }

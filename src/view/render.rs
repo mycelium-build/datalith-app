@@ -49,7 +49,7 @@ impl Render for DragFile {
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
-            self.palette.clear_and_focus(_window, cx);
+            self.palette.focus_input(_window, cx);
         }
 
         let mut layout = h_flex().size_full().relative();

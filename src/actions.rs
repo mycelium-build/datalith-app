@@ -50,7 +50,7 @@ pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
                 view.palette.close();
             } else {
                 view.palette.open_as(PaletteKind::Search);
-                let query = view.palette.input.read(cx).value();
+                let query = view.palette.search_query.clone();
                 if !query.trim().is_empty() {
                     let engine = view.search_engine.clone();
                     view.palette.search(&engine, query);
@@ -71,7 +71,12 @@ pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
                 if let Some(ref root) = view.root_path {
                     let open: Vec<PathBuf> =
                         view.open_files.iter().map(|f| f.path.clone()).collect();
-                    view.palette.refresh_quick_switcher(root, &open);
+                    let query = view.palette.qs_query.clone();
+                    if query.trim().is_empty() {
+                        view.palette.refresh_quick_switcher(root, &open);
+                    } else {
+                        view.palette.filter_quick_switcher(&open, query);
+                    }
                 }
             }
             cx.notify();
