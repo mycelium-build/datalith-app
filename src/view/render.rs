@@ -5,21 +5,22 @@ use std::time::{Duration, Instant};
 
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
+    h_flex,
     input::{Input, InputEvent},
     list::ListItem,
     menu::ContextMenuExt,
     sidebar::SidebarHeader,
     tab::{Tab, TabBar},
     tree::{self},
-    ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex, v_virtual_list,
+    v_flex,
 };
 
-use crate::actions::{
-    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
-};
+use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
 
 use super::DatalithView;
+use super::palette::PaletteKind;
 
 #[derive(Clone)]
 struct DragFile {
@@ -45,164 +46,28 @@ impl Render for DragFile {
     }
 }
 
-impl DatalithView {
-    pub fn render_search_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .absolute()
-            .inset_0()
-            .bg(gpui::black().opacity(0.3))
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("search-backdrop")
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.search_open = false;
-                cx.notify();
-            }))
-            .child(self.render_search_panel(cx))
-    }
-
-    fn render_search_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let search_input = self.search_input.clone();
-
-        div()
-            .w(px(600.))
-            .bg(cx.theme().background)
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_md()
-            .shadow_lg()
-            .id("search-panel")
-            .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-            .child(
-                v_flex()
-                    .overflow_hidden()
-                    .on_key_down(cx.listener(Self::handle_search_keydown))
-                    .child(Input::new(&search_input))
-                    .child(self.render_search_results(cx)),
-            )
-    }
-
-    fn handle_search_keydown(
-        this: &mut Self,
-        event: &KeyDownEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let count = this.search_results.len();
-        if count == 0 {
-            return;
-        }
-        match event.keystroke.key.as_str() {
-            "down" => {
-                let next = match this.search_selected {
-                    Some(i) if i + 1 < count => i + 1,
-                    None => 0,
-                    _ => return,
-                };
-                this.search_selected = Some(next);
-                this.scroll_to_selected(next);
-                cx.notify();
-            }
-            "up" => {
-                let prev = match this.search_selected {
-                    Some(i) if i > 0 => i - 1,
-                    Some(_) => return,
-                    None => count - 1,
-                };
-                this.search_selected = Some(prev);
-                this.scroll_to_selected(prev);
-                cx.notify();
-            }
-            _ => {}
-        }
-    }
-
-    fn render_search_results(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_virtual_list(
-            cx.entity().clone(),
-            "search-results",
-            self.search_item_sizes.clone(),
-            move |view, visible_range, _, cx| {
-                let selected_idx = view.search_selected;
-                visible_range
-                    .map(move |i| {
-                        let r = &view.search_results[i];
-                        let file_name = r
-                            .path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let bg = if Some(i) == selected_idx {
-                            cx.theme().muted
-                        } else {
-                            gpui::Hsla::default()
-                        };
-                        let path = r.path.clone();
-                        let snippet = r.snippet.clone();
-                        div()
-                            .px_2()
-                            .py_1()
-                            .bg(bg)
-                            .hover(|s| s.bg(cx.theme().muted))
-                            .cursor_pointer()
-                            .child(
-                                v_flex()
-                                    .child(
-                                        h_flex()
-                                            .gap_2()
-                                            .items_center()
-                                            .child(Icon::new(IconName::File).size_3())
-                                            .child(file_name),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .pl_5()
-                                            .child(snippet),
-                                    ),
-                            )
-                            .id(ElementId::Name(format!("result-{i}").into()))
-                            .on_click(cx.listener(move |view, _, window, cx| {
-                                view.search_open = false;
-                                view.open_file(path.clone(), false, window, cx);
-                            }))
-                    })
-                    .collect()
-            },
-        )
-        .track_scroll(&self.search_scroll_handle)
-        .h(px(400.))
-    }
-}
-
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.needs_search_focus {
-            self.needs_search_focus = false;
-            self.search_input.focus_handle(cx).focus(_window, cx);
+        if self.palette.needs_focus {
+            self.palette.clear_and_focus(_window, cx);
         }
 
         let mut layout = h_flex().size_full().relative();
 
-        if self.search_open {
-            layout = layout.child(deferred(self.render_search_overlay(cx)));
+        layout = layout
+            .child(self.render_sidebar(_window, cx))
+            .child(self.render_editor(cx));
+
+        if self.palette.open {
+            layout = layout.child(self.palette.render_overlay(cx));
         }
 
         layout
-            .child(self.render_sidebar(_window, cx))
-            .child(self.render_editor(cx))
     }
 }
 
 impl DatalithView {
-    fn render_sidebar(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let tree_state = self.tree_state.clone();
         let view = cx.entity().clone();
 
@@ -231,16 +96,12 @@ impl DatalithView {
                     }
                 })
             })
-            .drag_over::<DragFile>(|style, _drag, _window, cx| {
-                style.bg(cx.theme().drop_target)
-            })
+            .drag_over::<DragFile>(|style, _drag, _window, cx| style.bg(cx.theme().drop_target))
             .on_drop({
                 let view = view.clone();
                 let root_path = self.root_path.clone();
                 move |drag: &DragFile, window, cx| {
-                    if let (Some(root), Some(name)) =
-                        (&root_path, drag.path.file_name())
-                    {
+                    if let (Some(root), Some(name)) = (&root_path, drag.path.file_name()) {
                         let new_path = root.join(name);
                         if new_path != drag.path {
                             let _ = std::fs::rename(&drag.path, &new_path);
@@ -255,11 +116,11 @@ impl DatalithView {
                 }
             })
             .child(self.render_sidebar_header(cx))
-            .child(
-                div()
-                    .flex_1()
-                    .child(self.render_file_tree(cx, &self.tree_state, &self.drag_hover)),
-            )
+            .child(div().flex_1().child(self.render_file_tree(
+                cx,
+                &self.tree_state,
+                &self.drag_hover,
+            )))
             .context_menu({
                 let view = view.clone();
                 move |menu, _window, cx| {
@@ -381,9 +242,8 @@ impl DatalithView {
                     Button::new("search-trigger")
                         .ghost()
                         .icon(IconName::Search)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.search_open = true;
-                            this.needs_search_focus = true;
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.palette.open_as(PaletteKind::Search);
                             cx.notify();
                         })),
                 ),
@@ -406,8 +266,7 @@ impl DatalithView {
             let tree_state = tree_state.clone();
             move |ix, entry, selected, _window, cx| {
                 let item_id = entry.item().id.clone();
-                let is_folder =
-                    entry.is_folder() || PathBuf::from(item_id.to_string()).is_dir();
+                let is_folder = entry.is_folder() || PathBuf::from(item_id.to_string()).is_dir();
                 let is_expanded = entry.is_expanded();
                 let item_label = entry.item().label.clone();
                 let depth = entry.depth();
@@ -480,9 +339,7 @@ impl DatalithView {
 
                                     let mut hover = drag_hover.borrow_mut();
                                     match &*hover {
-                                        Some((path, instant))
-                                            if path == &folder_path =>
-                                        {
+                                        Some((path, instant)) if path == &folder_path => {
                                             if instant.elapsed() > Duration::from_millis(800) {
                                                 *hover = None;
                                                 let id: SharedString = folder_path
@@ -495,10 +352,7 @@ impl DatalithView {
                                             }
                                         }
                                         _ => {
-                                            *hover = Some((
-                                                folder_path.clone(),
-                                                Instant::now(),
-                                            ));
+                                            *hover = Some((folder_path.clone(), Instant::now()));
                                         }
                                     }
 
@@ -526,17 +380,15 @@ impl DatalithView {
                             }));
                     }
 
-                    list_item.on_click(
-                        cx.listener({
-                            let drag_path = drag_path.clone();
-                            move |this, event: &ClickEvent, window, cx| {
-                                if !is_folder {
-                                    let new_tab = event.modifiers().platform;
-                                    this.open_file(drag_path.clone(), new_tab, window, cx);
-                                }
+                    list_item.on_click(cx.listener({
+                        let drag_path = drag_path.clone();
+                        move |this, event: &ClickEvent, window, cx| {
+                            if !is_folder {
+                                let new_tab = event.modifiers().platform;
+                                this.open_file(drag_path.clone(), new_tab, window, cx);
                             }
-                        }),
-                    )
+                        }
+                    }))
                 })
             }
         })

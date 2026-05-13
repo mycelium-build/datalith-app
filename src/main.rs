@@ -22,7 +22,8 @@ fn main() {
         cx.set_global(AppState { view: None });
         cx.on_action(open_codex);
         cx.on_action(toggle_search);
-        cx.on_action(close_search);
+        cx.on_action(toggle_quick_switcher);
+        cx.on_action(close_palette);
         cx.on_action(handle_new_file);
         cx.on_action(handle_new_folder);
         cx.on_action(handle_rename);
@@ -33,10 +34,12 @@ fn main() {
         cx.set_menus([Menu::new("File").items([
             MenuItem::action("Open codex", OpenCodex),
             MenuItem::action("Search files...", ToggleSearch),
+            MenuItem::action("Quick Switcher...", ToggleQuickSwitcher),
         ])]);
         cx.bind_keys([
             KeyBinding::new("cmd-shift-f", ToggleSearch, None),
-            KeyBinding::new("escape", CloseSearch, None),
+            KeyBinding::new("cmd-p", ToggleQuickSwitcher, None),
+            KeyBinding::new("escape", ClosePalette, None),
         ]);
 
         let last_folder = load_last_folder();

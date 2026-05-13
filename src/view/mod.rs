@@ -1,3 +1,4 @@
+pub mod palette;
 pub mod render;
 
 use std::cell::RefCell;
@@ -11,12 +12,33 @@ use gpui::*;
 use gpui_component::{
     input::{InputEvent, InputState},
     tree::TreeState,
-    VirtualListScrollHandle,
 };
 
 use crate::config::save_last_folder;
 use crate::filetree::build_file_items;
 use crate::search::{SearchEngine, SearchResult};
+use palette::Palette;
+
+#[derive(Clone)]
+pub struct QuickSwitcherEntry {
+    pub path: PathBuf,
+    pub name: String,
+    pub open: bool,
+}
+
+fn fuzzy_match(query: &str, target: &str) -> bool {
+    let query = query.to_lowercase();
+    let target = target.to_lowercase();
+    let mut qi = query.chars().peekable();
+    for tc in target.chars() {
+        if let Some(&qc) = qi.peek()
+            && qc == tc
+        {
+            qi.next();
+        }
+    }
+    qi.next().is_none()
+}
 
 struct OpenFile {
     path: PathBuf,
@@ -31,14 +53,11 @@ pub struct DatalithView {
     open_files: Vec<OpenFile>,
     pub active_tab: usize,
     pub search_engine: Option<Arc<SearchEngine>>,
-    pub search_open: bool,
-    pub needs_search_focus: bool,
-    pub search_input: Entity<InputState>,
     pub search_results: Vec<SearchResult>,
-    pub search_scroll_handle: VirtualListScrollHandle,
-    pub search_item_sizes: Rc<Vec<Size<Pixels>>>,
-    pub search_selected: Option<usize>,
-    pub _search_sub: Subscription,
+    pub quick_switcher_entries: Vec<QuickSwitcherEntry>,
+    quick_switcher_all_files: Vec<QuickSwitcherEntry>,
+    pub palette: Palette,
+    _palette_sub: Subscription,
     _rename_sub: Option<Subscription>,
     pub context_menu_target: Option<PathBuf>,
     pub rename_target: Option<PathBuf>,
@@ -48,31 +67,8 @@ pub struct DatalithView {
 
 impl DatalithView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search files..."));
-        let search_sub = cx.subscribe_in(
-            &search_input,
-            window,
-            move |this, input, event, window, cx| match event {
-                InputEvent::Change => {
-                    let query = input.read(cx).value();
-                    this.search(query);
-                    cx.notify();
-                }
-                InputEvent::PressEnter { .. } => {
-                    if let Some(index) = this.search_selected {
-                        if let Some(result) = this.search_results.get(index) {
-                            let path = result.path.clone();
-                            this.search_open = false;
-                            this.search_selected = None;
-                            this.search_results.clear();
-                            this.open_file(path, false, window, cx);
-                            cx.notify();
-                        }
-                    }
-                }
-                _ => {}
-            },
-        );
+        let palette = Palette::new(window, cx);
+        let palette_sub = Palette::input_subscription(palette.input.clone(), window, cx);
 
         Self {
             tree_state: cx.new(|cx| TreeState::new(cx)),
@@ -81,14 +77,11 @@ impl DatalithView {
             open_files: Vec::new(),
             active_tab: 0,
             search_engine: None,
-            search_open: false,
-            needs_search_focus: false,
-            search_input,
             search_results: Vec::new(),
-            search_scroll_handle: VirtualListScrollHandle::new(),
-            search_item_sizes: Rc::new(Vec::new()),
-            search_selected: None,
-            _search_sub: search_sub,
+            quick_switcher_entries: Vec::new(),
+            quick_switcher_all_files: Vec::new(),
+            palette,
+            _palette_sub: palette_sub,
             _rename_sub: None,
             context_menu_target: None,
             rename_target: None,
@@ -118,6 +111,8 @@ impl DatalithView {
                 None
             }
         };
+
+        self.quick_switcher_all_files = Self::collect_files(&path);
 
         _cx.notify();
     }
@@ -158,25 +153,29 @@ impl DatalithView {
 
         let sub = {
             let path = path.clone();
-            cx.subscribe_in(
-                &state,
-                window,
-                move |_view, editor, event, _window, _cx| {
-                    if let InputEvent::Change = event {
-                        let content = editor.read(_cx).value();
-                        let _ = fs::write(&path, content.to_string());
-                    }
-                },
-            )
+            cx.subscribe_in(&state, window, move |_view, editor, event, _window, _cx| {
+                if let InputEvent::Change = event {
+                    let content = editor.read(_cx).value();
+                    let _ = fs::write(&path, content.to_string());
+                }
+            })
         };
 
         if new_tab || self.open_files.is_empty() {
             state.focus_handle(cx).focus(window, cx);
-            self.open_files.push(OpenFile { path, state, _sub: sub });
+            self.open_files.push(OpenFile {
+                path,
+                state,
+                _sub: sub,
+            });
             self.active_tab = self.open_files.len() - 1;
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
-            self.open_files[active] = OpenFile { path, state, _sub: sub };
+            self.open_files[active] = OpenFile {
+                path,
+                state,
+                _sub: sub,
+            };
             self.open_files[active]
                 .state
                 .focus_handle(cx)
@@ -200,10 +199,6 @@ impl DatalithView {
         cx.notify();
     }
 
-    pub fn scroll_to_selected(&mut self, index: usize) {
-        self.search_scroll_handle.scroll_to_item(index, ScrollStrategy::Nearest);
-    }
-
     pub fn search(&mut self, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.is_empty() {
@@ -214,8 +209,7 @@ impl DatalithView {
                 .map(|engine| engine.search(&query))
                 .unwrap_or_default()
         };
-        self.search_selected = None;
-        self.search_item_sizes = Rc::new(vec![size(px(600.), px(70.)); self.search_results.len()]);
+        self.palette.set_search_sizes(&self.search_results);
     }
 
     fn parent_dir_for_target(&self, target: &Path) -> PathBuf {
@@ -281,19 +275,21 @@ impl DatalithView {
 
     pub fn duplicate_target(&mut self, target: &Path) {
         if target.is_dir() {
-            let parent = target
-                .parent()
-                .unwrap_or_else(|| Path::new("/"));
-            let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+            let parent = target.parent().unwrap_or_else(|| Path::new("/"));
+            let name = target
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("copy");
             let new_path = Self::unique_name(parent, name);
             if let Err(e) = Self::copy_dir(target, &new_path) {
                 eprintln!("Failed to duplicate dir {:?}: {e}", target);
             }
         } else {
-            let parent = target
-                .parent()
-                .unwrap_or_else(|| Path::new("/"));
-            let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+            let parent = target.parent().unwrap_or_else(|| Path::new("/"));
+            let name = target
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("copy");
             let new_path = Self::unique_name(parent, name);
             if let Err(e) = fs::copy(target, &new_path) {
                 eprintln!("Failed to duplicate file {:?}: {e}", target);
@@ -360,5 +356,81 @@ impl DatalithView {
             });
             cx.notify();
         }
+    }
+
+    pub fn refresh_quick_switcher(&mut self, _cx: &mut Context<Self>) {
+        if let Some(ref root) = self.root_path {
+            self.quick_switcher_all_files = Self::collect_files(root);
+        }
+
+        let open_set: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
+
+        let mut results = self.quick_switcher_all_files.clone();
+        for entry in &mut results {
+            entry.open = open_set.contains(&entry.path);
+        }
+        results.retain(|e| e.open);
+
+        self.quick_switcher_entries = results;
+        self.palette
+            .set_quick_switcher_sizes(self.quick_switcher_entries.len());
+    }
+
+    pub fn filter_quick_switcher(&mut self, query: SharedString) {
+        let query = query.trim();
+        let open_set: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
+
+        let mut results = self.quick_switcher_all_files.clone();
+        for entry in &mut results {
+            entry.open = open_set.contains(&entry.path);
+        }
+
+        if query.is_empty() {
+            results.retain(|e| e.open);
+        } else {
+            results.retain(|e| fuzzy_match(query, &e.name));
+            results.sort_by(|a, b| {
+                b.open
+                    .cmp(&a.open)
+                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+        }
+        self.quick_switcher_entries = results;
+        self.palette
+            .set_quick_switcher_sizes(self.quick_switcher_entries.len());
+    }
+
+    fn collect_files(root: &Path) -> Vec<QuickSwitcherEntry> {
+        let mut entries = Vec::new();
+        if let Ok(dir_entries) = fs::read_dir(root) {
+            for entry in dir_entries.flatten() {
+                let path = entry.path();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                if path.is_dir() {
+                    entries.extend(Self::collect_files(&path));
+                } else {
+                    let ext = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext == "txt" || ext == "md" {
+                        entries.push(QuickSwitcherEntry {
+                            path,
+                            name,
+                            open: false,
+                        });
+                    }
+                }
+            }
+        }
+        entries
     }
 }

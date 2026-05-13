@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tantivy::{
-    self, doc, DocAddress, Index, IndexWriter, TantivyDocument, Term,
+    self, DocAddress, Index, IndexWriter, TantivyDocument, Term, doc,
     schema::{Field, Value},
 };
 

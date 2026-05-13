@@ -1,19 +1,24 @@
 use gpui::*;
 
 use crate::app::AppState;
+use crate::view::palette::PaletteKind;
 
-actions!(datalith, [
-    OpenCodex,
-    ToggleSearch,
-    CloseSearch,
-    NewFile,
-    NewFolder,
-    Rename,
-    Delete,
-    Duplicate,
-    OpenInExplorer,
-    CopyPath
-]);
+actions!(
+    datalith,
+    [
+        OpenCodex,
+        ToggleSearch,
+        ClosePalette,
+        ToggleQuickSwitcher,
+        NewFile,
+        NewFolder,
+        Rename,
+        Delete,
+        Duplicate,
+        OpenInExplorer,
+        CopyPath
+    ]
+);
 
 pub fn open_codex(_: &OpenCodex, cx: &mut App) {
     let rx = cx.prompt_for_paths(PathPromptOptions {
@@ -40,10 +45,11 @@ pub fn open_codex(_: &OpenCodex, cx: &mut App) {
 pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
         view.update(cx, |view, cx| {
-            view.search_open = !view.search_open;
-            if view.search_open {
-                view.needs_search_focus = true;
-                let query = view.search_input.read(cx).value();
+            if view.palette.open {
+                view.palette.close();
+            } else {
+                view.palette.open_as(PaletteKind::Search);
+                let query = view.palette.input.read(cx).value();
                 if !query.trim().is_empty() {
                     view.search(query);
                 }
@@ -53,13 +59,11 @@ pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
     }
 }
 
-pub fn close_search(_: &CloseSearch, cx: &mut App) {
+pub fn close_palette(_: &ClosePalette, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
         view.update(cx, |view, cx| {
-            if view.search_open {
-                view.search_open = false;
-                cx.notify();
-            }
+            view.palette.close();
+            cx.notify();
         });
     }
 }
@@ -147,6 +151,20 @@ pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
                 cx.notify();
             });
         }
+    }
+}
+
+pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
+    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
+        view.update(cx, |view, cx| {
+            if view.palette.open {
+                view.palette.close();
+            } else {
+                view.palette.open_as(PaletteKind::QuickSwitcher);
+                view.refresh_quick_switcher(cx);
+            }
+            cx.notify();
+        });
     }
 }
 
