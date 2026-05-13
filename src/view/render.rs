@@ -216,6 +216,21 @@ impl DatalithView {
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
+            .on_key_down({
+                let tree_state = tree_state.clone();
+                cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                    if event.keystroke.key.as_str() == "enter" {
+                        let ts = tree_state.read(cx);
+                        if let Some(entry) = ts.selected_entry() {
+                            if !entry.is_folder() {
+                                let path = PathBuf::from(entry.item().id.to_string());
+                                let new_tab = event.keystroke.modifiers.platform;
+                                this.open_file(path, new_tab, window, cx);
+                            }
+                        }
+                    }
+                })
+            })
             .drag_over::<DragFile>(|style, _drag, _window, cx| {
                 style.bg(cx.theme().drop_target)
             })
