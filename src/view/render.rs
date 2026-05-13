@@ -389,9 +389,10 @@ impl DatalithView {
             let drag_hover = drag_hover.clone();
             let tree_state = tree_state.clone();
             move |ix, entry, selected, _window, cx| {
-                let is_folder = entry.is_folder();
-                let is_expanded = entry.is_expanded();
                 let item_id = entry.item().id.clone();
+                let is_folder =
+                    entry.is_folder() || PathBuf::from(item_id.to_string()).is_dir();
+                let is_expanded = entry.is_expanded();
                 let item_label = entry.item().label.clone();
                 let depth = entry.depth();
 
