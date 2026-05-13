@@ -15,7 +15,6 @@ use tantivy::{self, Index, IndexReader, TantivyDocument, collector::TopDocs, sch
 #[derive(Clone)]
 pub struct SearchResult {
     pub path: PathBuf,
-    pub snippet: String,
 }
 
 #[allow(dead_code)]
@@ -102,19 +101,7 @@ impl SearchEngine {
                     .map(PathBuf::from);
 
                 if let Some(path) = path {
-                    let snippet = tantivy::snippet::SnippetGenerator::create(
-                        &searcher,
-                        &query,
-                        self.content_field,
-                    )
-                    .ok()
-                    .map(|generator| {
-                        let snip = generator.snippet_from_doc(&doc);
-                        snip.fragment().to_string()
-                    })
-                    .unwrap_or_default();
-
-                    results.push(SearchResult { path, snippet });
+                    results.push(SearchResult { path });
                 }
             }
         }
