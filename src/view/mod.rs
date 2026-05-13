@@ -65,7 +65,7 @@ impl DatalithView {
                             this.search_open = false;
                             this.search_selected = None;
                             this.search_results.clear();
-                            this.open_file(path, window, cx);
+                            this.open_file(path, false, window, cx);
                             cx.notify();
                         }
                     }
@@ -122,7 +122,13 @@ impl DatalithView {
         _cx.notify();
     }
 
-    pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_file(
+        &mut self,
+        path: PathBuf,
+        new_tab: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -164,9 +170,18 @@ impl DatalithView {
             )
         };
 
-        state.focus_handle(cx).focus(window, cx);
-        self.open_files.push(OpenFile { path, state, _sub: sub });
-        self.active_tab = self.open_files.len() - 1;
+        if new_tab || self.open_files.is_empty() {
+            state.focus_handle(cx).focus(window, cx);
+            self.open_files.push(OpenFile { path, state, _sub: sub });
+            self.active_tab = self.open_files.len() - 1;
+        } else {
+            let active = self.active_tab.min(self.open_files.len() - 1);
+            self.open_files[active] = OpenFile { path, state, _sub: sub };
+            self.open_files[active]
+                .state
+                .focus_handle(cx)
+                .focus(window, cx);
+        }
         cx.notify();
     }
 

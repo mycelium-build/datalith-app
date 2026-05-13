@@ -167,7 +167,7 @@ impl DatalithView {
                             .id(ElementId::Name(format!("result-{i}").into()))
                             .on_click(cx.listener(move |view, _, window, cx| {
                                 view.search_open = false;
-                                view.open_file(path.clone(), window, cx);
+                                view.open_file(path.clone(), false, window, cx);
                             }))
                     })
                     .collect()
@@ -514,9 +514,10 @@ impl DatalithView {
                     list_item.on_click(
                         cx.listener({
                             let drag_path = drag_path.clone();
-                            move |this, _, window, cx| {
+                            move |this, event: &ClickEvent, window, cx| {
                                 if !is_folder {
-                                    this.open_file(drag_path.clone(), window, cx);
+                                    let new_tab = event.modifiers().platform;
+                                    this.open_file(drag_path.clone(), new_tab, window, cx);
                                 }
                             }
                         }),
