@@ -287,17 +287,8 @@ impl DatalithView {
     fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         SidebarHeader::new().p_2().child(
             h_flex()
-                .gap_2()
-                .items_center()
                 .w_full()
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(Icon::new(IconName::Folder))
-                        .child(self.root_name.clone()),
-                )
-                .child(div().flex_1())
+                .justify_end()
                 .child(
                     Button::new("search-trigger")
                         .ghost()
