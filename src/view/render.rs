@@ -409,7 +409,8 @@ impl DatalithView {
         }
 
         let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
-        let active_state = self.open_files[active_tab].state.clone();
+        let active_file = &self.open_files[active_tab];
+        let is_empty = active_file.path.as_os_str().is_empty();
 
         let tab_data: Vec<(usize, SharedString)> = self
             .open_files
@@ -420,7 +421,7 @@ impl DatalithView {
                     .path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .unwrap_or("")
+                    .unwrap_or("New Tab")
                     .into();
                 (i, name)
             })
@@ -448,7 +449,24 @@ impl DatalithView {
                         )
                     })),
             )
-            .child(div().flex_1().child(Input::new(&active_state).h_full()))
+            .child(if is_empty {
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_4()
+                    .child("Empty tab")
+                    .into_any_element()
+            } else if let Some(ref active_state) = active_file.state {
+                div()
+                    .flex_1()
+                    .child(Input::new(active_state).h_full())
+                    .into_any_element()
+            } else {
+                div().flex_1().into_any_element()
+            })
             .into_any_element()
     }
 }

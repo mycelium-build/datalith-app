@@ -31,21 +31,30 @@ fn main() {
         cx.on_action(handle_duplicate);
         cx.on_action(handle_open_in_explorer);
         cx.on_action(handle_copy_path);
-        cx.set_menus([Menu::new("File").items([
-            MenuItem::action("Open Vault", OpenVault),
-            MenuItem::action("Search Files...", ToggleSearch),
-            MenuItem::action("Quick Switcher...", ToggleQuickSwitcher),
-            MenuItem::separator(),
-            MenuItem::action("New File", NewFile),
-            MenuItem::action("New Folder", NewFolder),
-            MenuItem::separator(),
-            MenuItem::action("Rename", Rename),
-            MenuItem::action("Delete", Delete),
-            MenuItem::action("Duplicate", Duplicate),
-            MenuItem::separator(),
-            MenuItem::action("Open in Explorer", OpenInExplorer),
-            MenuItem::action("Copy Path", CopyPath),
-        ])]);
+        cx.on_action(handle_close_tab);
+        cx.on_action(handle_new_tab);
+        cx.set_menus([
+            Menu::new("File").items([
+                MenuItem::action("New File", NewFile),
+                MenuItem::action("New Folder", NewFolder),
+                MenuItem::separator(),
+                MenuItem::action("Rename", Rename),
+                MenuItem::action("Delete", Delete),
+                MenuItem::action("Duplicate", Duplicate),
+                MenuItem::separator(),
+                MenuItem::action("Open in Explorer", OpenInExplorer),
+                MenuItem::action("Copy Path", CopyPath),
+            ]),
+            Menu::new("Navigate").items([
+                MenuItem::action("Open Vault", OpenVault),
+                MenuItem::separator(),
+                MenuItem::action("Search Files", ToggleSearch),
+                MenuItem::action("Quick Switcher", ToggleQuickSwitcher),
+                MenuItem::separator(),
+                MenuItem::action("New Tab", NewTab),
+                MenuItem::action("Close Tab", CloseTab),
+            ]),
+        ]);
         cx.bind_keys([
             KeyBinding::new("cmd-shift-f", ToggleSearch, None),
             KeyBinding::new("cmd-p", ToggleQuickSwitcher, None),
@@ -56,6 +65,8 @@ fn main() {
             KeyBinding::new("cmd-d", Duplicate, None),
             KeyBinding::new("cmd-shift-e", OpenInExplorer, None),
             KeyBinding::new("cmd-l", CopyPath, None),
+            KeyBinding::new("cmd-w", CloseTab, None),
+            KeyBinding::new("cmd-t", NewTab, None),
         ]);
 
         let last_folder = load_last_folder();

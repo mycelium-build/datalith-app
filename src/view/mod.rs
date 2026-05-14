@@ -21,8 +21,8 @@ use palette::Palette;
 
 pub(crate) struct OpenFile {
     pub(crate) path: PathBuf,
-    pub(crate) state: Entity<InputState>,
-    pub(crate) _sub: Subscription,
+    pub(crate) state: Option<Entity<InputState>>,
+    pub(crate) _sub: Option<Subscription>,
 }
 
 pub struct DatalithView {
@@ -108,10 +108,9 @@ impl DatalithView {
 
         if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
             self.active_tab = index;
-            self.open_files[index]
-                .state
-                .focus_handle(cx)
-                .focus(window, cx);
+            if let Some(ref state) = self.open_files[index].state {
+                state.focus_handle(cx).focus(window, cx);
+            }
             cx.notify();
             return;
         }
@@ -138,23 +137,40 @@ impl DatalithView {
             state.focus_handle(cx).focus(window, cx);
             self.open_files.push(OpenFile {
                 path,
-                state,
-                _sub: sub,
+                state: Some(state),
+                _sub: Some(sub),
             });
             self.active_tab = self.open_files.len() - 1;
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
             self.open_files[active] = OpenFile {
                 path,
-                state,
-                _sub: sub,
+                state: Some(state),
+                _sub: Some(sub),
             };
-            self.open_files[active]
-                .state
-                .focus_handle(cx)
-                .focus(window, cx);
+            if let Some(ref s) = self.open_files[active].state {
+                s.focus_handle(cx).focus(window, cx);
+            }
         }
         cx.notify();
+    }
+
+    pub fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
+        self.open_files.push(OpenFile {
+            path: PathBuf::new(),
+            state: None,
+            _sub: None,
+        });
+        self.active_tab = self.open_files.len() - 1;
+        cx.notify();
+    }
+
+    pub fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+        if self.open_files.is_empty() {
+            return;
+        }
+        let index = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        self.close_tab(index, cx);
     }
 
     pub fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -234,9 +250,7 @@ impl DatalithView {
         }
         let mut i = 0;
         while i < self.open_files.len() {
-            if self.open_files[i].path == target
-                || self.open_files[i].path.starts_with(target)
-            {
+            if self.open_files[i].path == target || self.open_files[i].path.starts_with(target) {
                 self.close_tab(i, cx);
             } else {
                 i += 1;

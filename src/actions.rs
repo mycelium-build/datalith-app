@@ -17,7 +17,9 @@ actions!(
         Delete,
         Duplicate,
         OpenInExplorer,
-        CopyPath
+        CopyPath,
+        CloseTab,
+        NewTab
     ]
 );
 
@@ -205,6 +207,24 @@ pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
             if let Some(target) = target {
                 crate::view::DatalithView::copy_path(&target);
             }
+            cx.notify();
+        });
+    }
+}
+
+pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
+    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
+        view.update(cx, |view, cx| {
+            view.close_active_tab(cx);
+            cx.notify();
+        });
+    }
+}
+
+pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
+    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
+        view.update(cx, |view, cx| {
+            view.new_empty_tab(cx);
             cx.notify();
         });
     }
