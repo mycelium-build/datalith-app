@@ -313,17 +313,12 @@ impl DatalithView {
     fn navigate_tree_up(&mut self, cx: &mut Context<Self>) {
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
-                let new_ix = ix.saturating_sub(1);
-                state.set_selected_index(Some(new_ix), cx);
-                if state.selected_entry().is_none() {
+                let new_ix = if ix > 0 { ix - 1 } else {
                     let count = state.entry_count();
-                    if count > 0 {
-                        state.set_selected_index(Some(count - 1), cx);
-                    }
-                }
-                if let Some(new_ix) = state.selected_index() {
-                    state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
-                }
+                    count.saturating_sub(1)
+                };
+                state.set_selected_index(Some(new_ix), cx);
+                state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
             }
         });
     }
