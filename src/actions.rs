@@ -108,7 +108,8 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
                 let created = view.new_file_from_target(&target);
                 view.refresh_tree(cx);
                 if let Some(path) = created {
-                    view.rename_target = Some(path);
+                    view.rename_target = Some(path.clone());
+                    view.pending_open = Some(path);
                 }
             }
             cx.notify();

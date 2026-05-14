@@ -21,6 +21,12 @@ impl Render for DatalithView {
             self.focus_sidebar(_window, cx);
         }
 
+        if self.rename_target.is_none() {
+            if let Some(path) = self.pending_open.take() {
+                self.open_file(path, true, _window, cx);
+            }
+        }
+
         let tree_state = self.tree_state.clone();
 
         let mut layout = h_flex().size_full().relative().on_mouse_down(

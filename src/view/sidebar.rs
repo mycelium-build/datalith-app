@@ -211,6 +211,7 @@ impl DatalithView {
             move |this, input, event, _window, cx| match event {
                 InputEvent::PressEnter { .. } => {
                     let mut new_name = input.read(cx).value().to_string();
+                    let mut final_path = target_clone.clone();
                     if !new_name.is_empty() {
                         if let Some(ref ext) = old_ext
                             && !new_name.contains('.')
@@ -218,11 +219,15 @@ impl DatalithView {
                             new_name.push_str(ext);
                         }
                         if let Some(parent) = &dir {
-                            let new_path = parent.join(&new_name);
-                            if new_path != target_clone {
-                                let _ = std::fs::rename(&target_clone, &new_path);
+                            let candidate = parent.join(&new_name);
+                            if candidate != target_clone {
+                                final_path = DatalithView::unique_name(parent, &new_name);
+                                let _ = std::fs::rename(&target_clone, &final_path);
                             }
                         }
+                    }
+                    if this.pending_open.as_deref() == Some(target_clone.as_path()) {
+                        this.pending_open = Some(final_path);
                     }
                     this.rename_target = None;
                     this.rename_state = None;
