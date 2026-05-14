@@ -7,7 +7,7 @@ use crate::view::palette::PaletteKind;
 actions!(
     datalith,
     [
-        OpenCodex,
+        OpenVault,
         ToggleSearch,
         ClosePalette,
         ToggleQuickSwitcher,
@@ -21,7 +21,7 @@ actions!(
     ]
 );
 
-pub fn open_codex(_: &OpenCodex, cx: &mut App) {
+pub fn open_vault(_: &OpenVault, cx: &mut App) {
     let rx = cx.prompt_for_paths(PathPromptOptions {
         files: false,
         directories: true,
@@ -95,99 +95,115 @@ pub fn close_palette(_: &ClosePalette, cx: &mut App) {
 
 pub fn handle_new_file(_: &NewFile, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            view.update(cx, |view, cx| {
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
                 let created = view.new_file_from_target(&target);
-                view.context_menu_target = None;
                 view.refresh_tree(cx);
                 if let Some(path) = created {
                     view.rename_target = Some(path);
-                    cx.notify();
                 }
-            });
-        }
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            view.update(cx, |view, cx| {
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
                 let created = view.new_folder_from_target(&target);
-                view.context_menu_target = None;
                 view.refresh_tree(cx);
                 if let Some(path) = created {
                     view.rename_target = Some(path);
-                    cx.notify();
                 }
-            });
-        }
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_rename(_: &Rename, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            view.update(cx, |view, cx| {
-                view.context_menu_target = None;
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
                 view.rename_target = Some(target);
-                cx.notify();
-            });
-        }
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_delete(_: &Delete, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            view.update(cx, |view, cx| {
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
                 view.delete_target(&target);
-                view.context_menu_target = None;
                 view.refresh_tree(cx);
-            });
-        }
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            view.update(cx, |view, cx| {
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
                 view.duplicate_target(&target);
-                view.context_menu_target = None;
                 view.refresh_tree(cx);
-            });
-        }
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            crate::view::DatalithView::open_in_explorer(&target);
-            view.update(cx, |view, cx| {
-                view.context_menu_target = None;
-                cx.notify();
-            });
-        }
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
+                crate::view::DatalithView::open_in_explorer(&target);
+            }
+            cx.notify();
+        });
     }
 }
 
 pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
-        let target = view.read(cx).context_menu_target.clone();
-        if let Some(target) = target {
-            crate::view::DatalithView::copy_path(&target);
-            view.update(cx, |view, cx| {
-                view.context_menu_target = None;
-                cx.notify();
-            });
-        }
+        view.update(cx, |view, cx| {
+            let target = view
+                .context_menu_target
+                .take()
+                .or_else(|| view.resolve_target(cx));
+            if let Some(target) = target {
+                crate::view::DatalithView::copy_path(&target);
+            }
+            cx.notify();
+        });
     }
 }

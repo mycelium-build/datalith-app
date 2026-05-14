@@ -302,6 +302,18 @@ impl DatalithView {
         }
     }
 
+    pub fn resolve_target(&self, cx: &Context<Self>) -> Option<PathBuf> {
+        self.tree_state
+            .read(cx)
+            .selected_entry()
+            .map(|e| PathBuf::from(e.item().id.to_string()))
+            .or_else(|| {
+                let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+                self.open_files.get(active).map(|f| f.path.clone())
+            })
+            .or_else(|| self.root_path.clone())
+    }
+
     pub fn refresh_tree(&mut self, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path.clone() {
             let expanded_ids = self.tree_state.read(cx).expanded_ids();
