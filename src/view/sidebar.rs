@@ -69,6 +69,12 @@ impl DatalithView {
                 let tree_state = tree_state.clone();
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                     match event.keystroke.key.as_str() {
+                        "escape" if this.rename_target.is_some() => {
+                            this.rename_target = None;
+                            this.rename_state = None;
+                            this._rename_sub = None;
+                            cx.notify();
+                        }
                         "enter" => {
                             let (folder_id, file_path) = {
                                 let ts = tree_state.read(cx);
