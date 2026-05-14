@@ -159,8 +159,18 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
                 .take()
                 .or_else(|| view.resolve_target(cx));
             if let Some(target) = target {
+                let selected_index = view.tree_state.read(cx).selected_index();
                 view.delete_target(&target, cx);
                 view.refresh_tree(cx);
+                if let Some(ix) = selected_index {
+                    let count = view.tree_state.read(cx).entry_count();
+                    if count > 0 {
+                        let new_ix = ix.min(count.saturating_sub(1));
+                        view.tree_state.update(cx, |state, cx| {
+                            state.set_selected_index(Some(new_ix), cx);
+                        });
+                    }
+                }
             }
             cx.notify();
         });
