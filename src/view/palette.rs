@@ -96,6 +96,7 @@ impl Palette {
             entry.open = open_files.contains(&entry.path);
         }
         results.retain(|e| e.open);
+        results.sort_by_key(|a| a.name.to_lowercase());
 
         self.quick_switcher_entries = results;
         self.item_sizes = Rc::new(vec![

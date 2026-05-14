@@ -10,7 +10,7 @@ pub struct QuickSwitcherEntry {
 }
 
 pub fn collect_files(root: &Path) -> Vec<QuickSwitcherEntry> {
-    walk_indexable_files(root)
+    let mut entries: Vec<QuickSwitcherEntry> = walk_indexable_files(root)
         .into_iter()
         .map(|path| {
             let name = path
@@ -24,7 +24,9 @@ pub fn collect_files(root: &Path) -> Vec<QuickSwitcherEntry> {
                 open: false,
             }
         })
-        .collect()
+        .collect();
+    entries.sort_by_key(|a| a.name.to_lowercase());
+    entries
 }
 
 pub fn filter(
