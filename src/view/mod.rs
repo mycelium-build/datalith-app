@@ -39,6 +39,8 @@ pub struct DatalithView {
     pub rename_target: Option<PathBuf>,
     pub rename_state: Option<Entity<InputState>>,
     pub drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
+    pub focus_sidebar_requested: bool,
+    sidebar_focus_handle: FocusHandle,
 }
 
 impl DatalithView {
@@ -60,6 +62,8 @@ impl DatalithView {
             rename_target: None,
             rename_state: None,
             drag_hover: Rc::new(RefCell::new(None)),
+            focus_sidebar_requested: false,
+            sidebar_focus_handle: cx.focus_handle(),
         }
     }
 

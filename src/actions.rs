@@ -19,7 +19,8 @@ actions!(
         OpenInExplorer,
         CopyPath,
         CloseTab,
-        NewTab
+        NewTab,
+        FocusSidebar
     ]
 );
 
@@ -31,14 +32,14 @@ pub fn open_vault(_: &OpenVault, cx: &mut App) {
         prompt: Some("Select a folder".into()),
     });
     cx.spawn(async move |cx| {
-        if let Ok(Ok(Some(paths))) = rx.await {
-            if let Some(path) = paths.into_iter().next() {
-                let view_opt = cx.read_global(|state: &AppState, _| state.view.clone());
-                if let Some(view) = view_opt {
-                    cx.update_entity(&view, |view, cx| {
-                        view.set_root_path(path, cx);
-                    });
-                }
+        if let Ok(Ok(Some(paths))) = rx.await
+            && let Some(path) = paths.into_iter().next()
+        {
+            let view_opt = cx.read_global(|state: &AppState, _| state.view.clone());
+            if let Some(view) = view_opt {
+                cx.update_entity(&view, |view, cx| {
+                    view.set_root_path(path, cx);
+                });
             }
         }
     })
@@ -225,6 +226,15 @@ pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
     if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
         view.update(cx, |view, cx| {
             view.new_empty_tab(cx);
+            cx.notify();
+        });
+    }
+}
+
+pub fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
+    if let Some(view) = cx.read_global(|state: &AppState, _| state.view.clone()) {
+        view.update(cx, |view, cx| {
+            view.focus_sidebar_requested = true;
             cx.notify();
         });
     }

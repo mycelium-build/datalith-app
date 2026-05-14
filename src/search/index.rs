@@ -13,10 +13,10 @@ pub fn file_fingerprint(path: &Path) -> u64 {
     let mut hasher = DefaultHasher::new();
     if let Ok(meta) = fs::metadata(path) {
         meta.len().hash(&mut hasher);
-        if let Ok(mtime) = meta.modified() {
-            if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                dur.as_secs().hash(&mut hasher);
-            }
+        if let Ok(mtime) = meta.modified()
+            && let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH)
+        {
+            dur.as_secs().hash(&mut hasher);
         }
     }
     hasher.finish()

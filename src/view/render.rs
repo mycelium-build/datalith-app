@@ -18,6 +18,7 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
+use crate::filetree::build_file_items;
 
 use super::DatalithView;
 use super::palette::PaletteKind;
@@ -52,6 +53,11 @@ impl Render for DatalithView {
             self.palette.focus_input(_window, cx);
         }
 
+        if self.focus_sidebar_requested {
+            self.focus_sidebar_requested = false;
+            self.focus_sidebar(_window, cx);
+        }
+
         let mut layout = h_flex().size_full().relative();
 
         layout = layout
@@ -81,18 +87,44 @@ impl DatalithView {
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
+            .track_focus(&self.sidebar_focus_handle)
             .on_key_down({
                 let tree_state = tree_state.clone();
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                    if event.keystroke.key.as_str() == "enter" {
-                        let ts = tree_state.read(cx);
-                        if let Some(entry) = ts.selected_entry() {
-                            if !entry.is_folder() {
-                                let path = PathBuf::from(entry.item().id.to_string());
+                    match event.keystroke.key.as_str() {
+                        "enter" => {
+                            let (folder_id, file_path) = {
+                                let ts = tree_state.read(cx);
+                                if let Some(entry) = ts.selected_entry() {
+                                    if entry.is_folder() {
+                                        (Some(entry.item().id.clone()), None)
+                                    } else {
+                                        (None, Some(PathBuf::from(entry.item().id.to_string())))
+                                    }
+                                } else {
+                                    (None, None)
+                                }
+                            };
+
+                            if let Some(ref id) = folder_id {
+                                let is_expanded = tree_state.read(cx).expanded_ids().contains(id);
+                                if is_expanded {
+                                    this.collapse_tree_item(id, cx);
+                                } else {
+                                    tree_state.update(cx, |state, cx| {
+                                        state.expand_by_id(id, cx);
+                                    });
+                                }
+                            } else if let Some(path) = file_path {
                                 let new_tab = event.keystroke.modifiers.platform;
                                 this.open_file(path, new_tab, window, cx);
                             }
                         }
+                        "up" => this.navigate_tree_up(cx),
+                        "down" => this.navigate_tree_down(cx),
+                        "left" => this.navigate_tree_left(cx),
+                        "right" => this.navigate_tree_right(cx),
+                        _ => {}
                     }
                 })
             })
@@ -192,10 +224,10 @@ impl DatalithView {
                 InputEvent::PressEnter { .. } => {
                     let mut new_name = input.read(cx).value().to_string();
                     if !new_name.is_empty() {
-                        if let Some(ref ext) = old_ext {
-                            if !new_name.contains('.') {
-                                new_name.push_str(ext);
-                            }
+                        if let Some(ref ext) = old_ext
+                            && !new_name.contains('.')
+                        {
+                            new_name.push_str(ext);
                         }
                         if let Some(parent) = &dir {
                             let new_path = parent.join(&new_name);
@@ -250,6 +282,123 @@ impl DatalithView {
         )
     }
 
+    fn focus_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let has_selection = self.tree_state.read(cx).selected_entry().is_some();
+
+        if !has_selection {
+            let active_path = {
+                let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+                self.open_files
+                    .get(active)
+                    .filter(|f| !f.path.as_os_str().is_empty())
+                    .map(|f| f.path.clone())
+            };
+
+            if let Some(ref path) = active_path {
+                let id = path.to_string_lossy().to_string();
+                let label = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let item = tree::TreeItem::new(id, label);
+                self.tree_state.update(cx, |state, cx| {
+                    state.set_selected_item(Some(&item), cx);
+                });
+            }
+
+            if self.tree_state.read(cx).selected_entry().is_none() {
+                self.tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(Some(0), cx);
+                });
+            }
+        }
+
+        self.sidebar_focus_handle.focus(window, cx);
+        if let Some(ix) = self.tree_state.read(cx).selected_index() {
+            self.tree_state.update(cx, |state, _| {
+                state.scroll_to_item(ix, gpui::ScrollStrategy::Center);
+            });
+        }
+    }
+
+    fn navigate_tree_up(&mut self, cx: &mut Context<Self>) {
+        self.tree_state.update(cx, |state, cx| {
+            if let Some(ix) = state.selected_index() {
+                let new_ix = ix.saturating_sub(1);
+                state.set_selected_index(Some(new_ix), cx);
+                state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
+            }
+        });
+    }
+
+    fn navigate_tree_down(&mut self, cx: &mut Context<Self>) {
+        self.tree_state.update(cx, |state, cx| {
+            if let Some(ix) = state.selected_index() {
+                state.set_selected_index(Some(ix + 1), cx);
+                if state.selected_entry().is_none() {
+                    state.set_selected_index(Some(0), cx);
+                }
+                if let Some(new_ix) = state.selected_index() {
+                    state.scroll_to_item(new_ix, gpui::ScrollStrategy::Bottom);
+                }
+            }
+        });
+    }
+
+    fn navigate_tree_left(&mut self, cx: &mut Context<Self>) {
+        let (is_folder, is_expanded, item_id) = {
+            let ts = self.tree_state.read(cx);
+            let entry = ts.selected_entry();
+            entry
+                .filter(|e| e.is_folder())
+                .filter(|e| e.is_expanded())
+                .map(|e| (true, true, e.item().id.clone()))
+                .unwrap_or((false, false, SharedString::default()))
+        };
+
+        if is_folder && is_expanded {
+            self.collapse_tree_item(&item_id, cx);
+        }
+    }
+
+    fn navigate_tree_right(&mut self, cx: &mut Context<Self>) {
+        let (is_folder, is_expanded, item_id) = {
+            let ts = self.tree_state.read(cx);
+            let entry = ts.selected_entry();
+            entry
+                .filter(|e| e.is_folder())
+                .filter(|e| !e.is_expanded())
+                .map(|e| (true, false, e.item().id.clone()))
+                .unwrap_or((false, false, SharedString::default()))
+        };
+
+        if is_folder && !is_expanded {
+            self.tree_state
+                .update(cx, |state, cx| state.expand_by_id(&item_id, cx));
+        }
+    }
+
+    fn collapse_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
+        if let Some(ref root) = self.root_path.clone() {
+            let mut expanded_ids = self.tree_state.read(cx).expanded_ids();
+            expanded_ids.retain(|eid| eid != id);
+            let mut items = build_file_items(root);
+            for item in &mut items {
+                if expanded_ids.contains(&item.id) {
+                    item.set_expanded(true);
+                }
+            }
+            self.tree_state.update(cx, |state, cx| {
+                state.set_items(items, cx);
+            });
+            let item = tree::TreeItem::new(id.clone(), SharedString::default());
+            self.tree_state.update(cx, |state, cx| {
+                state.set_selected_item(Some(&item), cx);
+            });
+        }
+    }
+
     fn render_file_tree(
         &self,
         cx: &mut Context<Self>,
@@ -293,17 +442,15 @@ impl DatalithView {
                         .selected(selected)
                         .pl(px(16.) * depth + px(12.));
 
-                    if is_renaming {
-                        if let Some(rename_state) = this.rename_state.clone() {
-                            return list_item.child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .overflow_hidden()
-                                    .child(Icon::new(icon).size_4())
-                                    .child(Input::new(&rename_state)),
-                            );
-                        }
+                    if is_renaming && let Some(rename_state) = this.rename_state.clone() {
+                        return list_item.child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .overflow_hidden()
+                                .child(Icon::new(icon).size_4())
+                                .child(Input::new(&rename_state)),
+                        );
                     }
 
                     let drag_path = PathBuf::from(item_id.to_string());
