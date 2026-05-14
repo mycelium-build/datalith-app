@@ -21,7 +21,16 @@ impl Render for DatalithView {
             self.focus_sidebar(_window, cx);
         }
 
-        let mut layout = h_flex().size_full().relative();
+        let tree_state = self.tree_state.clone();
+
+        let mut layout = h_flex().size_full().relative().on_mouse_down(
+            gpui::MouseButton::Left,
+            cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
+                tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(None, cx);
+                });
+            }),
+        );
 
         layout = layout
             .child(self.render_sidebar(_window, cx))
@@ -38,7 +47,6 @@ impl Render for DatalithView {
 impl DatalithView {
     fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if self.open_files.is_empty() {
-            let tree_state = self.tree_state.clone();
             return div()
                 .size_full()
                 .flex()
@@ -48,14 +56,6 @@ impl DatalithView {
                     Some(_) => "Select a file from the sidebar",
                     None => "Select a folder from the menu bar",
                 })
-                .on_mouse_down(
-                    gpui::MouseButton::Left,
-                    cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
-                        tree_state.update(cx, |state, cx| {
-                            state.set_selected_index(None, cx);
-                        });
-                    }),
-                )
                 .into_any_element();
         }
 
@@ -77,8 +77,6 @@ impl DatalithView {
                 (i, name)
             })
             .collect();
-
-        let tree_state = self.tree_state.clone();
 
         v_flex()
             .size_full()
@@ -126,14 +124,6 @@ impl DatalithView {
             } else {
                 div().flex_1().into_any_element()
             })
-            .on_mouse_down(
-                gpui::MouseButton::Left,
-                cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
-                    tree_state.update(cx, |state, cx| {
-                        state.set_selected_index(None, cx);
-                    });
-                }),
-            )
             .into_any_element()
     }
 }

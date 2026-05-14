@@ -65,6 +65,13 @@ impl DatalithView {
             .border_r_1()
             .border_color(cx.theme().border)
             .track_focus(&self.sidebar_focus_handle)
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _event: &MouseDownEvent, window, cx| {
+                    this.sidebar_focus_handle.focus(window, cx);
+                    cx.stop_propagation();
+                }),
+            )
             .on_key_down({
                 let tree_state = tree_state.clone();
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
