@@ -38,6 +38,7 @@ impl Render for DatalithView {
 impl DatalithView {
     fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if self.open_files.is_empty() {
+            let tree_state = self.tree_state.clone();
             return div()
                 .size_full()
                 .flex()
@@ -47,6 +48,14 @@ impl DatalithView {
                     Some(_) => "Select a file from the sidebar",
                     None => "Select a folder from the menu bar",
                 })
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
+                        tree_state.update(cx, |state, cx| {
+                            state.set_selected_index(None, cx);
+                        });
+                    }),
+                )
                 .into_any_element();
         }
 
@@ -69,15 +78,23 @@ impl DatalithView {
             })
             .collect();
 
+        let tree_state = self.tree_state.clone();
+
         v_flex()
             .size_full()
             .child(
                 TabBar::new("editor-tabs")
                     .selected_index(active_tab)
-                    .on_click(cx.listener(|view, index, _, cx| {
-                        view.active_tab = *index;
-                        cx.notify();
-                    }))
+                    .on_click({
+                        let tree_state = self.tree_state.clone();
+                        cx.listener(move |view, index, _, cx| {
+                            tree_state.update(cx, |state, cx| {
+                                state.set_selected_index(None, cx);
+                            });
+                            view.active_tab = *index;
+                            cx.notify();
+                        })
+                    })
                     .children(tab_data.into_iter().map(|(i, name)| {
                         Tab::new().label(name).suffix(
                             Button::new(format!("close-tab-{}", i))
@@ -109,6 +126,14 @@ impl DatalithView {
             } else {
                 div().flex_1().into_any_element()
             })
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
+                    tree_state.update(cx, |state, cx| {
+                        state.set_selected_index(None, cx);
+                    });
+                }),
+            )
             .into_any_element()
     }
 }

@@ -36,6 +36,7 @@ pub struct DatalithView {
     pub palette: Palette,
     _palette_sub: Subscription,
     _rename_sub: Option<Subscription>,
+    _sidebar_blur_sub: Option<Subscription>,
     pub context_menu_target: Option<PathBuf>,
     pub rename_target: Option<PathBuf>,
     pub rename_state: Option<Entity<InputState>>,
@@ -48,9 +49,20 @@ impl DatalithView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(palette.input.clone(), window, cx);
+        let sidebar_focus_handle = cx.focus_handle();
+        let tree_state = cx.new(|cx| TreeState::new(cx));
+
+        let sidebar_blur_sub = cx.on_blur(&sidebar_focus_handle, window, {
+            let tree_state = tree_state.clone();
+            move |_this, _window, cx| {
+                tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(None, cx);
+                });
+            }
+        });
 
         Self {
-            tree_state: cx.new(|cx| TreeState::new(cx)),
+            tree_state,
             root_path: None,
             root_name: "No folder open".into(),
             open_files: Vec::new(),
@@ -59,12 +71,13 @@ impl DatalithView {
             palette,
             _palette_sub: palette_sub,
             _rename_sub: None,
+            _sidebar_blur_sub: Some(sidebar_blur_sub),
             context_menu_target: None,
             rename_target: None,
             rename_state: None,
             drag_hover: Rc::new(RefCell::new(None)),
             focus_sidebar_requested: false,
-            sidebar_focus_handle: cx.focus_handle(),
+            sidebar_focus_handle,
         }
     }
 
