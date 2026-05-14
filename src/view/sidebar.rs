@@ -11,12 +11,15 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     list::ListItem,
     menu::ContextMenuExt,
+    select::Select,
     sidebar::SidebarHeader,
     tree::{self},
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
+use crate::config::load_recent_vaults;
 use crate::filetree::build_file_items;
+use crate::view::VaultEntry;
 
 use super::DatalithView;
 use super::palette::PaletteKind;
@@ -55,6 +58,31 @@ impl DatalithView {
         let view = cx.entity().clone();
 
         self.ensure_rename_state(window, cx);
+
+        let recent: Vec<VaultEntry> = load_recent_vaults()
+            .into_iter()
+            .map(|p| {
+                let path: SharedString = p.to_string_lossy().to_string().into();
+                let name: SharedString = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path)
+                    .into();
+                VaultEntry::Vault { path, name }
+            })
+            .collect();
+        let mut select_items = recent;
+        select_items.push(VaultEntry::OpenNew(SharedString::from("__open_new__")));
+        self.vault_select_state.update(cx, |state, cx| {
+            state.set_items(select_items, window, cx);
+        });
+
+        if let Some(ref root) = self.root_path {
+            let root_str: SharedString = root.to_string_lossy().to_string().into();
+            self.vault_select_state.update(cx, |state, cx| {
+                state.set_selected_value(&root_str, window, cx);
+            });
+        }
 
         div()
             .flex()
@@ -143,6 +171,13 @@ impl DatalithView {
                 &self.tree_state,
                 &self.drag_hover,
             )))
+            .child(
+                div()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .p_2()
+                    .child(Select::new(&self.vault_select_state)),
+            )
             .context_menu({
                 let view = view.clone();
                 move |menu, _window, cx| {

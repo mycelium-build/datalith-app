@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     pub last_folder: Option<String>,
+    #[serde(default)]
+    pub recent_vaults: Vec<String>,
 }
 
 fn config_file() -> PathBuf {
@@ -36,4 +38,23 @@ pub fn save_last_folder(path: &Path) {
 pub fn load_last_folder() -> Option<PathBuf> {
     let config = load_config();
     config.last_folder.map(PathBuf::from).filter(|p| p.is_dir())
+}
+
+pub fn add_recent_vault(path: &Path) {
+    let mut config = load_config();
+    let path_str = path.to_string_lossy().to_string();
+    config.recent_vaults.retain(|v| v != &path_str);
+    config.recent_vaults.insert(0, path_str);
+    config.recent_vaults.truncate(10);
+    save_config(&config);
+}
+
+pub fn load_recent_vaults() -> Vec<PathBuf> {
+    let config = load_config();
+    config
+        .recent_vaults
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .collect()
 }

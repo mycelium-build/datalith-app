@@ -12,13 +12,41 @@ use std::time::Instant;
 use gpui::*;
 use gpui_component::{
     input::{InputEvent, InputState},
+    select::{SelectEvent, SelectItem, SelectState},
     tree::TreeState,
 };
 
-use crate::config::save_last_folder;
+use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
 use crate::filetree::build_file_items;
 use crate::search::SearchEngine;
 use palette::Palette;
+
+#[derive(Clone, Debug)]
+pub(crate) enum VaultEntry {
+    Vault {
+        path: SharedString,
+        name: SharedString,
+    },
+    OpenNew(SharedString),
+}
+
+impl SelectItem for VaultEntry {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        match self {
+            VaultEntry::Vault { name, .. } => name.clone(),
+            VaultEntry::OpenNew(_) => SharedString::from("Open new vault..."),
+        }
+    }
+
+    fn value(&self) -> &Self::Value {
+        match self {
+            VaultEntry::Vault { path, .. } => path,
+            VaultEntry::OpenNew(marker) => marker,
+        }
+    }
+}
 
 pub(crate) struct OpenFile {
     pub(crate) path: PathBuf,
@@ -28,6 +56,7 @@ pub(crate) struct OpenFile {
 
 pub struct DatalithView {
     pub tree_state: Entity<TreeState>,
+    pub vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pub root_path: Option<PathBuf>,
     pub root_name: SharedString,
     pub(crate) open_files: Vec<OpenFile>,
@@ -37,6 +66,7 @@ pub struct DatalithView {
     _palette_sub: Subscription,
     _rename_sub: Option<Subscription>,
     _sidebar_blur_sub: Option<Subscription>,
+    _vault_select_sub: Subscription,
     pub context_menu_target: Option<PathBuf>,
     pub rename_target: Option<PathBuf>,
     pub rename_state: Option<Entity<InputState>>,
@@ -53,6 +83,42 @@ impl DatalithView {
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
+        let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
+            .into_iter()
+            .map(|p| {
+                let path: SharedString = p.to_string_lossy().to_string().into();
+                let name: SharedString = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path)
+                    .into();
+                VaultEntry::Vault { path, name }
+            })
+            .collect();
+        let mut items = recent_vaults;
+        items.push(VaultEntry::OpenNew(SharedString::from("__open_new__")));
+
+        let vault_select_state = cx.new(|cx| SelectState::new(items, None, window, cx));
+
+        let vault_select_sub = cx.subscribe_in(
+            &vault_select_state,
+            window,
+            |view: &mut DatalithView, _state, event: &SelectEvent<Vec<VaultEntry>>, window, cx| {
+                match event {
+                    SelectEvent::Confirm(value) => {
+                        if let Some(value) = value {
+                            if value == "__open_new__" {
+                                window.dispatch_action(Box::new(crate::actions::OpenVault), cx);
+                            } else {
+                                let path = PathBuf::from(value.to_string());
+                                view.set_root_path(path, cx);
+                            }
+                        }
+                    }
+                }
+            },
+        );
+
         let sidebar_blur_sub = cx.on_blur(&sidebar_focus_handle, window, {
             let tree_state = tree_state.clone();
             move |_this, _window, cx| {
@@ -64,6 +130,7 @@ impl DatalithView {
 
         Self {
             tree_state,
+            vault_select_state,
             root_path: None,
             root_name: "No folder open".into(),
             open_files: Vec::new(),
@@ -73,6 +140,7 @@ impl DatalithView {
             _palette_sub: palette_sub,
             _rename_sub: None,
             _sidebar_blur_sub: Some(sidebar_blur_sub),
+            _vault_select_sub: vault_select_sub,
             context_menu_target: None,
             rename_target: None,
             rename_state: None,
@@ -83,7 +151,7 @@ impl DatalithView {
         }
     }
 
-    pub fn set_root_path(&mut self, path: PathBuf, _cx: &mut Context<Self>) {
+    pub fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.root_name = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -91,9 +159,10 @@ impl DatalithView {
             .into();
         self.root_path = Some(path.clone());
         save_last_folder(&path);
+        add_recent_vault(&path);
 
         let items = build_file_items(&path);
-        self.tree_state.update(_cx, |state, cx| {
+        self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
         });
 
@@ -107,7 +176,7 @@ impl DatalithView {
 
         self.palette.set_root(&path);
 
-        _cx.notify();
+        cx.notify();
     }
 
     pub fn open_file(
