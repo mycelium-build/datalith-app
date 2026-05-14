@@ -222,7 +222,7 @@ impl DatalithView {
         }
     }
 
-    pub fn delete_target(&mut self, target: &Path) {
+    pub fn delete_target(&mut self, target: &Path, cx: &mut Context<Self>) {
         let result = if target.is_dir() {
             fs::remove_dir_all(target)
         } else {
@@ -230,6 +230,17 @@ impl DatalithView {
         };
         if let Err(e) = result {
             eprintln!("Failed to delete {:?}: {e}", target);
+            return;
+        }
+        let mut i = 0;
+        while i < self.open_files.len() {
+            if self.open_files[i].path == target
+                || self.open_files[i].path.starts_with(target)
+            {
+                self.close_tab(i, cx);
+            } else {
+                i += 1;
+            }
         }
     }
 
@@ -311,7 +322,6 @@ impl DatalithView {
                 let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
                 self.open_files.get(active).map(|f| f.path.clone())
             })
-            .or_else(|| self.root_path.clone())
     }
 
     pub fn refresh_tree(&mut self, cx: &mut Context<Self>) {

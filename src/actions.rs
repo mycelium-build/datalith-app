@@ -99,7 +99,8 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
             let target = view
                 .context_menu_target
                 .take()
-                .or_else(|| view.resolve_target(cx));
+                .or_else(|| view.resolve_target(cx))
+                .or_else(|| view.root_path.clone());
             if let Some(target) = target {
                 let created = view.new_file_from_target(&target);
                 view.refresh_tree(cx);
@@ -118,7 +119,8 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
             let target = view
                 .context_menu_target
                 .take()
-                .or_else(|| view.resolve_target(cx));
+                .or_else(|| view.resolve_target(cx))
+                .or_else(|| view.root_path.clone());
             if let Some(target) = target {
                 let created = view.new_folder_from_target(&target);
                 view.refresh_tree(cx);
@@ -154,7 +156,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
                 .take()
                 .or_else(|| view.resolve_target(cx));
             if let Some(target) = target {
-                view.delete_target(&target);
+                view.delete_target(&target, cx);
                 view.refresh_tree(cx);
             }
             cx.notify();
