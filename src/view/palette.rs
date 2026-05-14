@@ -322,7 +322,7 @@ impl Palette {
                         };
                         cx.notify();
                     }
-                    InputEvent::PressEnter { .. } => {
+                    InputEvent::PressEnter { secondary } => {
                         let open_path = match view.palette.kind {
                             PaletteKind::Search => view
                                 .palette
@@ -337,7 +337,7 @@ impl Palette {
                         };
                         if let Some(path) = open_path {
                             view.palette.close();
-                            view.open_file(path, false, window, cx);
+                            view.open_file(path, *secondary, window, cx);
                         }
                         cx.notify();
                     }
