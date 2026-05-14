@@ -1,5 +1,6 @@
 pub mod palette;
 pub mod render;
+pub mod sidebar;
 
 use std::cell::RefCell;
 use std::fs;
