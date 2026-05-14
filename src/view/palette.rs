@@ -9,7 +9,7 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::search::{SearchEngine, SearchResult, picker};
+use crate::search::{self, SearchEngine, SearchResult, picker};
 
 use super::DatalithView;
 
@@ -77,7 +77,7 @@ impl Palette {
 
     pub fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
         let query = query.trim().to_string();
-        self.search_results = if query.is_empty() {
+        self.search_results = if query.len() < search::MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
             engine

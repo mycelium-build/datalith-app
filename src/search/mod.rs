@@ -5,7 +5,8 @@ mod query;
 use index::{incremental_update, index_files};
 use query::build_query;
 
-const MAX_SEARCH_RESULTS: usize = 25;
+pub const MAX_SEARCH_RESULTS: usize = 25;
+pub const MIN_SEARCH_QUERY_LENGTH: usize = 3;
 
 use std::fs;
 use std::path::{Path, PathBuf};
