@@ -18,8 +18,8 @@ use gpui_component::{
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
 use crate::filetree::build_file_items;
 
-use super::palette::PaletteKind;
 use super::DatalithView;
+use super::palette::PaletteKind;
 
 #[derive(Clone)]
 struct DragFile {
@@ -194,9 +194,7 @@ impl DatalithView {
             None
         };
 
-        let state = cx.new(|cx| {
-            InputState::new(window, cx).default_value(current.as_str())
-        });
+        let state = cx.new(|cx| InputState::new(window, cx).default_value(current.as_str()));
         let dir = target.parent().map(|p| p.to_path_buf());
         let target_clone = target.clone();
 
@@ -310,7 +308,15 @@ impl DatalithView {
             if let Some(ix) = state.selected_index() {
                 let new_ix = ix.saturating_sub(1);
                 state.set_selected_index(Some(new_ix), cx);
-                state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
+                if state.selected_entry().is_none() {
+                    let count = state.entry_count();
+                    if count > 0 {
+                        state.set_selected_index(Some(count - 1), cx);
+                    }
+                }
+                if let Some(new_ix) = state.selected_index() {
+                    state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
+                }
             }
         });
     }
@@ -497,8 +503,7 @@ impl DatalithView {
                                     if let Some(name) = drag.path.file_name() {
                                         let new_path = target_dir.join(name);
                                         if new_path != drag.path {
-                                            let _ =
-                                                std::fs::rename(&drag.path, &new_path);
+                                            let _ = std::fs::rename(&drag.path, &new_path);
                                         }
                                     }
                                     let view = v2.clone();
