@@ -74,8 +74,8 @@ impl DatalithView {
                     let candidate = parent.join(&name);
                     if candidate != *target {
                         final_path = fs_ops::unique_name(parent, &name);
-                        let _ = std::fs::rename(&target, &final_path);
-                        self.track_file_rename(&target, &final_path);
+                        let _ = std::fs::rename(target, &final_path);
+                        self.track_file_rename(target, &final_path);
                         for open_file in &mut self.open_files {
                             if open_file.path == *target {
                                 open_file.path = final_path.clone();
