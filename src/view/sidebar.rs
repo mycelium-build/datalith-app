@@ -17,14 +17,12 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
-use crate::config::load_recent_vaults;
 use crate::consts::{
-    DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX, VAULT_SELECT_MARKER,
+    DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX,
 };
 use crate::filetree::build_file_items;
 use crate::fs_ops;
 use crate::utils::file_name_str;
-use crate::view::VaultEntry;
 
 use super::DatalithView;
 use super::palette::PaletteKind;
@@ -59,19 +57,9 @@ impl DatalithView {
 
         self.ensure_rename_state(window, cx);
 
-        let recent: Vec<VaultEntry> = load_recent_vaults()
-            .into_iter()
-            .map(|p| {
-                let path: SharedString = p.to_string_lossy().to_string().into();
-                let name: SharedString = file_name_str(&p).into();
-                VaultEntry::Vault { path, name }
-            })
-            .collect();
-        let mut select_items = recent;
-        select_items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
-        self.vault_select_state.update(cx, |state, cx| {
-            state.set_items(select_items, window, cx);
-        });
+        if self.pending_vault_refresh {
+            self.refresh_vault_select(window, cx);
+        }
 
         if let Some(ref root) = self.root_path {
             let root_str: SharedString = root.to_string_lossy().to_string().into();

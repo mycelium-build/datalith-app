@@ -74,6 +74,7 @@ pub struct DatalithView {
     pub drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
     pub focus_sidebar_requested: bool,
     pub(crate) pending_open: Option<PathBuf>,
+    pending_vault_refresh: bool,
     sidebar_focus_handle: FocusHandle,
 }
 
@@ -144,6 +145,7 @@ impl DatalithView {
             drag_hover: Rc::new(RefCell::new(None)),
             focus_sidebar_requested: false,
             pending_open: None,
+            pending_vault_refresh: false,
             sidebar_focus_handle,
         }
     }
@@ -153,6 +155,8 @@ impl DatalithView {
         self.root_path = Some(path.clone());
         let _ = save_last_folder(&path);
         let _ = add_recent_vault(&path);
+
+        self.pending_vault_refresh = true;
 
         let items = build_file_items(&path);
         self.tree_state.update(cx, |state, cx| {
@@ -170,6 +174,22 @@ impl DatalithView {
         self.palette.set_root(&self.search_engine);
 
         cx.notify();
+    }
+
+    pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
+            .into_iter()
+            .map(|p| {
+                let path: SharedString = p.to_string_lossy().to_string().into();
+                let name: SharedString = file_name_str(&p).into();
+                VaultEntry::Vault { path, name }
+            })
+            .collect();
+        let mut items = recent_vaults;
+        items.push(VaultEntry::OpenNew(SharedString::from(crate::consts::VAULT_SELECT_MARKER)));
+        self.vault_select_state
+            .update(cx, |state, cx| state.set_items(items, window, cx));
+        self.pending_vault_refresh = false;
     }
 
     pub fn resolve_target(&self, cx: &Context<Self>) -> Option<PathBuf> {
