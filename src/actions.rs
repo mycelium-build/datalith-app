@@ -295,37 +295,26 @@ fn select_tab_index(index: usize, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_select_tab_1(_: &SelectTab1, cx: &mut App) {
-    select_tab_index(0, cx);
+macro_rules! define_tab_handlers {
+    ($($handler:ident => $action:ty => $index:expr),* $(,)?) => {
+        $(
+            pub(crate) fn $handler(_: &$action, cx: &mut App) {
+                select_tab_index($index, cx);
+            }
+        )*
+    };
 }
 
-pub(crate) fn handle_select_tab_2(_: &SelectTab2, cx: &mut App) {
-    select_tab_index(1, cx);
-}
-
-pub(crate) fn handle_select_tab_3(_: &SelectTab3, cx: &mut App) {
-    select_tab_index(2, cx);
-}
-
-pub(crate) fn handle_select_tab_4(_: &SelectTab4, cx: &mut App) {
-    select_tab_index(3, cx);
-}
-
-pub(crate) fn handle_select_tab_5(_: &SelectTab5, cx: &mut App) {
-    select_tab_index(4, cx);
-}
-
-pub(crate) fn handle_select_tab_6(_: &SelectTab6, cx: &mut App) {
-    select_tab_index(5, cx);
-}
-
-pub(crate) fn handle_select_tab_7(_: &SelectTab7, cx: &mut App) {
-    select_tab_index(6, cx);
-}
-
-pub(crate) fn handle_select_tab_8(_: &SelectTab8, cx: &mut App) {
-    select_tab_index(7, cx);
-}
+define_tab_handlers!(
+    handle_select_tab_1 => SelectTab1 => 0,
+    handle_select_tab_2 => SelectTab2 => 1,
+    handle_select_tab_3 => SelectTab3 => 2,
+    handle_select_tab_4 => SelectTab4 => 3,
+    handle_select_tab_5 => SelectTab5 => 4,
+    handle_select_tab_6 => SelectTab6 => 5,
+    handle_select_tab_7 => SelectTab7 => 6,
+    handle_select_tab_8 => SelectTab8 => 7,
+);
 
 pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
     with_view!(cx, |view, cx| {
