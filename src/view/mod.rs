@@ -3,9 +3,7 @@ pub(crate) mod render;
 pub(crate) mod sidebar;
 pub(crate) mod tabs;
 
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::time::Instant;
 
 use gpui::*;
@@ -71,7 +69,7 @@ pub struct DatalithView {
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
     _rename_sub: Option<Subscription>,
-    pub(crate) drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
+    pub(crate) drag_hover: Option<(PathBuf, Instant)>,
     pub(crate) focus_sidebar_requested: bool,
     sidebar_focus_handle: FocusHandle,
     _sidebar_blur_sub: Option<Subscription>,
@@ -143,7 +141,7 @@ impl DatalithView {
             context_menu_target: None,
             rename_target: None,
             rename_state: None,
-            drag_hover: Rc::new(RefCell::new(None)),
+            drag_hover: None,
             focus_sidebar_requested: false,
             pending_open: None,
             pending_vault_refresh: false,

@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::*;
@@ -162,7 +160,6 @@ impl DatalithView {
             .child(div().flex_1().child(self.render_file_tree(
                 cx,
                 &self.tree_state,
-                &self.drag_hover,
             )))
             .child(
                 div()
@@ -450,15 +447,12 @@ impl DatalithView {
         &self,
         cx: &mut Context<Self>,
         tree_state_entity: &Entity<gpui_component::tree::TreeState>,
-        drag_hover: &Rc<RefCell<Option<(PathBuf, Instant)>>>,
     ) -> impl IntoElement {
         let view = cx.entity();
-        let drag_hover = drag_hover.clone();
         let tree_state = tree_state_entity.clone();
 
         tree::tree(tree_state_entity, {
             let view = view.clone();
-            let drag_hover = drag_hover.clone();
             let tree_state = tree_state.clone();
             move |ix, entry, selected, _window, cx| {
                 let item_id = entry.item().id.clone();
@@ -468,7 +462,6 @@ impl DatalithView {
                 let depth = entry.depth();
 
                 let v = view.clone();
-                let dh = drag_hover.clone();
                 let ts = tree_state.clone();
                 view.update(cx, move |this, cx| {
                     let is_renaming = this
@@ -526,29 +519,36 @@ impl DatalithView {
                         list_item = list_item
                             .drag_over::<DragFile>({
                                 let folder_path = drag_path.clone();
-                                let drag_hover = dh.clone();
                                 let tree_state = ts.clone();
                                 let v_for_notify = v.clone();
                                 move |mut style, _drag, _window, cx| {
                                     style = style.bg(cx.theme().drop_target);
 
-                                    let mut hover = drag_hover.borrow_mut();
-                                    match &*hover {
-                                        Some((path, instant)) if path == &folder_path => {
-                                            if instant.elapsed() > Duration::from_millis(DRAG_HOVER_EXPAND_DELAY_MS) {
-                                                *hover = None;
-                                                let id: SharedString = folder_path
-                                                    .to_string_lossy()
-                                                    .to_string()
-                                                    .into();
-                                                tree_state.update(cx, |state, cx| {
-                                                    state.expand_by_id(&id, cx);
-                                                });
+                                    let should_expand = v_for_notify.update(cx, |view, _| {
+                                        match &view.drag_hover {
+                                            Some((path, instant)) if path == &folder_path => {
+                                                if instant.elapsed() > Duration::from_millis(DRAG_HOVER_EXPAND_DELAY_MS) {
+                                                    view.drag_hover = None;
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            _ => {
+                                                view.drag_hover = Some((folder_path.clone(), Instant::now()));
+                                                false
                                             }
                                         }
-                                        _ => {
-                                            *hover = Some((folder_path.clone(), Instant::now()));
-                                        }
+                                    });
+
+                                    if should_expand {
+                                        let id: SharedString = folder_path
+                                            .to_string_lossy()
+                                            .to_string()
+                                            .into();
+                                        tree_state.update(cx, |state, cx| {
+                                            state.expand_by_id(&id, cx);
+                                        });
                                     }
 
                                     cx.notify(v_for_notify.entity_id());
