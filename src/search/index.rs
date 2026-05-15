@@ -8,7 +8,7 @@ use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema
 use crate::consts::INDEX_WRITER_BUDGET;
 use crate::utils::file_name_str;
 
-pub struct Indexer {
+pub(crate) struct Indexer {
     index: Index,
     path_field: Field,
     name_field: Field,
@@ -17,7 +17,7 @@ pub struct Indexer {
 }
 
 impl Indexer {
-    pub fn new(root: &Path) -> Result<Self> {
+    pub(crate) fn new(root: &Path) -> Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
 
         let mut schema_builder = Schema::builder();
@@ -89,7 +89,7 @@ impl Indexer {
         self.path_field
     }
 
-    pub fn add_file(&self, path: &Path) -> tantivy::Result<()> {
+    pub(crate) fn add_file(&self, path: &Path) -> tantivy::Result<()> {
         if !is_indexable(path) || !path.is_file() {
             return Ok(());
         }
@@ -108,7 +108,7 @@ impl Indexer {
         Ok(())
     }
 
-    pub fn remove_file(&self, path: &Path) -> tantivy::Result<()> {
+    pub(crate) fn remove_file(&self, path: &Path) -> tantivy::Result<()> {
         let path_str = path.to_string_lossy();
         let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
         writer.delete_term(Term::from_field_text(self.path_field, &path_str));
@@ -116,12 +116,12 @@ impl Indexer {
         Ok(())
     }
 
-    pub fn rename_file(&self, old_path: &Path, new_path: &Path) -> tantivy::Result<()> {
+    pub(crate) fn rename_file(&self, old_path: &Path, new_path: &Path) -> tantivy::Result<()> {
         self.remove_file(old_path)?;
         self.add_file(new_path)
     }
 
-    pub fn all_paths(&self) -> Vec<PathBuf> {
+    pub(crate) fn all_paths(&self) -> Vec<PathBuf> {
         let reader = match self.index.reader() {
             Ok(r) => r,
             Err(_) => return Vec::new(),
@@ -148,7 +148,7 @@ impl Indexer {
 }
 
 #[must_use]
-pub fn file_fingerprint(path: &Path) -> u64 {
+pub(crate) fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
@@ -163,14 +163,14 @@ pub fn file_fingerprint(path: &Path) -> u64 {
     hasher.finish()
 }
 
-pub fn is_indexable(path: &Path) -> bool {
+pub(crate) fn is_indexable(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
         Some("txt" | "md")
     )
 }
 
-pub fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -192,7 +192,7 @@ pub fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
     paths
 }
 
-pub fn index_files(
+pub(crate) fn index_files(
     writer: &mut IndexWriter,
     paths: &[PathBuf],
     path_field: Field,
@@ -214,7 +214,7 @@ pub fn index_files(
     Ok(())
 }
 
-pub fn add_files(
+pub(crate) fn add_files(
     writer: &mut IndexWriter,
     files: &HashMap<PathBuf, u64>,
     path_field: Field,
@@ -235,7 +235,7 @@ pub fn add_files(
     Ok(())
 }
 
-pub fn incremental_update(
+pub(crate) fn incremental_update(
     index: &Index,
     root: &Path,
     path_field: Field,

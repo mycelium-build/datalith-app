@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::consts::{DEFAULT_FILE_NAME, DEFAULT_FOLDER_NAME};
 
-pub fn parent_dir_for_target(target: &Path) -> PathBuf {
+pub(crate) fn parent_dir_for_target(target: &Path) -> PathBuf {
     if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -17,7 +17,7 @@ pub fn parent_dir_for_target(target: &Path) -> PathBuf {
 }
 
 #[must_use]
-pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     let (stem, ext) = if let Some(dot) = name.rfind('.') {
         (&name[..dot], &name[dot..])
     } else {
@@ -32,21 +32,21 @@ pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     candidate
 }
 
-pub fn new_file_from_target(target: &Path) -> Result<PathBuf> {
+pub(crate) fn new_file_from_target(target: &Path) -> Result<PathBuf> {
     let dir = parent_dir_for_target(target);
     let path = unique_name(&dir, DEFAULT_FILE_NAME);
     fs::write(&path, "").with_context(|| format!("Failed to create file {:?}", path))?;
     Ok(path)
 }
 
-pub fn new_folder_from_target(target: &Path) -> Result<PathBuf> {
+pub(crate) fn new_folder_from_target(target: &Path) -> Result<PathBuf> {
     let dir = parent_dir_for_target(target);
     let path = unique_name(&dir, DEFAULT_FOLDER_NAME);
     fs::create_dir(&path).with_context(|| format!("Failed to create folder {:?}", path))?;
     Ok(path)
 }
 
-pub fn delete_target(target: &Path) -> Result<()> {
+pub(crate) fn delete_target(target: &Path) -> Result<()> {
     if target.is_dir() {
         fs::remove_dir_all(target).with_context(|| format!("Failed to delete directory {:?}", target))?;
     } else {
@@ -55,7 +55,7 @@ pub fn delete_target(target: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn duplicate_target(target: &Path) -> Result<PathBuf> {
+pub(crate) fn duplicate_target(target: &Path) -> Result<PathBuf> {
     if target.is_dir() {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
         let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");

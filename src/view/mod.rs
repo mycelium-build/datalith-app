@@ -1,7 +1,7 @@
-pub mod palette;
-pub mod render;
-pub mod sidebar;
-pub mod tabs;
+pub(crate) mod palette;
+pub(crate) mod render;
+pub(crate) mod sidebar;
+pub(crate) mod tabs;
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -56,30 +56,30 @@ pub(crate) struct OpenFile {
 }
 
 pub struct DatalithView {
-    pub tree_state: Entity<TreeState>,
-    pub vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
-    pub root_path: Option<PathBuf>,
-    pub root_name: SharedString,
-    pub(crate) open_files: Vec<OpenFile>,
-    pub active_tab: usize,
-    pub search_engine: Option<Arc<SearchEngine>>,
-    pub palette: Palette,
-    _palette_sub: Subscription,
-    _rename_sub: Option<Subscription>,
-    _sidebar_blur_sub: Option<Subscription>,
-    _vault_select_sub: Subscription,
-    pub context_menu_target: Option<PathBuf>,
-    pub rename_target: Option<PathBuf>,
-    pub rename_state: Option<Entity<InputState>>,
-    pub drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
-    pub focus_sidebar_requested: bool,
-    pub(crate) pending_open: Option<PathBuf>,
+    pub(crate) tree_state: Entity<TreeState>,
+    pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
+    _vault_select_sub: Subscription,
+    pub(crate) root_path: Option<PathBuf>,
+    root_name: SharedString,
+    pub(crate) open_files: Vec<OpenFile>,
+    pub(crate) pending_open: Option<PathBuf>,
+    pub(crate) active_tab: usize,
+    pub(crate) search_engine: Option<Arc<SearchEngine>>,
+    pub(crate) palette: Palette,
+    _palette_sub: Subscription,
+    pub(crate) context_menu_target: Option<PathBuf>,
+    pub(crate) rename_target: Option<PathBuf>,
+    pub(crate) rename_state: Option<Entity<InputState>>,
+    _rename_sub: Option<Subscription>,
+    pub(crate) drag_hover: Rc<RefCell<Option<(PathBuf, Instant)>>>,
+    pub(crate) focus_sidebar_requested: bool,
     sidebar_focus_handle: FocusHandle,
+    _sidebar_blur_sub: Option<Subscription>,
 }
 
 impl DatalithView {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(palette.input.clone(), window, cx);
         let sidebar_focus_handle = cx.focus_handle();
@@ -94,7 +94,9 @@ impl DatalithView {
             })
             .collect();
         let mut items = recent_vaults;
-        items.push(VaultEntry::OpenNew(SharedString::from(crate::consts::VAULT_SELECT_MARKER)));
+        items.push(VaultEntry::OpenNew(SharedString::from(
+            crate::consts::VAULT_SELECT_MARKER,
+        )));
 
         let vault_select_state = cx.new(|cx| SelectState::new(items, None, window, cx));
 
@@ -150,7 +152,7 @@ impl DatalithView {
         }
     }
 
-    pub fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.root_name = file_name_str(&path).into();
         self.root_path = Some(path.clone());
         let _ = save_last_folder(&path);
@@ -186,13 +188,15 @@ impl DatalithView {
             })
             .collect();
         let mut items = recent_vaults;
-        items.push(VaultEntry::OpenNew(SharedString::from(crate::consts::VAULT_SELECT_MARKER)));
+        items.push(VaultEntry::OpenNew(SharedString::from(
+            crate::consts::VAULT_SELECT_MARKER,
+        )));
         self.vault_select_state
             .update(cx, |state, cx| state.set_items(items, window, cx));
         self.pending_vault_refresh = false;
     }
 
-    pub fn resolve_target(&self, cx: &Context<Self>) -> Option<PathBuf> {
+    pub(crate) fn resolve_target(&self, cx: &Context<Self>) -> Option<PathBuf> {
         self.tree_state
             .read(cx)
             .selected_entry()
@@ -203,7 +207,7 @@ impl DatalithView {
             })
     }
 
-    pub fn refresh_tree(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_tree(&mut self, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path {
             let expanded_ids = self.tree_state.read(cx).expanded_ids();
             let mut items = build_file_items(root);
@@ -219,14 +223,14 @@ impl DatalithView {
         }
     }
 
-    pub fn track_new_file(&mut self, path: &Path) {
+    pub(crate) fn track_new_file(&mut self, path: &Path) {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.add_file(path);
         }
         self.palette.add_entry(path);
     }
 
-    pub fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
+    pub(crate) fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.rename_file(old_path, new_path);
         }
@@ -245,7 +249,7 @@ impl DatalithView {
         }
     }
 
-    pub fn track_file_delete(&mut self, path: &Path) {
+    pub(crate) fn track_file_delete(&mut self, path: &Path) {
         if path.is_dir() {
             self.remove_indexed_under(path);
         } else {
@@ -256,7 +260,7 @@ impl DatalithView {
         }
     }
 
-    pub fn track_file_edited(&mut self, path: &Path) {
+    pub(crate) fn track_file_edited(&mut self, path: &Path) {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.add_file(path);
         }

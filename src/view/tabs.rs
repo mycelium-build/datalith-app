@@ -8,7 +8,7 @@ use super::{DatalithView, OpenFile};
 use crate::utils::is_supported_file;
 
 impl DatalithView {
-    pub fn open_file(
+    pub(crate) fn open_file(
         &mut self,
         path: PathBuf,
         new_tab: bool,
@@ -72,7 +72,7 @@ impl DatalithView {
         cx.notify();
     }
 
-    pub fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
         self.open_files.push(OpenFile {
             path: PathBuf::new(),
             state: None,
@@ -82,7 +82,7 @@ impl DatalithView {
         cx.notify();
     }
 
-    pub fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
         if self.open_files.is_empty() {
             return;
         }
@@ -90,7 +90,7 @@ impl DatalithView {
         self.close_tab(index, cx);
     }
 
-    pub fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub(crate) fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.open_files.len() {
             return;
         }

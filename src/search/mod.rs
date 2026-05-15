@@ -1,8 +1,8 @@
 mod index;
-pub mod picker;
+pub(crate) mod picker;
 mod query;
 
-pub use index::Indexer;
+pub(crate) use index::Indexer;
 use query::build_query;
 
 use std::path::PathBuf;
@@ -12,17 +12,17 @@ use tantivy::{TantivyDocument, collector::TopDocs, schema::Value};
 
 use crate::consts::MAX_SEARCH_RESULTS;
 
-pub struct SearchEngine {
-    pub indexer: Indexer,
+pub(crate) struct SearchEngine {
+    pub(crate) indexer: Indexer,
 }
 
 impl SearchEngine {
-    pub fn new(root: &PathBuf) -> Result<Self> {
+    pub(crate) fn new(root: &PathBuf) -> Result<Self> {
         let indexer = Indexer::new(root)?;
         Ok(Self { indexer })
     }
 
-    pub fn search(&self, query_str: &str) -> Vec<PathBuf> {
+    pub(crate) fn search(&self, query_str: &str) -> Vec<PathBuf> {
         let reader = match self.indexer.index().reader() {
             Ok(r) => r,
             Err(_) => return Vec::new(),

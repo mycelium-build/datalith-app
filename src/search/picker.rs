@@ -4,13 +4,13 @@ use super::index::Indexer;
 use crate::utils::file_name_str;
 
 #[derive(Clone)]
-pub struct QuickSwitcherEntry {
-    pub path: PathBuf,
-    pub name: String,
-    pub open: bool,
+pub(crate) struct QuickSwitcherEntry {
+    pub(crate) path: PathBuf,
+    pub(crate) name: String,
+    pub(crate) open: bool,
 }
 
-pub fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
+pub(crate) fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
     let mut entries: Vec<QuickSwitcherEntry> = indexer
         .all_paths()
         .into_iter()
@@ -27,7 +27,7 @@ pub fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
     entries
 }
 
-pub fn filter(
+pub(crate) fn filter(
     all_files: &[QuickSwitcherEntry],
     open_files: &[PathBuf],
     query: &str,
@@ -52,7 +52,7 @@ pub fn filter(
 }
 
 #[must_use]
-pub fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
+pub(crate) fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
     if count == 0 {
         return None;
     }

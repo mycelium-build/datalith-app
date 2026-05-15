@@ -9,37 +9,39 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::consts::{MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH};
+use crate::consts::{
+    MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH,
+};
 use crate::search::{SearchEngine, picker};
 use crate::utils::file_name_str;
 
 use super::DatalithView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PaletteKind {
+pub(crate) enum PaletteKind {
     Search,
     QuickSwitcher,
 }
 
 #[derive(Clone)]
-pub struct Palette {
-    pub kind: PaletteKind,
-    pub open: bool,
-    pub needs_focus: bool,
-    pub switching_from: Option<PaletteKind>,
-    pub search_query: SharedString,
-    pub qs_query: SharedString,
-    pub input: Entity<InputState>,
-    pub selected: Option<usize>,
-    pub scroll_handle: VirtualListScrollHandle,
-    pub item_sizes: Rc<Vec<Size<Pixels>>>,
-    pub search_results: Vec<PathBuf>,
-    pub quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
+pub(crate) struct Palette {
+    pub(crate) kind: PaletteKind,
+    switching_from: Option<PaletteKind>,
+    pub(crate) open: bool,
+    pub(crate) needs_focus: bool,
+    pub(crate) input: Entity<InputState>,
+    pub(crate) selected: Option<usize>,
+    pub(crate) search_query: SharedString,
+    pub(crate) search_results: Vec<PathBuf>,
+    pub(crate) qs_query: SharedString,
+    pub(crate) quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
+    item_sizes: Rc<Vec<Size<Pixels>>>,
+    scroll_handle: VirtualListScrollHandle,
     quick_switcher_all_files: Vec<picker::QuickSwitcherEntry>,
 }
 
 impl Palette {
-    pub fn new(window: &mut Window, cx: &mut Context<DatalithView>) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<DatalithView>) -> Self {
         Self {
             kind: PaletteKind::Search,
             open: false,
@@ -57,7 +59,7 @@ impl Palette {
         }
     }
 
-    pub fn open_as(&mut self, kind: PaletteKind) {
+    pub(crate) fn open_as(&mut self, kind: PaletteKind) {
         self.switching_from = (self.kind != kind).then_some(self.kind);
         self.kind = kind;
         self.open = true;
@@ -69,36 +71,37 @@ impl Palette {
         };
     }
 
-    pub fn close(&mut self) {
+    pub(crate) fn close(&mut self) {
         self.open = false;
     }
 
-    pub fn set_root(&mut self, engine: &Option<Arc<SearchEngine>>) {
+    pub(crate) fn set_root(&mut self, engine: &Option<Arc<SearchEngine>>) {
         if let Some(engine) = engine {
             self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
         }
     }
 
-    pub fn add_entry(&mut self, path: &Path) {
-        self.quick_switcher_all_files.push(picker::QuickSwitcherEntry {
-            path: path.to_path_buf(),
-            name: file_name_str(path).to_string(),
-            open: false,
-        });
+    pub(crate) fn add_entry(&mut self, path: &Path) {
+        self.quick_switcher_all_files
+            .push(picker::QuickSwitcherEntry {
+                path: path.to_path_buf(),
+                name: file_name_str(path).to_string(),
+                open: false,
+            });
         self.quick_switcher_all_files
             .sort_by_key(|a| a.name.to_lowercase());
     }
 
-    pub fn remove_entry(&mut self, path: &Path) {
+    pub(crate) fn remove_entry(&mut self, path: &Path) {
         self.quick_switcher_all_files.retain(|e| e.path != path);
     }
 
-    pub fn rename_entry(&mut self, old_path: &Path, new_path: &Path) {
+    pub(crate) fn rename_entry(&mut self, old_path: &Path, new_path: &Path) {
         self.remove_entry(old_path);
         self.add_entry(new_path);
     }
 
-    pub fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
+    pub(crate) fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
@@ -108,10 +111,17 @@ impl Palette {
                 .map(|e| e.search(&query))
                 .unwrap_or_default()
         };
-        self.item_sizes = Rc::new(vec![size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT)); self.search_results.len()]);
+        self.item_sizes = Rc::new(vec![
+            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
+            self.search_results.len()
+        ]);
     }
 
-    pub fn refresh_quick_switcher(&mut self, engine: &Option<Arc<SearchEngine>>, open_files: &[PathBuf]) {
+    pub(crate) fn refresh_quick_switcher(
+        &mut self,
+        engine: &Option<Arc<SearchEngine>>,
+        open_files: &[PathBuf],
+    ) {
         if let Some(engine) = engine {
             self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
         }
@@ -130,7 +140,7 @@ impl Palette {
         ]);
     }
 
-    pub fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
+    pub(crate) fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
         self.quick_switcher_entries =
             picker::filter(&self.quick_switcher_all_files, open_files, &query);
         self.item_sizes = Rc::new(vec![
@@ -139,7 +149,7 @@ impl Palette {
         ]);
     }
 
-    pub fn scroll_to(&mut self, index: usize) {
+    pub(crate) fn scroll_to(&mut self, index: usize) {
         self.scroll_handle
             .scroll_to_item(index, ScrollStrategy::Nearest);
     }
@@ -233,7 +243,10 @@ impl Palette {
         .h(px(PALETTE_MAX_HEIGHT))
     }
 
-    pub fn render_overlay(&self, cx: &mut Context<DatalithView>) -> impl IntoElement + use<> {
+    pub(crate) fn render_overlay(
+        &self,
+        cx: &mut Context<DatalithView>,
+    ) -> impl IntoElement + use<> {
         let input = self.input.clone();
         let results = self.render_results(cx);
 
@@ -302,7 +315,7 @@ impl Palette {
             )
     }
 
-    pub fn input_subscription(
+    pub(crate) fn input_subscription(
         input: Entity<InputState>,
         window: &mut Window,
         cx: &mut Context<DatalithView>,
@@ -368,7 +381,7 @@ impl Palette {
         )
     }
 
-    pub fn focus_input(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
+    pub(crate) fn focus_input(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
         if let Some(from) = self.switching_from.take() {
             let current = self.input.read(cx).value();
             match from {

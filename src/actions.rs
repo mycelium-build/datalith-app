@@ -34,7 +34,7 @@ macro_rules! with_view {
     };
 }
 
-pub fn open_vault(_: &OpenVault, cx: &mut App) {
+pub(crate) fn open_vault(_: &OpenVault, cx: &mut App) {
     let rx = cx.prompt_for_paths(PathPromptOptions {
         files: false,
         directories: true,
@@ -56,7 +56,7 @@ pub fn open_vault(_: &OpenVault, cx: &mut App) {
     .detach();
 }
 
-pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
+pub(crate) fn toggle_search(_: &ToggleSearch, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.palette.open {
             view.palette.close();
@@ -72,7 +72,7 @@ pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
     });
 }
 
-pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
+pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.palette.open {
             view.palette.close();
@@ -92,14 +92,14 @@ pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
     });
 }
 
-pub fn close_palette(_: &ClosePalette, cx: &mut App) {
+pub(crate) fn close_palette(_: &ClosePalette, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.palette.close();
         cx.notify();
     });
 }
 
-pub fn handle_new_file(_: &NewFile, cx: &mut App) {
+pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -118,7 +118,7 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
     });
 }
 
-pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
+pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -135,7 +135,7 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     });
 }
 
-pub fn handle_rename(_: &Rename, cx: &mut App) {
+pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -148,7 +148,7 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
     });
 }
 
-pub fn handle_delete(_: &Delete, cx: &mut App) {
+pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -175,7 +175,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
     });
 }
 
-pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
+pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -191,7 +191,7 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     });
 }
 
-pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
+pub(crate) fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -204,7 +204,7 @@ pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     });
 }
 
-pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
+pub(crate) fn handle_copy_path(_: &CopyPath, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -217,21 +217,21 @@ pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
     });
 }
 
-pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
+pub(crate) fn handle_close_tab(_: &CloseTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.close_active_tab(cx);
         cx.notify();
     });
 }
 
-pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
+pub(crate) fn handle_new_tab(_: &NewTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.new_empty_tab(cx);
         cx.notify();
     });
 }
 
-pub fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
+pub(crate) fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.focus_sidebar_requested = true;
         cx.notify();

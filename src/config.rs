@@ -6,10 +6,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default, Clone)]
-pub struct Config {
-    pub last_folder: Option<String>,
+pub(crate) struct Config {
+    pub(crate) last_folder: Option<String>,
     #[serde(default)]
-    pub recent_vaults: Vec<String>,
+    pub(crate) recent_vaults: Vec<String>,
 }
 
 fn config_file() -> PathBuf {
@@ -63,18 +63,18 @@ fn save_config(config: &Config) -> Result<()> {
     flush_to_disk(config)
 }
 
-pub fn save_last_folder(path: &Path) -> Result<()> {
+pub(crate) fn save_last_folder(path: &Path) -> Result<()> {
     let mut config = get_config();
     config.last_folder = Some(path.to_string_lossy().to_string());
     save_config(&config)
 }
 
-pub fn load_last_folder() -> Option<PathBuf> {
+pub(crate) fn load_last_folder() -> Option<PathBuf> {
     let config = get_config();
     config.last_folder.map(PathBuf::from).filter(|p| p.is_dir())
 }
 
-pub fn add_recent_vault(path: &Path) -> Result<()> {
+pub(crate) fn add_recent_vault(path: &Path) -> Result<()> {
     let mut config = get_config();
     let path_str = path.to_string_lossy().to_string();
     config.recent_vaults.retain(|v| v != &path_str);
@@ -83,7 +83,7 @@ pub fn add_recent_vault(path: &Path) -> Result<()> {
     save_config(&config)
 }
 
-pub fn load_recent_vaults() -> Vec<PathBuf> {
+pub(crate) fn load_recent_vaults() -> Vec<PathBuf> {
     let config = get_config();
     config
         .recent_vaults
