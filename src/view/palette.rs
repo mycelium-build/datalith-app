@@ -1,6 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
@@ -35,7 +33,7 @@ pub(crate) struct Palette {
     pub(crate) search_results: Vec<PathBuf>,
     pub(crate) qs_query: SharedString,
     pub(crate) quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
-    item_sizes: Rc<Vec<Size<Pixels>>>,
+    item_sizes: Vec<Size<Pixels>>,
     scroll_handle: VirtualListScrollHandle,
     quick_switcher_all_files: Vec<picker::QuickSwitcherEntry>,
 }
@@ -52,7 +50,7 @@ impl Palette {
             input: cx.new(|cx| InputState::new(window, cx).placeholder("Search files...")),
             selected: None,
             scroll_handle: VirtualListScrollHandle::new(),
-            item_sizes: Rc::new(Vec::new()),
+            item_sizes: Vec::new(),
             search_results: Vec::new(),
             quick_switcher_entries: Vec::new(),
             quick_switcher_all_files: Vec::new(),
@@ -69,13 +67,14 @@ impl Palette {
         } else {
             None
         };
+        self.item_sizes.clear();
     }
 
     pub(crate) fn close(&mut self) {
         self.open = false;
     }
 
-    pub(crate) fn set_root(&mut self, engine: &Option<Arc<SearchEngine>>) {
+    pub(crate) fn set_root(&mut self, engine: Option<&SearchEngine>) {
         if let Some(engine) = engine {
             self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
         }
@@ -101,25 +100,24 @@ impl Palette {
         self.add_entry(new_path);
     }
 
-    pub(crate) fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
+    pub(crate) fn search(&mut self, engine: Option<&SearchEngine>, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
             engine
-                .as_ref()
                 .map(|e| e.search(&query))
                 .unwrap_or_default()
         };
-        self.item_sizes = Rc::new(vec![
+        self.item_sizes = vec![
             size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
             self.search_results.len()
-        ]);
+        ];
     }
 
     pub(crate) fn refresh_quick_switcher(
         &mut self,
-        engine: &Option<Arc<SearchEngine>>,
+        engine: Option<&SearchEngine>,
         open_files: &[PathBuf],
     ) {
         if let Some(engine) = engine {
@@ -134,19 +132,19 @@ impl Palette {
         results.sort_by_key(|a| a.name.to_lowercase());
 
         self.quick_switcher_entries = results;
-        self.item_sizes = Rc::new(vec![
+        self.item_sizes = vec![
             size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
             self.quick_switcher_entries.len()
-        ]);
+        ];
     }
 
     pub(crate) fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
         self.quick_switcher_entries =
             picker::filter(&self.quick_switcher_all_files, open_files, &query);
-        self.item_sizes = Rc::new(vec![
+        self.item_sizes = vec![
             size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
             self.quick_switcher_entries.len()
-        ]);
+        ];
     }
 
     pub(crate) fn scroll_to(&mut self, index: usize) {
@@ -162,7 +160,7 @@ impl Palette {
         v_virtual_list(
             entity,
             "palette-results",
-            item_sizes,
+            item_sizes.into(),
             move |view, visible_range, _, cx| {
                 let selected_idx = view.palette.selected;
                 visible_range
@@ -335,8 +333,7 @@ impl Palette {
                         match view.palette.kind {
                             PaletteKind::Search => {
                                 view.palette.search_query = value.clone();
-                                let engine = view.search_engine.clone();
-                                view.palette.search(&engine, value);
+                                view.palette.search(view.search_engine.as_ref(), value);
                             }
                             PaletteKind::QuickSwitcher => {
                                 view.palette.qs_query = value.clone();

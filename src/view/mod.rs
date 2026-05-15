@@ -6,7 +6,6 @@ pub(crate) mod tabs;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::*;
@@ -65,7 +64,7 @@ pub struct DatalithView {
     pub(crate) open_files: Vec<OpenFile>,
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) active_tab: usize,
-    pub(crate) search_engine: Option<Arc<SearchEngine>>,
+    pub(crate) search_engine: Option<SearchEngine>,
     pub(crate) palette: Palette,
     _palette_sub: Subscription,
     pub(crate) context_menu_target: Option<PathBuf>,
@@ -166,14 +165,14 @@ impl DatalithView {
         });
 
         self.search_engine = match SearchEngine::new(&path) {
-            Ok(engine) => Some(Arc::new(engine)),
+            Ok(engine) => Some(engine),
             Err(e) => {
                 eprintln!("Failed to build search index: {e}");
                 None
             }
         };
 
-        self.palette.set_root(&self.search_engine);
+        self.palette.set_root(self.search_engine.as_ref());
 
         cx.notify();
     }
