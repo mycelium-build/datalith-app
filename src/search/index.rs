@@ -3,13 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tantivy::{
-    self, DocAddress, Index, IndexWriter, TantivyDocument, Term, collector::TopDocs, doc,
+    self, DocAddress, Index, IndexWriter, TantivyDocument, Term, doc,
     schema::*,
 };
-
-use super::query::build_query;
-
-pub const MAX_SEARCH_RESULTS: usize = 25;
 
 pub struct Indexer {
     index: Index,
@@ -70,34 +66,20 @@ impl Indexer {
         })
     }
 
-    pub fn search(&self, query_str: &str) -> Vec<PathBuf> {
-        let reader = match self.index.reader() {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
-        };
-        let searcher = reader.searcher();
-        let query = build_query(query_str, self.name_field, self.content_field);
-        let top_docs = match searcher.search(
-            &query,
-            &TopDocs::with_limit(MAX_SEARCH_RESULTS).order_by_score(),
-        ) {
-            Ok(docs) => docs,
-            Err(_) => return Vec::new(),
-        };
+    pub(crate) fn index(&self) -> &Index {
+        &self.index
+    }
 
-        let mut results = Vec::new();
-        for (_score, doc_address) in top_docs {
-            if let Ok(doc) = searcher.doc::<TantivyDocument>(doc_address) {
-                if let Some(path) = doc
-                    .get_first(self.path_field)
-                    .and_then(|v| v.as_str())
-                    .map(PathBuf::from)
-                {
-                    results.push(path);
-                }
-            }
-        }
-        results
+    pub(crate) fn name_field(&self) -> Field {
+        self.name_field
+    }
+
+    pub(crate) fn content_field(&self) -> Field {
+        self.content_field
+    }
+
+    pub(crate) fn path_field(&self) -> Field {
+        self.path_field
     }
 
     pub fn add_file(&self, path: &Path) -> tantivy::Result<()> {

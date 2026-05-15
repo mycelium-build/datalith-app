@@ -108,7 +108,7 @@ impl Palette {
         } else {
             engine
                 .as_ref()
-                .map(|e| e.indexer.search(&query))
+                .map(|e| e.search(&query))
                 .unwrap_or_default()
         };
         self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); self.search_results.len()]);
