@@ -43,6 +43,53 @@ impl Render for DragFile {
 }
 
 impl DatalithView {
+    pub(crate) fn commit_rename(&mut self, cx: &mut Context<Self>) {
+        if let (Some(ref rename_state), Some(ref target)) = (self.rename_state.clone(), self.rename_target.clone()) {
+            let new_name = rename_state.read(cx).value().to_string();
+            let mut final_path = target.clone();
+            if !new_name.is_empty() {
+                let old_ext = if !target.is_dir() {
+                    target
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .and_then(|name| {
+                            name.rfind('.')
+                                .and_then(|dot| if dot > 0 { Some(&name[dot..]) } else { None })
+                                .map(|e| e.to_string())
+                        })
+                } else {
+                    None
+                };
+                let mut name = new_name;
+                if let Some(ref ext) = old_ext
+                    && !name.contains('.')
+                {
+                    name.push_str(ext);
+                }
+                if let Some(parent) = target.parent() {
+                    let candidate = parent.join(&name);
+                    if candidate != *target {
+                        final_path = fs_ops::unique_name(parent, &name);
+                        let _ = std::fs::rename(&target, &final_path);
+                        self.track_file_rename(&target, &final_path);
+                        for open_file in &mut self.open_files {
+                            if open_file.path == *target {
+                                open_file.path = final_path.clone();
+                            }
+                        }
+                    }
+                }
+            }
+            if self.pending_open.as_deref() == Some(target.as_path()) {
+                self.pending_open = Some(final_path);
+            }
+        }
+        self.rename_target = None;
+        self.rename_state = None;
+        self._rename_sub = None;
+        self.refresh_tree(cx);
+    }
+
     pub(crate) fn render_sidebar(
         &mut self,
         window: &mut Window,
@@ -85,10 +132,7 @@ impl DatalithView {
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                     match event.keystroke.key.as_str() {
                         "escape" if this.rename_target.is_some() => {
-                            this.rename_target = None;
-                            this.rename_state = None;
-                            this._rename_sub = None;
-                            cx.notify();
+                            this.commit_rename(cx);
                         }
                         "enter" => {
                             let (folder_id, file_path) = {
@@ -200,63 +244,17 @@ impl DatalithView {
 
         let current = file_name_str(target).to_string();
 
-        let old_ext = if !target.is_dir() {
-            target
-                .file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|name| {
-                    name.rfind('.')
-                        .and_then(|dot| if dot > 0 { Some(&name[dot..]) } else { None })
-                        .map(|e| e.to_string())
-                })
-        } else {
-            None
-        };
-
         let state = cx.new(|cx| InputState::new(window, cx).default_value(current.as_str()));
-        let dir = target.parent().map(|p| p.to_path_buf());
-        let target_clone = target.clone();
 
         self._rename_sub = Some(cx.subscribe_in(
             &state,
             window,
-            move |this, input, event, _window, cx| match event {
+            move |this, _input, event, _window, cx| match event {
                 InputEvent::PressEnter { .. } => {
-                    let mut new_name = input.read(cx).value().to_string();
-                    let mut final_path = target_clone.clone();
-                    if !new_name.is_empty() {
-                        if let Some(ref ext) = old_ext
-                            && !new_name.contains('.')
-                        {
-                            new_name.push_str(ext);
-                        }
-                        if let Some(parent) = &dir {
-                            let candidate = parent.join(&new_name);
-                            if candidate != target_clone {
-                                final_path = fs_ops::unique_name(parent, &new_name);
-                                let _ = std::fs::rename(&target_clone, &final_path);
-                                this.track_file_rename(&target_clone, &final_path);
-                                for open_file in &mut this.open_files {
-                                    if open_file.path == target_clone {
-                                        open_file.path = final_path.clone();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if this.pending_open.as_deref() == Some(target_clone.as_path()) {
-                        this.pending_open = Some(final_path);
-                    }
-                    this.rename_target = None;
-                    this.rename_state = None;
-                    this._rename_sub = None;
-                    this.refresh_tree(cx);
+                    this.commit_rename(cx);
                 }
                 InputEvent::Blur => {
-                    this.rename_target = None;
-                    this.rename_state = None;
-                    this._rename_sub = None;
-                    cx.notify();
+                    this.commit_rename(cx);
                 }
                 _ => {}
             },

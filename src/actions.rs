@@ -110,6 +110,7 @@ pub(crate) fn close_palette(_: &ClosePalette, cx: &mut App) {
 
 pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.commit_rename(cx);
         let target = view
             .context_menu_target
             .take()
@@ -129,6 +130,7 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
 
 pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.commit_rename(cx);
         let target = view
             .context_menu_target
             .take()
@@ -146,6 +148,7 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 
 pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.commit_rename(cx);
         let target = view
             .context_menu_target
             .take()
@@ -159,6 +162,7 @@ pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
 
 pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.commit_rename(cx);
         let target = view
             .context_menu_target
             .take()
@@ -186,6 +190,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
 
 pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.commit_rename(cx);
         let target = view
             .context_menu_target
             .take()
