@@ -75,6 +75,22 @@ pub struct DatalithView {
     pub(crate) last_sidebar_selection: Option<PathBuf>,
 }
 
+fn build_vault_entries() -> Vec<VaultEntry> {
+    let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
+        .into_iter()
+        .map(|p| {
+            let path: SharedString = p.to_string_lossy().to_string().into();
+            let name: SharedString = file_name_str(&p).into();
+            VaultEntry::Vault { path, name }
+        })
+        .collect();
+    let mut items = recent_vaults;
+    items.push(VaultEntry::OpenNew(SharedString::from(
+        crate::consts::VAULT_SELECT_MARKER,
+    )));
+    items
+}
+
 impl DatalithView {
     #[must_use]
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -83,20 +99,8 @@ impl DatalithView {
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
-        let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
-            .into_iter()
-            .map(|p| {
-                let path: SharedString = p.to_string_lossy().to_string().into();
-                let name: SharedString = file_name_str(&p).into();
-                VaultEntry::Vault { path, name }
-            })
-            .collect();
-        let mut items = recent_vaults;
-        items.push(VaultEntry::OpenNew(SharedString::from(
-            crate::consts::VAULT_SELECT_MARKER,
-        )));
-
-        let vault_select_state = cx.new(|cx| SelectState::new(items, None, window, cx));
+        let vault_select_state =
+            cx.new(|cx| SelectState::new(build_vault_entries(), None, window, cx));
 
         let vault_select_sub = cx.subscribe_in(
             &vault_select_state,
@@ -168,20 +172,9 @@ impl DatalithView {
     }
 
     pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
-            .into_iter()
-            .map(|p| {
-                let path: SharedString = p.to_string_lossy().to_string().into();
-                let name: SharedString = file_name_str(&p).into();
-                VaultEntry::Vault { path, name }
-            })
-            .collect();
-        let mut items = recent_vaults;
-        items.push(VaultEntry::OpenNew(SharedString::from(
-            crate::consts::VAULT_SELECT_MARKER,
-        )));
-        self.vault_select_state
-            .update(cx, |state, cx| state.set_items(items, window, cx));
+        self.vault_select_state.update(cx, |state, cx| {
+            state.set_items(build_vault_entries(), window, cx)
+        });
         self.pending_vault_refresh = false;
     }
 
