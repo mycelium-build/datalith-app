@@ -218,6 +218,7 @@ pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
         if let Some(target) = target {
             if let Ok(duplicated) = fs_ops::duplicate_target(&target) {
                 view.track_new_file(&duplicated);
+                view.pending_open = Some(duplicated);
             }
             view.refresh_tree(cx);
         }
