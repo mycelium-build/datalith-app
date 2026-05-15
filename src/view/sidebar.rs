@@ -69,7 +69,7 @@ impl DatalithView {
             .flex_col()
             .w(px(SIDEBAR_WIDTH))
             .h_full()
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().tab_bar)
             .border_r_1()
             .border_color(cx.theme().border)
             .track_focus(&self.sidebar_focus_handle)
