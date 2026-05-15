@@ -127,33 +127,22 @@ impl DatalithView {
                 })
             })
             .drag_over::<DragFile>(|style, _drag, _window, cx| style.bg(cx.theme().drop_target))
-            .on_drop({
-                let view = view.clone();
-                let root_path = self.root_path.clone();
-                move |drag: &DragFile, window, cx| {
-                    if let (Some(root), Some(name)) = (&root_path, drag.path.file_name()) {
-                        let new_path = root.join(name);
-                        if new_path != drag.path {
-                            let old_path = drag.path.clone();
-                            let _ = std::fs::rename(&old_path, &new_path);
-                            view.update(cx, |v, _cx| {
-                                v.track_file_rename(&old_path, &new_path);
-                                for f in &mut v.open_files {
-                                    if f.path == old_path {
-                                        f.path = new_path.clone();
-                                    }
-                                }
-                            });
+            .on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
+                if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
+                    let new_path = root.join(name);
+                    if new_path != drag.path {
+                        let old_path = drag.path.clone();
+                        let _ = std::fs::rename(&old_path, &new_path);
+                        this.track_file_rename(&old_path, &new_path);
+                        for f in &mut this.open_files {
+                            if f.path == old_path {
+                                f.path = new_path.clone();
+                            }
                         }
                     }
-                    let v = view.clone();
-                    window.defer(cx, move |_window, cx| {
-                        v.update(cx, |view, cx| {
-                            view.refresh_tree(cx);
-                        });
-                    });
                 }
-            })
+                this.refresh_tree(cx);
+            }))
             .child(self.render_sidebar_header(cx))
             .child(
                 div()
@@ -393,16 +382,14 @@ impl DatalithView {
 
     fn collapse_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path {
-            let mut expanded_ids = self.tree_state.read(cx).expanded_ids();
+            let mut expanded_ids: Vec<_> = self.tree_state.read(cx).expanded_ids().clone();
             expanded_ids.retain(|eid| eid != id);
-            let mut items = build_file_items(root);
-            for item in &mut items {
-                if expanded_ids.contains(&item.id) {
-                    item.set_expanded(true);
-                }
-            }
+            let items = build_file_items(root);
             self.tree_state.update(cx, |state, cx| {
                 state.set_items(items, cx);
+                for eid in &expanded_ids {
+                    state.expand_by_id(eid, cx);
+                }
             });
             let item = tree::TreeItem::new(id.clone(), SharedString::default());
             self.tree_state.update(cx, |state, cx| {
@@ -526,7 +513,7 @@ impl DatalithView {
                             })
                             .on_drop(cx.listener({
                                 let target_dir = drag_path.clone();
-                                move |this, drag: &DragFile, window, cx| {
+                                move |this, drag: &DragFile, _window, cx| {
                                     if let Some(name) = drag.path.file_name() {
                                         let new_path = target_dir.join(name);
                                         if new_path != drag.path {
@@ -540,15 +527,7 @@ impl DatalithView {
                                             }
                                         }
                                     }
-                                    window.defer(cx, move |_window, cx| {
-                                        cx.update_global(|state: &mut crate::app::AppState, cx| {
-                                            if let Some(view) = &state.view {
-                                                view.update(cx, |view, cx| {
-                                                    view.refresh_tree(cx);
-                                                });
-                                            }
-                                        });
-                                    });
+                                    this.refresh_tree(cx);
                                 }
                             }));
                     }
