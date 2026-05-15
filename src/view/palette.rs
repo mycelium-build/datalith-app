@@ -308,7 +308,12 @@ impl Palette {
                                     }
                                 },
                             ))
-                            .child(Input::new(&input))
+                            .child(
+                                div()
+                                    .border_b(px(BORDER_WIDTH))
+                                    .border_color(cx.theme().border)
+                                    .child(Input::new(&input).appearance(false)),
+                            )
                             .child(results),
                     ),
             )
