@@ -134,10 +134,9 @@ impl DatalithView {
             .on_key_down({
                 let tree_state = tree_state.clone();
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                    let handled = match event.keystroke.key.as_str() {
+                    match event.keystroke.key.as_str() {
                         "escape" if this.rename_target.is_some() => {
                             this.commit_rename(cx);
-                            true
                         }
                         "enter" => {
                             let (folder_id, file_path) = {
@@ -166,30 +165,23 @@ impl DatalithView {
                                 let new_tab = event.keystroke.modifiers.platform;
                                 this.open_file(path, new_tab, window, cx);
                             }
-                            true
                         }
                         "up" => {
                             this.navigate_tree_up(cx);
-                            true
                         }
                         "down" => {
                             this.navigate_tree_down(cx);
-                            true
                         }
                         "left" => {
                             this.navigate_tree_left(cx);
-                            true
                         }
                         "right" => {
                             this.navigate_tree_right(cx);
-                            true
                         }
-                        _ => false,
+                        _ => {
+                            cx.propagate();
+                        }
                     };
-
-                    if !handled {
-                        cx.propagate();
-                    }
                 })
             })
             .on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
