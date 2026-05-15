@@ -411,36 +411,6 @@ impl DatalithView {
         }
     }
 
-    fn handle_drop_on_folder(
-        view: &Entity<DatalithView>,
-        target_dir: &PathBuf,
-        drag: &DragFile,
-        window: &mut Window,
-        cx: &mut Context<DatalithView>,
-    ) {
-        if let Some(name) = drag.path.file_name() {
-            let new_path = target_dir.join(name);
-            if new_path != drag.path {
-                let old_path = drag.path.clone();
-                let _ = std::fs::rename(&old_path, &new_path);
-                view.update(cx, |v, _cx| {
-                    v.track_file_rename(&old_path, &new_path);
-                    for f in &mut v.open_files {
-                        if f.path == old_path {
-                            f.path = new_path.clone();
-                        }
-                    }
-                });
-            }
-        }
-        let view = view.clone();
-        window.defer(cx, move |_window, cx| {
-            view.update(cx, |view, cx| {
-                view.refresh_tree(cx);
-            });
-        });
-    }
-
     fn render_file_tree(
         &self,
         cx: &mut Context<Self>,
@@ -513,7 +483,6 @@ impl DatalithView {
                         );
 
                     if is_folder {
-                        let v_for_drop = v.clone();
                         list_item = list_item
                             .drag_over::<DragFile>({
                                 let folder_path = drag_path.clone();
@@ -556,10 +525,30 @@ impl DatalithView {
                                 }
                             })
                             .on_drop(cx.listener({
-                                let v2 = v_for_drop.clone();
                                 let target_dir = drag_path.clone();
-                                move |_this, drag: &DragFile, window, cx| {
-                                    Self::handle_drop_on_folder(&v2, &target_dir, drag, window, cx);
+                                move |this, drag: &DragFile, window, cx| {
+                                    if let Some(name) = drag.path.file_name() {
+                                        let new_path = target_dir.join(name);
+                                        if new_path != drag.path {
+                                            let old_path = drag.path.clone();
+                                            let _ = std::fs::rename(&old_path, &new_path);
+                                            this.track_file_rename(&old_path, &new_path);
+                                            for f in &mut this.open_files {
+                                                if f.path == old_path {
+                                                    f.path = new_path.clone();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    window.defer(cx, move |_window, cx| {
+                                        cx.update_global(|state: &mut crate::app::AppState, cx| {
+                                            if let Some(view) = &state.view {
+                                                view.update(cx, |view, cx| {
+                                                    view.refresh_tree(cx);
+                                                });
+                                            }
+                                        });
+                                    });
                                 }
                             }));
                     }
