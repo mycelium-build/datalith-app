@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
+use gpui_component::ThemeMode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -10,6 +11,8 @@ pub(crate) struct Config {
     pub(crate) last_folder: Option<String>,
     #[serde(default)]
     pub(crate) recent_vaults: Vec<String>,
+    #[serde(default)]
+    pub(crate) theme_mode: Option<String>,
 }
 
 #[must_use]
@@ -97,4 +100,21 @@ pub(crate) fn load_recent_vaults() -> Vec<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_dir())
         .collect()
+}
+
+pub(crate) fn save_theme_mode(mode: ThemeMode) -> Result<()> {
+    let mut config = get_config();
+    config.theme_mode = Some(match mode {
+        ThemeMode::Light => "light".to_string(),
+        ThemeMode::Dark => "dark".to_string(),
+    });
+    save_config(&config)
+}
+
+pub(crate) fn load_theme_mode() -> Option<ThemeMode> {
+    let config = get_config();
+    config.theme_mode.as_deref().map(|s| match s {
+        "dark" => ThemeMode::Dark,
+        _ => ThemeMode::Light,
+    })
 }

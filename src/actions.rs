@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_component::{Theme, ThemeMode};
 use std::path::PathBuf;
 
 use crate::app::AppState;
@@ -22,7 +23,8 @@ actions!(
         CopyPath,
         CloseTab,
         NewTab,
-        FocusSidebar
+        FocusSidebar,
+        ToggleTheme,
     ]
 );
 
@@ -234,4 +236,15 @@ pub(crate) fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
         view.focus_sidebar_requested = true;
         cx.notify();
     });
+}
+
+pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
+    let current_mode = Theme::global(cx).mode;
+    let new_mode = match current_mode {
+        ThemeMode::Light => ThemeMode::Dark,
+        ThemeMode::Dark => ThemeMode::Light,
+    };
+    let _ = crate::config::save_theme_mode(new_mode);
+    Theme::change(new_mode, None, cx);
+    cx.refresh_windows();
 }

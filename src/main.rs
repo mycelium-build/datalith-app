@@ -9,11 +9,11 @@ mod utils;
 mod view;
 
 use gpui::*;
-use gpui_component::Root;
+use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 
 use crate::actions::*;
 use crate::app::AppState;
-use crate::config::load_last_folder;
+use crate::config::{load_last_folder, load_theme_mode};
 use crate::view::DatalithView;
 
 fn main() {
@@ -21,6 +21,29 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
+
+        let registry = ThemeRegistry::global(cx);
+        let themes = registry.themes();
+        let mut light_config = None;
+        let mut dark_config = None;
+        for (name, config) in themes {
+            if name.to_lowercase().contains("ayu") {
+                if config.mode == ThemeMode::Light {
+                    light_config = Some(config.clone());
+                } else {
+                    dark_config = Some(config.clone());
+                }
+            }
+        }
+        if let Some(light_config) = light_config {
+            Theme::global_mut(cx).light_theme = light_config;
+        }
+        if let Some(dark_config) = dark_config {
+            Theme::global_mut(cx).dark_theme = dark_config;
+        }
+
+        let saved_mode = load_theme_mode().unwrap_or(ThemeMode::Light);
+        Theme::change(saved_mode, None, cx);
 
         cx.set_global(AppState { view: None });
         cx.on_action(open_vault);
@@ -37,6 +60,7 @@ fn main() {
         cx.on_action(handle_close_tab);
         cx.on_action(handle_new_tab);
         cx.on_action(handle_focus_sidebar);
+        cx.on_action(toggle_theme);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -58,6 +82,8 @@ fn main() {
                 MenuItem::action("New Tab", NewTab),
                 MenuItem::action("Close Tab", CloseTab),
                 MenuItem::action("Focus Sidebar", FocusSidebar),
+                MenuItem::separator(),
+                MenuItem::action("Toggle Dark Mode", ToggleTheme),
             ]),
         ]);
         cx.bind_keys([
@@ -73,6 +99,7 @@ fn main() {
             KeyBinding::new("cmd-w", CloseTab, None),
             KeyBinding::new("cmd-t", NewTab, None),
             KeyBinding::new("cmd-0", FocusSidebar, None),
+            KeyBinding::new("cmd-shift-d", ToggleTheme, None),
         ]);
 
         let last_folder = load_last_folder();
