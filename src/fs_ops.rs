@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::consts::{DEFAULT_FILE_NAME, DEFAULT_FOLDER_NAME};
 
+#[must_use]
 pub(crate) fn parent_dir_for_target(target: &Path) -> PathBuf {
     if target.is_dir() {
         target.to_path_buf()
@@ -48,7 +49,8 @@ pub(crate) fn new_folder_from_target(target: &Path) -> Result<PathBuf> {
 
 pub(crate) fn delete_target(target: &Path) -> Result<()> {
     if target.is_dir() {
-        fs::remove_dir_all(target).with_context(|| format!("Failed to delete directory {:?}", target))?;
+        fs::remove_dir_all(target)
+            .with_context(|| format!("Failed to delete directory {:?}", target))?;
     } else {
         fs::remove_file(target).with_context(|| format!("Failed to delete file {:?}", target))?;
     }
@@ -58,15 +60,23 @@ pub(crate) fn delete_target(target: &Path) -> Result<()> {
 pub(crate) fn duplicate_target(target: &Path) -> Result<PathBuf> {
     if target.is_dir() {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
-        let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+        let name = target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("copy");
         let new_path = unique_name(parent, name);
-        copy_dir(target, &new_path).with_context(|| format!("Failed to duplicate dir {:?}", target))?;
+        copy_dir(target, &new_path)
+            .with_context(|| format!("Failed to duplicate dir {:?}", target))?;
         Ok(new_path)
     } else {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
-        let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+        let name = target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("copy");
         let new_path = unique_name(parent, name);
-        fs::copy(target, &new_path).with_context(|| format!("Failed to duplicate file {:?}", target))?;
+        fs::copy(target, &new_path)
+            .with_context(|| format!("Failed to duplicate file {:?}", target))?;
         Ok(new_path)
     }
 }

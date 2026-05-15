@@ -15,9 +15,7 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
-use crate::consts::{
-    DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX,
-};
+use crate::consts::{DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX};
 use crate::filetree::build_file_items;
 use crate::fs_ops;
 use crate::utils::file_name_str;
@@ -157,10 +155,11 @@ impl DatalithView {
                 }
             })
             .child(self.render_sidebar_header(cx))
-            .child(div().flex_1().child(self.render_file_tree(
-                cx,
-                &self.tree_state,
-            )))
+            .child(
+                div()
+                    .flex_1()
+                    .child(self.render_file_tree(cx, &self.tree_state)),
+            )
             .child(
                 div()
                     .border_t_1()
@@ -282,18 +281,15 @@ impl DatalithView {
 
     fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         SidebarHeader::new().p_2().child(
-            h_flex()
-                .w_full()
-                .justify_end()
-                .child(
-                    Button::new("search-trigger")
-                        .ghost()
-                        .icon(IconName::Search)
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.palette.open_as(PaletteKind::Search);
-                            cx.notify();
-                        })),
-                ),
+            h_flex().w_full().justify_end().child(
+                Button::new("search-trigger")
+                    .ghost()
+                    .icon(IconName::Search)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.palette.open_as(PaletteKind::Search);
+                        cx.notify();
+                    })),
+            ),
         )
     }
 
@@ -336,7 +332,9 @@ impl DatalithView {
     fn navigate_tree_up(&mut self, cx: &mut Context<Self>) {
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
-                let new_ix = if ix > 0 { ix - 1 } else {
+                let new_ix = if ix > 0 {
+                    ix - 1
+                } else {
                     let count = state.entry_count();
                     count.saturating_sub(1)
                 };
@@ -524,10 +522,14 @@ impl DatalithView {
                                 move |mut style, _drag, _window, cx| {
                                     style = style.bg(cx.theme().drop_target);
 
-                                    let should_expand = v_for_notify.update(cx, |view, _| {
-                                        match &view.drag_hover {
+                                    let should_expand =
+                                        v_for_notify.update(cx, |view, _| match &view.drag_hover {
                                             Some((path, instant)) if path == &folder_path => {
-                                                if instant.elapsed() > Duration::from_millis(DRAG_HOVER_EXPAND_DELAY_MS) {
+                                                if instant.elapsed()
+                                                    > Duration::from_millis(
+                                                        DRAG_HOVER_EXPAND_DELAY_MS,
+                                                    )
+                                                {
                                                     view.drag_hover = None;
                                                     true
                                                 } else {
@@ -535,17 +537,15 @@ impl DatalithView {
                                                 }
                                             }
                                             _ => {
-                                                view.drag_hover = Some((folder_path.clone(), Instant::now()));
+                                                view.drag_hover =
+                                                    Some((folder_path.clone(), Instant::now()));
                                                 false
                                             }
-                                        }
-                                    });
+                                        });
 
                                     if should_expand {
-                                        let id: SharedString = folder_path
-                                            .to_string_lossy()
-                                            .to_string()
-                                            .into();
+                                        let id: SharedString =
+                                            folder_path.to_string_lossy().to_string().into();
                                         tree_state.update(cx, |state, cx| {
                                             state.expand_by_id(&id, cx);
                                         });

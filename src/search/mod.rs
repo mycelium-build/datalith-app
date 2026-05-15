@@ -22,13 +22,18 @@ impl SearchEngine {
         Ok(Self { indexer })
     }
 
+    #[must_use]
     pub(crate) fn search(&self, query_str: &str) -> Vec<PathBuf> {
         let reader = match self.indexer.index().reader() {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
         let searcher = reader.searcher();
-        let query = build_query(query_str, self.indexer.name_field(), self.indexer.content_field());
+        let query = build_query(
+            query_str,
+            self.indexer.name_field(),
+            self.indexer.content_field(),
+        );
         let top_docs = match searcher.search(
             &query,
             &TopDocs::with_limit(MAX_SEARCH_RESULTS).order_by_score(),

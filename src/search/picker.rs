@@ -10,6 +10,7 @@ pub(crate) struct QuickSwitcherEntry {
     pub(crate) open: bool,
 }
 
+#[must_use]
 pub(crate) fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
     let mut entries: Vec<QuickSwitcherEntry> = indexer
         .all_paths()
@@ -27,6 +28,7 @@ pub(crate) fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> 
     entries
 }
 
+#[must_use]
 pub(crate) fn filter(
     all_files: &[QuickSwitcherEntry],
     open_files: &[PathBuf],

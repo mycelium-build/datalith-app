@@ -39,6 +39,7 @@ pub(crate) struct Palette {
 }
 
 impl Palette {
+    #[must_use]
     pub(crate) fn new(window: &mut Window, cx: &mut Context<DatalithView>) -> Self {
         Self {
             kind: PaletteKind::Search,

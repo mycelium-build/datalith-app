@@ -12,6 +12,7 @@ pub(crate) struct Config {
     pub(crate) recent_vaults: Vec<String>,
 }
 
+#[must_use]
 fn config_file() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_default()
@@ -21,6 +22,7 @@ fn config_file() -> PathBuf {
 
 static CONFIG_CACHE: Mutex<Option<Config>> = Mutex::new(None);
 
+#[must_use]
 fn get_cached() -> Option<Config> {
     CONFIG_CACHE.lock().unwrap().clone()
 }
@@ -42,6 +44,7 @@ fn flush_to_disk(config: &Config) -> Result<()> {
     Ok(())
 }
 
+#[must_use]
 fn load_from_disk() -> Config {
     fs::read_to_string(config_file())
         .ok()
@@ -49,6 +52,7 @@ fn load_from_disk() -> Config {
         .unwrap_or_default()
 }
 
+#[must_use]
 fn get_config() -> Config {
     if let Some(cached) = get_cached() {
         return cached;
@@ -69,6 +73,7 @@ pub(crate) fn save_last_folder(path: &Path) -> Result<()> {
     save_config(&config)
 }
 
+#[must_use]
 pub(crate) fn load_last_folder() -> Option<PathBuf> {
     let config = get_config();
     config.last_folder.map(PathBuf::from).filter(|p| p.is_dir())
@@ -83,6 +88,7 @@ pub(crate) fn add_recent_vault(path: &Path) -> Result<()> {
     save_config(&config)
 }
 
+#[must_use]
 pub(crate) fn load_recent_vaults() -> Vec<PathBuf> {
     let config = get_config();
     config

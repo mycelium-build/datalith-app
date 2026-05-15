@@ -76,6 +76,7 @@ pub struct DatalithView {
 }
 
 impl DatalithView {
+    #[must_use]
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(palette.input.clone(), window, cx);
@@ -193,6 +194,7 @@ impl DatalithView {
         self.pending_vault_refresh = false;
     }
 
+    #[must_use]
     pub(crate) fn resolve_target(&self, cx: &Context<Self>) -> Option<PathBuf> {
         self.tree_state
             .read(cx)

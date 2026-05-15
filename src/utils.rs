@@ -2,12 +2,14 @@ use std::path::Path;
 
 use crate::consts::{SUPPORTED_EXTENSIONS, UNKNOWN_NAME};
 
+#[must_use]
 pub(crate) fn file_name_str(path: &Path) -> &str {
     path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(UNKNOWN_NAME)
 }
 
+#[must_use]
 pub(crate) fn is_supported_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),

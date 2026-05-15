@@ -5,6 +5,7 @@ use gpui_component::tree::TreeItem;
 
 use crate::utils::file_name_str;
 
+#[must_use]
 pub(crate) fn build_file_items(path: &Path) -> Vec<TreeItem> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();

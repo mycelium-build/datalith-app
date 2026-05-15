@@ -73,18 +73,22 @@ impl Indexer {
         })
     }
 
+    #[must_use]
     pub(crate) fn index(&self) -> &Index {
         &self.index
     }
 
+    #[must_use]
     pub(crate) fn name_field(&self) -> Field {
         self.name_field
     }
 
+    #[must_use]
     pub(crate) fn content_field(&self) -> Field {
         self.content_field
     }
 
+    #[must_use]
     pub(crate) fn path_field(&self) -> Field {
         self.path_field
     }
@@ -121,6 +125,7 @@ impl Indexer {
         self.add_file(new_path)
     }
 
+    #[must_use]
     pub(crate) fn all_paths(&self) -> Vec<PathBuf> {
         let reader = match self.index.reader() {
             Ok(r) => r,
@@ -163,6 +168,7 @@ pub(crate) fn file_fingerprint(path: &Path) -> u64 {
     hasher.finish()
 }
 
+#[must_use]
 pub(crate) fn is_indexable(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
@@ -170,6 +176,7 @@ pub(crate) fn is_indexable(path: &Path) -> bool {
     )
 }
 
+#[must_use]
 pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
