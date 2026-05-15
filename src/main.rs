@@ -61,6 +61,15 @@ fn main() {
         cx.on_action(handle_new_tab);
         cx.on_action(handle_focus_sidebar);
         cx.on_action(toggle_theme);
+        cx.on_action(handle_select_tab_1);
+        cx.on_action(handle_select_tab_2);
+        cx.on_action(handle_select_tab_3);
+        cx.on_action(handle_select_tab_4);
+        cx.on_action(handle_select_tab_5);
+        cx.on_action(handle_select_tab_6);
+        cx.on_action(handle_select_tab_7);
+        cx.on_action(handle_select_tab_8);
+        cx.on_action(handle_select_tab_9);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -100,6 +109,15 @@ fn main() {
             KeyBinding::new("cmd-t", NewTab, None),
             KeyBinding::new("cmd-0", FocusSidebar, None),
             KeyBinding::new("cmd-shift-d", ToggleTheme, None),
+            KeyBinding::new("cmd-1", SelectTab1, None),
+            KeyBinding::new("cmd-2", SelectTab2, None),
+            KeyBinding::new("cmd-3", SelectTab3, None),
+            KeyBinding::new("cmd-4", SelectTab4, None),
+            KeyBinding::new("cmd-5", SelectTab5, None),
+            KeyBinding::new("cmd-6", SelectTab6, None),
+            KeyBinding::new("cmd-7", SelectTab7, None),
+            KeyBinding::new("cmd-8", SelectTab8, None),
+            KeyBinding::new("cmd-9", SelectTab9, None),
         ]);
 
         let last_folder = load_last_folder();

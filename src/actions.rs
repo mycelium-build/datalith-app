@@ -25,6 +25,15 @@ actions!(
         NewTab,
         FocusSidebar,
         ToggleTheme,
+        SelectTab1,
+        SelectTab2,
+        SelectTab3,
+        SelectTab4,
+        SelectTab5,
+        SelectTab6,
+        SelectTab7,
+        SelectTab8,
+        SelectTab9,
     ]
 );
 
@@ -247,4 +256,55 @@ pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
     let _ = crate::config::save_theme_mode(new_mode);
     Theme::change(new_mode, None, cx);
     cx.refresh_windows();
+}
+
+fn select_tab_index(index: usize, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if index < view.open_files.len() {
+            view.active_tab = index;
+            cx.notify();
+        }
+    });
+}
+
+pub(crate) fn handle_select_tab_1(_: &SelectTab1, cx: &mut App) {
+    select_tab_index(0, cx);
+}
+
+pub(crate) fn handle_select_tab_2(_: &SelectTab2, cx: &mut App) {
+    select_tab_index(1, cx);
+}
+
+pub(crate) fn handle_select_tab_3(_: &SelectTab3, cx: &mut App) {
+    select_tab_index(2, cx);
+}
+
+pub(crate) fn handle_select_tab_4(_: &SelectTab4, cx: &mut App) {
+    select_tab_index(3, cx);
+}
+
+pub(crate) fn handle_select_tab_5(_: &SelectTab5, cx: &mut App) {
+    select_tab_index(4, cx);
+}
+
+pub(crate) fn handle_select_tab_6(_: &SelectTab6, cx: &mut App) {
+    select_tab_index(5, cx);
+}
+
+pub(crate) fn handle_select_tab_7(_: &SelectTab7, cx: &mut App) {
+    select_tab_index(6, cx);
+}
+
+pub(crate) fn handle_select_tab_8(_: &SelectTab8, cx: &mut App) {
+    select_tab_index(7, cx);
+}
+
+pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        let index = view.open_files.len().saturating_sub(1);
+        if !view.open_files.is_empty() {
+            view.active_tab = index;
+            cx.notify();
+        }
+    });
 }
