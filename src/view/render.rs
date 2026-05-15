@@ -122,7 +122,7 @@ impl DatalithView {
             } else if let Some(ref active_state) = active_file.state {
                 div()
                     .flex_1()
-                    .child(Input::new(active_state).h_full().bordered(false))
+                    .child(Input::new(active_state).h_full().appearance(false))
                     .into_any_element()
             } else {
                 div().flex_1().into_any_element()
