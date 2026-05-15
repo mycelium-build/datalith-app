@@ -45,6 +45,19 @@ impl Render for DragFile {
 }
 
 impl DatalithView {
+    fn handle_file_move(&mut self, old_path: PathBuf, new_path: PathBuf, cx: &mut Context<Self>) {
+        if new_path != old_path {
+            let _ = std::fs::rename(&old_path, &new_path);
+            self.track_file_rename(&old_path, &new_path);
+            for f in &mut self.open_files {
+                if f.path == old_path {
+                    f.path = new_path.clone();
+                }
+            }
+        }
+        self.refresh_tree(cx);
+    }
+
     pub(crate) fn commit_rename(&mut self, cx: &mut Context<Self>) {
         if let (Some(ref rename_state), Some(ref target)) =
             (self.rename_state.clone(), self.rename_target.clone())
@@ -187,18 +200,8 @@ impl DatalithView {
             .on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
                 if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
                     let new_path = root.join(name);
-                    if new_path != drag.path {
-                        let old_path = drag.path.clone();
-                        let _ = std::fs::rename(&old_path, &new_path);
-                        this.track_file_rename(&old_path, &new_path);
-                        for f in &mut this.open_files {
-                            if f.path == old_path {
-                                f.path = new_path.clone();
-                            }
-                        }
-                    }
+                    this.handle_file_move(drag.path.clone(), new_path, cx);
                 }
-                this.refresh_tree(cx);
             }))
             .child(self.render_sidebar_header(cx))
             .child(
@@ -553,18 +556,8 @@ impl DatalithView {
                                 move |this, drag: &DragFile, _window, cx| {
                                     if let Some(name) = drag.path.file_name() {
                                         let new_path = target_dir.join(name);
-                                        if new_path != drag.path {
-                                            let old_path = drag.path.clone();
-                                            let _ = std::fs::rename(&old_path, &new_path);
-                                            this.track_file_rename(&old_path, &new_path);
-                                            for f in &mut this.open_files {
-                                                if f.path == old_path {
-                                                    f.path = new_path.clone();
-                                                }
-                                            }
-                                        }
+                                        this.handle_file_move(drag.path.clone(), new_path, cx);
                                     }
-                                    this.refresh_tree(cx);
                                 }
                             }));
                     }
