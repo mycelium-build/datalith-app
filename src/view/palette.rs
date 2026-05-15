@@ -8,7 +8,7 @@ use gpui_component::{
 };
 
 use crate::consts::{
-    MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH,
+    BORDER_WIDTH, MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH,
 };
 use crate::search::{SearchEngine, picker};
 use crate::utils::file_name_str;
@@ -265,7 +265,7 @@ impl Palette {
                 div()
                     .w(px(PALETTE_WIDTH))
                     .bg(cx.theme().background)
-                    .border_1()
+                    .border(px(BORDER_WIDTH))
                     .border_color(cx.theme().border)
                     .rounded_md()
                     .shadow_lg()

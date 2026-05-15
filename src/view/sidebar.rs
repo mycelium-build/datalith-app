@@ -15,7 +15,7 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
-use crate::consts::{DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX};
+use crate::consts::{BORDER_WIDTH, DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX};
 use crate::filetree::build_file_items;
 use crate::fs_ops;
 use crate::utils::file_name_str;
@@ -70,7 +70,7 @@ impl DatalithView {
             .w(px(SIDEBAR_WIDTH))
             .h_full()
             .bg(cx.theme().tab_bar)
-            .border_r_1()
+            .border_r(px(BORDER_WIDTH))
             .border_color(cx.theme().border)
             .track_focus(&self.sidebar_focus_handle)
             .on_mouse_down(
@@ -151,7 +151,7 @@ impl DatalithView {
             )
             .child(
                 div()
-                    .border_t_1()
+                    .border_t(px(BORDER_WIDTH))
                     .border_color(cx.theme().border)
                     .p_2()
                     .child(Select::new(&self.vault_select_state)),

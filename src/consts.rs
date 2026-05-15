@@ -18,3 +18,5 @@ pub(crate) const SIDEBAR_WIDTH: f32 = 260.0;
 pub(crate) const DRAG_HOVER_EXPAND_DELAY_MS: u64 = 800;
 pub(crate) const TREE_INDENT_PX: f32 = 16.0;
 pub(crate) const TREE_PADDING_PX: f32 = 12.0;
+
+pub(crate) const BORDER_WIDTH: f32 = 2.0;
