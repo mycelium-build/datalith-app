@@ -174,7 +174,7 @@ impl DatalithView {
             }
         };
 
-        self.palette.set_root(&path);
+        self.palette.set_root(&self.search_engine);
 
         cx.notify();
     }
@@ -232,6 +232,10 @@ impl DatalithView {
             self.active_tab = self.open_files.len() - 1;
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
+            let old_path = self.open_files[active].path.clone();
+            if !old_path.as_os_str().is_empty() {
+                self.track_file_edited(&old_path);
+            }
             self.open_files[active] = OpenFile {
                 path,
                 state: Some(state),
@@ -265,6 +269,10 @@ impl DatalithView {
     pub fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.open_files.len() {
             return;
+        }
+        let path = self.open_files[index].path.clone();
+        if !path.as_os_str().is_empty() {
+            self.track_file_edited(&path);
         }
         self.open_files.remove(index);
         if self.open_files.is_empty() {
@@ -347,7 +355,7 @@ impl DatalithView {
         }
     }
 
-    pub fn duplicate_target(&mut self, target: &Path) {
+    pub fn duplicate_target(&mut self, target: &Path) -> Option<PathBuf> {
         if target.is_dir() {
             let parent = target.parent().unwrap_or_else(|| Path::new("/"));
             let name = target
@@ -357,7 +365,9 @@ impl DatalithView {
             let new_path = Self::unique_name(parent, name);
             if let Err(e) = Self::copy_dir(target, &new_path) {
                 eprintln!("Failed to duplicate dir {:?}: {e}", target);
+                return None;
             }
+            Some(new_path)
         } else {
             let parent = target.parent().unwrap_or_else(|| Path::new("/"));
             let name = target
@@ -367,7 +377,9 @@ impl DatalithView {
             let new_path = Self::unique_name(parent, name);
             if let Err(e) = fs::copy(target, &new_path) {
                 eprintln!("Failed to duplicate file {:?}: {e}", target);
+                return None;
             }
+            Some(new_path)
         }
     }
 
@@ -440,6 +452,49 @@ impl DatalithView {
                 state.set_items(items, cx);
             });
             cx.notify();
+        }
+    }
+
+    pub fn track_new_file(&mut self, path: &Path) {
+        if let Some(ref engine) = self.search_engine {
+            let _ = engine.add_file(path);
+        }
+        self.palette.add_entry(path);
+    }
+
+    pub fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
+        if let Some(ref engine) = self.search_engine {
+            let _ = engine.rename_file(old_path, new_path);
+        }
+        self.palette.rename_entry(old_path, new_path);
+    }
+
+    fn remove_indexed_under(&mut self, root: &Path) {
+        if let Some(ref engine) = self.search_engine {
+            let prefix = root.to_string_lossy().to_string();
+            for path in engine.all_paths() {
+                if path.to_string_lossy().starts_with(&prefix) {
+                    let _ = engine.remove_file(&path);
+                    self.palette.remove_entry(&path);
+                }
+            }
+        }
+    }
+
+    pub fn track_file_delete(&mut self, path: &Path) {
+        if path.is_dir() {
+            self.remove_indexed_under(path);
+        } else {
+            if let Some(ref engine) = self.search_engine {
+                let _ = engine.remove_file(path);
+            }
+            self.palette.remove_entry(path);
+        }
+    }
+
+    pub fn track_file_edited(&mut self, path: &Path) {
+        if let Some(ref engine) = self.search_engine {
+            let _ = engine.add_file(path);
         }
     }
 }

@@ -71,8 +71,34 @@ impl Palette {
         self.open = false;
     }
 
-    pub fn set_root(&mut self, path: &Path) {
-        self.quick_switcher_all_files = picker::collect_files(path);
+    pub fn set_root(&mut self, engine: &Option<Arc<SearchEngine>>) {
+        if let Some(engine) = engine {
+            self.quick_switcher_all_files = picker::collect_from_engine(engine);
+        }
+    }
+
+    pub fn add_entry(&mut self, path: &Path) {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        self.quick_switcher_all_files.push(picker::QuickSwitcherEntry {
+            path: path.to_path_buf(),
+            name,
+            open: false,
+        });
+        self.quick_switcher_all_files
+            .sort_by_key(|a| a.name.to_lowercase());
+    }
+
+    pub fn remove_entry(&mut self, path: &Path) {
+        self.quick_switcher_all_files.retain(|e| e.path != path);
+    }
+
+    pub fn rename_entry(&mut self, old_path: &Path, new_path: &Path) {
+        self.remove_entry(old_path);
+        self.add_entry(new_path);
     }
 
     pub fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
@@ -88,8 +114,10 @@ impl Palette {
         self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); self.search_results.len()]);
     }
 
-    pub fn refresh_quick_switcher(&mut self, root_path: &Path, open_files: &[PathBuf]) {
-        self.quick_switcher_all_files = picker::collect_files(root_path);
+    pub fn refresh_quick_switcher(&mut self, engine: &Option<Arc<SearchEngine>>, open_files: &[PathBuf]) {
+        if let Some(engine) = engine {
+            self.quick_switcher_all_files = picker::collect_from_engine(engine);
+        }
 
         let mut results = self.quick_switcher_all_files.clone();
         for entry in &mut results {

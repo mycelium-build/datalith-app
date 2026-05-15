@@ -71,15 +71,14 @@ pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
                 view.palette.close();
             } else {
                 view.palette.open_as(PaletteKind::QuickSwitcher);
-                if let Some(ref root) = view.root_path {
-                    let open: Vec<PathBuf> =
-                        view.open_files.iter().map(|f| f.path.clone()).collect();
-                    let query = view.palette.qs_query.clone();
-                    if query.trim().is_empty() {
-                        view.palette.refresh_quick_switcher(root, &open);
-                    } else {
-                        view.palette.filter_quick_switcher(&open, query);
-                    }
+                let open: Vec<PathBuf> =
+                    view.open_files.iter().map(|f| f.path.clone()).collect();
+                let engine = view.search_engine.clone();
+                let query = view.palette.qs_query.clone();
+                if query.trim().is_empty() {
+                    view.palette.refresh_quick_switcher(&engine, &open);
+                } else {
+                    view.palette.filter_quick_switcher(&open, query);
                 }
             }
             cx.notify();
@@ -106,6 +105,9 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
                 .or_else(|| view.root_path.clone());
             if let Some(target) = target {
                 let created = view.new_file_from_target(&target);
+                if let Some(ref path) = created {
+                    view.track_new_file(path);
+                }
                 view.refresh_tree(cx);
                 if let Some(path) = created {
                     view.rename_target = Some(path.clone());
@@ -160,6 +162,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
                 .take()
                 .or_else(|| view.resolve_target(cx));
             if let Some(target) = target {
+                view.track_file_delete(&target);
                 let selected_index = view.tree_state.read(cx).selected_index();
                 view.delete_target(&target, cx);
                 view.refresh_tree(cx);
@@ -186,7 +189,10 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
                 .take()
                 .or_else(|| view.resolve_target(cx));
             if let Some(target) = target {
-                view.duplicate_target(&target);
+                let duplicated = view.duplicate_target(&target);
+                if let Some(ref path) = duplicated {
+                    view.track_new_file(path);
+                }
                 view.refresh_tree(cx);
             }
             cx.notify();

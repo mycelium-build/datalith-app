@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::index::walk_indexable_files;
+use super::SearchEngine;
 
 #[derive(Clone)]
 pub struct QuickSwitcherEntry {
@@ -9,8 +9,9 @@ pub struct QuickSwitcherEntry {
     pub open: bool,
 }
 
-pub fn collect_files(root: &Path) -> Vec<QuickSwitcherEntry> {
-    let mut entries: Vec<QuickSwitcherEntry> = walk_indexable_files(root)
+pub fn collect_from_engine(engine: &SearchEngine) -> Vec<QuickSwitcherEntry> {
+    let mut entries: Vec<QuickSwitcherEntry> = engine
+        .all_paths()
         .into_iter()
         .map(|path| {
             let name = path

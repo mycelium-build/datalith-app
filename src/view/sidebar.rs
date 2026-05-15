@@ -154,7 +154,16 @@ impl DatalithView {
                     if let (Some(root), Some(name)) = (&root_path, drag.path.file_name()) {
                         let new_path = root.join(name);
                         if new_path != drag.path {
-                            let _ = std::fs::rename(&drag.path, &new_path);
+                            let old_path = drag.path.clone();
+                            let _ = std::fs::rename(&old_path, &new_path);
+                            view.update(cx, |v, _cx| {
+                                v.track_file_rename(&old_path, &new_path);
+                                for f in &mut v.open_files {
+                                    if f.path == old_path {
+                                        f.path = new_path.clone();
+                                    }
+                                }
+                            });
                         }
                     }
                     let v = view.clone();
@@ -258,6 +267,12 @@ impl DatalithView {
                             if candidate != target_clone {
                                 final_path = DatalithView::unique_name(parent, &new_name);
                                 let _ = std::fs::rename(&target_clone, &final_path);
+                                this.track_file_rename(&target_clone, &final_path);
+                                for open_file in &mut this.open_files {
+                                    if open_file.path == target_clone {
+                                        open_file.path = final_path.clone();
+                                    }
+                                }
                             }
                         }
                     }
@@ -536,7 +551,16 @@ impl DatalithView {
                                     if let Some(name) = drag.path.file_name() {
                                         let new_path = target_dir.join(name);
                                         if new_path != drag.path {
-                                            let _ = std::fs::rename(&drag.path, &new_path);
+                                            let old_path = drag.path.clone();
+                                            let _ = std::fs::rename(&old_path, &new_path);
+                                            v2.update(cx, |v, _cx| {
+                                                v.track_file_rename(&old_path, &new_path);
+                                                for f in &mut v.open_files {
+                                                    if f.path == old_path {
+                                                        f.path = new_path.clone();
+                                                    }
+                                                }
+                                            });
                                         }
                                     }
                                     let view = v2.clone();
