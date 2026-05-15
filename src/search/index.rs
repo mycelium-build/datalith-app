@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
 
 use crate::consts::INDEX_WRITER_BUDGET;
-use crate::utils::file_name_str;
+use crate::utils::{file_name_str, is_supported_file};
 
 pub(crate) struct Indexer {
     pub(crate) index: Index,
@@ -150,10 +150,7 @@ pub(crate) fn file_fingerprint(path: &Path) -> u64 {
 
 #[must_use]
 pub(crate) fn is_indexable(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("txt" | "md")
-    )
+    is_supported_file(path)
 }
 
 #[must_use]
