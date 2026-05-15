@@ -289,6 +289,7 @@ fn select_tab_index(index: usize, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if index < view.open_files.len() {
             view.active_tab = index;
+            view.focus_editor_requested = true;
             cx.notify();
         }
     });
@@ -331,6 +332,7 @@ pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
         let index = view.open_files.len().saturating_sub(1);
         if !view.open_files.is_empty() {
             view.active_tab = index;
+            view.focus_editor_requested = true;
             cx.notify();
         }
     });

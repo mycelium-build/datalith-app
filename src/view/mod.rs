@@ -71,6 +71,7 @@ pub struct DatalithView {
     _rename_sub: Option<Subscription>,
     pub(crate) drag_hover: Option<(PathBuf, Instant)>,
     pub(crate) focus_sidebar_requested: bool,
+    pub(crate) focus_editor_requested: bool,
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
 }
@@ -138,6 +139,7 @@ impl DatalithView {
             rename_state: None,
             drag_hover: None,
             focus_sidebar_requested: false,
+            focus_editor_requested: false,
             pending_open: None,
             pending_vault_refresh: false,
             sidebar_focus_handle,

@@ -23,6 +23,15 @@ impl Render for DatalithView {
             self.focus_sidebar(_window, cx);
         }
 
+        if self.focus_editor_requested {
+            self.focus_editor_requested = false;
+            let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
+            if let Some(ref state) = self.open_files.get(active_tab).and_then(|f| f.state.as_ref())
+            {
+                state.focus_handle(cx).focus(_window, cx);
+            }
+        }
+
         if self.rename_target.is_none() {
             if let Some(path) = self.pending_open.take() {
                 self.open_file(path, true, _window, cx);
