@@ -9,11 +9,11 @@ use crate::consts::INDEX_WRITER_BUDGET;
 use crate::utils::file_name_str;
 
 pub(crate) struct Indexer {
-    index: Index,
-    path_field: Field,
-    name_field: Field,
-    content_field: Field,
-    fingerprint_field: Field,
+    pub(crate) index: Index,
+    pub(crate) path_field: Field,
+    pub(crate) name_field: Field,
+    pub(crate) content_field: Field,
+    pub(crate) fingerprint_field: Field,
 }
 
 impl Indexer {
@@ -71,26 +71,6 @@ impl Indexer {
             content_field,
             fingerprint_field,
         })
-    }
-
-    #[must_use]
-    pub(crate) fn index(&self) -> &Index {
-        &self.index
-    }
-
-    #[must_use]
-    pub(crate) fn name_field(&self) -> Field {
-        self.name_field
-    }
-
-    #[must_use]
-    pub(crate) fn content_field(&self) -> Field {
-        self.content_field
-    }
-
-    #[must_use]
-    pub(crate) fn path_field(&self) -> Field {
-        self.path_field
     }
 
     pub(crate) fn add_file(&self, path: &Path) -> tantivy::Result<()> {
