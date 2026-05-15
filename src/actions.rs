@@ -175,11 +175,11 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             .selected_entry()
             .map(|e| PathBuf::from(e.item().id.to_string()));
         let target = tree_entry
-            .or_else(|| view.last_sidebar_selection.clone())
             .or_else(|| {
                 let active = view.active_tab.min(view.open_files.len().saturating_sub(1));
                 view.open_files.get(active).map(|f| f.path.clone())
-            });
+            })
+            .or_else(|| view.last_sidebar_selection.clone());
         view.commit_rename(cx);
         if let Some(target) = target {
             view.track_file_delete(&target);
