@@ -88,11 +88,11 @@ pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
             view.palette.close();
         } else {
             view.palette.open_as(PaletteKind::QuickSwitcher);
-            let open: Vec<PathBuf> =
-                view.open_files.iter().map(|f| f.path.clone()).collect();
+            let open: Vec<PathBuf> = view.open_files.iter().map(|f| f.path.clone()).collect();
             let query = view.palette.qs_query.clone();
             if query.trim().is_empty() {
-                view.palette.refresh_quick_switcher(view.search_engine.as_ref(), &open);
+                view.palette
+                    .refresh_quick_switcher(view.search_engine.as_ref(), &open);
             } else {
                 view.palette.filter_quick_switcher(&open, query);
             }
@@ -119,6 +119,12 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
         if let Some(target) = target {
             if let Ok(created) = fs_ops::new_file_from_target(&target) {
                 view.track_new_file(&created);
+                if target.is_dir() {
+                    let id: SharedString = target.to_string_lossy().to_string().into();
+                    view.tree_state.update(cx, |state, cx| {
+                        state.expand_by_id(&id, cx);
+                    });
+                }
                 view.refresh_tree(cx);
                 view.rename_target = Some(created.clone());
                 view.pending_open = Some(created);
@@ -162,27 +168,41 @@ pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
 
 pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        let target_index = view.tree_state.read(cx).selected_index();
+        let tree_entry = view
+            .tree_state
+            .read(cx)
+            .selected_entry()
+            .map(|e| PathBuf::from(e.item().id.to_string()));
+        let target = tree_entry
+            .or_else(|| view.last_sidebar_selection.clone())
+            .or_else(|| {
+                let active = view.active_tab.min(view.open_files.len().saturating_sub(1));
+                view.open_files.get(active).map(|f| f.path.clone())
+            });
         view.commit_rename(cx);
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
             view.track_file_delete(&target);
-            let selected_index = view.tree_state.read(cx).selected_index();
             if let Err(e) = fs_ops::delete_target(&target) {
                 eprintln!("{e}");
             }
+            if target.is_dir() {
+                view.close_tabs_under(&target, cx);
+            } else {
+                view.close_tab_for_file(&target, cx);
+            }
             view.refresh_tree(cx);
-            if let Some(ix) = selected_index {
-                let count = view.tree_state.read(cx).entry_count();
-                if count > 0 {
-                    let new_ix = ix.min(count.saturating_sub(1));
-                    view.tree_state.update(cx, |state, cx| {
-                        state.set_selected_index(Some(new_ix), cx);
-                    });
+            let count = view.tree_state.read(cx).entry_count();
+            if count > 0 {
+                let new_ix = target_index.unwrap_or(0).min(count.saturating_sub(1));
+                view.tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(Some(new_ix), cx);
+                });
+                if let Some(entry) = view.tree_state.read(cx).selected_entry() {
+                    view.last_sidebar_selection = Some(PathBuf::from(entry.item().id.to_string()));
                 }
             }
+            view.focus_sidebar_requested = true;
         }
         cx.notify();
     });
@@ -247,6 +267,7 @@ pub(crate) fn handle_new_tab(_: &NewTab, cx: &mut App) {
 
 pub(crate) fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        view.ensure_sidebar_selection(cx);
         view.focus_sidebar_requested = true;
         cx.notify();
     });

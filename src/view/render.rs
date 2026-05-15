@@ -31,18 +31,23 @@ impl Render for DatalithView {
 
         let tree_state = self.tree_state.clone();
 
-        let mut layout = h_flex().size_full().relative().on_mouse_down(
-            gpui::MouseButton::Left,
-            cx.listener(move |_this, _event: &MouseDownEvent, _window, cx| {
-                tree_state.update(cx, |state, cx| {
-                    state.set_selected_index(None, cx);
-                });
-            }),
-        );
+        let mut layout = h_flex().size_full().relative();
 
-        layout = layout
-            .child(self.render_sidebar(_window, cx))
-            .child(self.render_editor(cx));
+        layout = layout.child(self.render_sidebar(_window, cx)).child(
+            div()
+                .flex_1()
+                .size_full()
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
+                        tree_state.update(cx, |state, cx| {
+                            state.set_selected_index(None, cx);
+                        });
+                        this.last_sidebar_selection = None;
+                    }),
+                )
+                .child(self.render_editor(cx)),
+        );
 
         if self.palette.open {
             layout = layout.child(self.palette.render_overlay(cx));
@@ -92,6 +97,7 @@ impl DatalithView {
                             tree_state.update(cx, |state, cx| {
                                 state.set_selected_index(None, cx);
                             });
+                            view.last_sidebar_selection = None;
                             view.active_tab = *index;
                             cx.notify();
                         })

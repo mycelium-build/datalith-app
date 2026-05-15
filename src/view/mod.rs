@@ -72,7 +72,7 @@ pub struct DatalithView {
     pub(crate) drag_hover: Option<(PathBuf, Instant)>,
     pub(crate) focus_sidebar_requested: bool,
     sidebar_focus_handle: FocusHandle,
-    _sidebar_blur_sub: Option<Subscription>,
+    pub(crate) last_sidebar_selection: Option<PathBuf>,
 }
 
 impl DatalithView {
@@ -117,15 +117,6 @@ impl DatalithView {
             },
         );
 
-        let sidebar_blur_sub = cx.on_blur(&sidebar_focus_handle, window, {
-            let tree_state = tree_state.clone();
-            move |_this, _window, cx| {
-                tree_state.update(cx, |state, cx| {
-                    state.set_selected_index(None, cx);
-                });
-            }
-        });
-
         Self {
             tree_state,
             vault_select_state,
@@ -137,7 +128,6 @@ impl DatalithView {
             palette,
             _palette_sub: palette_sub,
             _rename_sub: None,
-            _sidebar_blur_sub: Some(sidebar_blur_sub),
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,
             rename_target: None,
@@ -147,6 +137,7 @@ impl DatalithView {
             pending_open: None,
             pending_vault_refresh: false,
             sidebar_focus_handle,
+            last_sidebar_selection: None,
         }
     }
 
@@ -204,6 +195,7 @@ impl DatalithView {
                 let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
                 self.open_files.get(active).map(|f| f.path.clone())
             })
+            .or_else(|| self.last_sidebar_selection.clone())
     }
 
     pub(crate) fn refresh_tree(&mut self, cx: &mut Context<Self>) {

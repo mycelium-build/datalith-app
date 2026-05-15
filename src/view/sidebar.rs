@@ -15,7 +15,9 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
-use crate::consts::{BORDER_WIDTH, DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX};
+use crate::consts::{
+    BORDER_WIDTH, DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX,
+};
 use crate::filetree::build_file_items;
 use crate::fs_ops;
 use crate::utils::file_name_str;
@@ -44,7 +46,9 @@ impl Render for DragFile {
 
 impl DatalithView {
     pub(crate) fn commit_rename(&mut self, cx: &mut Context<Self>) {
-        if let (Some(ref rename_state), Some(ref target)) = (self.rename_state.clone(), self.rename_target.clone()) {
+        if let (Some(ref rename_state), Some(ref target)) =
+            (self.rename_state.clone(), self.rename_target.clone())
+        {
             let new_name = rename_state.read(cx).value().to_string();
             let mut final_path = target.clone();
             if !new_name.is_empty() {
@@ -130,9 +134,10 @@ impl DatalithView {
             .on_key_down({
                 let tree_state = tree_state.clone();
                 cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                    match event.keystroke.key.as_str() {
+                    let handled = match event.keystroke.key.as_str() {
                         "escape" if this.rename_target.is_some() => {
                             this.commit_rename(cx);
+                            true
                         }
                         "enter" => {
                             let (folder_id, file_path) = {
@@ -161,12 +166,29 @@ impl DatalithView {
                                 let new_tab = event.keystroke.modifiers.platform;
                                 this.open_file(path, new_tab, window, cx);
                             }
+                            true
                         }
-                        "up" => this.navigate_tree_up(cx),
-                        "down" => this.navigate_tree_down(cx),
-                        "left" => this.navigate_tree_left(cx),
-                        "right" => this.navigate_tree_right(cx),
-                        _ => {}
+                        "up" => {
+                            this.navigate_tree_up(cx);
+                            true
+                        }
+                        "down" => {
+                            this.navigate_tree_down(cx);
+                            true
+                        }
+                        "left" => {
+                            this.navigate_tree_left(cx);
+                            true
+                        }
+                        "right" => {
+                            this.navigate_tree_right(cx);
+                            true
+                        }
+                        _ => false,
+                    };
+
+                    if !handled {
+                        cx.propagate();
                     }
                 })
             })
@@ -280,6 +302,16 @@ impl DatalithView {
     }
 
     pub(crate) fn focus_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_sidebar_selection(cx);
+        self.sidebar_focus_handle.focus(window, cx);
+        if let Some(ix) = self.tree_state.read(cx).selected_index() {
+            self.tree_state.update(cx, |state, _| {
+                state.scroll_to_item(ix, gpui::ScrollStrategy::Center);
+            });
+        }
+    }
+
+    pub(crate) fn ensure_sidebar_selection(&mut self, cx: &mut Context<Self>) {
         let has_selection = self.tree_state.read(cx).selected_entry().is_some();
 
         if !has_selection {
@@ -300,18 +332,22 @@ impl DatalithView {
                 });
             }
 
+            // Fallback: if still no selection, select first item
             if self.tree_state.read(cx).selected_entry().is_none() {
-                self.tree_state.update(cx, |state, cx| {
-                    state.set_selected_index(Some(0), cx);
-                });
+                let count = self.tree_state.read(cx).entry_count();
+                if count > 0 {
+                    self.tree_state.update(cx, |state, cx| {
+                        state.set_selected_index(Some(0), cx);
+                    });
+                }
             }
         }
+        self.update_last_selection(cx);
+    }
 
-        self.sidebar_focus_handle.focus(window, cx);
-        if let Some(ix) = self.tree_state.read(cx).selected_index() {
-            self.tree_state.update(cx, |state, _| {
-                state.scroll_to_item(ix, gpui::ScrollStrategy::Center);
-            });
+    fn update_last_selection(&mut self, cx: &mut Context<Self>) {
+        if let Some(entry) = self.tree_state.read(cx).selected_entry() {
+            self.last_sidebar_selection = Some(PathBuf::from(entry.item().id.to_string()));
         }
     }
 
@@ -328,6 +364,7 @@ impl DatalithView {
                 state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
             }
         });
+        self.update_last_selection(cx);
     }
 
     fn navigate_tree_down(&mut self, cx: &mut Context<Self>) {
@@ -342,6 +379,7 @@ impl DatalithView {
                 }
             }
         });
+        self.update_last_selection(cx);
     }
 
     fn navigate_tree_left(&mut self, cx: &mut Context<Self>) {
@@ -499,7 +537,9 @@ impl DatalithView {
                                     if should_expand {
                                         let id: SharedString =
                                             folder_path.to_string_lossy().to_string().into();
-                                        let saved_selection = tree_state.read(cx).selected_entry()
+                                        let saved_selection = tree_state
+                                            .read(cx)
+                                            .selected_entry()
                                             .map(|e| (e.item().id.clone(), e.item().label.clone()));
                                         tree_state.update(cx, |state, cx| {
                                             state.expand_by_id(&id, cx);
@@ -541,6 +581,7 @@ impl DatalithView {
                         let drag_path = drag_path.clone();
                         move |this, event: &ClickEvent, window, cx| {
                             if !is_folder {
+                                this.last_sidebar_selection = Some(drag_path.clone());
                                 let new_tab = event.modifiers().platform;
                                 this.open_file(drag_path.clone(), new_tab, window, cx);
                             }
