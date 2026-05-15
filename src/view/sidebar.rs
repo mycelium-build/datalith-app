@@ -126,7 +126,6 @@ impl DatalithView {
                     }
                 })
             })
-            .drag_over::<DragFile>(|style, _drag, _window, cx| style.bg(cx.theme().drop_target))
             .on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
                 if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
                     let new_path = root.join(name);
