@@ -501,9 +501,17 @@ impl DatalithView {
                                     if should_expand {
                                         let id: SharedString =
                                             folder_path.to_string_lossy().to_string().into();
+                                        let saved_selection = tree_state.read(cx).selected_entry()
+                                            .map(|e| (e.item().id.clone(), e.item().label.clone()));
                                         tree_state.update(cx, |state, cx| {
                                             state.expand_by_id(&id, cx);
                                         });
+                                        if let Some((item_id, item_label)) = saved_selection {
+                                            let item = tree::TreeItem::new(item_id, item_label);
+                                            tree_state.update(cx, |state, cx| {
+                                                state.set_selected_item(Some(&item), cx);
+                                            });
+                                        }
                                     }
 
                                     cx.notify(v_for_notify.entity_id());
