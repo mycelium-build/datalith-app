@@ -457,14 +457,14 @@ impl DatalithView {
 
     pub fn track_new_file(&mut self, path: &Path) {
         if let Some(ref engine) = self.search_engine {
-            let _ = engine.add_file(path);
+            let _ = engine.indexer.add_file(path);
         }
         self.palette.add_entry(path);
     }
 
     pub fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
         if let Some(ref engine) = self.search_engine {
-            let _ = engine.rename_file(old_path, new_path);
+            let _ = engine.indexer.rename_file(old_path, new_path);
         }
         self.palette.rename_entry(old_path, new_path);
     }
@@ -472,9 +472,9 @@ impl DatalithView {
     fn remove_indexed_under(&mut self, root: &Path) {
         if let Some(ref engine) = self.search_engine {
             let prefix = root.to_string_lossy().to_string();
-            for path in engine.all_paths() {
+            for path in engine.indexer.all_paths() {
                 if path.to_string_lossy().starts_with(&prefix) {
-                    let _ = engine.remove_file(&path);
+                    let _ = engine.indexer.remove_file(&path);
                     self.palette.remove_entry(&path);
                 }
             }
@@ -486,7 +486,7 @@ impl DatalithView {
             self.remove_indexed_under(path);
         } else {
             if let Some(ref engine) = self.search_engine {
-                let _ = engine.remove_file(path);
+                let _ = engine.indexer.remove_file(path);
             }
             self.palette.remove_entry(path);
         }
@@ -494,7 +494,7 @@ impl DatalithView {
 
     pub fn track_file_edited(&mut self, path: &Path) {
         if let Some(ref engine) = self.search_engine {
-            let _ = engine.add_file(path);
+            let _ = engine.indexer.add_file(path);
         }
     }
 }

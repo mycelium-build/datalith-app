@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::SearchEngine;
+use super::index::Indexer;
 
 #[derive(Clone)]
 pub struct QuickSwitcherEntry {
@@ -9,8 +9,8 @@ pub struct QuickSwitcherEntry {
     pub open: bool,
 }
 
-pub fn collect_from_engine(engine: &SearchEngine) -> Vec<QuickSwitcherEntry> {
-    let mut entries: Vec<QuickSwitcherEntry> = engine
+pub fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
+    let mut entries: Vec<QuickSwitcherEntry> = indexer
         .all_paths()
         .into_iter()
         .map(|path| {

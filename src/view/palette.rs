@@ -9,7 +9,7 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::search::{self, SearchEngine, SearchResult, picker};
+use crate::search::{self, SearchEngine, picker};
 
 use super::DatalithView;
 
@@ -31,7 +31,7 @@ pub struct Palette {
     pub selected: Option<usize>,
     pub scroll_handle: VirtualListScrollHandle,
     pub item_sizes: Rc<Vec<Size<Pixels>>>,
-    pub search_results: Vec<SearchResult>,
+    pub search_results: Vec<PathBuf>,
     pub quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
     quick_switcher_all_files: Vec<picker::QuickSwitcherEntry>,
 }
@@ -73,7 +73,7 @@ impl Palette {
 
     pub fn set_root(&mut self, engine: &Option<Arc<SearchEngine>>) {
         if let Some(engine) = engine {
-            self.quick_switcher_all_files = picker::collect_from_engine(engine);
+            self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
         }
     }
 
@@ -108,7 +108,7 @@ impl Palette {
         } else {
             engine
                 .as_ref()
-                .map(|e| e.search(&query))
+                .map(|e| e.indexer.search(&query))
                 .unwrap_or_default()
         };
         self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); self.search_results.len()]);
@@ -116,7 +116,7 @@ impl Palette {
 
     pub fn refresh_quick_switcher(&mut self, engine: &Option<Arc<SearchEngine>>, open_files: &[PathBuf]) {
         if let Some(engine) = engine {
-            self.quick_switcher_all_files = picker::collect_from_engine(engine);
+            self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
         }
 
         let mut results = self.quick_switcher_all_files.clone();
@@ -163,7 +163,6 @@ impl Palette {
                         PaletteKind::Search => {
                             let r = &view.palette.search_results[i];
                             let file_name = r
-                                .path
                                 .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("")
@@ -173,7 +172,7 @@ impl Palette {
                             } else {
                                 gpui::Hsla::default()
                             };
-                            let path = r.path.clone();
+                            let path = r.clone();
                             div()
                                 .px_2()
                                 .py_1()
@@ -356,7 +355,7 @@ impl Palette {
                                 .palette
                                 .selected
                                 .and_then(|i| view.palette.search_results.get(i))
-                                .map(|r| r.path.clone()),
+                                .cloned(),
                             PaletteKind::QuickSwitcher => view
                                 .palette
                                 .selected
