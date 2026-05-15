@@ -8,6 +8,8 @@ use gpui_component::{
     v_flex,
 };
 
+use crate::utils::file_name_str;
+
 use super::DatalithView;
 
 impl Render for DatalithView {
@@ -74,12 +76,7 @@ impl DatalithView {
             .iter()
             .enumerate()
             .map(|(i, f)| {
-                let name: SharedString = f
-                    .path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("New Tab")
-                    .into();
+                let name: SharedString = file_name_str(&f.path).into();
                 (i, name)
             })
             .collect();

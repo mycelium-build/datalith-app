@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tantivy::{
-    self, DocAddress, Index, IndexWriter, TantivyDocument, Term, doc,
-    schema::*,
-};
+use anyhow::{Context, Result};
+use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
+
+use crate::consts::INDEX_WRITER_BUDGET;
+use crate::utils::file_name_str;
 
 pub struct Indexer {
     index: Index,
@@ -16,7 +17,7 @@ pub struct Indexer {
 }
 
 impl Indexer {
-    pub fn new(root: &Path) -> tantivy::Result<Self> {
+    pub fn new(root: &Path) -> Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
 
         let mut schema_builder = Schema::builder();
@@ -27,19 +28,25 @@ impl Indexer {
         let schema = schema_builder.build();
 
         let (index, needs_build) = if index_path.exists() {
-            (Index::open_in_dir(&index_path)?, false)
+            (
+                Index::open_in_dir(&index_path).context("Failed to open existing index")?,
+                false,
+            )
         } else {
-            fs::create_dir_all(&index_path).map_err(|e| {
-                tantivy::TantivyError::InvalidArgument(format!("Failed to create index dir: {e}"))
-            })?;
-            (Index::create_in_dir(&index_path, schema)?, true)
+            fs::create_dir_all(&index_path)
+                .with_context(|| format!("Failed to create index dir: {}", index_path.display()))?;
+            (
+                Index::create_in_dir(&index_path, schema).context("Failed to create index")?,
+                true,
+            )
         };
 
         if needs_build {
-            let mut writer = index.writer(50_000_000)?;
+            let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
+            let files = walk_indexable_files(root);
             index_files(
                 &mut writer,
-                root,
+                &files,
                 path_field,
                 name_field,
                 content_field,
@@ -88,7 +95,7 @@ impl Indexer {
         }
         let mut files = HashMap::new();
         files.insert(path.to_path_buf(), file_fingerprint(path));
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(50_000_000)?;
+        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
         add_files(
             &mut writer,
             &files,
@@ -103,7 +110,7 @@ impl Indexer {
 
     pub fn remove_file(&self, path: &Path) -> tantivy::Result<()> {
         let path_str = path.to_string_lossy();
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(50_000_000)?;
+        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
         writer.delete_term(Term::from_field_text(self.path_field, &path_str));
         writer.commit()?;
         Ok(())
@@ -129,7 +136,8 @@ impl Indexer {
                 }
                 let addr = DocAddress::new(segment_ord, doc_id);
                 if let Ok(doc) = searcher.doc::<TantivyDocument>(addr) {
-                    if let Some(path_str) = doc.get_first(self.path_field).and_then(|v| v.as_str()) {
+                    if let Some(path_str) = doc.get_first(self.path_field).and_then(|v| v.as_str())
+                    {
                         paths.push(PathBuf::from(path_str));
                     }
                 }
@@ -161,7 +169,7 @@ pub fn is_indexable(path: &Path) -> bool {
     )
 }
 
-pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
+pub fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -185,46 +193,43 @@ pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
 
 pub fn index_files(
     writer: &mut IndexWriter,
-    dir: &Path,
+    paths: &[PathBuf],
     path_field: Field,
     name_field: Field,
     content_field: Field,
     fingerprint_field: Field,
 ) -> tantivy::Result<()> {
-    if !dir.is_dir() {
-        return Ok(());
+    for path in paths {
+        let name = file_name_str(path);
+        let content = fs::read_to_string(path).unwrap_or_default();
+        let fp = file_fingerprint(path);
+        writer.add_document(doc!(
+            path_field => path.to_string_lossy().as_ref(),
+            name_field => name,
+            content_field => content.as_str(),
+            fingerprint_field => fp.to_string(),
+        ))?;
     }
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                index_files(
-                    writer,
-                    &path,
-                    path_field,
-                    name_field,
-                    content_field,
-                    fingerprint_field,
-                )?;
-            } else {
-                let ext = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if ext == "txt" || ext == "md" {
-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    let content = fs::read_to_string(&path).unwrap_or_default();
-                    let fp = file_fingerprint(&path);
-                    writer.add_document(doc!(
-                        path_field => path.to_string_lossy().as_ref(),
-                        name_field => name,
-                        content_field => content.as_str(),
-                        fingerprint_field => fp.to_string(),
-                    ))?;
-                }
-            }
-        }
+    Ok(())
+}
+
+pub fn add_files(
+    writer: &mut IndexWriter,
+    files: &HashMap<PathBuf, u64>,
+    path_field: Field,
+    name_field: Field,
+    content_field: Field,
+    fingerprint_field: Field,
+) -> tantivy::Result<()> {
+    for (path, fp) in files {
+        let name = file_name_str(path);
+        let content = fs::read_to_string(path).unwrap_or_default();
+        writer.add_document(doc!(
+            path_field => path.to_string_lossy().as_ref(),
+            name_field => name,
+            content_field => content.as_str(),
+            fingerprint_field => fp.to_string(),
+        ))?;
     }
     Ok(())
 }
@@ -240,11 +245,12 @@ pub fn incremental_update(
     let reader = index.reader()?;
     let searcher = reader.searcher();
 
-    let mut current: HashMap<PathBuf, u64> = HashMap::new();
-    collect_files(root, &mut current);
+    let current: HashMap<PathBuf, u64> = walk_indexable_files(root)
+        .into_iter()
+        .map(|p| (p.clone(), file_fingerprint(&p)))
+        .collect();
 
-    let mut writer = index.writer(50_000_000)?;
-
+    let mut indexed_paths: HashMap<PathBuf, u64> = HashMap::new();
     for (segment_ord, seg_reader) in searcher.segment_readers().iter().enumerate() {
         let segment_ord = segment_ord as u32;
         for doc_id in 0..seg_reader.max_doc() {
@@ -262,27 +268,31 @@ pub fn incremental_update(
                 .and_then(|v| v.as_str())
                 .and_then(|s| s.parse::<u64>().ok());
 
-            let Some((path_str, old_fp)) = path_str.zip(old_fp) else {
-                continue;
-            };
-            let path = PathBuf::from(path_str);
-
-            match current.remove(&path) {
-                Some(new_fp) if new_fp == old_fp => {}
-                _ => {
-                    println!("Update: {}", path_str);
-                    writer.delete_term(Term::from_field_text(path_field, path_str));
-                }
+            if let Some((path_str, old_fp)) = path_str.zip(old_fp) {
+                indexed_paths.insert(PathBuf::from(path_str), old_fp);
             }
         }
     }
 
-    drop(searcher);
-    drop(reader);
+    let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
+
+    for (path, old_fp) in &indexed_paths {
+        match current.get(path) {
+            Some(&new_fp) if new_fp == *old_fp => {}
+            _ => {
+                writer.delete_term(Term::from_field_text(path_field, &path.to_string_lossy()));
+            }
+        }
+    }
+
+    let new_files: HashMap<PathBuf, u64> = current
+        .into_iter()
+        .filter(|(path, _)| !indexed_paths.contains_key(path))
+        .collect();
 
     add_files(
         &mut writer,
-        &current,
+        &new_files,
         path_field,
         name_field,
         content_field,
@@ -291,31 +301,4 @@ pub fn incremental_update(
 
     writer.commit()?;
     Ok(())
-}
-
-pub fn add_files(
-    writer: &mut IndexWriter,
-    files: &HashMap<PathBuf, u64>,
-    path_field: Field,
-    name_field: Field,
-    content_field: Field,
-    fingerprint_field: Field,
-) -> tantivy::Result<()> {
-    for (path, fp) in files {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let content = fs::read_to_string(path).unwrap_or_default();
-        writer.add_document(doc!(
-            path_field => path.to_string_lossy().as_ref(),
-            name_field => name,
-            content_field => content.as_str(),
-            fingerprint_field => fp.to_string(),
-        ))?;
-    }
-    Ok(())
-}
-
-fn collect_files(dir: &Path, files: &mut HashMap<PathBuf, u64>) {
-    for path in walk_indexable_files(dir) {
-        files.insert(path.clone(), file_fingerprint(&path));
-    }
 }

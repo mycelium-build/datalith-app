@@ -18,7 +18,12 @@ use gpui_component::{
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
 use crate::config::load_recent_vaults;
+use crate::consts::{
+    DRAG_HOVER_EXPAND_DELAY_MS, SIDEBAR_WIDTH, TREE_INDENT_PX, TREE_PADDING_PX, VAULT_SELECT_MARKER,
+};
 use crate::filetree::build_file_items;
+use crate::fs_ops;
+use crate::utils::file_name_str;
 use crate::view::VaultEntry;
 
 use super::DatalithView;
@@ -31,12 +36,7 @@ struct DragFile {
 
 impl Render for DragFile {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = self
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
+        let name = file_name_str(&self.path).to_string();
         div()
             .px_2()
             .py_1()
@@ -63,16 +63,12 @@ impl DatalithView {
             .into_iter()
             .map(|p| {
                 let path: SharedString = p.to_string_lossy().to_string().into();
-                let name: SharedString = p
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(&path)
-                    .into();
+                let name: SharedString = file_name_str(&p).into();
                 VaultEntry::Vault { path, name }
             })
             .collect();
         let mut select_items = recent;
-        select_items.push(VaultEntry::OpenNew(SharedString::from("__open_new__")));
+        select_items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
         self.vault_select_state.update(cx, |state, cx| {
             state.set_items(select_items, window, cx);
         });
@@ -87,7 +83,7 @@ impl DatalithView {
         div()
             .flex()
             .flex_col()
-            .w(px(260.))
+            .w(px(SIDEBAR_WIDTH))
             .h_full()
             .bg(cx.theme().sidebar)
             .border_r_1()
@@ -230,17 +226,17 @@ impl DatalithView {
             return;
         }
 
-        let current = target
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
+        let current = file_name_str(target).to_string();
 
         let old_ext = if !target.is_dir() {
-            current
-                .rfind('.')
-                .and_then(|dot| if dot > 0 { Some(&current[dot..]) } else { None })
-                .map(|e| e.to_string())
+            target
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|name| {
+                    name.rfind('.')
+                        .and_then(|dot| if dot > 0 { Some(&name[dot..]) } else { None })
+                        .map(|e| e.to_string())
+                })
         } else {
             None
         };
@@ -265,7 +261,7 @@ impl DatalithView {
                         if let Some(parent) = &dir {
                             let candidate = parent.join(&new_name);
                             if candidate != target_clone {
-                                final_path = DatalithView::unique_name(parent, &new_name);
+                                final_path = fs_ops::unique_name(parent, &new_name);
                                 let _ = std::fs::rename(&target_clone, &final_path);
                                 this.track_file_rename(&target_clone, &final_path);
                                 for open_file in &mut this.open_files {
@@ -330,11 +326,7 @@ impl DatalithView {
 
             if let Some(ref path) = active_path {
                 let id = path.to_string_lossy().to_string();
-                let label = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
+                let label = file_name_str(path).to_string();
                 let item = tree::TreeItem::new(id, label);
                 self.tree_state.update(cx, |state, cx| {
                     state.set_selected_item(Some(&item), cx);
@@ -417,7 +409,7 @@ impl DatalithView {
     }
 
     fn collapse_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
-        if let Some(ref root) = self.root_path.clone() {
+        if let Some(ref root) = self.root_path {
             let mut expanded_ids = self.tree_state.read(cx).expanded_ids();
             expanded_ids.retain(|eid| eid != id);
             let mut items = build_file_items(root);
@@ -434,6 +426,36 @@ impl DatalithView {
                 state.set_selected_item(Some(&item), cx);
             });
         }
+    }
+
+    fn handle_drop_on_folder(
+        view: &Entity<DatalithView>,
+        target_dir: &PathBuf,
+        drag: &DragFile,
+        window: &mut Window,
+        cx: &mut Context<DatalithView>,
+    ) {
+        if let Some(name) = drag.path.file_name() {
+            let new_path = target_dir.join(name);
+            if new_path != drag.path {
+                let old_path = drag.path.clone();
+                let _ = std::fs::rename(&old_path, &new_path);
+                view.update(cx, |v, _cx| {
+                    v.track_file_rename(&old_path, &new_path);
+                    for f in &mut v.open_files {
+                        if f.path == old_path {
+                            f.path = new_path.clone();
+                        }
+                    }
+                });
+            }
+        }
+        let view = view.clone();
+        window.defer(cx, move |_window, cx| {
+            view.update(cx, |view, cx| {
+                view.refresh_tree(cx);
+            });
+        });
     }
 
     fn render_file_tree(
@@ -477,7 +499,7 @@ impl DatalithView {
 
                     let mut list_item = ListItem::new(ix)
                         .selected(selected)
-                        .pl(px(16.) * depth + px(12.));
+                        .pl(px(TREE_INDENT_PX) * depth + px(TREE_PADDING_PX));
 
                     if is_renaming && let Some(rename_state) = this.rename_state.clone() {
                         return list_item.child(
@@ -512,19 +534,20 @@ impl DatalithView {
                         );
 
                     if is_folder {
+                        let v_for_drop = v.clone();
                         list_item = list_item
                             .drag_over::<DragFile>({
                                 let folder_path = drag_path.clone();
                                 let drag_hover = dh.clone();
                                 let tree_state = ts.clone();
-                                let eid = v.entity_id();
+                                let v_for_notify = v.clone();
                                 move |mut style, _drag, _window, cx| {
                                     style = style.bg(cx.theme().drop_target);
 
                                     let mut hover = drag_hover.borrow_mut();
                                     match &*hover {
                                         Some((path, instant)) if path == &folder_path => {
-                                            if instant.elapsed() > Duration::from_millis(800) {
+                                            if instant.elapsed() > Duration::from_millis(DRAG_HOVER_EXPAND_DELAY_MS) {
                                                 *hover = None;
                                                 let id: SharedString = folder_path
                                                     .to_string_lossy()
@@ -540,35 +563,15 @@ impl DatalithView {
                                         }
                                     }
 
-                                    cx.notify(eid);
+                                    cx.notify(v_for_notify.entity_id());
                                     style
                                 }
                             })
                             .on_drop(cx.listener({
-                                let v2 = v.clone();
+                                let v2 = v_for_drop.clone();
                                 let target_dir = drag_path.clone();
                                 move |_this, drag: &DragFile, window, cx| {
-                                    if let Some(name) = drag.path.file_name() {
-                                        let new_path = target_dir.join(name);
-                                        if new_path != drag.path {
-                                            let old_path = drag.path.clone();
-                                            let _ = std::fs::rename(&old_path, &new_path);
-                                            v2.update(cx, |v, _cx| {
-                                                v.track_file_rename(&old_path, &new_path);
-                                                for f in &mut v.open_files {
-                                                    if f.path == old_path {
-                                                        f.path = new_path.clone();
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
-                                    let view = v2.clone();
-                                    window.defer(cx, move |_window, cx| {
-                                        view.update(cx, |view, cx| {
-                                            view.refresh_tree(cx);
-                                        });
-                                    });
+                                    Self::handle_drop_on_folder(&v2, &target_dir, drag, window, cx);
                                 }
                             }));
                     }

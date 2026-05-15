@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::index::Indexer;
+use crate::utils::file_name_str;
 
 #[derive(Clone)]
 pub struct QuickSwitcherEntry {
@@ -14,11 +15,7 @@ pub fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
         .all_paths()
         .into_iter()
         .map(|path| {
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-                .to_string();
+            let name = file_name_str(&path).to_string();
             QuickSwitcherEntry {
                 path,
                 name,
@@ -54,11 +51,14 @@ pub fn filter(
     results
 }
 
-pub fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> usize {
+pub fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
+    if count == 0 {
+        return None;
+    }
     match (down, selected) {
-        (true, Some(i)) if i + 1 < count => i + 1,
-        (true, _) => 0,
-        (false, Some(i)) if i > 0 => i - 1,
-        (false, _) => count - 1,
+        (true, Some(i)) if i + 1 < count => Some(i + 1),
+        (true, _) => Some(0),
+        (false, Some(i)) if i > 0 => Some(i - 1),
+        (false, _) => Some(count - 1),
     }
 }

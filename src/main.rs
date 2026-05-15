@@ -1,8 +1,11 @@
 mod actions;
 mod app;
 mod config;
+mod consts;
 mod filetree;
+mod fs_ops;
 mod search;
+mod utils;
 mod view;
 
 use gpui::*;

@@ -9,7 +9,9 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::search::{self, SearchEngine, picker};
+use crate::consts::{MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH};
+use crate::search::{SearchEngine, picker};
+use crate::utils::file_name_str;
 
 use super::DatalithView;
 
@@ -78,14 +80,9 @@ impl Palette {
     }
 
     pub fn add_entry(&mut self, path: &Path) {
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
         self.quick_switcher_all_files.push(picker::QuickSwitcherEntry {
             path: path.to_path_buf(),
-            name,
+            name: file_name_str(path).to_string(),
             open: false,
         });
         self.quick_switcher_all_files
@@ -103,7 +100,7 @@ impl Palette {
 
     pub fn search(&mut self, engine: &Option<Arc<SearchEngine>>, query: SharedString) {
         let query = query.trim().to_string();
-        self.search_results = if query.len() < search::MIN_SEARCH_QUERY_LENGTH {
+        self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
             engine
@@ -111,7 +108,7 @@ impl Palette {
                 .map(|e| e.search(&query))
                 .unwrap_or_default()
         };
-        self.item_sizes = Rc::new(vec![size(px(600.), px(28.)); self.search_results.len()]);
+        self.item_sizes = Rc::new(vec![size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT)); self.search_results.len()]);
     }
 
     pub fn refresh_quick_switcher(&mut self, engine: &Option<Arc<SearchEngine>>, open_files: &[PathBuf]) {
@@ -128,7 +125,7 @@ impl Palette {
 
         self.quick_switcher_entries = results;
         self.item_sizes = Rc::new(vec![
-            size(px(600.), px(28.));
+            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
             self.quick_switcher_entries.len()
         ]);
     }
@@ -137,7 +134,7 @@ impl Palette {
         self.quick_switcher_entries =
             picker::filter(&self.quick_switcher_all_files, open_files, &query);
         self.item_sizes = Rc::new(vec![
-            size(px(600.), px(28.));
+            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
             self.quick_switcher_entries.len()
         ]);
     }
@@ -162,11 +159,7 @@ impl Palette {
                     .map(move |i| match kind {
                         PaletteKind::Search => {
                             let r = &view.palette.search_results[i];
-                            let file_name = r
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("")
-                                .to_string();
+                            let file_name = file_name_str(r).to_string();
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
@@ -237,7 +230,7 @@ impl Palette {
             },
         )
         .track_scroll(&self.scroll_handle)
-        .h(px(400.))
+        .h(px(PALETTE_MAX_HEIGHT))
     }
 
     pub fn render_overlay(&self, cx: &mut Context<DatalithView>) -> impl IntoElement + use<> {
@@ -258,7 +251,7 @@ impl Palette {
             }))
             .child(
                 div()
-                    .w(px(600.))
+                    .w(px(PALETTE_WIDTH))
                     .bg(cx.theme().background)
                     .border_1()
                     .border_color(cx.theme().border)
@@ -290,13 +283,14 @@ impl Palette {
                                             }
                                         };
                                         if count > 0 {
-                                            let next = picker::nav_idx(
+                                            if let Some(next) = picker::nav_idx(
                                                 key == "down",
                                                 view.palette.selected,
                                                 count,
-                                            );
-                                            view.palette.selected = Some(next);
-                                            view.palette.scroll_to(next);
+                                            ) {
+                                                view.palette.selected = Some(next);
+                                                view.palette.scroll_to(next);
+                                            }
                                         }
                                         cx.notify();
                                     }

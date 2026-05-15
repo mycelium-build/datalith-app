@@ -5,20 +5,19 @@ mod query;
 pub use index::Indexer;
 use query::build_query;
 
-pub const MAX_SEARCH_RESULTS: usize = 25;
-pub const MIN_SEARCH_QUERY_LENGTH: usize = 3;
-
 use std::path::PathBuf;
 
+use anyhow::Result;
 use tantivy::{TantivyDocument, collector::TopDocs, schema::Value};
 
-#[allow(dead_code)]
+use crate::consts::MAX_SEARCH_RESULTS;
+
 pub struct SearchEngine {
     pub indexer: Indexer,
 }
 
 impl SearchEngine {
-    pub fn new(root: &PathBuf) -> tantivy::Result<Self> {
+    pub fn new(root: &PathBuf) -> Result<Self> {
         let indexer = Indexer::new(root)?;
         Ok(Self { indexer })
     }
