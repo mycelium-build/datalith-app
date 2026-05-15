@@ -51,6 +51,7 @@ pub fn filter(
     results
 }
 
+#[must_use]
 pub fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
     if count == 0 {
         return None;

@@ -16,6 +16,7 @@ pub fn parent_dir_for_target(target: &Path) -> PathBuf {
     }
 }
 
+#[must_use]
 pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     let (stem, ext) = if let Some(dot) = name.rfind('.') {
         (&name[..dot], &name[dot..])

@@ -147,6 +147,7 @@ impl Indexer {
     }
 }
 
+#[must_use]
 pub fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
