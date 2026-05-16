@@ -3,6 +3,8 @@ use gpui_component::ThemeRegistry;
 pub fn load_embedded_themes(cx: &mut gpui::App) {
     let registry = ThemeRegistry::global_mut(cx);
 
+    // From https://github.com/longbridge/gpui-component/tree/main/themes
+
     let _ = registry.load_themes_from_str(include_str!("../themes/adventure.json"));
     let _ = registry.load_themes_from_str(include_str!("../themes/alduin.json"));
     let _ = registry.load_themes_from_str(include_str!("../themes/asciinema.json"));
