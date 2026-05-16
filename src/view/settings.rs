@@ -3,7 +3,6 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
-    scroll::ScrollableElement,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     v_flex,
 };
@@ -92,12 +91,14 @@ impl SettingsView {
                     .id("settings-panel")
                     .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
                     .track_focus(&self.focus_handle)
-                    .on_key_down(cx.listener(|view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
-                        if event.keystroke.key == "escape" {
-                            view.settings.close();
-                            cx.notify();
-                        }
-                    }))
+                    .on_key_down(cx.listener(
+                        |view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
+                            if event.keystroke.key == "escape" {
+                                view.settings.close();
+                                cx.notify();
+                            }
+                        },
+                    ))
                     .child(
                         v_flex()
                             .size_full()
@@ -105,11 +106,11 @@ impl SettingsView {
                             .child(
                                 h_flex()
                                     .w_full()
-                                    .p_2()
-                                    .justify_between()
+                                    .px_2()
+                                    .py_1()
+                                    .justify_end()
                                     .border_b(px(1.))
                                     .border_color(cx.theme().border)
-                                    .child("Settings")
                                     .child(
                                         Button::new("close-settings")
                                             .ghost()
@@ -121,76 +122,84 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                    .child(
-                        div()
-                            .flex_1()
-                            .overflow_y_scrollbar()
-                            .p_4()
-                                    .child(
-                                        Settings::new("app-settings")
-                                            .with_size(Size::Small)
-                                            .pages(vec![SettingPage::new("Appearance")
-                                                .default_open(true)
-                                                .groups(vec![SettingGroup::new()
-                                                    .title("Theme")
-                                                    .items(vec![
-                                                        SettingItem::new(
-                                                            "Light Theme",
-                                                            SettingField::scrollable_dropdown(
-                                                                theme_options.clone(),
-                                                                |cx| cx.global::<ThemeOptions>().light_theme_name.clone(),
-                                                                |val: SharedString, cx| {
-                                                                    cx.global_mut::<ThemeOptions>().light_theme_name =
-                                                                        val.clone();
-                                                                    let registry =
-                                                                        gpui_component::ThemeRegistry::global(cx);
-                                                                    if let Some(theme_config) =
-                                                                        registry.themes().get(val.as_str())
-                                                                    {
-                                                                        gpui_component::Theme::global_mut(cx).light_theme =
-                                                                            theme_config.clone();
-                                                                        let current_mode =
-                                                                            gpui_component::Theme::global(cx).mode;
-                                                                        gpui_component::Theme::change(
-                                                                            current_mode, None, cx,
-                                                                        );
-                                                                    }
-                                                                    cx.refresh_windows();
-                                                                    let _ = save_light_theme_name(&val);
-                                                                },
-                                                            ),
-                                                        )
-                                                        .description("Theme used in light mode."),
-                                                        SettingItem::new(
-                                                            "Dark Theme",
-                                                            SettingField::scrollable_dropdown(
-                                                                theme_options.clone(),
-                                                                |cx| cx.global::<ThemeOptions>().dark_theme_name.clone(),
-                                                                |val: SharedString, cx| {
-                                                                    cx.global_mut::<ThemeOptions>().dark_theme_name =
-                                                                        val.clone();
-                                                                    let registry =
-                                                                        gpui_component::ThemeRegistry::global(cx);
-                                                                    if let Some(theme_config) =
-                                                                        registry.themes().get(val.as_str())
-                                                                    {
-                                                                        gpui_component::Theme::global_mut(cx).dark_theme =
-                                                                            theme_config.clone();
-                                                                        let current_mode =
-                                                                            gpui_component::Theme::global(cx).mode;
-                                                                        gpui_component::Theme::change(
-                                                                            current_mode, None, cx,
-                                                                        );
-                                                                    }
-                                                                    cx.refresh_windows();
-                                                                    let _ = save_dark_theme_name(&val);
-                                                                },
-                                                            ),
-                                                        )
-                                                        .description("Theme used in dark mode."),
-                                                    ])])]),
-                                    ),
-                            ),
+                            .child(Settings::new("app-settings").with_size(Size::Small).pages(
+                                vec![SettingPage::new("Appearance").default_open(true).groups(
+                                    vec![SettingGroup::new().title("Theme").items(vec![
+                                            SettingItem::new(
+                                                "Light Theme",
+                                                SettingField::scrollable_dropdown(
+                                                    theme_options.clone(),
+                                                    |cx| {
+                                                        cx.global::<ThemeOptions>()
+                                                            .light_theme_name
+                                                            .clone()
+                                                    },
+                                                    |val: SharedString, cx| {
+                                                        cx.global_mut::<ThemeOptions>()
+                                                            .light_theme_name = val.clone();
+                                                        let registry =
+                                                            gpui_component::ThemeRegistry::global(
+                                                                cx,
+                                                            );
+                                                        if let Some(theme_config) =
+                                                            registry.themes().get(val.as_str())
+                                                        {
+                                                            gpui_component::Theme::global_mut(cx)
+                                                                .light_theme = theme_config.clone();
+                                                            let current_mode =
+                                                                gpui_component::Theme::global(cx)
+                                                                    .mode;
+                                                            gpui_component::Theme::change(
+                                                                current_mode,
+                                                                None,
+                                                                cx,
+                                                            );
+                                                        }
+                                                        cx.refresh_windows();
+                                                        let _ = save_light_theme_name(&val);
+                                                    },
+                                                ),
+                                            )
+                                            .description("Theme used in light mode."),
+                                            SettingItem::new(
+                                                "Dark Theme",
+                                                SettingField::scrollable_dropdown(
+                                                    theme_options.clone(),
+                                                    |cx| {
+                                                        cx.global::<ThemeOptions>()
+                                                            .dark_theme_name
+                                                            .clone()
+                                                    },
+                                                    |val: SharedString, cx| {
+                                                        cx.global_mut::<ThemeOptions>()
+                                                            .dark_theme_name = val.clone();
+                                                        let registry =
+                                                            gpui_component::ThemeRegistry::global(
+                                                                cx,
+                                                            );
+                                                        if let Some(theme_config) =
+                                                            registry.themes().get(val.as_str())
+                                                        {
+                                                            gpui_component::Theme::global_mut(cx)
+                                                                .dark_theme = theme_config.clone();
+                                                            let current_mode =
+                                                                gpui_component::Theme::global(cx)
+                                                                    .mode;
+                                                            gpui_component::Theme::change(
+                                                                current_mode,
+                                                                None,
+                                                                cx,
+                                                            );
+                                                        }
+                                                        cx.refresh_windows();
+                                                        let _ = save_dark_theme_name(&val);
+                                                    },
+                                                ),
+                                            )
+                                            .description("Theme used in dark mode."),
+                                        ])],
+                                )],
+                            )),
                     ),
             )
     }
