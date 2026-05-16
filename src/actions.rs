@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{Theme, ThemeMode};
+use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 use std::path::PathBuf;
 
 use crate::app::AppState;
@@ -25,6 +25,7 @@ actions!(
         NewTab,
         FocusSidebar,
         ToggleTheme,
+        OpenSettings,
         SelectTab1,
         SelectTab2,
         SelectTab3,
@@ -280,9 +281,30 @@ pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemeMode::Dark,
         ThemeMode::Dark => ThemeMode::Light,
     };
+    let registry = ThemeRegistry::global(cx);
+    let saved_name = match new_mode {
+        ThemeMode::Light => crate::config::load_light_theme_name(),
+        ThemeMode::Dark => crate::config::load_dark_theme_name(),
+    };
+    if let Some(name) = saved_name {
+        if let Some(theme_config) = registry.themes().get(name.as_str()) {
+            if new_mode == ThemeMode::Light {
+                Theme::global_mut(cx).light_theme = theme_config.clone();
+            } else {
+                Theme::global_mut(cx).dark_theme = theme_config.clone();
+            }
+        }
+    }
     let _ = crate::config::save_theme_mode(new_mode);
     Theme::change(new_mode, None, cx);
     cx.refresh_windows();
+}
+
+pub(crate) fn open_settings(_: &OpenSettings, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.settings.open();
+        cx.notify();
+    });
 }
 
 fn select_tab_index(index: usize, cx: &mut App) {
