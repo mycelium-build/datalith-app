@@ -14,9 +14,9 @@ use gpui_component::{
 };
 
 use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
-use crate::filetree::build_file_items;
 use crate::search::SearchEngine;
 use crate::utils::file_name_str;
+use crate::view::sidebar::file_tree::build_file_items;
 use palette::Palette;
 
 #[derive(Clone, Debug)]

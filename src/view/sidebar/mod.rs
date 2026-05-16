@@ -1,4 +1,4 @@
-mod file_tree;
+pub(crate) mod file_tree;
 mod header;
 mod navigation;
 

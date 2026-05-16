@@ -1,6 +1,6 @@
 use gpui::*;
 
-use crate::filetree::build_file_items;
+use super::file_tree::build_file_items;
 use crate::utils::file_name_str;
 
 use super::DatalithView;
