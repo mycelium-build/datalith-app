@@ -1,5 +1,6 @@
 pub(crate) mod palette;
 pub(crate) mod render;
+pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod tabs;
 
@@ -18,6 +19,7 @@ use crate::search::SearchEngine;
 use crate::utils::file_name_str;
 use crate::view::sidebar::file_tree::build_file_items;
 use palette::Palette;
+use settings::SettingsView;
 
 #[derive(Clone, Debug)]
 pub(crate) enum VaultEntry {
@@ -65,6 +67,7 @@ pub struct DatalithView {
     pub(crate) search_engine: Option<SearchEngine>,
     pub(crate) palette: Palette,
     _palette_sub: Subscription,
+    pub(crate) settings: SettingsView,
     pub(crate) context_menu_target: Option<PathBuf>,
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
@@ -132,6 +135,7 @@ impl DatalithView {
             search_engine: None,
             palette,
             _palette_sub: palette_sub,
+            settings: SettingsView::new(),
             _rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,

@@ -62,6 +62,10 @@ impl Render for DatalithView {
             layout = layout.child(self.palette.render_overlay(cx));
         }
 
+        if self.settings.open {
+            layout = layout.child(self.settings.render_overlay(cx));
+        }
+
         layout
     }
 }
