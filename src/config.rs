@@ -13,6 +13,10 @@ pub(crate) struct Config {
     pub(crate) recent_vaults: Vec<String>,
     #[serde(default)]
     pub(crate) theme_mode: Option<String>,
+    #[serde(default)]
+    pub(crate) light_theme_name: Option<String>,
+    #[serde(default)]
+    pub(crate) dark_theme_name: Option<String>,
 }
 
 #[must_use]
@@ -117,4 +121,26 @@ pub(crate) fn load_theme_mode() -> Option<ThemeMode> {
         "dark" => ThemeMode::Dark,
         _ => ThemeMode::Light,
     })
+}
+
+pub(crate) fn save_light_theme_name(name: &str) -> Result<()> {
+    let mut config = get_config();
+    config.light_theme_name = Some(name.to_string());
+    save_config(&config)
+}
+
+pub(crate) fn load_light_theme_name() -> Option<String> {
+    let config = get_config();
+    config.light_theme_name.clone()
+}
+
+pub(crate) fn save_dark_theme_name(name: &str) -> Result<()> {
+    let mut config = get_config();
+    config.dark_theme_name = Some(name.to_string());
+    save_config(&config)
+}
+
+pub(crate) fn load_dark_theme_name() -> Option<String> {
+    let config = get_config();
+    config.dark_theme_name.clone()
 }
