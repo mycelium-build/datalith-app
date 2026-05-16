@@ -4,6 +4,7 @@ mod config;
 mod consts;
 mod fs_ops;
 mod search;
+mod themes;
 mod utils;
 mod view;
 
@@ -12,14 +13,19 @@ use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 
 use crate::actions::*;
 use crate::app::AppState;
-use crate::config::{load_last_folder, load_theme_mode};
+use crate::config::{
+    load_dark_theme_name, load_last_folder, load_light_theme_name, load_theme_mode,
+};
 use crate::view::DatalithView;
+use crate::view::settings::SettingsView;
 
 fn main() {
     let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx| {
         gpui_component::init(cx);
+        themes::load_embedded_themes(cx);
+        SettingsView::init_theme_options(cx);
 
         let registry = ThemeRegistry::global(cx);
         let themes = registry.themes();
@@ -42,6 +48,19 @@ fn main() {
         }
 
         let saved_mode = load_theme_mode().unwrap_or(ThemeMode::Light);
+        let saved_light_name = load_light_theme_name();
+        let saved_dark_name = load_dark_theme_name();
+        let light_theme_name = saved_light_name.unwrap_or_default();
+        let dark_theme_name = saved_dark_name.unwrap_or_default();
+        let registry = ThemeRegistry::global(cx);
+        let light_theme_opt = registry.themes().get(light_theme_name.as_str()).cloned();
+        let dark_theme_opt = registry.themes().get(dark_theme_name.as_str()).cloned();
+        if let Some(theme_config) = light_theme_opt {
+            Theme::global_mut(cx).light_theme = theme_config;
+        }
+        if let Some(theme_config) = dark_theme_opt {
+            Theme::global_mut(cx).dark_theme = theme_config;
+        }
         Theme::change(saved_mode, None, cx);
 
         cx.set_global(AppState { view: None });
@@ -69,6 +88,7 @@ fn main() {
         cx.on_action(handle_select_tab_7);
         cx.on_action(handle_select_tab_8);
         cx.on_action(handle_select_tab_9);
+        cx.on_action(open_settings);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -92,6 +112,8 @@ fn main() {
                 MenuItem::action("Focus Sidebar", FocusSidebar),
                 MenuItem::separator(),
                 MenuItem::action("Toggle Dark Mode", ToggleTheme),
+                MenuItem::separator(),
+                MenuItem::action("Settings", OpenSettings),
             ]),
         ]);
         cx.bind_keys([
