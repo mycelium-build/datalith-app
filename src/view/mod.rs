@@ -135,7 +135,7 @@ impl DatalithView {
             search_engine: None,
             palette,
             _palette_sub: palette_sub,
-            settings: SettingsView::new(),
+            settings: SettingsView::new(cx),
             _rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,

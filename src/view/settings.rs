@@ -23,11 +23,15 @@ impl Global for ThemeOptions {}
 
 pub(crate) struct SettingsView {
     pub(crate) open: bool,
+    focus_handle: FocusHandle,
 }
 
 impl SettingsView {
-    pub(crate) fn new() -> Self {
-        Self { open: false }
+    pub(crate) fn new(cx: &mut App) -> Self {
+        Self {
+            open: false,
+            focus_handle: cx.focus_handle(),
+        }
     }
 
     pub(crate) fn open(&mut self) {
@@ -87,6 +91,7 @@ impl SettingsView {
                     .shadow_lg()
                     .id("settings-panel")
                     .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
+                    .track_focus(&self.focus_handle)
                     .on_key_down(cx.listener(|view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
                         if event.keystroke.key == "escape" {
                             view.settings.close();

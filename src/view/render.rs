@@ -26,7 +26,10 @@ impl Render for DatalithView {
         if self.focus_editor_requested {
             self.focus_editor_requested = false;
             let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
-            if let Some(ref state) = self.open_files.get(active_tab).and_then(|f| f.state.as_ref())
+            if let Some(ref state) = self
+                .open_files
+                .get(active_tab)
+                .and_then(|f| f.state.as_ref())
             {
                 state.focus_handle(cx).focus(_window, cx);
             }
