@@ -17,6 +17,8 @@ pub(crate) struct Config {
     pub(crate) light_theme_name: Option<String>,
     #[serde(default)]
     pub(crate) dark_theme_name: Option<String>,
+    #[serde(default)]
+    pub(crate) font_size_multiplier: Option<f64>,
 }
 
 #[must_use]
@@ -143,4 +145,15 @@ pub(crate) fn save_dark_theme_name(name: &str) -> Result<()> {
 pub(crate) fn load_dark_theme_name() -> Option<String> {
     let config = get_config();
     config.dark_theme_name.clone()
+}
+
+pub(crate) fn save_font_size_multiplier(multiplier: f64) -> Result<()> {
+    let mut config = get_config();
+    config.font_size_multiplier = Some(multiplier);
+    save_config(&config)
+}
+
+pub(crate) fn load_font_size_multiplier() -> Option<f64> {
+    let config = get_config();
+    config.font_size_multiplier
 }

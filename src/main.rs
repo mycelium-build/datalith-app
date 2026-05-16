@@ -14,7 +14,8 @@ use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 use crate::actions::*;
 use crate::app::AppState;
 use crate::config::{
-    load_dark_theme_name, load_last_folder, load_light_theme_name, load_theme_mode,
+    load_font_size_multiplier, load_last_folder, load_light_theme_name, load_dark_theme_name,
+    load_theme_mode,
 };
 use crate::view::DatalithView;
 use crate::view::settings::SettingsView;
@@ -62,6 +63,11 @@ fn main() {
             Theme::global_mut(cx).dark_theme = theme_config;
         }
         Theme::change(saved_mode, None, cx);
+
+        if let Some(multiplier) = load_font_size_multiplier() {
+            gpui_component::Theme::global_mut(cx).font_size =
+                gpui::px(crate::consts::BASE_FONT_SIZE as f32 * multiplier as f32);
+        }
 
         cx.set_global(AppState { view: None });
         cx.on_action(open_vault);

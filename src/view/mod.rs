@@ -11,6 +11,7 @@ use gpui::*;
 use gpui_component::{
     input::InputState,
     select::{SelectEvent, SelectItem, SelectState},
+    slider::SliderEvent,
     tree::TreeState,
 };
 
@@ -68,6 +69,7 @@ pub struct DatalithView {
     pub(crate) palette: Palette,
     _palette_sub: Subscription,
     pub(crate) settings: SettingsView,
+    _font_size_slider_sub: Subscription,
     pub(crate) context_menu_target: Option<PathBuf>,
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
@@ -125,6 +127,21 @@ impl DatalithView {
             },
         );
 
+        let settings = SettingsView::new(cx);
+        let font_size_slider_sub = cx.subscribe(
+            &settings.font_size_slider_state,
+            |_view, _, event: &SliderEvent, cx| {
+                let SliderEvent::Change(value) = event;
+                let val = value.start() as f64;
+                let new_size = px(crate::consts::BASE_FONT_SIZE as f32 * value.start());
+                cx.global_mut::<settings::ThemeOptions>()
+                    .font_size_multiplier = val;
+                gpui_component::Theme::global_mut(cx).font_size = new_size;
+                cx.refresh_windows();
+                let _ = crate::config::save_font_size_multiplier(val);
+            },
+        );
+
         Self {
             tree_state,
             vault_select_state,
@@ -135,7 +152,8 @@ impl DatalithView {
             search_engine: None,
             palette,
             _palette_sub: palette_sub,
-            settings: SettingsView::new(cx),
+            settings,
+            _font_size_slider_sub: font_size_slider_sub,
             _rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,
