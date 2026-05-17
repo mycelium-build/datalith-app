@@ -25,14 +25,7 @@ struct ListItemData {
 }
 
 impl MarkdownEditor {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, content: String, editing: bool) -> Self {
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
-                .searchable(true)
-                .default_value(content)
-        });
-
+    pub fn new(input: Entity<InputState>, editing: bool, cx: &mut Context<Self>) -> Self {
         let sub = cx.subscribe(&input, |_this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();

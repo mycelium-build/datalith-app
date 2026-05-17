@@ -44,7 +44,7 @@ impl DatalithView {
         });
 
         let markdown_editor = if is_markdown(&path) {
-            Some(cx.new(|cx| MarkdownEditor::new(window, cx, content, true)))
+            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, cx)))
         } else {
             None
         };
