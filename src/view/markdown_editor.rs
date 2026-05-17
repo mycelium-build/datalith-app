@@ -203,14 +203,18 @@ impl MarkdownEditor {
                                             .gap_1()
                                             .child(
                                                 div()
-                                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
+                                                    .text_size(px(
+                                                        base_font_size * MD_FRONTMATTER_FONT_SCALE
+                                                    ))
                                                     .text_color(cx.theme().accent)
                                                     .font_weight(FontWeight::SEMIBOLD)
                                                     .child(key.to_string()),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
+                                                    .text_size(px(
+                                                        base_font_size * MD_FRONTMATTER_FONT_SCALE
+                                                    ))
                                                     .text_color(cx.theme().muted_foreground)
                                                     .child(value.to_string()),
                                             )
@@ -219,7 +223,9 @@ impl MarkdownEditor {
                                 } else {
                                     fm_elements.push(
                                         div()
-                                            .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
+                                            .text_size(px(
+                                                base_font_size * MD_FRONTMATTER_FONT_SCALE
+                                            ))
                                             .text_color(cx.theme().muted_foreground)
                                             .child(line.to_string())
                                             .into_any_element(),
@@ -275,6 +281,7 @@ impl MarkdownEditor {
         div()
             .id("markdown-preview")
             .size_full()
+            .overflow_x_hidden()
             .on_click(cx.listener(|this, _, window, cx| {
                 this.start_editing(window, cx);
             }))
@@ -283,6 +290,7 @@ impl MarkdownEditor {
                     .size_full()
                     .p_4()
                     .overflow_y_scrollbar()
+                    .whitespace_normal()
                     .line_height(px(base_font_size * MD_LINE_HEIGHT))
                     .child(div().children(elements)),
             )

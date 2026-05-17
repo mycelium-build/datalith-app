@@ -53,6 +53,7 @@ impl Render for DatalithView {
             div()
                 .flex_1()
                 .size_full()
+                .overflow_x_hidden()
                 .on_mouse_down(
                     gpui::MouseButton::Left,
                     cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
@@ -108,6 +109,7 @@ impl DatalithView {
 
         v_flex()
             .size_full()
+            .overflow_x_hidden()
             .child(
                 TabBar::new("editor-tabs")
                     .selected_index(active_tab)
