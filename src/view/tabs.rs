@@ -44,7 +44,7 @@ impl DatalithView {
         });
 
         let markdown_editor = if is_markdown(&path) {
-            Some(cx.new(|cx| MarkdownEditor::new(window, cx, content)))
+            Some(cx.new(|cx| MarkdownEditor::new(window, cx, content, true)))
         } else {
             None
         };
@@ -64,6 +64,7 @@ impl DatalithView {
             state: Some(state.clone()),
             markdown_editor,
             _sub: Some(sub),
+            editor_mode: true,
         };
 
         if new_tab || self.open_files.is_empty() {
@@ -90,6 +91,7 @@ impl DatalithView {
             state: None,
             markdown_editor: None,
             _sub: None,
+            editor_mode: true,
         });
         self.active_tab = self.open_files.len() - 1;
         cx.notify();

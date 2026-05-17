@@ -56,6 +56,7 @@ pub(crate) struct OpenFile {
     pub(crate) state: Option<Entity<InputState>>,
     pub(crate) markdown_editor: Option<Entity<MarkdownEditor>>,
     pub(crate) _sub: Option<Subscription>,
+    pub(crate) editor_mode: bool,
 }
 
 pub struct DatalithView {

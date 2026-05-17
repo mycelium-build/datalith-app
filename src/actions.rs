@@ -35,6 +35,7 @@ actions!(
         SelectTab7,
         SelectTab8,
         SelectTab9,
+        ToggleEditorMode,
     ]
 );
 
@@ -263,6 +264,23 @@ pub(crate) fn handle_close_tab(_: &CloseTab, cx: &mut App) {
 pub(crate) fn handle_new_tab(_: &NewTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.new_empty_tab(cx);
+        cx.notify();
+    });
+}
+
+pub(crate) fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
+        if let Some(ref file) = view.open_files.get(active_tab) {
+            if let Some(ref md_editor) = file.markdown_editor {
+                md_editor.update(cx, |editor, cx| {
+                    editor.toggle_editing(cx);
+                });
+                let is_editing = md_editor.read(cx).is_editing();
+                view.open_files[active_tab].editor_mode = is_editing;
+                view.focus_editor_requested = true;
+            }
+        }
         cx.notify();
     });
 }

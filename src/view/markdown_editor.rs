@@ -25,7 +25,7 @@ struct ListItemData {
 }
 
 impl MarkdownEditor {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, content: String) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, content: String, editing: bool) -> Self {
         let input = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
@@ -41,7 +41,7 @@ impl MarkdownEditor {
 
         Self {
             input,
-            editing: false,
+            editing,
             _sub: Some(sub),
         }
     }
@@ -50,19 +50,13 @@ impl MarkdownEditor {
         &self.input
     }
 
-    fn start_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.editing {
-            self.editing = true;
-            self.input.focus_handle(cx).focus(window, cx);
-            cx.notify();
-        }
+    pub fn is_editing(&self) -> bool {
+        self.editing
     }
 
-    fn stop_editing(&mut self, cx: &mut Context<Self>) {
-        if self.editing {
-            self.editing = false;
-            cx.notify();
-        }
+    pub fn toggle_editing(&mut self, cx: &mut Context<Self>) {
+        self.editing = !self.editing;
+        cx.notify();
     }
 
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -308,9 +302,6 @@ impl MarkdownEditor {
             .p_4()
             .whitespace_normal()
             .line_height(px(base_font_size * MD_LINE_HEIGHT))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.start_editing(window, cx);
-            }))
             .child(div().children(elements))
             .into_any_element()
     }
@@ -341,11 +332,6 @@ impl Render for MarkdownEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                if event.keystroke.key == "escape" && this.editing {
-                    this.stop_editing(cx);
-                }
-            }))
             .child(if self.editing {
                 self.render_editing(cx)
             } else {

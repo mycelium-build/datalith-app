@@ -96,6 +96,7 @@ fn main() {
         cx.on_action(handle_select_tab_8);
         cx.on_action(handle_select_tab_9);
         cx.on_action(open_settings);
+        cx.on_action(toggle_editor_mode);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -146,6 +147,7 @@ fn main() {
             KeyBinding::new("cmd-7", SelectTab7, None),
             KeyBinding::new("cmd-8", SelectTab8, None),
             KeyBinding::new("cmd-9", SelectTab9, None),
+            KeyBinding::new("cmd-e", ToggleEditorMode, None),
         ]);
 
         let last_folder = load_last_folder();
