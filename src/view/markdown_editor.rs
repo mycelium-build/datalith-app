@@ -121,7 +121,7 @@ impl MarkdownEditor {
                 MarkdownEvent::BlockStart(block) => {
                     block_stack.push(block.clone());
                     match block {
-                        MarkdownBlock::Heading(_) => {}
+                        MarkdownBlock::Heading => {}
                         MarkdownBlock::Paragraph => {}
                         MarkdownBlock::List(ordered, depth) => {
                             in_ordered_list = ordered;

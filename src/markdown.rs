@@ -9,7 +9,7 @@ pub enum MarkdownEvent {
 
 #[derive(Clone, Debug)]
 pub enum MarkdownBlock {
-    Heading(u32),
+    Heading,
     Paragraph,
     List(bool, usize),
     ListItem(usize),
@@ -64,7 +64,7 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                         pulldown_cmark::HeadingLevel::H5 => 5,
                         pulldown_cmark::HeadingLevel::H6 => 6,
                     };
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::Heading(lvl)));
+                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::Heading));
                     style_stack.push(MarkdownStyle::Heading(lvl));
                 }
                 Tag::Paragraph => {
@@ -88,11 +88,16 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                 Tag::List(checked) => {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
                     list_depth += 1;
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::List(checked.is_some(), list_depth)));
+                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::List(
+                        checked.is_some(),
+                        list_depth,
+                    )));
                 }
                 Tag::Item => {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::ListItem(list_depth)));
+                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::ListItem(
+                        list_depth,
+                    )));
                 }
                 Tag::BlockQuote(_) => {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
@@ -235,11 +240,7 @@ fn convert_wiki_links(text: &str) -> String {
     result
 }
 
-fn flush_text(
-    buffer: &mut String,
-    style_stack: &[MarkdownStyle],
-    events: &mut Vec<MarkdownEvent>,
-) {
+fn flush_text(buffer: &mut String, style_stack: &[MarkdownStyle], events: &mut Vec<MarkdownEvent>) {
     if !buffer.is_empty() {
         let style = composite_style(style_stack);
         events.push(MarkdownEvent::Text(buffer.clone(), style));
