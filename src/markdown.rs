@@ -5,6 +5,8 @@ pub enum MarkdownEvent {
     Text(String, MarkdownStyle),
     BlockStart(MarkdownBlock),
     BlockEnd,
+    LinkStart(String),
+    LinkEnd,
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +79,9 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                 Tag::Emphasis => {
                     style_stack.push(MarkdownStyle::Italic);
                 }
-                Tag::Link { .. } => {
+                Tag::Link { dest_url, .. } => {
+                    flush_text(&mut text_buffer, &style_stack, &mut events);
+                    events.push(MarkdownEvent::LinkStart(dest_url.to_string()));
                     style_stack.push(MarkdownStyle::Link);
                 }
                 Tag::CodeBlock(_) => {
@@ -115,8 +119,15 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
                     events.push(MarkdownEvent::BlockEnd);
                 }
-                TagEnd::Strong | TagEnd::Emphasis | TagEnd::Link => {
+                TagEnd::Strong | TagEnd::Emphasis => {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
+                    if style_stack.len() > 1 {
+                        style_stack.pop();
+                    }
+                }
+                TagEnd::Link => {
+                    flush_text(&mut text_buffer, &style_stack, &mut events);
+                    events.push(MarkdownEvent::LinkEnd);
                     if style_stack.len() > 1 {
                         style_stack.pop();
                     }
@@ -251,12 +262,14 @@ fn flush_text(buffer: &mut String, style_stack: &[MarkdownStyle], events: &mut V
 fn composite_style(stack: &[MarkdownStyle]) -> MarkdownStyle {
     let mut has_bold = false;
     let mut has_italic = false;
+    let mut has_link = false;
     let mut heading: Option<u32> = None;
 
     for style in stack {
         match style {
             MarkdownStyle::Bold => has_bold = true,
             MarkdownStyle::Italic => has_italic = true,
+            MarkdownStyle::Link => has_link = true,
             MarkdownStyle::Heading(level) => heading = Some(*level),
             _ => {}
         }
@@ -264,6 +277,10 @@ fn composite_style(stack: &[MarkdownStyle]) -> MarkdownStyle {
 
     if let Some(level) = heading {
         return MarkdownStyle::Heading(level);
+    }
+
+    if has_link {
+        return MarkdownStyle::Link;
     }
 
     if has_bold && has_italic {

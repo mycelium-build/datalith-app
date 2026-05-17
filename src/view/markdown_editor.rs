@@ -86,6 +86,7 @@ impl MarkdownEditor {
         let mut in_ordered_list = false;
         let mut current_list_item: Option<ListItemData> = None;
         let mut block_stack: Vec<MarkdownBlock> = Vec::new();
+        let mut current_link_url: Option<String> = None;
 
         let flush_list_item = |item: &mut Option<ListItemData>,
                                out: &mut Vec<AnyElement>,
@@ -111,11 +112,33 @@ impl MarkdownEditor {
                     if let Some(ref mut li) = current_list_item {
                         li.text_content.push_str(&text);
                         li.text_style = style;
+                    } else if let Some(ref url) = current_link_url {
+                        let url_clone = url.clone();
+                        let styled_span = {
+                            let mut span = div().child(text.clone());
+                            span = apply_style_to_div(span, &style, cx);
+                            span
+                        };
+                        let link_id = SharedString::from(format!("link-{}", url_clone));
+                        let link = div()
+                            .id(link_id)
+                            .child(styled_span)
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.open_url(&url_clone);
+                            }));
+                        elements.push(link.into_any_element());
                     } else {
                         let mut span = div().child(text);
                         span = apply_style_to_div(span, &style, cx);
                         elements.push(span.into_any_element());
                     }
+                }
+                MarkdownEvent::LinkStart(url) => {
+                    current_link_url = Some(url);
+                }
+                MarkdownEvent::LinkEnd => {
+                    current_link_url = None;
                 }
                 MarkdownEvent::BlockStart(block) => {
                     block_stack.push(block.clone());
@@ -362,7 +385,7 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
                 .px(px(MD_CODE_PADDING));
         }
         MarkdownStyle::Link => {
-            el = el.text_color(cx.theme().accent).underline();
+            el = el.text_color(cx.theme().primary).underline();
         }
         MarkdownStyle::Normal => {}
     }
