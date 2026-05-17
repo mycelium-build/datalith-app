@@ -116,23 +116,7 @@ impl MarkdownEditor {
                 MarkdownEvent::BlockStart(block) => {
                     block_stack.push(block.clone());
                     match block {
-                        MarkdownBlock::Heading(level) => {
-                            let size = match level {
-                                1 => base_font_size * 2.25,
-                                2 => base_font_size * 2.0,
-                                3 => base_font_size * 1.75,
-                                4 => base_font_size * 1.5,
-                                5 => base_font_size,
-                                _ => base_font_size * 1.25,
-                            };
-                            elements.push(
-                                div()
-                                    .text_size(px(size))
-                                    .font_weight(FontWeight::BOLD)
-                                    .mb_2()
-                                    .into_any_element(),
-                            );
-                        }
+                        MarkdownBlock::Heading(_) => {}
                         MarkdownBlock::Paragraph => {}
                         MarkdownBlock::List(ordered, depth) => {
                             in_ordered_list = ordered;
@@ -344,41 +328,20 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
     let mut el = div;
 
     match style {
-        MarkdownStyle::Heading(1) => {
+        MarkdownStyle::Heading(level) => {
+            let size = match level {
+                1 => base_font_size * 2.25,
+                2 => base_font_size * 2.0,
+                3 => base_font_size * 1.75,
+                4 => base_font_size * 1.5,
+                5 => base_font_size,
+                _ => base_font_size * 1.25,
+            };
+            let margin = if *level <= 3 { px(2.0) } else { px(0.0) };
             el = el
-                .text_size(px(base_font_size * 2.25))
+                .text_size(px(size))
                 .font_weight(FontWeight::BOLD)
-                .mb_2();
-        }
-        MarkdownStyle::Heading(2) => {
-            el = el
-                .text_size(px(base_font_size * 2.0))
-                .font_weight(FontWeight::BOLD)
-                .mb_2();
-        }
-        MarkdownStyle::Heading(3) => {
-            el = el
-                .text_size(px(base_font_size * 1.75))
-                .font_weight(FontWeight::BOLD)
-                .mb_1();
-        }
-        MarkdownStyle::Heading(4) => {
-            el = el
-                .text_size(px(base_font_size * 1.5))
-                .font_weight(FontWeight::BOLD);
-        }
-        MarkdownStyle::Heading(5) => {
-            el = el
-                .text_size(px(base_font_size))
-                .font_weight(FontWeight::BOLD);
-        }
-        MarkdownStyle::Heading(6) => {
-            el = el
-                .text_size(px(base_font_size * 1.25))
-                .font_weight(FontWeight::BOLD);
-        }
-        MarkdownStyle::Heading(_) => {
-            el = el.font_weight(FontWeight::BOLD);
+                .mb(margin);
         }
         MarkdownStyle::Bold => {
             el = el.font_weight(FontWeight::BOLD);
