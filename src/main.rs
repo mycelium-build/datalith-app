@@ -3,6 +3,7 @@ mod app;
 mod config;
 mod consts;
 mod fs_ops;
+mod markdown;
 mod search;
 mod themes;
 mod utils;
@@ -14,7 +15,7 @@ use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 use crate::actions::*;
 use crate::app::AppState;
 use crate::config::{
-    load_font_size_multiplier, load_last_folder, load_light_theme_name, load_dark_theme_name,
+    load_dark_theme_name, load_font_size_multiplier, load_last_folder, load_light_theme_name,
     load_theme_mode,
 };
 use crate::view::DatalithView;

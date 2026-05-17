@@ -1,3 +1,4 @@
+pub(crate) mod markdown_editor;
 pub(crate) mod palette;
 pub(crate) mod render;
 pub(crate) mod settings;
@@ -18,6 +19,7 @@ use gpui_component::{
 use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
 use crate::search::SearchEngine;
 use crate::utils::file_name_str;
+use crate::view::markdown_editor::MarkdownEditor;
 use crate::view::sidebar::file_tree::build_file_items;
 use palette::Palette;
 use settings::SettingsView;
@@ -52,6 +54,7 @@ impl SelectItem for VaultEntry {
 pub(crate) struct OpenFile {
     pub(crate) path: PathBuf,
     pub(crate) state: Option<Entity<InputState>>,
+    pub(crate) markdown_editor: Option<Entity<MarkdownEditor>>,
     pub(crate) _sub: Option<Subscription>,
 }
 

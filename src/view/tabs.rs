@@ -4,8 +4,15 @@ use std::path::{Path, PathBuf};
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 
+use super::markdown_editor::MarkdownEditor;
 use super::{DatalithView, OpenFile};
 use crate::utils::is_supported_file;
+
+fn is_markdown(path: &Path) -> bool {
+    path.extension()
+        .map(|ext| ext.to_string_lossy().to_lowercase() == "md")
+        .unwrap_or(false)
+}
 
 impl DatalithView {
     pub(crate) fn open_file(
@@ -33,8 +40,14 @@ impl DatalithView {
             InputState::new(window, cx)
                 .multi_line(true)
                 .searchable(true)
-                .default_value(content)
+                .default_value(content.clone())
         });
+
+        let markdown_editor = if is_markdown(&path) {
+            Some(cx.new(|cx| MarkdownEditor::new(window, cx, content)))
+        } else {
+            None
+        };
 
         let sub = {
             let path = path.clone();
@@ -46,13 +59,16 @@ impl DatalithView {
             })
         };
 
+        let open_file = OpenFile {
+            path: path.clone(),
+            state: Some(state.clone()),
+            markdown_editor,
+            _sub: Some(sub),
+        };
+
         if new_tab || self.open_files.is_empty() {
             state.focus_handle(cx).focus(window, cx);
-            self.open_files.push(OpenFile {
-                path,
-                state: Some(state),
-                _sub: Some(sub),
-            });
+            self.open_files.push(open_file);
             self.active_tab = self.open_files.len() - 1;
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
@@ -60,11 +76,7 @@ impl DatalithView {
             if !old_path.as_os_str().is_empty() {
                 self.track_file_edited(&old_path);
             }
-            self.open_files[active] = OpenFile {
-                path,
-                state: Some(state),
-                _sub: Some(sub),
-            };
+            self.open_files[active] = open_file;
             if let Some(ref s) = self.open_files[active].state {
                 s.focus_handle(cx).focus(window, cx);
             }
@@ -76,6 +88,7 @@ impl DatalithView {
         self.open_files.push(OpenFile {
             path: PathBuf::new(),
             state: None,
+            markdown_editor: None,
             _sub: None,
         });
         self.active_tab = self.open_files.len() - 1;

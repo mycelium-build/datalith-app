@@ -26,12 +26,16 @@ impl Render for DatalithView {
         if self.focus_editor_requested {
             self.focus_editor_requested = false;
             let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
-            if let Some(ref state) = self
-                .open_files
-                .get(active_tab)
-                .and_then(|f| f.state.as_ref())
-            {
-                state.focus_handle(cx).focus(_window, cx);
+            if let Some(ref file) = self.open_files.get(active_tab) {
+                if let Some(ref md_editor) = file.markdown_editor {
+                    md_editor
+                        .read(cx)
+                        .input()
+                        .focus_handle(cx)
+                        .focus(_window, cx);
+                } else if let Some(ref state) = file.state {
+                    state.focus_handle(cx).focus(_window, cx);
+                }
             }
         }
 
@@ -141,6 +145,8 @@ impl DatalithView {
                     .gap_4()
                     .child("Empty tab")
                     .into_any_element()
+            } else if let Some(ref md_editor) = active_file.markdown_editor {
+                div().flex_1().child(md_editor.clone()).into_any_element()
             } else if let Some(ref active_state) = active_file.state {
                 div()
                     .flex_1()
