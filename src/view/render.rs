@@ -53,7 +53,7 @@ impl Render for DatalithView {
             div()
                 .flex_1()
                 .size_full()
-                .overflow_x_hidden()
+                .overflow_hidden()
                 .on_mouse_down(
                     gpui::MouseButton::Left,
                     cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
@@ -109,7 +109,7 @@ impl DatalithView {
 
         v_flex()
             .size_full()
-            .overflow_x_hidden()
+            .overflow_hidden()
             .child(
                 TabBar::new("editor-tabs")
                     .selected_index(active_tab)
@@ -148,7 +148,11 @@ impl DatalithView {
                     .child("Empty tab")
                     .into_any_element()
             } else if let Some(ref md_editor) = active_file.markdown_editor {
-                div().flex_1().child(md_editor.clone()).into_any_element()
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(md_editor.clone())
+                    .into_any_element()
             } else if let Some(ref active_state) = active_file.state {
                 div()
                     .flex_1()
