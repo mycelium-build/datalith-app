@@ -22,3 +22,23 @@ pub(crate) const TREE_PADDING_PX: f32 = 12.0;
 pub(crate) const BORDER_WIDTH: f32 = 2.0;
 
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
+
+pub(crate) const MD_LINE_HEIGHT: f32 = 1.6;
+pub(crate) const MD_LIST_INDENT: &str = "  ";
+
+pub(crate) const MD_HEADING_SIZES: [f32; 6] = [2.25, 2.0, 1.75, 1.5, 1.0, 1.25];
+pub(crate) const MD_HEADING_MARGIN: f32 = 2.0;
+
+pub(crate) const MD_CODE_FONT_SCALE: f32 = 0.9;
+pub(crate) const MD_CODE_PADDING: f32 = 3.0;
+pub(crate) const MD_CODE_RADIUS: f32 = 3.0;
+pub(crate) const MD_CODE_BLOCK_PADDING: f32 = 3.0;
+pub(crate) const MD_CODE_BLOCK_RADIUS: f32 = 4.0;
+
+pub(crate) const MD_FRONTMATTER_FONT_SCALE: f32 = 0.75;
+pub(crate) const MD_FRONTMATTER_PADDING: f32 = 3.0;
+pub(crate) const MD_FRONTMATTER_RADIUS: f32 = 6.0;
+pub(crate) const MD_FRONTMATTER_MARGIN: f32 = 3.0;
+
+pub(crate) const MD_BLOCKQUOTE_PADDING: f32 = 4.0;
+pub(crate) const MD_BLOCKQUOTE_BORDER: f32 = 3.0;

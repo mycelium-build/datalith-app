@@ -3,7 +3,12 @@ use gpui_component::ActiveTheme;
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement;
 
-use crate::consts::BASE_FONT_SIZE;
+use crate::consts::{
+    BASE_FONT_SIZE, MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING,
+    MD_CODE_BLOCK_RADIUS, MD_CODE_FONT_SCALE, MD_CODE_PADDING, MD_CODE_RADIUS,
+    MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
+    MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
+};
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
 
 pub struct MarkdownEditor {
@@ -93,7 +98,7 @@ impl MarkdownEditor {
                 } else {
                     "\u{2022} ".to_string()
                 };
-                let indent_str = "  ".repeat(li.indent);
+                let indent_str = MD_LIST_INDENT.repeat(li.indent);
                 let full_text = format!("{}{}{}", indent_str, marker, li.text_content);
                 let mut span = div().child(full_text);
                 span = apply_style_to_div(span, &li.text_style, cx);
@@ -156,8 +161,8 @@ impl MarkdownEditor {
                         MarkdownBlock::BlockQuote => {
                             elements.push(
                                 div()
-                                    .pl_4()
-                                    .border_l_3()
+                                    .pl(px(MD_BLOCKQUOTE_PADDING))
+                                    .border_l(px(MD_BLOCKQUOTE_BORDER))
                                     .border_color(cx.theme().border)
                                     .text_color(cx.theme().muted_foreground)
                                     .mb_2()
@@ -169,9 +174,9 @@ impl MarkdownEditor {
                                 div()
                                     .bg(cx.theme().muted)
                                     .font_family("monospace")
-                                    .text_size(px(base_font_size * 0.9))
-                                    .rounded(px(4.0))
-                                    .p_3()
+                                    .text_size(px(base_font_size * MD_CODE_FONT_SCALE))
+                                    .rounded(px(MD_CODE_BLOCK_RADIUS))
+                                    .p(px(MD_CODE_BLOCK_PADDING))
                                     .mb_2()
                                     .child(code)
                                     .into_any_element(),
@@ -182,7 +187,7 @@ impl MarkdownEditor {
                             let mut fm_elements: Vec<AnyElement> = Vec::new();
                             fm_elements.push(
                                 div()
-                                    .text_size(px(base_font_size * 0.75))
+                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
                                     .text_color(cx.theme().muted_foreground)
                                     .font_family("monospace")
                                     .child("---")
@@ -198,14 +203,14 @@ impl MarkdownEditor {
                                             .gap_1()
                                             .child(
                                                 div()
-                                                    .text_size(px(base_font_size * 0.75))
+                                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
                                                     .text_color(cx.theme().accent)
                                                     .font_weight(FontWeight::SEMIBOLD)
                                                     .child(key.to_string()),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(base_font_size * 0.75))
+                                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
                                                     .text_color(cx.theme().muted_foreground)
                                                     .child(value.to_string()),
                                             )
@@ -214,7 +219,7 @@ impl MarkdownEditor {
                                 } else {
                                     fm_elements.push(
                                         div()
-                                            .text_size(px(base_font_size * 0.75))
+                                            .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
                                             .text_color(cx.theme().muted_foreground)
                                             .child(line.to_string())
                                             .into_any_element(),
@@ -223,7 +228,7 @@ impl MarkdownEditor {
                             }
                             fm_elements.push(
                                 div()
-                                    .text_size(px(base_font_size * 0.75))
+                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
                                     .text_color(cx.theme().muted_foreground)
                                     .font_family("monospace")
                                     .child("---")
@@ -232,9 +237,9 @@ impl MarkdownEditor {
                             elements.push(
                                 div()
                                     .bg(cx.theme().muted.opacity(0.3))
-                                    .rounded(px(6.0))
-                                    .p_3()
-                                    .mb_3()
+                                    .rounded(px(MD_FRONTMATTER_RADIUS))
+                                    .p(px(MD_FRONTMATTER_PADDING))
+                                    .mb(px(MD_FRONTMATTER_MARGIN))
                                     .children(fm_elements)
                                     .into_any_element(),
                             );
@@ -278,7 +283,7 @@ impl MarkdownEditor {
                     .size_full()
                     .p_4()
                     .overflow_y_scrollbar()
-                    .line_height(px(base_font_size * 1.6))
+                    .line_height(px(base_font_size * MD_LINE_HEIGHT))
                     .child(div().children(elements)),
             )
             .into_any_element()
@@ -294,7 +299,7 @@ impl MarkdownEditor {
                     .h_full()
                     .appearance(false)
                     .text_size(px(base_font_size))
-                    .line_height(px(base_font_size * 1.6)),
+                    .line_height(px(base_font_size * MD_LINE_HEIGHT)),
             )
             .into_any_element()
     }
@@ -329,19 +334,12 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
 
     match style {
         MarkdownStyle::Heading(level) => {
-            let size = match level {
-                1 => base_font_size * 2.25,
-                2 => base_font_size * 2.0,
-                3 => base_font_size * 1.75,
-                4 => base_font_size * 1.5,
-                5 => base_font_size,
-                _ => base_font_size * 1.25,
-            };
-            let margin = if *level <= 3 { px(2.0) } else { px(0.0) };
+            let idx = (*level as usize).saturating_sub(1).min(5);
+            let size = MD_HEADING_SIZES[idx];
             el = el
-                .text_size(px(size))
+                .text_size(px(base_font_size * size))
                 .font_weight(FontWeight::BOLD)
-                .mb(margin);
+                .mb(px(MD_HEADING_MARGIN));
         }
         MarkdownStyle::Bold => {
             el = el.font_weight(FontWeight::BOLD);
@@ -356,9 +354,9 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
             el = el
                 .bg(cx.theme().muted)
                 .font_family("monospace")
-                .text_size(px(base_font_size * 0.9))
-                .rounded(px(3.0))
-                .px_1();
+                .text_size(px(base_font_size * MD_CODE_FONT_SCALE))
+                .rounded(px(MD_CODE_RADIUS))
+                .px(px(MD_CODE_PADDING));
         }
         MarkdownStyle::Link => {
             el = el.text_color(cx.theme().accent).underline();
