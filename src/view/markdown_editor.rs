@@ -1,7 +1,6 @@
 use gpui::*;
 use gpui_component::ActiveTheme;
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::scroll::ScrollableElement;
 
 use crate::consts::{
     BASE_FONT_SIZE, MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING,
@@ -281,19 +280,15 @@ impl MarkdownEditor {
         div()
             .id("markdown-preview")
             .size_full()
+            .overflow_y_scroll()
             .overflow_x_hidden()
+            .p_4()
+            .whitespace_normal()
+            .line_height(px(base_font_size * MD_LINE_HEIGHT))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.start_editing(window, cx);
             }))
-            .child(
-                div()
-                    .size_full()
-                    .p_4()
-                    .overflow_y_scrollbar()
-                    .whitespace_normal()
-                    .line_height(px(base_font_size * MD_LINE_HEIGHT))
-                    .child(div().children(elements)),
-            )
+            .child(div().children(elements))
             .into_any_element()
     }
 
