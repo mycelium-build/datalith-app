@@ -136,9 +136,13 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(Settings::new("app-settings").with_size(Size::Small).pages(
-                                vec![SettingPage::new("Appearance").default_open(true).groups(
-                                    vec![
+                            .child(
+                                Settings::new("app-settings")
+                                    .with_size(Size::Small)
+                                    .pages(vec![
+                                    SettingPage::new("Appearance")
+                                        .default_open(true)
+                                        .groups(vec![
                                         SettingGroup::new().title("Theme").items(vec![
                                             SettingItem::new(
                                                 "Light Theme",
@@ -169,6 +173,8 @@ impl SettingsView {
                                                                 None,
                                                                 cx,
                                                             );
+                                                            gpui_component::Theme::global_mut(cx)
+                                                                .mode = current_mode;
                                                         }
                                                         cx.refresh_windows();
                                                         let _ = save_light_theme_name(&val);
@@ -205,6 +211,8 @@ impl SettingsView {
                                                                 None,
                                                                 cx,
                                                             );
+                                                            gpui_component::Theme::global_mut(cx)
+                                                                .mode = current_mode;
                                                         }
                                                         cx.refresh_windows();
                                                         let _ = save_dark_theme_name(&val);
@@ -234,9 +242,9 @@ impl SettingsView {
                                                 }
                                             }),
                                         ]),
-                                    ],
-                                )],
-                            )),
+                                    ]),
+                                ]),
+                            ),
                     ),
             )
     }

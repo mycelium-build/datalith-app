@@ -20,6 +20,7 @@ use crate::config::{
 };
 use crate::view::DatalithView;
 use crate::view::settings::SettingsView;
+use crate::view::settings::ThemeOptions;
 
 fn main() {
     let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
@@ -55,8 +56,16 @@ fn main() {
         let light_theme_name = saved_light_name.unwrap_or_default();
         let dark_theme_name = saved_dark_name.unwrap_or_default();
         let registry = ThemeRegistry::global(cx);
-        let light_theme_opt = registry.themes().get(light_theme_name.as_str()).cloned();
-        let dark_theme_opt = registry.themes().get(dark_theme_name.as_str()).cloned();
+        let light_theme_opt = registry
+            .themes()
+            .get(light_theme_name.as_str())
+            .filter(|t| t.mode == ThemeMode::Light)
+            .cloned();
+        let dark_theme_opt = registry
+            .themes()
+            .get(dark_theme_name.as_str())
+            .filter(|t| t.mode == ThemeMode::Dark)
+            .cloned();
         if let Some(theme_config) = light_theme_opt {
             Theme::global_mut(cx).light_theme = theme_config;
         }
@@ -64,6 +73,11 @@ fn main() {
             Theme::global_mut(cx).dark_theme = theme_config;
         }
         Theme::change(saved_mode, None, cx);
+        Theme::global_mut(cx).mode = saved_mode;
+        cx.refresh_windows();
+
+        cx.global_mut::<ThemeOptions>().light_theme_name = light_theme_name.clone().into();
+        cx.global_mut::<ThemeOptions>().dark_theme_name = dark_theme_name.clone().into();
 
         if let Some(multiplier) = load_font_size_multiplier() {
             gpui_component::Theme::global_mut(cx).font_size =
