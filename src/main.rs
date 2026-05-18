@@ -131,8 +131,6 @@ fn main() {
             ]),
         ]);
         cx.bind_keys([
-            KeyBinding::new("cmd-shift-f", ToggleSearch, None),
-            KeyBinding::new("cmd-p", ToggleQuickSwitcher, None),
             KeyBinding::new("cmd-n", NewFile, None),
             KeyBinding::new("cmd-shift-n", NewFolder, None),
             KeyBinding::new("f2", Rename, None),
@@ -140,8 +138,10 @@ fn main() {
             KeyBinding::new("cmd-d", Duplicate, None),
             KeyBinding::new("cmd-shift-e", OpenInExplorer, None),
             KeyBinding::new("cmd-l", CopyPath, None),
-            KeyBinding::new("cmd-w", CloseTab, None),
+            KeyBinding::new("cmd-shift-f", ToggleSearch, None),
+            KeyBinding::new("cmd-p", ToggleQuickSwitcher, None),
             KeyBinding::new("cmd-t", NewTab, None),
+            KeyBinding::new("cmd-w", CloseTab, None),
             KeyBinding::new("cmd-0", FocusSidebar, None),
             KeyBinding::new("cmd-shift-d", ToggleTheme, None),
             KeyBinding::new("cmd-1", SelectTab1, None),
