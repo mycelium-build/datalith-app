@@ -30,26 +30,6 @@ fn main() {
         themes::load_embedded_themes(cx);
         SettingsView::init_theme_options(cx);
 
-        let registry = ThemeRegistry::global(cx);
-        let themes = registry.themes();
-        let mut light_config = None;
-        let mut dark_config = None;
-        for (name, config) in themes {
-            if name.to_lowercase().contains("ayu") {
-                if config.mode == ThemeMode::Light {
-                    light_config = Some(config.clone());
-                } else {
-                    dark_config = Some(config.clone());
-                }
-            }
-        }
-        if let Some(light_config) = light_config {
-            Theme::global_mut(cx).light_theme = light_config;
-        }
-        if let Some(dark_config) = dark_config {
-            Theme::global_mut(cx).dark_theme = dark_config;
-        }
-
         let saved_mode = load_theme_mode().unwrap_or(ThemeMode::Light);
         let saved_light_name = load_light_theme_name();
         let saved_dark_name = load_dark_theme_name();
