@@ -86,50 +86,31 @@ impl MarkdownEditor {
                         li.text_style = style;
                     } else if let Some(ref url) = current_link_url {
                         let url_clone = url.clone();
-                        let styled_span = {
-                            let mut span = div().child(text.clone());
-                            span = apply_style_to_div(span, &style, cx);
-                            span
-                        };
                         let link_id = SharedString::from(format!("link-{}", url_clone));
-                        let link = div()
-                            .id(link_id)
-                            .child(styled_span)
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |_, _, _, cx| {
+                        let mut link = div().child(text.clone());
+                        link = apply_style_to_div(link, &style, cx);
+                        let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
+                            move |_, _, _, cx| {
                                 cx.open_url(&url_clone);
-                            }));
+                            },
+                        ));
                         current_line.push(link.into_any_element());
-                    } else if in_paragraph {
-                        let parts: Vec<&str> = text.split('\n').collect();
-                        if parts.len() > 1 && !current_line.is_empty() {
-                            let wrapped = div()
-                                .flex()
-                                .flex_wrap()
-                                .items_start()
-                                .children(current_line.drain(..))
-                                .into_any_element();
-                            paragraph_lines.push(wrapped);
-                        }
-                        for part in parts.iter() {
-                            if !part.is_empty() {
-                                let mut span = div().child(part.to_string());
-                                span = apply_style_to_div(span, &style, cx);
-                                current_line.push(span.into_any_element());
-                            }
-                        }
                     } else {
                         let parts: Vec<&str> = text.split('\n').collect();
-                        if parts.len() > 1 && !current_line.is_empty() {
-                            let wrapped = div()
-                                .flex()
-                                .flex_wrap()
-                                .items_start()
-                                .children(current_line.drain(..))
-                                .into_any_element();
-                            elements.push(wrapped);
-                        }
-                        for part in parts.iter() {
+                        for (i, part) in parts.iter().enumerate() {
+                            if i > 0 && !current_line.is_empty() {
+                                let wrapped = div()
+                                    .flex()
+                                    .flex_wrap()
+                                    .items_start()
+                                    .children(current_line.drain(..))
+                                    .into_any_element();
+                                if in_paragraph {
+                                    paragraph_lines.push(wrapped);
+                                } else {
+                                    elements.push(wrapped);
+                                }
+                            }
                             if !part.is_empty() {
                                 let mut span = div().child(part.to_string());
                                 span = apply_style_to_div(span, &style, cx);
@@ -392,22 +373,17 @@ impl MarkdownEditor {
                 .items_start()
                 .children(current_line.drain(..))
                 .into_any_element();
-            paragraph_lines.push(wrapped);
+            if in_paragraph {
+                paragraph_lines.push(wrapped);
+            } else {
+                elements.push(wrapped);
+            }
         }
         if !paragraph_lines.is_empty() {
             let wrapped = div()
                 .flex()
                 .flex_col()
                 .children(paragraph_lines.drain(..))
-                .into_any_element();
-            elements.push(wrapped);
-        }
-        if !current_line.is_empty() {
-            let wrapped = div()
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .children(current_line.drain(..))
                 .into_any_element();
             elements.push(wrapped);
         }
