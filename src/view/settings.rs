@@ -62,17 +62,23 @@ impl SettingsView {
             .collect();
         theme_options.sort_by_key(|(n, _)| n.to_lowercase());
 
-        let saved_light = crate::config::load_light_theme_name()
-            .unwrap_or_default()
-            .into();
-        let saved_dark = crate::config::load_dark_theme_name()
-            .unwrap_or_default()
-            .into();
+        let saved_light = crate::config::load_light_theme_name().unwrap_or_else(|| {
+            gpui_component::Theme::global(cx)
+                .light_theme
+                .name
+                .to_string()
+        });
+        let saved_dark = crate::config::load_dark_theme_name().unwrap_or_else(|| {
+            gpui_component::Theme::global(cx)
+                .dark_theme
+                .name
+                .to_string()
+        });
         let font_size_multiplier = crate::config::load_font_size_multiplier().unwrap_or(1.0);
 
         cx.set_global(ThemeOptions {
-            light_theme_name: saved_light,
-            dark_theme_name: saved_dark,
+            light_theme_name: saved_light.into(),
+            dark_theme_name: saved_dark.into(),
             theme_options,
             font_size_multiplier,
         });
@@ -136,13 +142,9 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(
-                                Settings::new("app-settings")
-                                    .with_size(Size::Small)
-                                    .pages(vec![
-                                    SettingPage::new("Appearance")
-                                        .default_open(true)
-                                        .groups(vec![
+                            .child(Settings::new("app-settings").with_size(Size::Small).pages(
+                                vec![SettingPage::new("Appearance").default_open(true).groups(
+                                    vec![
                                         SettingGroup::new().title("Theme").items(vec![
                                             SettingItem::new(
                                                 "Light Theme",
@@ -242,9 +244,9 @@ impl SettingsView {
                                                 }
                                             }),
                                         ]),
-                                    ]),
-                                ]),
-                            ),
+                                    ],
+                                )],
+                            )),
                     ),
             )
     }
