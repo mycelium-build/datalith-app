@@ -168,7 +168,7 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                 if in_code_block {
                     code_block_content.push('\n');
                 } else {
-                    text_buffer.push(' ');
+                    text_buffer.push('\n');
                 }
             }
             Event::Rule => {
