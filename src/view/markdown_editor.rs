@@ -74,24 +74,9 @@ impl MarkdownEditor {
         let mut current_list_item: Option<ListItemData> = None;
         let mut block_stack: Vec<MarkdownBlock> = Vec::new();
         let mut current_link_url: Option<String> = None;
-
-        let flush_list_item = |item: &mut Option<ListItemData>,
-                               out: &mut Vec<AnyElement>,
-                               _base_fs: f32,
-                               cx: &App| {
-            if let Some(li) = item.take() {
-                let marker = if li.is_ordered {
-                    format!("{}. ", li.marker_text)
-                } else {
-                    "\u{2022} ".to_string()
-                };
-                let indent_str = MD_LIST_INDENT.repeat(li.indent);
-                let full_text = format!("{}{}{}", indent_str, marker, li.text_content);
-                let mut span = div().child(full_text);
-                span = apply_style_to_div(span, &li.text_style, cx);
-                out.push(span.into_any_element());
-            }
-        };
+        let mut current_line: Vec<AnyElement> = Vec::new();
+        let mut paragraph_lines: Vec<AnyElement> = Vec::new();
+        let mut in_paragraph = false;
 
         for event in events {
             match event {
@@ -114,11 +99,43 @@ impl MarkdownEditor {
                             .on_click(cx.listener(move |_, _, _, cx| {
                                 cx.open_url(&url_clone);
                             }));
-                        elements.push(link.into_any_element());
+                        current_line.push(link.into_any_element());
+                    } else if in_paragraph {
+                        let parts: Vec<&str> = text.split('\n').collect();
+                        if parts.len() > 1 && !current_line.is_empty() {
+                            let wrapped = div()
+                                .flex()
+                                .flex_wrap()
+                                .items_start()
+                                .children(current_line.drain(..))
+                                .into_any_element();
+                            paragraph_lines.push(wrapped);
+                        }
+                        for part in parts.iter() {
+                            if !part.is_empty() {
+                                let mut span = div().child(part.to_string());
+                                span = apply_style_to_div(span, &style, cx);
+                                current_line.push(span.into_any_element());
+                            }
+                        }
                     } else {
-                        let mut span = div().child(text);
-                        span = apply_style_to_div(span, &style, cx);
-                        elements.push(span.into_any_element());
+                        let parts: Vec<&str> = text.split('\n').collect();
+                        if parts.len() > 1 && !current_line.is_empty() {
+                            let wrapped = div()
+                                .flex()
+                                .flex_wrap()
+                                .items_start()
+                                .children(current_line.drain(..))
+                                .into_any_element();
+                            elements.push(wrapped);
+                        }
+                        for part in parts.iter() {
+                            if !part.is_empty() {
+                                let mut span = div().child(part.to_string());
+                                span = apply_style_to_div(span, &style, cx);
+                                current_line.push(span.into_any_element());
+                            }
+                        }
                     }
                 }
                 MarkdownEvent::LinkStart(url) => {
@@ -128,6 +145,37 @@ impl MarkdownEditor {
                     current_link_url = None;
                 }
                 MarkdownEvent::BlockStart(block) => {
+                    if !matches!(block, MarkdownBlock::Paragraph) {
+                        if !current_line.is_empty() {
+                            let wrapped = div()
+                                .flex()
+                                .flex_wrap()
+                                .items_start()
+                                .children(current_line.drain(..))
+                                .into_any_element();
+                            paragraph_lines.push(wrapped);
+                        }
+                        if !paragraph_lines.is_empty() {
+                            let wrapped = div()
+                                .flex()
+                                .flex_col()
+                                .children(paragraph_lines.drain(..))
+                                .into_any_element();
+                            elements.push(wrapped);
+                        }
+                        in_paragraph = false;
+                    } else {
+                        in_paragraph = true;
+                    }
+                    if !current_line.is_empty() {
+                        let wrapped = div()
+                            .flex()
+                            .flex_wrap()
+                            .items_start()
+                            .children(current_line.drain(..))
+                            .into_any_element();
+                        elements.push(wrapped);
+                    }
                     block_stack.push(block.clone());
                     match block {
                         MarkdownBlock::Heading => {}
@@ -143,12 +191,19 @@ impl MarkdownEditor {
                         }
                         MarkdownBlock::ListItem(depth) => {
                             if current_list_item.is_some() {
-                                flush_list_item(
-                                    &mut current_list_item,
-                                    &mut elements,
-                                    base_font_size,
-                                    cx,
-                                );
+                                if let Some(li) = current_list_item.take() {
+                                    let marker = if li.is_ordered {
+                                        format!("{}. ", li.marker_text)
+                                    } else {
+                                        "\u{2022} ".to_string()
+                                    };
+                                    let indent_str = MD_LIST_INDENT.repeat(li.indent);
+                                    let full_text =
+                                        format!("{}{}{}", indent_str, marker, li.text_content);
+                                    let mut span = div().child(full_text);
+                                    span = apply_style_to_div(span, &li.text_style, cx);
+                                    elements.push(span.into_any_element());
+                                }
                             }
                             let marker_text = if in_ordered_list {
                                 while ordered_counters.len() <= depth {
@@ -265,27 +320,97 @@ impl MarkdownEditor {
                     if let Some(popped) = block_stack.pop() {
                         match popped {
                             MarkdownBlock::ListItem(_) => {
-                                flush_list_item(
-                                    &mut current_list_item,
-                                    &mut elements,
-                                    base_font_size,
-                                    cx,
-                                );
+                                if let Some(li) = current_list_item.take() {
+                                    let marker = if li.is_ordered {
+                                        format!("{}. ", li.marker_text)
+                                    } else {
+                                        "\u{2022} ".to_string()
+                                    };
+                                    let indent_str = MD_LIST_INDENT.repeat(li.indent);
+                                    let full_text =
+                                        format!("{}{}{}", indent_str, marker, li.text_content);
+                                    let mut span = div().child(full_text);
+                                    span = apply_style_to_div(span, &li.text_style, cx);
+                                    elements.push(span.into_any_element());
+                                }
                             }
                             MarkdownBlock::List(_, depth) => {
                                 if in_ordered_list && depth > 0 && ordered_counters.len() > depth {
                                     ordered_counters.truncate(depth);
                                 }
+                                if depth == 1 {
+                                    elements.push(div().mb_4().into_any_element());
+                                }
+                            }
+                            MarkdownBlock::Paragraph => {
+                                if !current_line.is_empty() {
+                                    let wrapped = div()
+                                        .flex()
+                                        .flex_wrap()
+                                        .items_start()
+                                        .children(current_line.drain(..))
+                                        .into_any_element();
+                                    paragraph_lines.push(wrapped);
+                                }
+                                if !paragraph_lines.is_empty() {
+                                    let wrapped = div()
+                                        .flex()
+                                        .flex_col()
+                                        .children(paragraph_lines.drain(..))
+                                        .into_any_element();
+                                    elements.push(wrapped);
+                                }
+                                in_paragraph = false;
+                                elements.push(div().mb_4().into_any_element());
+                            }
+                            MarkdownBlock::Heading => {
+                                elements.push(div().mb_2().into_any_element());
                             }
                             _ => {}
                         }
                     }
-                    elements.push(div().mb_1().into_any_element());
                 }
             }
         }
 
-        flush_list_item(&mut current_list_item, &mut elements, base_font_size, cx);
+        if let Some(li) = current_list_item.take() {
+            let marker = if li.is_ordered {
+                format!("{}. ", li.marker_text)
+            } else {
+                "\u{2022} ".to_string()
+            };
+            let indent_str = MD_LIST_INDENT.repeat(li.indent);
+            let full_text = format!("{}{}{}", indent_str, marker, li.text_content);
+            let mut span = div().child(full_text);
+            span = apply_style_to_div(span, &li.text_style, cx);
+            elements.push(span.into_any_element());
+        }
+        if !current_line.is_empty() {
+            let wrapped = div()
+                .flex()
+                .flex_wrap()
+                .items_start()
+                .children(current_line.drain(..))
+                .into_any_element();
+            paragraph_lines.push(wrapped);
+        }
+        if !paragraph_lines.is_empty() {
+            let wrapped = div()
+                .flex()
+                .flex_col()
+                .children(paragraph_lines.drain(..))
+                .into_any_element();
+            elements.push(wrapped);
+        }
+        if !current_line.is_empty() {
+            let wrapped = div()
+                .flex()
+                .flex_wrap()
+                .items_start()
+                .children(current_line.drain(..))
+                .into_any_element();
+            elements.push(wrapped);
+        }
 
         div()
             .id("markdown-preview")
@@ -323,13 +448,11 @@ impl Focusable for MarkdownEditor {
 
 impl Render for MarkdownEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .child(if self.editing {
-                self.render_editing(cx)
-            } else {
-                self.render_preview(cx)
-            })
+        div().size_full().child(if self.editing {
+            self.render_editing(cx)
+        } else {
+            self.render_preview(cx)
+        })
     }
 }
 
@@ -344,7 +467,8 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
             el = el
                 .text_size(px(base_font_size * size))
                 .font_weight(FontWeight::BOLD)
-                .mb(px(MD_HEADING_MARGIN));
+                .mb(px(MD_HEADING_MARGIN))
+                .line_height(px(base_font_size * size * 1.2));
         }
         MarkdownStyle::Bold => {
             el = el.font_weight(FontWeight::BOLD);
