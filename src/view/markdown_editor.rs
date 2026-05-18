@@ -464,10 +464,12 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
         MarkdownStyle::Heading(level) => {
             let idx = (*level as usize).saturating_sub(1).min(5);
             let size = MD_HEADING_SIZES[idx];
+            let margin = MD_HEADING_MARGIN * size;
             el = el
                 .text_size(px(base_font_size * size))
                 .font_weight(FontWeight::BOLD)
-                .mb(px(MD_HEADING_MARGIN))
+                .mb(px(margin))
+                .mt(px(margin * 0.5))
                 .line_height(px(base_font_size * size * 1.2));
         }
         MarkdownStyle::Bold => {
