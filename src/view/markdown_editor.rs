@@ -339,7 +339,7 @@ impl MarkdownEditor {
                                     ordered_counters.truncate(depth);
                                 }
                                 if depth == 1 {
-                                    elements.push(div().mb_4().into_any_element());
+                                    elements.push(div().m_2().into_any_element());
                                 }
                             }
                             MarkdownBlock::Paragraph => {
@@ -361,10 +361,10 @@ impl MarkdownEditor {
                                     elements.push(wrapped);
                                 }
                                 in_paragraph = false;
-                                elements.push(div().mb_4().into_any_element());
+                                elements.push(div().m_2().into_any_element());
                             }
                             MarkdownBlock::Heading => {
-                                elements.push(div().mb_2().into_any_element());
+                                elements.push(div().m_2().into_any_element());
                             }
                             _ => {}
                         }
@@ -468,8 +468,8 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
             el = el
                 .text_size(px(base_font_size * size))
                 .font_weight(FontWeight::BOLD)
+                .mt(px(margin))
                 .mb(px(margin))
-                .mt(px(margin * 0.5))
                 .line_height(px(base_font_size * size * 1.2));
         }
         MarkdownStyle::Bold => {
