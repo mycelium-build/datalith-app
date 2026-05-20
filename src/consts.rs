@@ -20,6 +20,7 @@ pub(crate) const TREE_INDENT_PX: f32 = 16.0;
 pub(crate) const TREE_PADDING_PX: f32 = 12.0;
 
 pub(crate) const BORDER_WIDTH: f32 = 2.0;
+pub(crate) const ICON_PADDING: f32 = 4.0;
 
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
 
