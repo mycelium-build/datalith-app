@@ -17,6 +17,7 @@ use gpui_component::{
 };
 
 use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
+use crate::link_cache::LinkCache;
 use crate::search::SearchEngine;
 use crate::utils::file_name_str;
 use crate::view::markdown_editor::MarkdownEditor;
@@ -56,6 +57,7 @@ pub(crate) struct OpenFile {
     pub(crate) state: Option<Entity<InputState>>,
     pub(crate) markdown_editor: Option<Entity<MarkdownEditor>>,
     pub(crate) _sub: Option<Subscription>,
+    pub(crate) _md_sub: Option<Subscription>,
     pub(crate) editor_mode: bool,
 }
 
@@ -70,6 +72,7 @@ pub struct DatalithView {
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) active_tab: usize,
     pub(crate) search_engine: Option<SearchEngine>,
+    pub(crate) link_cache: Option<LinkCache>,
     pub(crate) palette: Palette,
     _palette_sub: Subscription,
     pub(crate) settings: SettingsView,
@@ -154,6 +157,7 @@ impl DatalithView {
             open_files: Vec::new(),
             active_tab: 0,
             search_engine: None,
+            link_cache: None,
             palette,
             _palette_sub: palette_sub,
             settings,
@@ -193,6 +197,8 @@ impl DatalithView {
                 None
             }
         };
+
+        self.link_cache = Some(LinkCache::new(&path));
 
         self.palette.set_root(self.search_engine.as_ref());
 
@@ -237,12 +243,18 @@ impl DatalithView {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.add_file(path);
         }
+        if let Some(ref mut cache) = self.link_cache {
+            cache.add_file(path);
+        }
         self.palette.add_entry(path);
     }
 
     pub(crate) fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.rename_file(old_path, new_path);
+        }
+        if let Some(ref mut cache) = self.link_cache {
+            cache.rename_file(old_path, new_path);
         }
         self.palette.rename_entry(old_path, new_path);
     }
@@ -257,6 +269,9 @@ impl DatalithView {
                 }
             }
         }
+        if let Some(ref mut cache) = self.link_cache {
+            cache.remove_under(root);
+        }
     }
 
     pub(crate) fn track_file_delete(&mut self, path: &Path) {
@@ -265,6 +280,9 @@ impl DatalithView {
         } else {
             if let Some(ref engine) = self.search_engine {
                 let _ = engine.indexer.remove_file(path);
+            }
+            if let Some(ref mut cache) = self.link_cache {
+                cache.remove_file(path);
             }
             self.palette.remove_entry(path);
         }

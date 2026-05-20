@@ -3,6 +3,7 @@ mod app;
 mod config;
 mod consts;
 mod fs_ops;
+mod link_cache;
 mod markdown;
 mod search;
 mod themes;

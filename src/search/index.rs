@@ -133,7 +133,7 @@ impl Indexer {
 }
 
 #[must_use]
-pub(crate) fn file_fingerprint(path: &Path) -> u64 {
+pub fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
@@ -149,12 +149,12 @@ pub(crate) fn file_fingerprint(path: &Path) -> u64 {
 }
 
 #[must_use]
-pub(crate) fn is_indexable(path: &Path) -> bool {
+pub fn is_indexable(path: &Path) -> bool {
     is_supported_file(path)
 }
 
 #[must_use]
-pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
+pub fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {

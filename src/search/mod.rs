@@ -1,4 +1,4 @@
-mod index;
+pub(crate) mod index;
 pub(crate) mod picker;
 mod query;
 

@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use gpui::*;
 use gpui_component::ActiveTheme;
 use gpui_component::input::{Input, InputEvent, InputState};
@@ -10,11 +13,18 @@ use crate::consts::{
 };
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
 
+pub enum MarkdownEditorEvent {
+    OpenInternalLink(PathBuf),
+}
+
 pub struct MarkdownEditor {
     input: Entity<InputState>,
     editing: bool,
     _sub: Option<Subscription>,
+    link_resolver: Option<Rc<dyn Fn(&str) -> Option<PathBuf>>>,
 }
+
+impl EventEmitter<MarkdownEditorEvent> for MarkdownEditor {}
 
 struct ListItemData {
     marker_text: String,
@@ -25,7 +35,12 @@ struct ListItemData {
 }
 
 impl MarkdownEditor {
-    pub fn new(input: Entity<InputState>, editing: bool, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        input: Entity<InputState>,
+        editing: bool,
+        link_resolver: Option<Rc<dyn Fn(&str) -> Option<PathBuf>>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let sub = cx.subscribe(&input, |_this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -36,6 +51,7 @@ impl MarkdownEditor {
             input,
             editing,
             _sub: Some(sub),
+            link_resolver,
         }
     }
 
@@ -89,8 +105,15 @@ impl MarkdownEditor {
                         let link_id = SharedString::from(format!("link-{}", url_clone));
                         let mut link = div().child(text.clone());
                         link = apply_style_to_div(link, &style, cx);
+                        let resolver = self.link_resolver.clone();
                         let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
                             move |_, _, _, cx| {
+                                if let Some(ref resolver) = resolver {
+                                    if let Some(path) = resolver(&url_clone) {
+                                        cx.emit(MarkdownEditorEvent::OpenInternalLink(path));
+                                        return;
+                                    }
+                                }
                                 cx.open_url(&url_clone);
                             },
                         ));

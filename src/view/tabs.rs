@@ -1,10 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 
-use super::markdown_editor::MarkdownEditor;
+use super::markdown_editor::{MarkdownEditor, MarkdownEditorEvent};
 use super::{DatalithView, OpenFile};
 use crate::utils::is_supported_file;
 
@@ -44,7 +45,25 @@ impl DatalithView {
         });
 
         let markdown_editor = if is_markdown(&path) {
-            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, cx)))
+            let link_resolver = self.link_cache.as_ref().map(|cache| {
+                let cache = cache.clone();
+                Rc::new(move |name: &str| cache.resolve(name)) as Rc<dyn Fn(&str) -> Option<PathBuf>>
+            });
+            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, link_resolver, cx)))
+        } else {
+            None
+        };
+
+        let md_sub = if let Some(ref editor) = markdown_editor {
+            Some(cx.subscribe_in(
+                editor,
+                window,
+                move |view, _, event, window, cx| match event {
+                    MarkdownEditorEvent::OpenInternalLink(link_path) => {
+                        view.open_file(link_path.clone(), true, window, cx);
+                    }
+                },
+            ))
         } else {
             None
         };
@@ -64,6 +83,7 @@ impl DatalithView {
             state: Some(state.clone()),
             markdown_editor,
             _sub: Some(sub),
+            _md_sub: md_sub,
             editor_mode: true,
         };
 
@@ -91,6 +111,7 @@ impl DatalithView {
             state: None,
             markdown_editor: None,
             _sub: None,
+            _md_sub: None,
             editor_mode: true,
         });
         self.active_tab = self.open_files.len() - 1;
