@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
@@ -45,11 +44,7 @@ impl DatalithView {
         });
 
         let markdown_editor = if is_markdown(&path) {
-            let link_resolver = self.link_cache.as_ref().map(|cache| {
-                let cache = cache.clone();
-                Rc::new(move |name: &str| cache.resolve(name)) as Rc<dyn Fn(&str) -> Option<PathBuf>>
-            });
-            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, link_resolver, cx)))
+            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, cx)))
         } else {
             None
         };
@@ -59,8 +54,14 @@ impl DatalithView {
                 editor,
                 window,
                 move |view, _, event, window, cx| match event {
-                    MarkdownEditorEvent::OpenInternalLink(link_path) => {
-                        view.open_file(link_path.clone(), true, window, cx);
+                    MarkdownEditorEvent::LinkClicked(url) => {
+                        if let Some(ref cache) = view.link_cache {
+                            if let Some(resolved) = cache.resolve(url) {
+                                view.open_file(resolved, true, window, cx);
+                                return;
+                            }
+                        }
+                        cx.open_url(url);
                     }
                 },
             ))
