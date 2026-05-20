@@ -26,8 +26,7 @@ struct ListItemData {
     marker_text: String,
     is_ordered: bool,
     indent: usize,
-    text_content: String,
-    text_style: MarkdownStyle,
+    elements: Vec<AnyElement>,
 }
 
 impl MarkdownEditor {
@@ -83,16 +82,38 @@ impl MarkdownEditor {
         let mut current_line: Vec<AnyElement> = Vec::new();
         let mut paragraph_lines: Vec<AnyElement> = Vec::new();
         let mut in_paragraph = false;
+        let mut link_counter: u64 = 0;
 
         for event in events {
             match event {
                 MarkdownEvent::Text(text, style) => {
                     if let Some(ref mut li) = current_list_item {
-                        li.text_content.push_str(&text);
-                        li.text_style = style;
+                        if let Some(ref url) = current_link_url {
+                            let url_clone = url.clone();
+                            link_counter += 1;
+                            let link_id = SharedString::from(format!("link-{}-{}", link_counter, url_clone));
+                            let mut link = div().child(text.clone());
+                            link = apply_style_to_div(link, &style, cx);
+                            let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
+                                move |_, _, _, cx| {
+                                    cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone()));
+                                },
+                            ));
+                            li.elements.push(link.into_any_element());
+                        } else {
+                            let parts: Vec<&str> = text.split('\n').collect();
+                            for part in parts {
+                                if !part.is_empty() {
+                                    let mut span = div().child(part.to_string());
+                                    span = apply_style_to_div(span, &style, cx);
+                                    li.elements.push(span.into_any_element());
+                                }
+                            }
+                        }
                     } else if let Some(ref url) = current_link_url {
                         let url_clone = url.clone();
-                        let link_id = SharedString::from(format!("link-{}", url_clone));
+                        link_counter += 1;
+                        let link_id = SharedString::from(format!("link-{}-{}", link_counter, url_clone));
                         let mut link = div().child(text.clone());
                         link = apply_style_to_div(link, &style, cx);
                         let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
@@ -185,11 +206,16 @@ impl MarkdownEditor {
                                         "\u{2022} ".to_string()
                                     };
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
-                                    let full_text =
-                                        format!("{}{}{}", indent_str, marker, li.text_content);
-                                    let mut span = div().child(full_text);
-                                    span = apply_style_to_div(span, &li.text_style, cx);
-                                    elements.push(span.into_any_element());
+                                    let full_marker = format!("{}{}", indent_str, marker);
+                                    let marker_span = div().child(full_marker);
+                                    
+                                    let item_row = div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_start()
+                                        .child(marker_span)
+                                        .children(li.elements);
+                                    elements.push(item_row.into_any_element());
                                 }
                             }
                             let marker_text = if in_ordered_list {
@@ -205,8 +231,7 @@ impl MarkdownEditor {
                                 marker_text,
                                 is_ordered: in_ordered_list,
                                 indent: depth - 1,
-                                text_content: String::new(),
-                                text_style: MarkdownStyle::Normal,
+                                elements: Vec::new(),
                             });
                         }
                         MarkdownBlock::BlockQuote => {
@@ -314,11 +339,16 @@ impl MarkdownEditor {
                                         "\u{2022} ".to_string()
                                     };
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
-                                    let full_text =
-                                        format!("{}{}{}", indent_str, marker, li.text_content);
-                                    let mut span = div().child(full_text);
-                                    span = apply_style_to_div(span, &li.text_style, cx);
-                                    elements.push(span.into_any_element());
+                                    let full_marker = format!("{}{}", indent_str, marker);
+                                    let marker_span = div().child(full_marker);
+                                    
+                                    let item_row = div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_start()
+                                        .child(marker_span)
+                                        .children(li.elements);
+                                    elements.push(item_row.into_any_element());
                                 }
                             }
                             MarkdownBlock::List(_, depth) => {
@@ -367,10 +397,16 @@ impl MarkdownEditor {
                 "\u{2022} ".to_string()
             };
             let indent_str = MD_LIST_INDENT.repeat(li.indent);
-            let full_text = format!("{}{}{}", indent_str, marker, li.text_content);
-            let mut span = div().child(full_text);
-            span = apply_style_to_div(span, &li.text_style, cx);
-            elements.push(span.into_any_element());
+            let full_marker = format!("{}{}", indent_str, marker);
+            let marker_span = div().child(full_marker);
+            
+            let item_row = div()
+                .flex()
+                .flex_row()
+                .items_start()
+                .child(marker_span)
+                .children(li.elements);
+            elements.push(item_row.into_any_element());
         }
         if !current_line.is_empty() {
             let wrapped = div()
