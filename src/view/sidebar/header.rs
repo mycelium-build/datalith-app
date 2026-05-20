@@ -8,16 +8,19 @@ use crate::consts::{BORDER_WIDTH, TREE_PADDING_PX};
 impl DatalithView {
     pub(crate) fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .p(px(TREE_PADDING_PX))
+            .p(px(TREE_PADDING_PX - 4.0))
             .border_b(px(BORDER_WIDTH))
             .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .w_full()
-                    .gap(px(TREE_PADDING_PX))
+                    .gap(px(TREE_PADDING_PX - 4.0 * 2.0))
                     .child(
                         div()
                             .id("search-trigger")
+                            .p(px(4.0))
+                            .rounded_sm()
+                            .hover(|this| this.bg(cx.theme().sidebar_accent))
                             .cursor_pointer()
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.palette.open_as(PaletteKind::Search);
@@ -28,6 +31,9 @@ impl DatalithView {
                     .child(
                         div()
                             .id("switcher-trigger")
+                            .p(px(4.0))
+                            .rounded_sm()
+                            .hover(|this| this.bg(cx.theme().sidebar_accent))
                             .cursor_pointer()
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.palette.open_as(PaletteKind::QuickSwitcher);
