@@ -8,15 +8,13 @@ use crate::consts::{BORDER_WIDTH, TREE_PADDING_PX};
 impl DatalithView {
     pub(crate) fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .px_2()
-            .py_2()
-            .pl(px(TREE_PADDING_PX))
+            .p(px(TREE_PADDING_PX))
             .border_b(px(BORDER_WIDTH))
             .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .w_full()
-                    .gap_2()
+                    .gap(px(TREE_PADDING_PX))
                     .child(
                         div()
                             .id("search-trigger")
