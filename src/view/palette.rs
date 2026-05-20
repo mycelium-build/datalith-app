@@ -106,14 +106,10 @@ impl Palette {
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
-            engine
-                .map(|e| e.search(&query))
-                .unwrap_or_default()
+            engine.map(|e| e.search(&query)).unwrap_or_default()
         };
-        self.item_sizes = vec![
-            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
-            self.search_results.len()
-        ];
+        self.item_sizes =
+            vec![size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT)); self.search_results.len()];
     }
 
     pub(crate) fn refresh_quick_switcher(
@@ -385,6 +381,13 @@ impl Palette {
     }
 
     pub(crate) fn focus_input(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
+        let placeholder = match self.kind {
+            PaletteKind::Search => "Search files...",
+            PaletteKind::QuickSwitcher => "Switch files...",
+        };
+        self.input.update(cx, |input, cx| {
+            input.set_placeholder(placeholder, window, cx);
+        });
         if let Some(from) = self.switching_from.take() {
             let current = self.input.read(cx).value();
             match from {
