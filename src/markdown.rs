@@ -1,4 +1,7 @@
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
 #[derive(Clone, Debug)]
 pub enum MarkdownEvent {
@@ -235,9 +238,11 @@ fn convert_wiki_links(text: &str) -> String {
                 if let Some(pipe_pos) = link_text.find('|') {
                     let display = &link_text[..pipe_pos];
                     let target = &link_text[pipe_pos + 1..];
-                    result.push_str(&format!("[{}]({})", display, target));
+                    let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
+                    result.push_str(&format!("[{}]({})", display, encoded));
                 } else {
-                    result.push_str(&format!("[{}]({})", link_text, link_text));
+                    let encoded = utf8_percent_encode(&link_text, ENCODE_IN_LINK);
+                    result.push_str(&format!("[{}]({})", link_text, encoded));
                 }
             } else {
                 result.push_str("[[");

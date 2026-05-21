@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
+use percent_encoding::percent_decode_str;
 
 use super::markdown_editor::{MarkdownEditor, MarkdownEditorEvent};
 use super::{DatalithView, OpenFile};
@@ -55,8 +56,9 @@ impl DatalithView {
                 window,
                 move |view, _, event, window, cx| match event {
                     MarkdownEditorEvent::LinkClicked(url) => {
+                        let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                         if let Some(ref cache) = view.link_cache {
-                            if let Some(resolved) = cache.resolve(url) {
+                            if let Some(resolved) = cache.resolve(&decoded_url) {
                                 view.open_file(resolved, true, window, cx);
                                 return;
                             }
