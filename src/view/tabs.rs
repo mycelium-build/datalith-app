@@ -2,12 +2,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use gpui::*;
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::{
+    Disableable, IconName, Sizable,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    input::{InputEvent, InputState},
+    tab::{Tab, TabBar},
+};
 use percent_encoding::percent_decode_str;
 
 use super::markdown_editor::{MarkdownEditor, MarkdownEditorEvent};
-use super::{DatalithView, OpenFile};
-use crate::utils::is_supported_file;
+use super::{DatalithView, NavigationAction, OpenFile};
+use crate::utils::{file_name_str, is_supported_file};
 
 fn is_markdown(path: &Path) -> bool {
     path.extension()
@@ -16,6 +22,87 @@ fn is_markdown(path: &Path) -> bool {
 }
 
 impl DatalithView {
+    pub(crate) fn render_tab_bar(
+        &self,
+        active_tab: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let can_go_back = self.can_go_back();
+        let can_go_forward = self.can_go_forward();
+
+        let tab_data: Vec<(usize, SharedString)> = self
+            .open_files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let name: SharedString = file_name_str(&f.path).into();
+                (i, name)
+            })
+            .collect();
+
+        TabBar::new("editor-tabs")
+            .px_1()
+            .prefix(
+                h_flex()
+                    .gap_0()
+                    .child(
+                        Button::new("go-back")
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::ArrowLeft)
+                            .disabled(!can_go_back)
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.pending_navigation = Some(NavigationAction::GoBack);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("go-forward")
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::ArrowRight)
+                            .disabled(!can_go_forward)
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.pending_navigation = Some(NavigationAction::GoForward);
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .selected_index(active_tab)
+            .suffix(
+                Button::new("new-tab")
+                    .ghost()
+                    .xsmall()
+                    .icon(IconName::Plus)
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.new_empty_tab(cx);
+                    })),
+            )
+            .on_click({
+                let tree_state = self.tree_state.clone();
+                cx.listener(move |view, index, _, cx| {
+                    tree_state.update(cx, |state, cx| {
+                        state.set_selected_index(None, cx);
+                    });
+                    view.last_sidebar_selection = None;
+                    view.active_tab = *index;
+                    cx.notify();
+                })
+            })
+            .children(tab_data.into_iter().map(|(i, name)| {
+                Tab::new().label(name).suffix(
+                    Button::new(format!("close-tab-{}", i))
+                        .icon(IconName::Close)
+                        .ghost()
+                        .xsmall()
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            cx.stop_propagation();
+                            view.close_tab(i, cx);
+                        })),
+                )
+            }))
+    }
+
     pub(crate) fn open_file(
         &mut self,
         path: PathBuf,
