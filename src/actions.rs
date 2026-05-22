@@ -191,11 +191,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             if let Err(e) = fs_ops::delete_target(&target) {
                 eprintln!("{e}");
             }
-            if target.is_dir() {
-                view.close_tabs_under(&target, cx);
-            } else {
-                view.close_tab_for_file(&target, cx);
-            }
+            view.close_tabs_under(&target, cx);
             view.refresh_tree(cx);
             let count = view.tree_state.read(cx).entry_count();
             if count > 0 {

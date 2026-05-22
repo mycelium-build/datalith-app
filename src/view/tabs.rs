@@ -172,19 +172,6 @@ impl DatalithView {
         cx.notify();
     }
 
-    pub(crate) fn close_tab_for_file(&mut self, path: &PathBuf, cx: &mut Context<Self>) {
-        let indices: Vec<usize> = self
-            .open_files
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| f.path == *path)
-            .map(|(i, _)| i)
-            .collect();
-        for index in indices.into_iter().rev() {
-            self.close_tab(index, cx);
-        }
-    }
-
     pub(crate) fn close_tabs_under(&mut self, root: &Path, cx: &mut Context<Self>) {
         let prefix = root.to_string_lossy().to_string();
         let indices: Vec<usize> = self
