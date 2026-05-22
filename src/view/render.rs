@@ -149,6 +149,15 @@ impl DatalithView {
                             ),
                     )
                     .selected_index(active_tab)
+                    .suffix(
+                        Button::new("new-tab")
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::Plus)
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.new_empty_tab(cx);
+                            })),
+                    )
                     .on_click({
                         let tree_state = self.tree_state.clone();
                         cx.listener(move |view, index, _, cx| {
