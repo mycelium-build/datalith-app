@@ -122,6 +122,7 @@ impl DatalithView {
             .overflow_hidden()
             .child(
                 TabBar::new("editor-tabs")
+                    .px_1()
                     .prefix(
                         h_flex()
                             .gap_0()
