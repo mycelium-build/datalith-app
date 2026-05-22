@@ -11,7 +11,7 @@ use crate::consts::{
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
 
 pub enum MarkdownEditorEvent {
-    LinkClicked(String),
+    LinkClicked(String, bool),
 }
 
 pub struct MarkdownEditor {
@@ -95,8 +95,8 @@ impl MarkdownEditor {
                             let mut link = div().child(text.clone());
                             link = apply_style_to_div(link, &style, cx);
                             let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
-                                move |_, _, _, cx| {
-                                    cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone()));
+                                move |_, event: &ClickEvent, _, cx| {
+                                    cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone(), event.modifiers().platform));
                                 },
                             ));
                             li.elements.push(link.into_any_element());
@@ -117,8 +117,8 @@ impl MarkdownEditor {
                         let mut link = div().child(text.clone());
                         link = apply_style_to_div(link, &style, cx);
                         let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
-                            move |_, _, _, cx| {
-                                cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone()));
+                            move |_, event: &ClickEvent, _, cx| {
+                                cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone(), event.modifiers().platform));
                             },
                         ));
                         current_line.push(link.into_any_element());

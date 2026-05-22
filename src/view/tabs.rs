@@ -55,11 +55,11 @@ impl DatalithView {
                 editor,
                 window,
                 move |view, _, event, window, cx| match event {
-                    MarkdownEditorEvent::LinkClicked(url) => {
+                    MarkdownEditorEvent::LinkClicked(url, new_tab) => {
                         let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                         if let Some(ref cache) = view.link_cache {
                             if let Some(resolved) = cache.resolve(&decoded_url) {
-                                view.open_file(resolved, true, window, cx);
+                                view.open_file(resolved, *new_tab, window, cx);
                                 return;
                             }
                         }
