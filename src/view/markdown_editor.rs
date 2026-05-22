@@ -8,7 +8,7 @@ use crate::consts::{
     MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
     MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
-use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
+use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown};
 
 pub(crate) enum MarkdownEditorEvent {
     LinkClicked(String, bool),
@@ -55,6 +55,14 @@ impl MarkdownEditor {
     pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
         self.editing = !self.editing;
         cx.notify();
+    }
+
+    pub(crate) fn open_link_at_cursor(&self, cx: &mut Context<Self>) {
+        let offset = self.input.read(cx).cursor();
+        let text = self.input.read(cx).value().to_string();
+        if let Some(url) = find_link_at_offset(&text, offset) {
+            cx.emit(MarkdownEditorEvent::LinkClicked(url, true));
+        }
     }
 
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {

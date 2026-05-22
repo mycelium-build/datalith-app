@@ -39,6 +39,7 @@ actions!(
         ToggleEditorMode,
         GoBack,
         GoForward,
+        OpenLink,
     ]
 );
 
@@ -364,5 +365,18 @@ pub(crate) fn go_forward(_: &GoForward, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.pending_navigation = Some(NavigationAction::GoForward);
         cx.notify();
+    });
+}
+
+pub(crate) fn handle_open_link(_: &OpenLink, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
+        if let Some(ref file) = view.open_files.get(active_tab) {
+            if let Some(ref md_editor) = file.markdown_editor {
+                md_editor.update(cx, |editor, cx| {
+                    editor.open_link_at_cursor(cx);
+                });
+            }
+        }
     });
 }

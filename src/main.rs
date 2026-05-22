@@ -106,6 +106,7 @@ fn main() {
         cx.on_action(toggle_editor_mode);
         cx.on_action(go_back);
         cx.on_action(go_forward);
+        cx.on_action(handle_open_link);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -161,6 +162,7 @@ fn main() {
             KeyBinding::new("cmd-e", ToggleEditorMode, None),
             KeyBinding::new("cmd-[", GoBack, None),
             KeyBinding::new("cmd-]", GoForward, None),
+            KeyBinding::new("cmd-enter", OpenLink, None),
         ]);
 
         let last_folder = load_last_folder();
