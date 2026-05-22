@@ -49,12 +49,22 @@ impl DatalithView {
         }
 
         let content = fs::read_to_string(&path).unwrap_or_default();
-        let state = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
-                .searchable(true)
-                .default_value(content.clone())
-        });
+        let state = if is_markdown(&path) {
+            cx.new(|cx| {
+                InputState::new(window, cx)
+                    .code_editor("markdown")
+                    .line_number(false)
+                    .folding(false)
+                    .default_value(content.clone())
+            })
+        } else {
+            cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .searchable(true)
+                    .default_value(content.clone())
+            })
+        };
 
         let markdown_editor = if is_markdown(&path) {
             Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, cx)))
