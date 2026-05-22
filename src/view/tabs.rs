@@ -299,9 +299,9 @@ impl DatalithView {
             .collect();
 
         TabBar::new("editor-tabs")
-            .px_1()
             .prefix(
                 h_flex()
+                    .px_1()
                     .gap_0()
                     .child(
                         Button::new("go-back")
@@ -332,6 +332,7 @@ impl DatalithView {
                     .ghost()
                     .xsmall()
                     .icon(IconName::Plus)
+                    .mx_1()
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.new_empty_tab(cx);
                     })),
@@ -353,6 +354,7 @@ impl DatalithView {
                         .icon(IconName::Close)
                         .ghost()
                         .xsmall()
+                        .mx_1()
                         .on_click(cx.listener(move |view, _, _, cx| {
                             cx.stop_propagation();
                             view.close_tab(i, cx);
