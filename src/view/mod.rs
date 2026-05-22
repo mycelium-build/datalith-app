@@ -25,6 +25,12 @@ use crate::view::sidebar::file_tree::build_file_items;
 use palette::Palette;
 use settings::SettingsView;
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum NavigationAction {
+    GoBack,
+    GoForward,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum VaultEntry {
     Vault {
@@ -59,6 +65,8 @@ pub(crate) struct OpenFile {
     pub(crate) _sub: Option<Subscription>,
     pub(crate) _md_sub: Option<Subscription>,
     pub(crate) editor_mode: bool,
+    pub(crate) navigation_stack: Vec<PathBuf>,
+    pub(crate) navigation_position: usize,
 }
 
 pub struct DatalithView {
@@ -86,6 +94,8 @@ pub struct DatalithView {
     pub(crate) focus_editor_requested: bool,
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
+    pub(crate) pending_navigation: Option<NavigationAction>,
+    in_navigation: bool,
 }
 
 fn build_vault_entries() -> Vec<VaultEntry> {
@@ -174,6 +184,8 @@ impl DatalithView {
             pending_vault_refresh: false,
             sidebar_focus_handle,
             last_sidebar_selection: None,
+            pending_navigation: None,
+            in_navigation: false,
         }
     }
 
@@ -292,5 +304,89 @@ impl DatalithView {
         if let Some(ref engine) = self.search_engine {
             let _ = engine.indexer.add_file(path);
         }
+    }
+
+    pub(crate) fn push_navigation_state(&mut self, to_path: &PathBuf) {
+        if self.in_navigation {
+            return;
+        }
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        let file = &mut self.open_files[active];
+
+        if file.navigation_stack.is_empty() {
+            file.navigation_stack.push(to_path.clone());
+            file.navigation_position = 0;
+            return;
+        }
+
+        if file.navigation_position < file.navigation_stack.len()
+            && file.navigation_stack[file.navigation_position] == *to_path
+        {
+            return;
+        }
+
+        if file.navigation_position + 1 < file.navigation_stack.len() {
+            file.navigation_stack.truncate(file.navigation_position + 1);
+        }
+
+        file.navigation_stack.push(to_path.clone());
+        file.navigation_position = file.navigation_stack.len() - 1;
+    }
+
+    pub(crate) fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_files.is_empty() {
+            return;
+        }
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        let file = &self.open_files[active];
+        if file.navigation_position == 0 {
+            return;
+        }
+        let target_pos = file.navigation_position - 1;
+        let path = file.navigation_stack[target_pos].clone();
+
+        self.in_navigation = true;
+        self.open_file(path, false, window, cx);
+        self.in_navigation = false;
+
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        self.open_files[active].navigation_position = target_pos;
+    }
+
+    pub(crate) fn go_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_files.is_empty() {
+            return;
+        }
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        let file = &self.open_files[active];
+        if file.navigation_position + 1 >= file.navigation_stack.len() {
+            return;
+        }
+        let target_pos = file.navigation_position + 1;
+        let path = file.navigation_stack[target_pos].clone();
+
+        self.in_navigation = true;
+        self.open_file(path, false, window, cx);
+        self.in_navigation = false;
+
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        self.open_files[active].navigation_position = target_pos;
+    }
+
+    pub(crate) fn can_go_back(&self) -> bool {
+        if self.open_files.is_empty() {
+            return false;
+        }
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        self.open_files[active].navigation_position > 0
+    }
+
+    pub(crate) fn can_go_forward(&self) -> bool {
+        if self.open_files.is_empty() {
+            return false;
+        }
+        let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
+        self.open_files[active].navigation_position + 1
+            < self.open_files[active].navigation_stack.len()
     }
 }

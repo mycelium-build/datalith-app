@@ -27,13 +27,19 @@ impl DatalithView {
             return;
         }
 
-        if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
-            self.active_tab = index;
-            if let Some(ref state) = self.open_files[index].state {
-                state.focus_handle(cx).focus(window, cx);
+        if !new_tab && !self.open_files.is_empty() {
+            self.push_navigation_state(&path);
+        }
+
+        if !self.in_navigation {
+            if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
+                self.active_tab = index;
+                if let Some(ref state) = self.open_files[index].state {
+                    state.focus_handle(cx).focus(window, cx);
+                }
+                cx.notify();
+                return;
             }
-            cx.notify();
-            return;
         }
 
         let content = fs::read_to_string(&path).unwrap_or_default();
@@ -81,6 +87,14 @@ impl DatalithView {
             })
         };
 
+        let (nav_stack, nav_pos) = if new_tab || self.open_files.is_empty() {
+            (vec![path.clone()], 0)
+        } else {
+            let active = self.active_tab.min(self.open_files.len() - 1);
+            let old = &self.open_files[active];
+            (old.navigation_stack.clone(), old.navigation_position)
+        };
+
         let open_file = OpenFile {
             path: path.clone(),
             state: Some(state.clone()),
@@ -88,6 +102,8 @@ impl DatalithView {
             _sub: Some(sub),
             _md_sub: md_sub,
             editor_mode: true,
+            navigation_stack: nav_stack,
+            navigation_position: nav_pos,
         };
 
         if new_tab || self.open_files.is_empty() {
@@ -116,6 +132,8 @@ impl DatalithView {
             _sub: None,
             _md_sub: None,
             editor_mode: true,
+            navigation_stack: Vec::new(),
+            navigation_position: 0,
         });
         self.active_tab = self.open_files.len() - 1;
         cx.notify();

@@ -104,6 +104,8 @@ fn main() {
         cx.on_action(handle_select_tab_9);
         cx.on_action(open_settings);
         cx.on_action(toggle_editor_mode);
+        cx.on_action(go_back);
+        cx.on_action(go_forward);
         cx.set_menus([
             Menu::new("File").items([
                 MenuItem::action("New File", NewFile),
@@ -121,10 +123,12 @@ fn main() {
                 MenuItem::separator(),
                 MenuItem::action("Search Files", ToggleSearch),
                 MenuItem::action("Quick Switcher", ToggleQuickSwitcher),
+                MenuItem::action("Focus Sidebar", FocusSidebar),
                 MenuItem::separator(),
                 MenuItem::action("New Tab", NewTab),
                 MenuItem::action("Close Tab", CloseTab),
-                MenuItem::action("Focus Sidebar", FocusSidebar),
+                MenuItem::action("Go Back", GoBack),
+                MenuItem::action("Go Forward", GoForward),
                 MenuItem::separator(),
                 MenuItem::action("Toggle Dark Mode", ToggleTheme),
                 MenuItem::separator(),
@@ -155,6 +159,8 @@ fn main() {
             KeyBinding::new("cmd-8", SelectTab8, None),
             KeyBinding::new("cmd-9", SelectTab9, None),
             KeyBinding::new("cmd-e", ToggleEditorMode, None),
+            KeyBinding::new("cmd-[", GoBack, None),
+            KeyBinding::new("cmd-]", GoForward, None),
         ]);
 
         let last_folder = load_last_folder();

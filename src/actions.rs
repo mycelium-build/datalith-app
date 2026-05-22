@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::app::AppState;
 use crate::fs_ops;
 use crate::utils;
+use crate::view::NavigationAction;
 use crate::view::palette::PaletteKind;
 
 actions!(
@@ -36,6 +37,8 @@ actions!(
         SelectTab8,
         SelectTab9,
         ToggleEditorMode,
+        GoBack,
+        GoForward,
     ]
 );
 
@@ -351,5 +354,19 @@ pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
             view.focus_editor_requested = true;
             cx.notify();
         }
+    });
+}
+
+pub(crate) fn go_back(_: &GoBack, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.pending_navigation = Some(NavigationAction::GoBack);
+        cx.notify();
+    });
+}
+
+pub(crate) fn go_forward(_: &GoForward, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.pending_navigation = Some(NavigationAction::GoForward);
+        cx.notify();
     });
 }

@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    IconName, Sizable,
+    Disableable, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::Input,
@@ -10,7 +10,7 @@ use gpui_component::{
 
 use crate::utils::file_name_str;
 
-use super::DatalithView;
+use super::{DatalithView, NavigationAction};
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -42,6 +42,13 @@ impl Render for DatalithView {
         if self.rename_target.is_none() {
             if let Some(path) = self.pending_open.take() {
                 self.open_file(path, true, _window, cx);
+            }
+        }
+
+        if let Some(action) = self.pending_navigation.take() {
+            match action {
+                super::NavigationAction::GoBack => self.go_back(_window, cx),
+                super::NavigationAction::GoForward => self.go_forward(_window, cx),
             }
         }
 
@@ -107,11 +114,40 @@ impl DatalithView {
             })
             .collect();
 
+        let can_go_back = self.can_go_back();
+        let can_go_forward = self.can_go_forward();
+
         v_flex()
             .size_full()
             .overflow_hidden()
             .child(
                 TabBar::new("editor-tabs")
+                    .prefix(
+                        h_flex()
+                            .gap_0()
+                            .child(
+                                Button::new("go-back")
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(IconName::ArrowLeft)
+                                    .disabled(!can_go_back)
+                                    .on_click(cx.listener(move |view, _, _, cx| {
+                                        view.pending_navigation = Some(NavigationAction::GoBack);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("go-forward")
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(IconName::ArrowRight)
+                                    .disabled(!can_go_forward)
+                                    .on_click(cx.listener(move |view, _, _, cx| {
+                                        view.pending_navigation = Some(NavigationAction::GoForward);
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
                     .selected_index(active_tab)
                     .on_click({
                         let tree_state = self.tree_state.clone();
