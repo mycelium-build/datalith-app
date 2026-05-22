@@ -3,7 +3,7 @@ use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query};
 use tantivy::schema::Field;
 
 #[must_use]
-pub fn build_query(query_str: &str, name_field: Field, content_field: Field) -> Box<dyn Query> {
+pub(crate) fn build_query(query_str: &str, name_field: Field, content_field: Field) -> Box<dyn Query> {
     let subqueries: Vec<_> = query_str
         .split_whitespace()
         .map(|word| {

@@ -10,13 +10,13 @@ use crate::utils::file_name_str;
 const CACHE_FILE: &str = "link_cache.json";
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct LinkCache {
+pub(crate) struct LinkCache {
     root: PathBuf,
     name_to_path: HashMap<String, PathBuf>,
 }
 
 impl LinkCache {
-    pub fn new(root: &Path) -> Self {
+    pub(crate) fn new(root: &Path) -> Self {
         let cache_path = root.join(".datalith").join(CACHE_FILE);
         if let Ok(data) = fs::read_to_string(&cache_path)
             && let Ok(cache) = serde_json::from_str::<LinkCache>(&data)
@@ -42,7 +42,7 @@ impl LinkCache {
         cache
     }
 
-    pub fn save(&self) {
+    pub(crate) fn save(&self) {
         let cache_path = self.root.join(".datalith").join(CACHE_FILE);
         if let Some(parent) = cache_path.parent() {
             let _ = fs::create_dir_all(parent);
@@ -52,7 +52,7 @@ impl LinkCache {
         }
     }
 
-    pub fn resolve(&self, name: &str) -> Option<PathBuf> {
+    pub(crate) fn resolve(&self, name: &str) -> Option<PathBuf> {
         if let Some(path) = self.name_to_path.get(name) {
             return Some(path.clone());
         }
@@ -63,7 +63,7 @@ impl LinkCache {
         }
     }
 
-    pub fn add_file(&mut self, path: &Path) {
+    pub(crate) fn add_file(&mut self, path: &Path) {
         if !is_indexable(path) || !path.is_file() {
             return;
         }
@@ -72,7 +72,7 @@ impl LinkCache {
         self.save();
     }
 
-    pub fn remove_file(&mut self, path: &Path) {
+    pub(crate) fn remove_file(&mut self, path: &Path) {
         let key = file_stem_str(path);
         if let Some(existing) = self.name_to_path.get(&key) {
             if existing == path {
@@ -82,12 +82,12 @@ impl LinkCache {
         }
     }
 
-    pub fn rename_file(&mut self, old_path: &Path, new_path: &Path) {
+    pub(crate) fn rename_file(&mut self, old_path: &Path, new_path: &Path) {
         self.remove_file(old_path);
         self.add_file(new_path);
     }
 
-    pub fn remove_under(&mut self, root: &Path) {
+    pub(crate) fn remove_under(&mut self, root: &Path) {
         let prefix = root.to_string_lossy().to_string();
         let keys_to_remove: Vec<String> = self
             .name_to_path

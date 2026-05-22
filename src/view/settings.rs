@@ -14,10 +14,10 @@ use super::DatalithView;
 
 #[derive(Clone)]
 pub(crate) struct ThemeOptions {
-    pub light_theme_name: SharedString,
-    pub dark_theme_name: SharedString,
-    pub theme_options: Vec<(SharedString, SharedString)>,
-    pub font_size_multiplier: f64,
+    pub(crate) light_theme_name: SharedString,
+    pub(crate) dark_theme_name: SharedString,
+    pub(crate) theme_options: Vec<(SharedString, SharedString)>,
+    pub(crate) font_size_multiplier: f64,
 }
 
 impl Global for ThemeOptions {}

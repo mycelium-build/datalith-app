@@ -4,7 +4,7 @@ use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
 #[derive(Clone, Debug)]
-pub enum MarkdownEvent {
+pub(crate) enum MarkdownEvent {
     Text(String, MarkdownStyle),
     BlockStart(MarkdownBlock),
     BlockEnd,
@@ -13,7 +13,7 @@ pub enum MarkdownEvent {
 }
 
 #[derive(Clone, Debug)]
-pub enum MarkdownBlock {
+pub(crate) enum MarkdownBlock {
     Heading,
     Paragraph,
     List(bool, usize),
@@ -24,7 +24,7 @@ pub enum MarkdownBlock {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum MarkdownStyle {
+pub(crate) enum MarkdownStyle {
     Heading(u32),
     Bold,
     Italic,
@@ -34,7 +34,7 @@ pub enum MarkdownStyle {
     Normal,
 }
 
-pub fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
+pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
     let (frontmatter, body) = extract_frontmatter(text);
     let body = convert_wiki_links(&body);
 

@@ -10,11 +10,11 @@ use crate::consts::{
 };
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
 
-pub enum MarkdownEditorEvent {
+pub(crate) enum MarkdownEditorEvent {
     LinkClicked(String, bool),
 }
 
-pub struct MarkdownEditor {
+pub(crate) struct MarkdownEditor {
     input: Entity<InputState>,
     editing: bool,
     _sub: Option<Subscription>,
@@ -30,7 +30,7 @@ struct ListItemData {
 }
 
 impl MarkdownEditor {
-    pub fn new(input: Entity<InputState>, editing: bool, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(input: Entity<InputState>, editing: bool, cx: &mut Context<Self>) -> Self {
         let sub = cx.subscribe(&input, |_this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -44,15 +44,15 @@ impl MarkdownEditor {
         }
     }
 
-    pub fn input(&self) -> &Entity<InputState> {
+    pub(crate) fn input(&self) -> &Entity<InputState> {
         &self.input
     }
 
-    pub fn is_editing(&self) -> bool {
+    pub(crate) fn is_editing(&self) -> bool {
         self.editing
     }
 
-    pub fn toggle_editing(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
         self.editing = !self.editing;
         cx.notify();
     }

@@ -69,7 +69,7 @@ pub(crate) struct OpenFile {
     pub(crate) navigation_position: usize,
 }
 
-pub struct DatalithView {
+pub(crate) struct DatalithView {
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
