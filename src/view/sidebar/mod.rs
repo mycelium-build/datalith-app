@@ -34,6 +34,8 @@ impl Render for DragFile {
             .text_color(cx.theme().accent_foreground)
             .rounded_sm()
             .text_sm()
+            .border_1()
+            .border_color(cx.theme().border)
             .child(name)
     }
 }
@@ -84,7 +86,9 @@ impl DatalithView {
                     None
                 };
                 let mut name = new_name;
-                if let Some(ref ext) = old_ext && !name.contains('.') {
+                if let Some(ref ext) = old_ext
+                    && !name.contains('.')
+                {
                     name.push_str(ext);
                 }
                 if let Some(parent) = target.parent() {
@@ -189,7 +193,11 @@ impl DatalithView {
                 }
             }))
             .child(self.render_sidebar_header(cx))
-            .child(div().flex_1().child(self.render_file_tree(cx, &self.tree_state)))
+            .child(
+                div()
+                    .flex_1()
+                    .child(self.render_file_tree(cx, &self.tree_state)),
+            )
             .child(
                 div()
                     .border_t(px(BORDER_WIDTH))
