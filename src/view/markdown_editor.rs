@@ -8,7 +8,9 @@ use crate::consts::{
     MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
     MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
-use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown};
+use crate::markdown::{
+    MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown,
+};
 
 pub(crate) enum MarkdownEditorEvent {
     LinkClicked(String, bool),
@@ -99,12 +101,16 @@ impl MarkdownEditor {
                         if let Some(ref url) = current_link_url {
                             let url_clone = url.clone();
                             link_counter += 1;
-                            let link_id = SharedString::from(format!("link-{}-{}", link_counter, url_clone));
+                            let link_id =
+                                SharedString::from(format!("link-{}-{}", link_counter, url_clone));
                             let mut link = div().child(text.clone());
                             link = apply_style_to_div(link, &style, cx);
                             let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
                                 move |_, event: &ClickEvent, _, cx| {
-                                    cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone(), event.modifiers().platform));
+                                    cx.emit(MarkdownEditorEvent::LinkClicked(
+                                        url_clone.clone(),
+                                        event.modifiers().platform,
+                                    ));
                                 },
                             ));
                             li.elements.push(link.into_any_element());
@@ -121,12 +127,16 @@ impl MarkdownEditor {
                     } else if let Some(ref url) = current_link_url {
                         let url_clone = url.clone();
                         link_counter += 1;
-                        let link_id = SharedString::from(format!("link-{}-{}", link_counter, url_clone));
+                        let link_id =
+                            SharedString::from(format!("link-{}-{}", link_counter, url_clone));
                         let mut link = div().child(text.clone());
                         link = apply_style_to_div(link, &style, cx);
                         let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
                             move |_, event: &ClickEvent, _, cx| {
-                                cx.emit(MarkdownEditorEvent::LinkClicked(url_clone.clone(), event.modifiers().platform));
+                                cx.emit(MarkdownEditorEvent::LinkClicked(
+                                    url_clone.clone(),
+                                    event.modifiers().platform,
+                                ));
                             },
                         ));
                         current_line.push(link.into_any_element());
@@ -216,7 +226,7 @@ impl MarkdownEditor {
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
                                     let full_marker = format!("{}{}", indent_str, marker);
                                     let marker_span = div().child(full_marker);
-                                    
+
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
@@ -268,69 +278,70 @@ impl MarkdownEditor {
                         }
                         MarkdownBlock::Frontmatter(fm_content) => {
                             let lines: Vec<&str> = fm_content.lines().collect();
-                            let mut fm_elements: Vec<AnyElement> = Vec::new();
-                            fm_elements.push(
-                                div()
-                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
-                                    .text_color(cx.theme().muted_foreground)
-                                    .font_family("monospace")
-                                    .child("---")
-                                    .into_any_element(),
-                            );
+
+                            let mut max_key_len = 0;
+                            for line in &lines {
+                                if let Some(colon_pos) = line.find(':') {
+                                    let key = &line[..colon_pos];
+                                    max_key_len = max_key_len.max(key.len());
+                                }
+                            }
+
+                            let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
+                            let line_h = px(font_size * MD_LINE_HEIGHT);
+                            let key_width = if max_key_len > 0 {
+                                px(font_size * max_key_len as f32 * 0.6)
+                            } else {
+                                px(0.0)
+                            };
+
+                            let mut content_elements: Vec<AnyElement> = Vec::new();
                             for line in lines {
                                 if let Some(colon_pos) = line.find(':') {
                                     let key = &line[..colon_pos];
                                     let value = line[colon_pos + 1..].trim();
-                                    fm_elements.push(
+                                    content_elements.push(
                                         div()
                                             .flex()
                                             .gap_1()
                                             .child(
                                                 div()
-                                                    .text_size(px(
-                                                        base_font_size * MD_FRONTMATTER_FONT_SCALE
-                                                    ))
-                                                    .text_color(cx.theme().accent)
-                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .w(key_width)
+                                                    .flex_shrink_0()
+                                                    .text_size(px(font_size))
+                                                    .line_height(line_h)
+                                                    .text_color(cx.theme().foreground)
+                                                    .font_weight(FontWeight::BOLD)
                                                     .child(key.to_string()),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(
-                                                        base_font_size * MD_FRONTMATTER_FONT_SCALE
-                                                    ))
+                                                    .flex_1()
+                                                    .text_size(px(font_size))
+                                                    .line_height(line_h)
                                                     .text_color(cx.theme().muted_foreground)
                                                     .child(value.to_string()),
                                             )
                                             .into_any_element(),
                                     );
                                 } else {
-                                    fm_elements.push(
+                                    content_elements.push(
                                         div()
-                                            .text_size(px(
-                                                base_font_size * MD_FRONTMATTER_FONT_SCALE
-                                            ))
+                                            .text_size(px(font_size))
+                                            .line_height(line_h)
                                             .text_color(cx.theme().muted_foreground)
                                             .child(line.to_string())
                                             .into_any_element(),
                                     );
                                 }
                             }
-                            fm_elements.push(
-                                div()
-                                    .text_size(px(base_font_size * MD_FRONTMATTER_FONT_SCALE))
-                                    .text_color(cx.theme().muted_foreground)
-                                    .font_family("monospace")
-                                    .child("---")
-                                    .into_any_element(),
-                            );
                             elements.push(
                                 div()
-                                    .bg(cx.theme().muted.opacity(0.3))
+                                    .bg(cx.theme().tab_bar)
                                     .rounded(px(MD_FRONTMATTER_RADIUS))
                                     .p(px(MD_FRONTMATTER_PADDING))
                                     .mb(px(MD_FRONTMATTER_MARGIN))
-                                    .children(fm_elements)
+                                    .children(content_elements)
                                     .into_any_element(),
                             );
                         }
@@ -349,7 +360,7 @@ impl MarkdownEditor {
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
                                     let full_marker = format!("{}{}", indent_str, marker);
                                     let marker_span = div().child(full_marker);
-                                    
+
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
@@ -407,7 +418,7 @@ impl MarkdownEditor {
             let indent_str = MD_LIST_INDENT.repeat(li.indent);
             let full_marker = format!("{}{}", indent_str, marker);
             let marker_span = div().child(full_marker);
-            
+
             let item_row = div()
                 .flex()
                 .flex_row()
@@ -496,7 +507,7 @@ fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
                 .font_weight(FontWeight::BOLD)
                 .mt(px(margin))
                 .mb(px(margin))
-                .line_height(px(base_font_size * size * 1.2));
+                .line_height(px(base_font_size * size * MD_LINE_HEIGHT));
         }
         MarkdownStyle::Bold => {
             el = el.font_weight(FontWeight::BOLD);
