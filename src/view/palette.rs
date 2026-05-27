@@ -402,30 +402,31 @@ impl Palette {
                 PaletteKind::Search => self.search_query = current,
                 PaletteKind::QuickSwitcher => self.qs_query = current,
             }
-            let restored = match self.kind {
-                PaletteKind::Search => self.search_query.clone(),
-                PaletteKind::QuickSwitcher => self.qs_query.clone(),
-            };
-            self.input.update(cx, |input, cx| {
-                input.set_value(restored, window, cx);
-            });
-            match self.kind {
-                PaletteKind::Search => {
-                    self.search(search_engine, self.search_query.clone());
-                    if !self.search_query.trim().is_empty() {
-                        self.selected = None;
-                    } else {
-                        self.selected = Some(0);
-                    }
+        }
+
+        let restored = match self.kind {
+            PaletteKind::Search => self.search_query.clone(),
+            PaletteKind::QuickSwitcher => self.qs_query.clone(),
+        };
+        self.input.update(cx, |input, cx| {
+            input.set_value(restored, window, cx);
+        });
+        match self.kind {
+            PaletteKind::Search => {
+                self.search(search_engine, self.search_query.clone());
+                if !self.search_query.trim().is_empty() {
+                    self.selected = None;
+                } else {
+                    self.selected = Some(0);
                 }
-                PaletteKind::QuickSwitcher => {
-                    self.filter_quick_switcher(open_files, self.qs_query.clone());
-                    self.selected = if self.quick_switcher_entries.is_empty() {
-                        None
-                    } else {
-                        Some(0)
-                    };
-                }
+            }
+            PaletteKind::QuickSwitcher => {
+                self.filter_quick_switcher(open_files, self.qs_query.clone());
+                self.selected = if self.quick_switcher_entries.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                };
             }
         }
         self.input.focus_handle(cx).focus(window, cx);
