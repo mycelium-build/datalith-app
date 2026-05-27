@@ -12,8 +12,7 @@ use crate::consts::{
 };
 use crate::search::{SearchEngine, picker};
 use crate::utils::file_name_str;
-
-use super::DatalithView;
+use crate::view::DatalithView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PaletteKind {
@@ -82,6 +81,9 @@ impl Palette {
     }
 
     pub(crate) fn add_entry(&mut self, path: &Path) {
+        if self.quick_switcher_all_files.iter().any(|e| e.path == path) {
+            return;
+        }
         self.quick_switcher_all_files
             .push(picker::QuickSwitcherEntry {
                 path: path.to_path_buf(),
@@ -380,7 +382,13 @@ impl Palette {
         )
     }
 
-    pub(crate) fn focus_input(&mut self, window: &mut Window, cx: &mut Context<DatalithView>) {
+    pub(crate) fn focus_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<DatalithView>,
+        search_engine: Option<&SearchEngine>,
+        open_files: &[PathBuf],
+    ) {
         let placeholder = match self.kind {
             PaletteKind::Search => "Search files...",
             PaletteKind::QuickSwitcher => "Switch files...",
@@ -401,6 +409,24 @@ impl Palette {
             self.input.update(cx, |input, cx| {
                 input.set_value(restored, window, cx);
             });
+            match self.kind {
+                PaletteKind::Search => {
+                    self.search(search_engine, self.search_query.clone());
+                    if !self.search_query.trim().is_empty() {
+                        self.selected = None;
+                    } else {
+                        self.selected = Some(0);
+                    }
+                }
+                PaletteKind::QuickSwitcher => {
+                    self.filter_quick_switcher(open_files, self.qs_query.clone());
+                    self.selected = if self.quick_switcher_entries.is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    };
+                }
+            }
         }
         self.input.focus_handle(cx).focus(window, cx);
         self.needs_focus = false;

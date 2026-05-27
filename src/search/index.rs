@@ -80,6 +80,10 @@ impl Indexer {
         let mut files = HashMap::new();
         files.insert(path.to_path_buf(), file_fingerprint(path));
         let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
+        writer.delete_term(Term::from_field_text(
+            self.path_field,
+            &path.to_string_lossy(),
+        ));
         add_files(
             &mut writer,
             &files,

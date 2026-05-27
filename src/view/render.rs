@@ -4,13 +4,15 @@ use gpui_component::{
     input::Input,
     v_flex,
 };
+use std::path::PathBuf;
 
 use super::DatalithView;
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
-            self.palette.focus_input(_window, cx);
+            let open_paths: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
+            self.palette.focus_input(_window, cx, self.search_engine.as_ref(), &open_paths);
         }
 
         if self.focus_sidebar_requested {

@@ -24,6 +24,8 @@ pub(crate) fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> 
             }
         })
         .collect();
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    entries.dedup_by(|a, b| a.path == b.path);
     entries.sort_by_key(|a| a.name.to_lowercase());
     entries
 }
