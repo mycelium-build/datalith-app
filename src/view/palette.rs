@@ -175,7 +175,7 @@ impl Palette {
                             let path = r.clone();
                             div()
                                 .px_2()
-                                .py_1()
+                                .h(px(PALETTE_ITEM_HEIGHT))
                                 .bg(bg)
                                 .hover(|s| s.bg(cx.theme().muted))
                                 .cursor_pointer()
@@ -213,7 +213,7 @@ impl Palette {
                             };
                             div()
                                 .px_2()
-                                .py_1()
+                                .h(px(PALETTE_ITEM_HEIGHT))
                                 .bg(bg)
                                 .hover(|s| s.bg(cx.theme().muted))
                                 .cursor_pointer()
