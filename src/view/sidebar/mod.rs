@@ -13,7 +13,7 @@ use gpui_component::{
 };
 
 use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
-use crate::consts::{BORDER_WIDTH, SIDEBAR_WIDTH};
+use crate::consts::BORDER_WIDTH;
 use crate::fs_ops;
 use crate::utils::file_name_str;
 
@@ -170,7 +170,7 @@ impl DatalithView {
         div()
             .flex()
             .flex_col()
-            .w(px(SIDEBAR_WIDTH))
+            .size_full()
             .h_full()
             .bg(cx.theme().tab_bar)
             .border_r(px(BORDER_WIDTH))

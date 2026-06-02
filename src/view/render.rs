@@ -1,7 +1,9 @@
+use crate::consts::SIDEBAR_WIDTH;
 use gpui::*;
 use gpui_component::{
     h_flex,
     input::Input,
+    resizable::{h_resizable, resizable_panel},
     v_flex,
 };
 use std::path::PathBuf;
@@ -12,7 +14,8 @@ impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
             let open_paths: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
-            self.palette.focus_input(_window, cx, self.search_engine.as_ref(), &open_paths);
+            self.palette
+                .focus_input(_window, cx, self.search_engine.as_ref(), &open_paths);
         }
 
         if self.focus_sidebar_requested {
@@ -53,21 +56,31 @@ impl Render for DatalithView {
 
         let mut layout = h_flex().size_full().relative();
 
-        layout = layout.child(self.render_sidebar(_window, cx)).child(
-            div()
-                .flex_1()
-                .size_full()
-                .overflow_hidden()
-                .on_mouse_down(
-                    gpui::MouseButton::Left,
-                    cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
-                        tree_state.update(cx, |state, cx| {
-                            state.set_selected_index(None, cx);
-                        });
-                        this.last_sidebar_selection = None;
-                    }),
+        layout = layout.child(
+            h_resizable("datalith-main-layout")
+                .child(
+                    resizable_panel()
+                        .size(px(SIDEBAR_WIDTH))
+                        .size_range(px(180.)..px(500.))
+                        .child(self.render_sidebar(_window, cx)),
                 )
-                .child(self.render_editor(cx)),
+                .child(
+                    resizable_panel().child(
+                        div()
+                            .size_full()
+                            .overflow_hidden()
+                            .on_mouse_down(
+                                gpui::MouseButton::Left,
+                                cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
+                                    tree_state.update(cx, |state, cx| {
+                                        state.set_selected_index(None, cx);
+                                    });
+                                    this.last_sidebar_selection = None;
+                                }),
+                            )
+                            .child(self.render_editor(cx)),
+                    ),
+                ),
         );
 
         if self.palette.open {
