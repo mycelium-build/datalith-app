@@ -1,0 +1,17 @@
+decouple editor and renderer
+    image
+    todo.txt (need TxTodo.rs)
+    bases
+        list
+        table
+        kanban
+        calendar
+    canvas
+    graph
+
+custom themes (explore GPUI components)
+
+right sidebar
+    outline
+
+format in edit (need to rebuild editor from scratch)
