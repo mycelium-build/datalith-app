@@ -4,6 +4,7 @@ decouple editor and renderer
     bases
         list
         table
+        cards
         kanban
         calendar
     canvas
