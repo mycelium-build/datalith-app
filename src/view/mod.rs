@@ -150,7 +150,9 @@ impl DatalithView {
         let font_size_slider_sub = cx.subscribe(
             &settings.font_size_slider_state,
             |_view, _, event: &SliderEvent, cx| {
-                let SliderEvent::Change(value) = event;
+                let SliderEvent::Change(value) = event else {
+                    return;
+                };
                 let val = value.start() as f64;
                 let new_size = px(crate::consts::BASE_FONT_SIZE as f32 * value.start());
                 cx.global_mut::<settings::ThemeOptions>()
