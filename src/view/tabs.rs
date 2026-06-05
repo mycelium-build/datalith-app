@@ -11,9 +11,9 @@ use gpui_component::{
 };
 use percent_encoding::percent_decode_str;
 
-use super::markdown_editor::{MarkdownEditor, MarkdownEditorEvent};
+use super::markdown_editor::{EditorMode, MarkdownEditor, MarkdownEditorEvent};
 use super::{DatalithView, NavigationAction, OpenFile};
-use crate::utils::{file_name_str, is_supported_file};
+use crate::utils::{file_name_str, is_image_file, is_supported_file};
 
 fn is_markdown(path: &Path) -> bool {
     path.extension()
@@ -48,6 +48,40 @@ impl DatalithView {
             }
         }
 
+        // Image files: open as a read-only viewer — no text state needed
+        if is_image_file(&path) {
+            let (nav_stack, nav_pos) = if new_tab || self.open_files.is_empty() {
+                (vec![path.clone()], 0)
+            } else {
+                let active = self.active_tab.min(self.open_files.len() - 1);
+                let old = &self.open_files[active];
+                (old.navigation_stack.clone(), old.navigation_position)
+            };
+            let open_file = OpenFile {
+                path: path.clone(),
+                state: None,
+                markdown_editor: None,
+                _sub: None,
+                _md_sub: None,
+                editor_mode: false,
+                navigation_stack: nav_stack,
+                navigation_position: nav_pos,
+            };
+            if new_tab || self.open_files.is_empty() {
+                self.open_files.push(open_file);
+                self.active_tab = self.open_files.len() - 1;
+            } else {
+                let active = self.active_tab.min(self.open_files.len() - 1);
+                let old_path = self.open_files[active].path.clone();
+                if !old_path.as_os_str().is_empty() {
+                    self.track_file_edited(&old_path);
+                }
+                self.open_files[active] = open_file;
+            }
+            cx.notify();
+            return;
+        }
+
         let content = fs::read_to_string(&path).unwrap_or_default();
         let state = if is_markdown(&path) {
             cx.new(|cx| {
@@ -67,7 +101,7 @@ impl DatalithView {
         };
 
         let markdown_editor = if is_markdown(&path) {
-            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), true, cx)))
+            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), EditorMode::Edit, Some(path.clone()), cx)))
         } else {
             None
         };
@@ -327,16 +361,41 @@ impl DatalithView {
                     ),
             )
             .selected_index(active_tab)
-            .suffix(
-                Button::new("new-tab")
-                    .ghost()
-                    .xsmall()
-                    .icon(IconName::Plus)
-                    .mx_1()
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.new_empty_tab(cx);
-                    })),
-            )
+            .suffix({
+                let md_entity = self
+                    .open_files
+                    .get(active_tab)
+                    .and_then(|f| f.markdown_editor.clone());
+                let is_editing = md_entity
+                    .as_ref()
+                    .map(|e| e.read(cx).is_editing())
+                    .unwrap_or(false);
+
+                let mut suffix = h_flex().gap_0().px_1();
+
+                if let Some(entity) = md_entity {
+                    let label: SharedString = if is_editing { "Preview".into() } else { "Edit".into() };
+                    suffix = suffix.child(
+                        Button::new("toggle-mode")
+                            .ghost()
+                            .xsmall()
+                            .label(label)
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                entity.update(cx, |editor, cx| editor.toggle_editing(cx));
+                            })),
+                    );
+                }
+
+                suffix.child(
+                    Button::new("new-tab")
+                        .ghost()
+                        .xsmall()
+                        .icon(IconName::Plus)
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            view.new_empty_tab(cx);
+                        })),
+                )
+            })
             .on_click({
                 let tree_state = self.tree_state.clone();
                 cx.listener(move |view, index, _, cx| {

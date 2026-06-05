@@ -1,16 +1,26 @@
+use std::path::PathBuf;
+
 use gpui::*;
 use gpui_component::ActiveTheme;
 use gpui_component::input::{Input, InputEvent, InputState};
+use percent_encoding::percent_decode_str;
 
 use crate::consts::{
     BASE_FONT_SIZE, MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING,
     MD_CODE_BLOCK_RADIUS, MD_CODE_FONT_SCALE, MD_CODE_PADDING, MD_CODE_RADIUS,
     MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
-    MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
+    MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT,
+    MD_LIST_INDENT,
 };
 use crate::markdown::{
     MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum EditorMode {
+    Edit,
+    Preview,
+}
 
 pub(crate) enum MarkdownEditorEvent {
     LinkClicked(String, bool),
@@ -18,7 +28,8 @@ pub(crate) enum MarkdownEditorEvent {
 
 pub(crate) struct MarkdownEditor {
     input: Entity<InputState>,
-    editing: bool,
+    mode: EditorMode,
+    file_path: Option<PathBuf>,
     _sub: Option<Subscription>,
 }
 
@@ -32,7 +43,12 @@ struct ListItemData {
 }
 
 impl MarkdownEditor {
-    pub(crate) fn new(input: Entity<InputState>, editing: bool, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(
+        input: Entity<InputState>,
+        mode: EditorMode,
+        file_path: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let sub = cx.subscribe(&input, |_this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -41,7 +57,8 @@ impl MarkdownEditor {
 
         Self {
             input,
-            editing,
+            mode,
+            file_path,
             _sub: Some(sub),
         }
     }
@@ -51,11 +68,14 @@ impl MarkdownEditor {
     }
 
     pub(crate) fn is_editing(&self) -> bool {
-        self.editing
+        self.mode == EditorMode::Edit
     }
 
     pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
-        self.editing = !self.editing;
+        self.mode = match self.mode {
+            EditorMode::Edit => EditorMode::Preview,
+            EditorMode::Preview => EditorMode::Edit,
+        };
         cx.notify();
     }
 
@@ -65,6 +85,47 @@ impl MarkdownEditor {
         if let Some(url) = find_link_at_offset(&text, offset) {
             cx.emit(MarkdownEditorEvent::LinkClicked(url, true));
         }
+    }
+
+    fn render_image(&self, url: &str, alt: &str, cx: &mut Context<Self>) -> AnyElement {
+        let base_font_size = BASE_FONT_SIZE as f32;
+
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            let decoded = percent_decode_str(url).decode_utf8_lossy().to_string();
+            let path = self
+                .file_path
+                .as_ref()
+                .and_then(|fp| fp.parent())
+                .map(|parent| parent.join(&decoded))
+                .unwrap_or_else(|| PathBuf::from(&decoded));
+
+            if path.exists() {
+                return div()
+                    .w_full()
+                    .max_w(px(MD_IMAGE_MAX_WIDTH))
+                    .my_2()
+                    .child(img(path).w_full())
+                    .into_any_element();
+            }
+        }
+
+        // Fallback: muted bordered box with alt text
+        div()
+            .w_full()
+            .max_w(px(MD_IMAGE_MAX_WIDTH))
+            .my_2()
+            .p_2()
+            .rounded(px(4.))
+            .border_1()
+            .border_color(cx.theme().border)
+            .text_color(cx.theme().muted_foreground)
+            .text_size(px(base_font_size * 0.9))
+            .child(if alt.is_empty() {
+                format!("[image: {}]", url)
+            } else {
+                format!("[{}]", alt)
+            })
+            .into_any_element()
     }
 
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -406,6 +467,32 @@ impl MarkdownEditor {
                         }
                     }
                 }
+                MarkdownEvent::Image { url, alt } => {
+                    // Flush any pending inline content before the image
+                    if !current_line.is_empty() {
+                        let wrapped = div()
+                            .flex()
+                            .flex_wrap()
+                            .items_start()
+                            .children(current_line.drain(..))
+                            .into_any_element();
+                        if in_paragraph {
+                            paragraph_lines.push(wrapped);
+                        } else {
+                            elements.push(wrapped);
+                        }
+                    }
+                    if in_paragraph && !paragraph_lines.is_empty() {
+                        let para = div()
+                            .flex()
+                            .flex_col()
+                            .children(paragraph_lines.drain(..))
+                            .into_any_element();
+                        elements.push(para);
+                        in_paragraph = false;
+                    }
+                    elements.push(self.render_image(&url, &alt, cx));
+                }
             }
         }
 
@@ -485,7 +572,7 @@ impl Focusable for MarkdownEditor {
 
 impl Render for MarkdownEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(if self.editing {
+        div().size_full().child(if self.mode == EditorMode::Edit {
             self.render_editing(cx)
         } else {
             self.render_preview(cx)

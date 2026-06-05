@@ -10,6 +10,7 @@ pub(crate) enum MarkdownEvent {
     BlockEnd,
     LinkStart(String),
     LinkEnd,
+    Image { url: String, alt: String },
 }
 
 #[derive(Clone, Debug)]
@@ -55,6 +56,9 @@ pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
     let mut in_code_block = false;
     let mut code_block_content = String::new();
     let mut list_depth: usize = 0;
+    let mut in_image = false;
+    let mut image_url = String::new();
+    let mut image_alt = String::new();
 
     for (event, _range) in parser.into_offset_iter() {
         match event {
@@ -110,6 +114,12 @@ pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
                     events.push(MarkdownEvent::BlockStart(MarkdownBlock::BlockQuote));
                 }
+                Tag::Image { dest_url, .. } => {
+                    flush_text(&mut text_buffer, &style_stack, &mut events);
+                    in_image = true;
+                    image_url = dest_url.to_string();
+                    image_alt.clear();
+                }
                 _ => {}
             },
             Event::End(tag) => match tag {
@@ -155,11 +165,22 @@ pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                     flush_text(&mut text_buffer, &style_stack, &mut events);
                     events.push(MarkdownEvent::BlockEnd);
                 }
+                TagEnd::Image => {
+                    events.push(MarkdownEvent::Image {
+                        url: image_url.clone(),
+                        alt: image_alt.clone(),
+                    });
+                    in_image = false;
+                    image_url.clear();
+                    image_alt.clear();
+                }
                 _ => {}
             },
             Event::Text(t) => {
                 if in_code_block {
                     code_block_content.push_str(&t);
+                } else if in_image {
+                    image_alt.push_str(&t);
                 } else {
                     text_buffer.push_str(&t);
                 }
@@ -213,7 +234,48 @@ fn convert_wiki_links(text: &str) -> String {
     let mut chars = text.chars().peekable();
 
     while let Some(c) = chars.next() {
-        if c == '[' && chars.peek() == Some(&'[') {
+        if c == '!' && chars.peek() == Some(&'[') {
+            chars.next(); // consume first '['
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume second '['
+                let mut link_text = String::new();
+                let mut found_end = false;
+                loop {
+                    match chars.next() {
+                        Some(']') => {
+                            if chars.peek() == Some(&']') {
+                                chars.next();
+                                found_end = true;
+                                break;
+                            } else {
+                                link_text.push(']');
+                            }
+                        }
+                        Some(ch) => link_text.push(ch),
+                        None => break,
+                    }
+                }
+                if found_end {
+                    if let Some(pipe_pos) = link_text.find('|') {
+                        let display = &link_text[..pipe_pos];
+                        let target = &link_text[pipe_pos + 1..];
+                        let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
+                        result.push_str(&format!("![{}]({})", display, encoded));
+                    } else {
+                        let encoded = utf8_percent_encode(&link_text, ENCODE_IN_LINK);
+                        result.push_str(&format!("![{}]({})", link_text, encoded));
+                    }
+                } else {
+                    result.push('!');
+                    result.push_str("[[");
+                    result.push_str(&link_text);
+                }
+            } else {
+                // ![ but not ![[  — regular markdown image syntax, put back
+                result.push('!');
+                result.push('[');
+            }
+        } else if c == '[' && chars.peek() == Some(&'[') {
             chars.next();
             let mut link_text = String::new();
             let mut found_end = false;

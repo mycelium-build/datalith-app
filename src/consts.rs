@@ -46,3 +46,8 @@ pub(crate) const MD_FRONTMATTER_MARGIN: f32 = 3.0;
 
 pub(crate) const MD_BLOCKQUOTE_PADDING: f32 = 4.0;
 pub(crate) const MD_BLOCKQUOTE_BORDER: f32 = 3.0;
+
+pub(crate) const MD_IMAGE_MAX_WIDTH: f32 = 800.0;
+
+pub(crate) const IMAGE_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "avif"];

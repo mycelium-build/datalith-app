@@ -1,4 +1,5 @@
-use crate::consts::SIDEBAR_WIDTH;
+use crate::consts::{MD_IMAGE_MAX_WIDTH, SIDEBAR_WIDTH};
+use crate::utils::is_image_file;
 use gpui::*;
 use gpui_component::{
     h_flex,
@@ -127,6 +128,21 @@ impl DatalithView {
                     .justify_center()
                     .gap_4()
                     .child("Empty tab")
+                    .into_any_element()
+            } else if is_image_file(&active_file.path) {
+                div()
+                    .id("image-viewer")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .p_4()
+                    .child(
+                        img(active_file.path.clone())
+                            .w_full()
+                            .max_w(px(MD_IMAGE_MAX_WIDTH)),
+                    )
                     .into_any_element()
             } else if let Some(ref md_editor) = active_file.markdown_editor {
                 div()
