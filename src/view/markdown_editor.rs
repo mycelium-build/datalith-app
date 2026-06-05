@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use gpui::*;
 use gpui_component::ActiveTheme;
 use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
 
 use crate::consts::{
@@ -164,7 +165,7 @@ impl MarkdownEditor {
                             link_counter += 1;
                             let link_id =
                                 SharedString::from(format!("link-{}-{}", link_counter, url_clone));
-                            let mut link = div().child(text.clone());
+                            let mut link = div().flex_auto().min_w_0().child(text.clone());
                             link = apply_style_to_div(link, &style, cx);
                             let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
                                 move |_, event: &ClickEvent, _, cx| {
@@ -179,7 +180,7 @@ impl MarkdownEditor {
                             let parts: Vec<&str> = text.split('\n').collect();
                             for part in parts {
                                 if !part.is_empty() {
-                                    let mut span = div().child(part.to_string());
+                                    let mut span = div().flex_auto().min_w_0().child(part.to_string());
                                     span = apply_style_to_div(span, &style, cx);
                                     li.elements.push(span.into_any_element());
                                 }
@@ -190,7 +191,7 @@ impl MarkdownEditor {
                         link_counter += 1;
                         let link_id =
                             SharedString::from(format!("link-{}-{}", link_counter, url_clone));
-                        let mut link = div().child(text.clone());
+                        let mut link = div().flex_auto().min_w_0().child(text.clone());
                         link = apply_style_to_div(link, &style, cx);
                         let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
                             move |_, event: &ClickEvent, _, cx| {
@@ -209,6 +210,8 @@ impl MarkdownEditor {
                                     .flex()
                                     .flex_wrap()
                                     .items_start()
+                                    .w_full()
+                                    .min_w_0()
                                     .children(current_line.drain(..))
                                     .into_any_element();
                                 if in_paragraph {
@@ -218,7 +221,7 @@ impl MarkdownEditor {
                                 }
                             }
                             if !part.is_empty() {
-                                let mut span = div().child(part.to_string());
+                                let mut span = div().flex_auto().min_w_0().child(part.to_string());
                                 span = apply_style_to_div(span, &style, cx);
                                 current_line.push(span.into_any_element());
                             }
@@ -238,7 +241,9 @@ impl MarkdownEditor {
                                 .flex()
                                 .flex_wrap()
                                 .items_start()
-                                .children(current_line.drain(..))
+                                .w_full()
+                                .min_w_0()
+                                    .children(current_line.drain(..))
                                 .into_any_element();
                             paragraph_lines.push(wrapped);
                         }
@@ -246,6 +251,8 @@ impl MarkdownEditor {
                             let wrapped = div()
                                 .flex()
                                 .flex_col()
+                                .w_full()
+                                .min_w_0()
                                 .children(paragraph_lines.drain(..))
                                 .into_any_element();
                             elements.push(wrapped);
@@ -259,7 +266,9 @@ impl MarkdownEditor {
                             .flex()
                             .flex_wrap()
                             .items_start()
-                            .children(current_line.drain(..))
+                            .w_full()
+                            .min_w_0()
+                                    .children(current_line.drain(..))
                             .into_any_element();
                         elements.push(wrapped);
                     }
@@ -286,13 +295,16 @@ impl MarkdownEditor {
                                     };
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
                                     let full_marker = format!("{}{}", indent_str, marker);
-                                    let marker_span = div().child(full_marker);
+                                    let marker_span = div().flex_shrink_0().child(full_marker);
 
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
                                         .items_start()
                                         .child(marker_span)
+                                        .w_full()
+                                        .min_w_0()
+                                        .flex_wrap()
                                         .children(li.elements);
                                     elements.push(item_row.into_any_element());
                                 }
@@ -333,6 +345,7 @@ impl MarkdownEditor {
                                     .rounded(px(MD_CODE_BLOCK_RADIUS))
                                     .p(px(MD_CODE_BLOCK_PADDING))
                                     .mb_2()
+                                    .overflow_x_scrollbar()
                                     .child(code)
                                     .into_any_element(),
                             );
@@ -420,13 +433,16 @@ impl MarkdownEditor {
                                     };
                                     let indent_str = MD_LIST_INDENT.repeat(li.indent);
                                     let full_marker = format!("{}{}", indent_str, marker);
-                                    let marker_span = div().child(full_marker);
+                                    let marker_span = div().flex_shrink_0().child(full_marker);
 
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
                                         .items_start()
                                         .child(marker_span)
+                                        .w_full()
+                                        .min_w_0()
+                                        .flex_wrap()
                                         .children(li.elements);
                                     elements.push(item_row.into_any_element());
                                 }
@@ -445,7 +461,9 @@ impl MarkdownEditor {
                                         .flex()
                                         .flex_wrap()
                                         .items_start()
-                                        .children(current_line.drain(..))
+                                        .w_full()
+                                        .min_w_0()
+                                    .children(current_line.drain(..))
                                         .into_any_element();
                                     paragraph_lines.push(wrapped);
                                 }
@@ -453,7 +471,9 @@ impl MarkdownEditor {
                                     let wrapped = div()
                                         .flex()
                                         .flex_col()
-                                        .children(paragraph_lines.drain(..))
+                                        .w_full()
+                                        .min_w_0()
+                                .children(paragraph_lines.drain(..))
                                         .into_any_element();
                                     elements.push(wrapped);
                                 }
@@ -474,7 +494,9 @@ impl MarkdownEditor {
                             .flex()
                             .flex_wrap()
                             .items_start()
-                            .children(current_line.drain(..))
+                            .w_full()
+                            .min_w_0()
+                                    .children(current_line.drain(..))
                             .into_any_element();
                         if in_paragraph {
                             paragraph_lines.push(wrapped);
@@ -486,7 +508,9 @@ impl MarkdownEditor {
                         let para = div()
                             .flex()
                             .flex_col()
-                            .children(paragraph_lines.drain(..))
+                            .w_full()
+                            .min_w_0()
+                                .children(paragraph_lines.drain(..))
                             .into_any_element();
                         elements.push(para);
                         in_paragraph = false;
@@ -504,14 +528,17 @@ impl MarkdownEditor {
             };
             let indent_str = MD_LIST_INDENT.repeat(li.indent);
             let full_marker = format!("{}{}", indent_str, marker);
-            let marker_span = div().child(full_marker);
+            let marker_span = div().flex_shrink_0().child(full_marker);
 
             let item_row = div()
                 .flex()
                 .flex_row()
                 .items_start()
                 .child(marker_span)
-                .children(li.elements);
+                .w_full()
+                .min_w_0()
+                                        .flex_wrap()
+                                        .children(li.elements);
             elements.push(item_row.into_any_element());
         }
         if !current_line.is_empty() {
@@ -519,7 +546,9 @@ impl MarkdownEditor {
                 .flex()
                 .flex_wrap()
                 .items_start()
-                .children(current_line.drain(..))
+                .w_full()
+                .min_w_0()
+                                    .children(current_line.drain(..))
                 .into_any_element();
             if in_paragraph {
                 paragraph_lines.push(wrapped);
@@ -531,7 +560,9 @@ impl MarkdownEditor {
             let wrapped = div()
                 .flex()
                 .flex_col()
-                .children(paragraph_lines.drain(..))
+                .w_full()
+                .min_w_0()
+                                .children(paragraph_lines.drain(..))
                 .into_any_element();
             elements.push(wrapped);
         }
@@ -544,7 +575,7 @@ impl MarkdownEditor {
             .p_4()
             .whitespace_normal()
             .line_height(px(base_font_size * MD_LINE_HEIGHT))
-            .child(div().children(elements))
+            .child(div().w_full().min_w_0().children(elements))
             .into_any_element()
     }
 
