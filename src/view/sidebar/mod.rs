@@ -12,7 +12,7 @@ use gpui_component::{
     select::Select,
 };
 
-use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
+use crate::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer};
 use crate::consts::BORDER_WIDTH;
 use crate::fs_ops;
 use crate::utils::file_name_str;
@@ -151,7 +151,6 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let tree_state = self.tree_state.clone();
         let view = cx.entity().clone();
 
         self.ensure_rename_state(window, cx);
@@ -207,28 +206,23 @@ impl DatalithView {
             )
             .context_menu({
                 let view = view.clone();
-                let tree_state = tree_state.clone();
                 move |menu, _window, cx| {
-                    if let Some(entry) = tree_state.read(cx).right_clicked_entry() {
-                        let path = Self::path_from_id(&entry.item().id);
-                        view.update(cx, |v, _| v.context_menu_target = Some(path));
-                        menu.menu("New File", Box::new(NewFile))
-                            .menu("New Folder", Box::new(NewFolder))
-                            .separator()
-                            .menu("Rename", Box::new(Rename))
-                            .menu("Delete", Box::new(Delete))
-                            .menu("Duplicate", Box::new(Duplicate))
-                            .separator()
-                            .menu("Open in Explorer", Box::new(OpenInExplorer))
-                            .menu("Copy Path", Box::new(CopyPath))
-                    } else {
-                        view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
-                        menu.menu("New File", Box::new(NewFile))
-                            .menu("New Folder", Box::new(NewFolder))
-                            .separator()
-                            .menu("Open in Explorer", Box::new(OpenInExplorer))
-                            .menu("Copy Path", Box::new(CopyPath))
+                    let suppressed = view.update(cx, |v, _| {
+                        let suppressed = v.suppress_sidebar_context_menu;
+                        v.suppress_sidebar_context_menu = false;
+                        suppressed
+                    });
+
+                    if suppressed {
+                        return menu;
                     }
+
+                    view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
+                    menu.menu("New File", Box::new(NewFile))
+                        .menu("New Folder", Box::new(NewFolder))
+                        .separator()
+                        .menu("Open in Explorer", Box::new(OpenInExplorer))
+                        .menu("Copy Path", Box::new(CopyPath))
                 }
             })
     }

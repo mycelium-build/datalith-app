@@ -10,6 +10,7 @@ use gpui_component::{
     tree::{self, TreeItem},
 };
 
+use crate::actions::{CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename};
 use crate::consts::{DRAG_HOVER_EXPAND_DELAY_MS, TREE_INDENT_PX, TREE_PADDING_PX};
 use crate::utils::file_name_str;
 
@@ -17,7 +18,7 @@ use super::DatalithView;
 use super::DragFile;
 
 #[must_use]
-pub(crate) fn build_file_items(path: &Path) -> Vec<TreeItem> {
+pub(crate) fn build_file_items_with_expanded(path: &Path, expanded_ids: &[SharedString]) -> Vec<TreeItem> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
 
@@ -31,10 +32,12 @@ pub(crate) fn build_file_items(path: &Path) -> Vec<TreeItem> {
             }
 
             if entry_path.is_dir() {
-                let children = build_file_items(&entry_path);
+                let children = build_file_items_with_expanded(&entry_path, expanded_ids);
+                let id = entry_path.to_string_lossy().to_string();
+                let expanded = expanded_ids.iter().any(|expanded_id| expanded_id.as_ref() == id);
                 dirs.push((
                     name.clone(),
-                    TreeItem::new(entry_path.to_string_lossy().to_string(), name).children(children),
+                    TreeItem::new(id, name).children(children).expanded(expanded),
                 ));
             } else {
                 files.push((
@@ -60,11 +63,9 @@ impl DatalithView {
         tree_state_entity: &Entity<gpui_component::tree::TreeState>,
     ) -> impl IntoElement {
         let view = cx.entity();
-        let tree_state = tree_state_entity.clone();
 
         tree::tree(tree_state_entity, {
             let view = view.clone();
-            let tree_state = tree_state.clone();
             move |ix, entry, selected, _window, cx| {
                 let item_id = entry.item().id.clone();
                 let path = Self::path_from_id(&item_id);
@@ -74,7 +75,6 @@ impl DatalithView {
                 let depth = entry.depth();
 
                 let v = view.clone();
-                let ts = tree_state.clone();
                 view.update(cx, move |this, cx| {
                     let is_renaming = this
                         .rename_target
@@ -105,31 +105,32 @@ impl DatalithView {
                         );
                     }
 
-                    list_item = list_item
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .overflow_hidden()
-                                .child(Icon::new(icon).size_4())
-                                .child(div().flex_1().truncate().child(item_label.clone())),
-                        )
-                        .on_drag(
-                            DragFile { path: path.clone() },
-                            |drag, _offset, _window, cx| {
-                                cx.stop_propagation();
-                                cx.new(|_| drag.clone())
-                            },
-                        );
+                    let mut row = h_flex()
+                        .id(("file-tree-row", ix))
+                        .on_mouse_down(MouseButton::Right, cx.listener({
+                            let path = path.clone();
+                            move |this, _event: &MouseDownEvent, _window, _cx| {
+                                this.context_menu_target = Some(path.clone());
+                                this.suppress_sidebar_context_menu = true;
+                            }
+                        }))
+                        .gap_2()
+                        .items_center()
+                        .overflow_hidden()
+                        .child(Icon::new(icon).size_4())
+                        .child(div().flex_1().truncate().child(item_label.clone()))
+                        .on_drag(DragFile { path: path.clone() }, |drag, _offset, _window, cx| {
+                            cx.stop_propagation();
+                            cx.new(|_| drag.clone())
+                        });
 
                     if is_folder {
-                        list_item = list_item
+                        row = row
                             .drag_over::<DragFile>({
                                 let folder_path = path.clone();
-                                let tree_state = ts.clone();
                                 let v_for_notify = v.clone();
-                                move |mut style, _drag, _window, cx| {
-                                    style = style.bg(cx.theme().drop_target);
+                                move |style, _drag, _window, cx| {
+                                    let style = style.bg(cx.theme().drop_target);
 
                                     let should_expand =
                                         v_for_notify.update(cx, |view, _| match &view.drag_hover {
@@ -155,19 +156,9 @@ impl DatalithView {
                                     if should_expand {
                                         let id: SharedString =
                                             folder_path.to_string_lossy().to_string().into();
-                                        let saved_selection = tree_state
-                                            .read(cx)
-                                            .selected_entry()
-                                            .map(|e| (e.item().id.clone(), e.item().label.clone()));
-                                        tree_state.update(cx, |state, cx| {
-                                            state.expand_by_id(&id, cx);
+                                        v_for_notify.update(cx, |view, cx| {
+                                            view.expand_tree_item(&id, cx);
                                         });
-                                        if let Some((item_id, item_label)) = saved_selection {
-                                            let item = tree::TreeItem::new(item_id, item_label);
-                                            tree_state.update(cx, |state, cx| {
-                                                state.set_selected_item(Some(&item), cx);
-                                            });
-                                        }
                                     }
 
                                     cx.notify(v_for_notify.entity_id());
@@ -185,10 +176,15 @@ impl DatalithView {
                             }));
                     }
 
+                    list_item = list_item.child(row);
+
                     list_item.on_click(cx.listener({
                         let path = path.clone();
+                        let id = item_id.clone();
                         move |this, event: &ClickEvent, window, cx| {
-                            if !is_folder {
+                            if is_folder {
+                                this.mark_tree_item_expanded(&id, !is_expanded);
+                            } else {
                                 this.last_sidebar_selection = Some(path.clone());
                                 let new_tab = event.modifiers().platform;
                                 this.open_file(path.clone(), new_tab, window, cx);
@@ -196,6 +192,22 @@ impl DatalithView {
                         }
                     }))
                 })
+            }
+        })
+        .context_menu({
+            let view = view.clone();
+            move |_ix, entry, menu, _window, cx| {
+                let path = Self::path_from_id(&entry.item().id);
+                view.update(cx, |v, _| v.context_menu_target = Some(path));
+                menu.menu("New File", Box::new(NewFile))
+                    .menu("New Folder", Box::new(NewFolder))
+                    .separator()
+                    .menu("Rename", Box::new(Rename))
+                    .menu("Delete", Box::new(Delete))
+                    .menu("Duplicate", Box::new(Duplicate))
+                    .separator()
+                    .menu("Open in Explorer", Box::new(OpenInExplorer))
+                    .menu("Copy Path", Box::new(CopyPath))
             }
         })
     }

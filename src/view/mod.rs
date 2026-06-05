@@ -21,7 +21,7 @@ use crate::link_cache::LinkCache;
 use crate::search::SearchEngine;
 use crate::utils::file_name_str;
 use crate::view::markdown_editor::MarkdownEditor;
-use crate::view::sidebar::file_tree::build_file_items;
+use crate::view::sidebar::file_tree::build_file_items_with_expanded;
 use palette::Palette;
 use settings::SettingsView;
 
@@ -86,10 +86,12 @@ pub(crate) struct DatalithView {
     pub(crate) settings: SettingsView,
     _font_size_slider_sub: Subscription,
     pub(crate) context_menu_target: Option<PathBuf>,
+    pub(crate) suppress_sidebar_context_menu: bool,
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
     _rename_sub: Option<Subscription>,
     pub(crate) drag_hover: Option<(PathBuf, Instant)>,
+    pub(crate) expanded_tree_ids: Vec<SharedString>,
     pub(crate) focus_sidebar_requested: bool,
     pub(crate) focus_editor_requested: bool,
     sidebar_focus_handle: FocusHandle,
@@ -175,9 +177,11 @@ impl DatalithView {
             _rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,
+            suppress_sidebar_context_menu: false,
             rename_target: None,
             rename_state: None,
             drag_hover: None,
+            expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
             pending_open: None,
@@ -197,7 +201,8 @@ impl DatalithView {
 
         self.pending_vault_refresh = true;
 
-        let items = build_file_items(&path);
+        self.expanded_tree_ids.clear();
+        let items = build_file_items_with_expanded(&path, &self.expanded_tree_ids);
         self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
         });
@@ -239,16 +244,50 @@ impl DatalithView {
 
     pub(crate) fn refresh_tree(&mut self, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path {
-            let expanded_ids = self.tree_state.read(cx).expanded_ids().clone();
-            let items = build_file_items(root);
+            let selected = self
+                .tree_state
+                .read(cx)
+                .selected_entry()
+                .map(|e| (e.item().id.clone(), e.item().label.clone()));
+            let items = build_file_items_with_expanded(root, &self.expanded_tree_ids);
             self.tree_state.update(cx, |state, cx| {
                 state.set_items(items, cx);
-                for id in &expanded_ids {
-                    state.expand_by_id(id, cx);
+                if let Some((item_id, item_label)) = selected {
+                    let item = gpui_component::tree::TreeItem::new(item_id, item_label);
+                    state.set_selected_item(Some(&item), cx);
                 }
             });
             cx.notify();
         }
+    }
+
+    pub(crate) fn mark_tree_item_expanded(&mut self, id: &SharedString, expanded: bool) {
+        if expanded {
+            if !self.expanded_tree_ids.iter().any(|expanded_id| expanded_id == id) {
+                self.expanded_tree_ids.push(id.clone());
+            }
+        } else {
+            self.expanded_tree_ids.retain(|expanded_id| expanded_id != id);
+        }
+    }
+
+    pub(crate) fn expand_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
+        self.mark_tree_item_expanded(id, true);
+        self.refresh_tree(cx);
+    }
+
+    pub(crate) fn visible_tree_entry_count(&self) -> usize {
+        fn count_items(items: &[gpui_component::tree::TreeItem]) -> usize {
+            items
+                .iter()
+                .map(|item| 1 + if item.is_expanded() { count_items(&item.children) } else { 0 })
+                .sum()
+        }
+
+        self.root_path
+            .as_ref()
+            .map(|root| count_items(&build_file_items_with_expanded(root, &self.expanded_tree_ids)))
+            .unwrap_or(0)
     }
 
     pub(crate) fn track_new_file(&mut self, path: &Path) {
