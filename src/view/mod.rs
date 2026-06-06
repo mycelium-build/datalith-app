@@ -13,7 +13,7 @@ use gpui_component::{
     input::InputState,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
-    tree::TreeState,
+    tree::{TreeItem, TreeState},
 };
 
 use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
@@ -255,7 +255,7 @@ impl DatalithView {
             self.tree_state.update(cx, |state, cx| {
                 state.set_items(items, cx);
                 if let Some((item_id, item_label)) = selected {
-                    let item = gpui_component::tree::TreeItem::new(item_id, item_label);
+                    let item = TreeItem::new(item_id, item_label);
                     state.set_selected_item(Some(&item), cx);
                 }
             });
@@ -265,11 +265,16 @@ impl DatalithView {
 
     pub(crate) fn mark_tree_item_expanded(&mut self, id: &SharedString, expanded: bool) {
         if expanded {
-            if !self.expanded_tree_ids.iter().any(|expanded_id| expanded_id == id) {
+            if !self
+                .expanded_tree_ids
+                .iter()
+                .any(|expanded_id| expanded_id == id)
+            {
                 self.expanded_tree_ids.push(id.clone());
             }
         } else {
-            self.expanded_tree_ids.retain(|expanded_id| expanded_id != id);
+            self.expanded_tree_ids
+                .retain(|expanded_id| expanded_id != id);
         }
     }
 
@@ -279,16 +284,27 @@ impl DatalithView {
     }
 
     pub(crate) fn visible_tree_entry_count(&self) -> usize {
-        fn count_items(items: &[gpui_component::tree::TreeItem]) -> usize {
+        fn count_items(items: &[TreeItem]) -> usize {
             items
                 .iter()
-                .map(|item| 1 + if item.is_expanded() { count_items(&item.children) } else { 0 })
+                .map(|item| {
+                    1 + if item.is_expanded() {
+                        count_items(&item.children)
+                    } else {
+                        0
+                    }
+                })
                 .sum()
         }
 
         self.root_path
             .as_ref()
-            .map(|root| count_items(&build_file_items_with_expanded(root, &self.expanded_tree_ids)))
+            .map(|root| {
+                count_items(&build_file_items_with_expanded(
+                    root,
+                    &self.expanded_tree_ids,
+                ))
+            })
             .unwrap_or(0)
     }
 
