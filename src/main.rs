@@ -1,5 +1,6 @@
 mod actions;
 mod app;
+mod assets;
 mod config;
 mod consts;
 mod fs_ops;
@@ -23,7 +24,7 @@ use crate::view::DatalithView;
 use crate::view::settings::{SettingsView, ThemeOptions};
 
 fn main() {
-    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
+    let app = gpui_platform::application().with_assets(assets::DatalithAssets);
 
     app.run(move |cx| {
         gpui_component::init(cx);

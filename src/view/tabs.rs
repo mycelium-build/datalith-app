@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use gpui::*;
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputEvent, InputState},
@@ -13,6 +13,7 @@ use percent_encoding::percent_decode_str;
 
 use super::markdown_editor::{EditorMode, MarkdownEditor, MarkdownEditorEvent};
 use super::{DatalithView, NavigationAction, OpenFile};
+use crate::assets::PEN_ICON;
 use crate::utils::{file_name_str, is_image_file, is_supported_file};
 
 fn is_markdown(path: &Path) -> bool {
@@ -374,12 +375,16 @@ impl DatalithView {
                 let mut suffix = h_flex().gap_0().px_1();
 
                 if let Some(entity) = md_entity {
-                    let label: SharedString = if is_editing { "Preview".into() } else { "Edit".into() };
+                    let icon: Icon = if is_editing {
+                        Icon::new(IconName::Eye)
+                    } else {
+                        Icon::default().path(SharedString::from(PEN_ICON))
+                    };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
                             .ghost()
                             .xsmall()
-                            .label(label)
+                            .icon(icon)
                             .on_click(cx.listener(move |_, _, _, cx| {
                                 entity.update(cx, |editor, cx| editor.toggle_editing(cx));
                             })),
