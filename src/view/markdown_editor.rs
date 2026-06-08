@@ -1,4 +1,7 @@
+use std::cell::RefCell;
+use std::ops::Range;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
@@ -8,10 +11,9 @@ use percent_encoding::percent_decode_str;
 
 use crate::consts::{
     BASE_FONT_SIZE, MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING,
-    MD_CODE_BLOCK_RADIUS, MD_CODE_FONT_SCALE, MD_CODE_PADDING, MD_CODE_RADIUS,
-    MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
-    MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT,
-    MD_LIST_INDENT,
+    MD_CODE_BLOCK_RADIUS, MD_CODE_FONT_SCALE, MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN,
+    MD_FRONTMATTER_PADDING, MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES,
+    MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
 use crate::markdown::{
     MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown,
@@ -154,78 +156,16 @@ impl MarkdownEditor {
         let mut current_line: Vec<AnyElement> = Vec::new();
         let mut paragraph_lines: Vec<AnyElement> = Vec::new();
         let mut in_paragraph = false;
-        let mut link_counter: u64 = 0;
+
+        let mut text_buffer = TextBuffer::new();
 
         for event in events {
             match event {
                 MarkdownEvent::Text(text, style) => {
-                    if let Some(ref mut li) = current_list_item {
-                        if let Some(ref url) = current_link_url {
-                            let url_clone = url.clone();
-                            link_counter += 1;
-                            let link_id =
-                                SharedString::from(format!("link-{}-{}", link_counter, url_clone));
-                            let mut link = div().flex_auto().min_w_0().child(text.clone());
-                            link = apply_style_to_div(link, &style, cx);
-                            let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
-                                move |_, event: &ClickEvent, _, cx| {
-                                    cx.emit(MarkdownEditorEvent::LinkClicked(
-                                        url_clone.clone(),
-                                        event.modifiers().platform,
-                                    ));
-                                },
-                            ));
-                            li.elements.push(link.into_any_element());
-                        } else {
-                            let parts: Vec<&str> = text.split('\n').collect();
-                            for part in parts {
-                                if !part.is_empty() {
-                                    let mut span = div().flex_auto().min_w_0().child(part.to_string());
-                                    span = apply_style_to_div(span, &style, cx);
-                                    li.elements.push(span.into_any_element());
-                                }
-                            }
-                        }
-                    } else if let Some(ref url) = current_link_url {
-                        let url_clone = url.clone();
-                        link_counter += 1;
-                        let link_id =
-                            SharedString::from(format!("link-{}-{}", link_counter, url_clone));
-                        let mut link = div().flex_auto().min_w_0().child(text.clone());
-                        link = apply_style_to_div(link, &style, cx);
-                        let link = link.id(link_id).cursor_pointer().on_click(cx.listener(
-                            move |_, event: &ClickEvent, _, cx| {
-                                cx.emit(MarkdownEditorEvent::LinkClicked(
-                                    url_clone.clone(),
-                                    event.modifiers().platform,
-                                ));
-                            },
-                        ));
-                        current_line.push(link.into_any_element());
+                    if let Some(ref url) = current_link_url {
+                        text_buffer.push_link(&text, url, &style, cx);
                     } else {
-                        let parts: Vec<&str> = text.split('\n').collect();
-                        for (i, part) in parts.iter().enumerate() {
-                            if i > 0 && !current_line.is_empty() {
-                                let wrapped = div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .items_start()
-                                    .w_full()
-                                    .min_w_0()
-                                    .children(current_line.drain(..))
-                                    .into_any_element();
-                                if in_paragraph {
-                                    paragraph_lines.push(wrapped);
-                                } else {
-                                    elements.push(wrapped);
-                                }
-                            }
-                            if !part.is_empty() {
-                                let mut span = div().flex_auto().min_w_0().child(part.to_string());
-                                span = apply_style_to_div(span, &style, cx);
-                                current_line.push(span.into_any_element());
-                            }
-                        }
+                        text_buffer.push(&text, &style, cx);
                     }
                 }
                 MarkdownEvent::LinkStart(url) => {
@@ -235,6 +175,13 @@ impl MarkdownEditor {
                     current_link_url = None;
                 }
                 MarkdownEvent::BlockStart(block) => {
+                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
+                        if let Some(ref mut li) = current_list_item {
+                            li.elements.push(element);
+                        } else {
+                            current_line.push(element);
+                        }
+                    }
                     if !matches!(block, MarkdownBlock::Paragraph) {
                         if !current_line.is_empty() {
                             let wrapped = div()
@@ -243,7 +190,7 @@ impl MarkdownEditor {
                                 .items_start()
                                 .w_full()
                                 .min_w_0()
-                                    .children(current_line.drain(..))
+                                .children(current_line.drain(..))
                                 .into_any_element();
                             paragraph_lines.push(wrapped);
                         }
@@ -268,7 +215,7 @@ impl MarkdownEditor {
                             .items_start()
                             .w_full()
                             .min_w_0()
-                                    .children(current_line.drain(..))
+                            .children(current_line.drain(..))
                             .into_any_element();
                         elements.push(wrapped);
                     }
@@ -297,6 +244,8 @@ impl MarkdownEditor {
                                     let full_marker = format!("{}{}", indent_str, marker);
                                     let marker_span = div().flex_shrink_0().child(full_marker);
 
+                                    let content = div().flex_1().min_w_0().children(li.elements);
+
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
@@ -305,7 +254,7 @@ impl MarkdownEditor {
                                         .w_full()
                                         .min_w_0()
                                         .flex_wrap()
-                                        .children(li.elements);
+                                        .child(content);
                                     elements.push(item_row.into_any_element());
                                 }
                             }
@@ -422,6 +371,13 @@ impl MarkdownEditor {
                     }
                 }
                 MarkdownEvent::BlockEnd => {
+                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
+                        if let Some(ref mut li) = current_list_item {
+                            li.elements.push(element);
+                        } else {
+                            current_line.push(element);
+                        }
+                    }
                     if let Some(popped) = block_stack.pop() {
                         match popped {
                             MarkdownBlock::ListItem(_) => {
@@ -435,6 +391,8 @@ impl MarkdownEditor {
                                     let full_marker = format!("{}{}", indent_str, marker);
                                     let marker_span = div().flex_shrink_0().child(full_marker);
 
+                                    let content = div().flex_1().min_w_0().children(li.elements);
+
                                     let item_row = div()
                                         .flex()
                                         .flex_row()
@@ -443,7 +401,7 @@ impl MarkdownEditor {
                                         .w_full()
                                         .min_w_0()
                                         .flex_wrap()
-                                        .children(li.elements);
+                                        .child(content);
                                     elements.push(item_row.into_any_element());
                                 }
                             }
@@ -463,7 +421,7 @@ impl MarkdownEditor {
                                         .items_start()
                                         .w_full()
                                         .min_w_0()
-                                    .children(current_line.drain(..))
+                                        .children(current_line.drain(..))
                                         .into_any_element();
                                     paragraph_lines.push(wrapped);
                                 }
@@ -473,7 +431,7 @@ impl MarkdownEditor {
                                         .flex_col()
                                         .w_full()
                                         .min_w_0()
-                                .children(paragraph_lines.drain(..))
+                                        .children(paragraph_lines.drain(..))
                                         .into_any_element();
                                     elements.push(wrapped);
                                 }
@@ -489,6 +447,9 @@ impl MarkdownEditor {
                 }
                 MarkdownEvent::Image { url, alt } => {
                     // Flush any pending inline content before the image
+                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
+                        current_line.push(element);
+                    }
                     if !current_line.is_empty() {
                         let wrapped = div()
                             .flex()
@@ -496,7 +457,7 @@ impl MarkdownEditor {
                             .items_start()
                             .w_full()
                             .min_w_0()
-                                    .children(current_line.drain(..))
+                            .children(current_line.drain(..))
                             .into_any_element();
                         if in_paragraph {
                             paragraph_lines.push(wrapped);
@@ -510,7 +471,7 @@ impl MarkdownEditor {
                             .flex_col()
                             .w_full()
                             .min_w_0()
-                                .children(paragraph_lines.drain(..))
+                            .children(paragraph_lines.drain(..))
                             .into_any_element();
                         elements.push(para);
                         in_paragraph = false;
@@ -518,6 +479,10 @@ impl MarkdownEditor {
                     elements.push(self.render_image(&url, &alt, cx));
                 }
             }
+        }
+
+        if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
+            current_line.push(element);
         }
 
         if let Some(li) = current_list_item.take() {
@@ -537,8 +502,8 @@ impl MarkdownEditor {
                 .child(marker_span)
                 .w_full()
                 .min_w_0()
-                                        .flex_wrap()
-                                        .children(li.elements);
+                .flex_wrap()
+                .children(li.elements);
             elements.push(item_row.into_any_element());
         }
         if !current_line.is_empty() {
@@ -548,7 +513,7 @@ impl MarkdownEditor {
                 .items_start()
                 .w_full()
                 .min_w_0()
-                                    .children(current_line.drain(..))
+                .children(current_line.drain(..))
                 .into_any_element();
             if in_paragraph {
                 paragraph_lines.push(wrapped);
@@ -562,7 +527,7 @@ impl MarkdownEditor {
                 .flex_col()
                 .w_full()
                 .min_w_0()
-                                .children(paragraph_lines.drain(..))
+                .children(paragraph_lines.drain(..))
                 .into_any_element();
             elements.push(wrapped);
         }
@@ -611,44 +576,227 @@ impl Render for MarkdownEditor {
     }
 }
 
-fn apply_style_to_div(div: Div, style: &MarkdownStyle, cx: &App) -> Div {
-    let base_font_size = BASE_FONT_SIZE as f32;
-    let mut el = div;
+struct TextBuffer {
+    text: String,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    links: Vec<(Range<usize>, SharedString)>,
+    layout: Rc<RefCell<Option<TextLayout>>>,
+    heading_level: Option<u32>,
+}
 
-    match style {
-        MarkdownStyle::Heading(level) => {
-            let idx = (*level as usize).saturating_sub(1).min(5);
-            let size = MD_HEADING_SIZES[idx];
-            let margin = MD_HEADING_MARGIN * size;
-            el = el
-                .text_size(px(base_font_size * size))
-                .font_weight(FontWeight::BOLD)
-                .mt(px(margin))
-                .mb(px(margin))
-                .line_height(px(base_font_size * size * MD_LINE_HEIGHT));
+struct TextBufferData {
+    text: String,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    links: Vec<(Range<usize>, SharedString)>,
+    layout: Rc<RefCell<Option<TextLayout>>>,
+    heading_level: Option<u32>,
+}
+
+impl TextBuffer {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            highlights: Vec::new(),
+            links: Vec::new(),
+            layout: Rc::new(RefCell::new(None)),
+            heading_level: None,
         }
-        MarkdownStyle::Bold => {
-            el = el.font_weight(FontWeight::BOLD);
-        }
-        MarkdownStyle::Italic => {
-            el = el.italic();
-        }
-        MarkdownStyle::BoldItalic => {
-            el = el.font_weight(FontWeight::BOLD).italic();
-        }
-        MarkdownStyle::Code => {
-            el = el
-                .bg(cx.theme().muted)
-                .font_family("monospace")
-                .text_size(px(base_font_size * MD_CODE_FONT_SCALE))
-                .rounded(px(MD_CODE_RADIUS))
-                .px(px(MD_CODE_PADDING));
-        }
-        MarkdownStyle::Link => {
-            el = el.text_color(cx.theme().primary).underline();
-        }
-        MarkdownStyle::Normal => {}
     }
 
-    el
+    fn push(&mut self, text: &str, style: &MarkdownStyle, cx: &App) {
+        if text.is_empty() {
+            return;
+        }
+        let start = self.text.len();
+        self.text.push_str(text);
+        let end = self.text.len();
+        let highlight = build_highlight_style(style, cx);
+        self.highlights.push((start..end, highlight));
+        if let MarkdownStyle::Heading(level) = style {
+            self.heading_level = Some(*level);
+        }
+    }
+
+    fn push_link(&mut self, text: &str, url: &str, style: &MarkdownStyle, cx: &App) {
+        if text.is_empty() {
+            return;
+        }
+        let start = self.text.len();
+        self.text.push_str(text);
+        let end = self.text.len();
+        let base_highlight = build_highlight_style(style, cx);
+        let link_highlight = HighlightStyle {
+            color: Some(cx.theme().primary),
+            underline: Some(UnderlineStyle {
+                thickness: px(1.0),
+                ..Default::default()
+            }),
+            ..base_highlight
+        };
+        self.highlights.push((start..end, link_highlight));
+        self.links
+            .push((start..end, SharedString::from(url.to_string())));
+    }
+
+    fn take(&mut self) -> Option<TextBufferData> {
+        if self.text.is_empty() {
+            return None;
+        }
+        Some(TextBufferData {
+            text: std::mem::take(&mut self.text),
+            highlights: std::mem::take(&mut self.highlights),
+            links: std::mem::take(&mut self.links),
+            layout: self.layout.clone(),
+            heading_level: self.heading_level.take(),
+        })
+    }
+}
+
+fn build_highlight_style(style: &MarkdownStyle, cx: &App) -> HighlightStyle {
+    match style {
+        MarkdownStyle::Bold => HighlightStyle {
+            font_weight: Some(FontWeight::BOLD),
+            ..Default::default()
+        },
+        MarkdownStyle::Italic => HighlightStyle {
+            font_style: Some(FontStyle::Italic),
+            ..Default::default()
+        },
+        MarkdownStyle::BoldItalic => HighlightStyle {
+            font_weight: Some(FontWeight::BOLD),
+            font_style: Some(FontStyle::Italic),
+            ..Default::default()
+        },
+        MarkdownStyle::Code => HighlightStyle {
+            background_color: Some(cx.theme().muted),
+            ..Default::default()
+        },
+        MarkdownStyle::Link => HighlightStyle {
+            color: Some(cx.theme().primary),
+            underline: Some(UnderlineStyle {
+                thickness: px(1.0),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        MarkdownStyle::Heading(_) => HighlightStyle {
+            font_weight: Some(FontWeight::BOLD),
+            ..Default::default()
+        },
+        MarkdownStyle::Normal => HighlightStyle::default(),
+    }
+}
+
+fn flush_text_buffer(
+    text_buffer: &mut TextBuffer,
+    cx: &mut Context<MarkdownEditor>,
+) -> Option<AnyElement> {
+    let data = text_buffer.take()?;
+    let layout = data.layout.clone();
+    let links = data.links;
+    let heading_level = data.heading_level;
+    let inline_text = InlineText {
+        text: SharedString::from(data.text),
+        highlights: data.highlights,
+        layout: data.layout,
+    };
+    let mut el = div().w_full().id("inline-text");
+    if let Some(level) = heading_level {
+        let base_font_size = BASE_FONT_SIZE as f32;
+        let idx = (level as usize).saturating_sub(1).min(5);
+        let size = MD_HEADING_SIZES[idx];
+        let margin = MD_HEADING_MARGIN * size;
+        el = el
+            .text_size(px(base_font_size * size))
+            .font_weight(FontWeight::BOLD)
+            .mt(px(margin))
+            .mb(px(margin))
+            .line_height(px(base_font_size * size * MD_LINE_HEIGHT));
+    }
+    let div = el
+        .child(inline_text)
+        .on_click(cx.listener(move |_, event: &ClickEvent, _, cx| {
+            let layout_ref = layout.borrow();
+            if let Some(ref text_layout) = *layout_ref {
+                let position = event.position();
+                let index = text_layout
+                    .index_for_position(position)
+                    .unwrap_or_else(|e| e);
+                for (range, url) in links.iter() {
+                    if range.contains(&index) {
+                        cx.emit(MarkdownEditorEvent::LinkClicked(
+                            url.to_string(),
+                            event.modifiers().platform,
+                        ));
+                        return;
+                    }
+                }
+            }
+        }));
+    Some(div.into_any_element())
+}
+
+struct InlineText {
+    text: SharedString,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    layout: Rc<RefCell<Option<TextLayout>>>,
+}
+
+impl Element for InlineText {
+    type RequestLayoutState = StyledText;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let mut styled =
+            StyledText::new(self.text.clone()).with_highlights(self.highlights.clone());
+        let (layout_id, _) = styled.request_layout(id, inspector_id, window, cx);
+        *self.layout.borrow_mut() = Some(styled.layout().clone());
+        (layout_id, styled)
+    }
+
+    fn prepaint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        styled: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        let _ = styled.prepaint(id, inspector_id, bounds, &mut (), window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        styled: &mut Self::RequestLayoutState,
+        prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        styled.paint(id, inspector_id, bounds, &mut (), prepaint, window, cx)
+    }
+}
+
+impl IntoElement for InlineText {
+    type Element = Self;
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
