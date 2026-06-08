@@ -34,8 +34,6 @@ pub(crate) const MD_HEADING_SIZES: [f32; 6] = [2.5, 2.25, 2.0, 1.75, 1.5, 1.25];
 pub(crate) const MD_HEADING_MARGIN: f32 = 0.0;
 
 pub(crate) const MD_CODE_FONT_SCALE: f32 = 0.9;
-pub(crate) const MD_CODE_PADDING: f32 = 3.0;
-pub(crate) const MD_CODE_RADIUS: f32 = 3.0;
 pub(crate) const MD_CODE_BLOCK_PADDING: f32 = 3.0;
 pub(crate) const MD_CODE_BLOCK_RADIUS: f32 = 4.0;
 
@@ -46,3 +44,8 @@ pub(crate) const MD_FRONTMATTER_MARGIN: f32 = 3.0;
 
 pub(crate) const MD_BLOCKQUOTE_PADDING: f32 = 4.0;
 pub(crate) const MD_BLOCKQUOTE_BORDER: f32 = 3.0;
+
+pub(crate) const MD_IMAGE_MAX_WIDTH: f32 = 800.0;
+
+pub(crate) const IMAGE_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "avif"];

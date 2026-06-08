@@ -127,9 +127,7 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
                 view.track_new_file(&created);
                 if target.is_dir() {
                     let id: SharedString = target.to_string_lossy().to_string().into();
-                    view.tree_state.update(cx, |state, cx| {
-                        state.expand_by_id(&id, cx);
-                    });
+                    view.mark_tree_item_expanded(&id, true);
                 }
                 view.refresh_tree(cx);
                 view.rename_target = Some(created.clone());
@@ -194,7 +192,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             }
             view.close_tabs_under(&target, cx);
             view.refresh_tree(cx);
-            let count = view.tree_state.read(cx).entry_count();
+            let count = view.visible_tree_entry_count();
             if count > 0 {
                 let new_ix = target_index.unwrap_or(0).min(count.saturating_sub(1));
                 view.tree_state.update(cx, |state, cx| {

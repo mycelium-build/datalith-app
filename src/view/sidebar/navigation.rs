@@ -1,6 +1,5 @@
 use gpui::*;
 
-use super::file_tree::build_file_items;
 use crate::utils::file_name_str;
 
 use super::DatalithView;
@@ -38,11 +37,11 @@ impl DatalithView {
         };
 
         if is_folder {
-            let is_expanded = self.tree_state.read(cx).expanded_ids().contains(&id);
+            let is_expanded = self.expanded_tree_ids.iter().any(|expanded_id| expanded_id == &id);
             if is_expanded {
                 self.collapse_tree_item(&id, cx);
             } else {
-                self.tree_state.update(cx, |state, cx| state.expand_by_id(&id, cx));
+                self.expand_tree_item(&id, cx);
             }
         } else {
             let new_tab = event.keystroke.modifiers.platform;
@@ -81,13 +80,10 @@ impl DatalithView {
                 });
             }
 
-            if self.tree_state.read(cx).selected_entry().is_none() {
-                let count = self.tree_state.read(cx).entry_count();
-                if count > 0 {
-                    self.tree_state.update(cx, |state, cx| {
-                        state.set_selected_index(Some(0), cx);
-                    });
-                }
+            if self.tree_state.read(cx).selected_entry().is_none() && self.visible_tree_entry_count() > 0 {
+                self.tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(Some(0), cx);
+                });
             }
         }
         self.update_last_selection(cx);
@@ -100,12 +96,12 @@ impl DatalithView {
     }
 
     fn navigate_tree_up(&mut self, cx: &mut Context<Self>) {
+        let count = self.visible_tree_entry_count();
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
                 let new_ix = if ix > 0 {
                     ix - 1
                 } else {
-                    let count = state.entry_count();
                     count.saturating_sub(1)
                 };
                 state.set_selected_index(Some(new_ix), cx);
@@ -148,27 +144,16 @@ impl DatalithView {
             .map(|e| (true, e.is_expanded(), e.item().id.clone()))
             .unwrap_or((false, false, SharedString::default()));
         if is_folder && !is_expanded {
-            self.tree_state.update(cx, |state, cx| {
-                state.expand_by_id(&id, cx);
-            });
+            self.expand_tree_item(&id, cx);
         }
     }
 
     pub(crate) fn collapse_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
-        if let Some(ref root) = self.root_path {
-            let mut expanded_ids: Vec<_> = self.tree_state.read(cx).expanded_ids().clone();
-            expanded_ids.retain(|eid| eid != id);
-            let items = build_file_items(root);
-            self.tree_state.update(cx, |state, cx| {
-                state.set_items(items, cx);
-                for eid in &expanded_ids {
-                    state.expand_by_id(eid, cx);
-                }
-            });
-            let item = gpui_component::tree::TreeItem::new(id.clone(), SharedString::default());
-            self.tree_state.update(cx, |state, cx| {
-                state.set_selected_item(Some(&item), cx);
-            });
-        }
+        self.mark_tree_item_expanded(id, false);
+        self.refresh_tree(cx);
+        let item = gpui_component::tree::TreeItem::new(id.clone(), SharedString::default());
+        self.tree_state.update(cx, |state, cx| {
+            state.set_selected_item(Some(&item), cx);
+        });
     }
 }

@@ -357,7 +357,7 @@ impl Palette {
                         };
                         cx.notify();
                     }
-                    InputEvent::PressEnter { secondary } => {
+                    InputEvent::PressEnter { secondary, .. } => {
                         let open_path = match view.palette.kind {
                             PaletteKind::Search => view
                                 .palette
