@@ -175,49 +175,20 @@ impl MarkdownEditor {
                     current_link_url = None;
                 }
                 MarkdownEvent::BlockStart(block) => {
-                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
-                        if let Some(ref mut li) = current_list_item {
-                            li.elements.push(element);
-                        } else {
-                            current_line.push(element);
-                        }
-                    }
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line, cx);
                     if !matches!(block, MarkdownBlock::Paragraph) {
                         if !current_line.is_empty() {
-                            let wrapped = div()
-                                .flex()
-                                .flex_wrap()
-                                .items_start()
-                                .w_full()
-                                .min_w_0()
-                                .children(current_line.drain(..))
-                                .into_any_element();
-                            paragraph_lines.push(wrapped);
+                            paragraph_lines.push(wrap_line(&mut current_line));
                         }
                         if !paragraph_lines.is_empty() {
-                            let wrapped = div()
-                                .flex()
-                                .flex_col()
-                                .w_full()
-                                .min_w_0()
-                                .children(paragraph_lines.drain(..))
-                                .into_any_element();
-                            elements.push(wrapped);
+                            elements.push(wrap_paragraph(&mut paragraph_lines));
                         }
                         in_paragraph = false;
                     } else {
                         in_paragraph = true;
                     }
                     if !current_line.is_empty() {
-                        let wrapped = div()
-                            .flex()
-                            .flex_wrap()
-                            .items_start()
-                            .w_full()
-                            .min_w_0()
-                            .children(current_line.drain(..))
-                            .into_any_element();
-                        elements.push(wrapped);
+                        elements.push(wrap_line(&mut current_line));
                     }
                     block_stack.push(block.clone());
                     match block {
@@ -233,30 +204,8 @@ impl MarkdownEditor {
                             }
                         }
                         MarkdownBlock::ListItem(depth) => {
-                            if current_list_item.is_some() {
-                                if let Some(li) = current_list_item.take() {
-                                    let marker = if li.is_ordered {
-                                        format!("{}. ", li.marker_text)
-                                    } else {
-                                        "\u{2022} ".to_string()
-                                    };
-                                    let indent_str = MD_LIST_INDENT.repeat(li.indent);
-                                    let full_marker = format!("{}{}", indent_str, marker);
-                                    let marker_span = div().flex_shrink_0().child(full_marker);
-
-                                    let content = div().flex_1().min_w_0().children(li.elements);
-
-                                    let item_row = div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_start()
-                                        .child(marker_span)
-                                        .w_full()
-                                        .min_w_0()
-                                        .flex_wrap()
-                                        .child(content);
-                                    elements.push(item_row.into_any_element());
-                                }
+                            if let Some(li) = current_list_item.take() {
+                                elements.push(render_list_item(li));
                             }
                             let marker_text = if in_ordered_list {
                                 while ordered_counters.len() <= depth {
@@ -371,38 +320,12 @@ impl MarkdownEditor {
                     }
                 }
                 MarkdownEvent::BlockEnd => {
-                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
-                        if let Some(ref mut li) = current_list_item {
-                            li.elements.push(element);
-                        } else {
-                            current_line.push(element);
-                        }
-                    }
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line, cx);
                     if let Some(popped) = block_stack.pop() {
                         match popped {
                             MarkdownBlock::ListItem(_) => {
                                 if let Some(li) = current_list_item.take() {
-                                    let marker = if li.is_ordered {
-                                        format!("{}. ", li.marker_text)
-                                    } else {
-                                        "\u{2022} ".to_string()
-                                    };
-                                    let indent_str = MD_LIST_INDENT.repeat(li.indent);
-                                    let full_marker = format!("{}{}", indent_str, marker);
-                                    let marker_span = div().flex_shrink_0().child(full_marker);
-
-                                    let content = div().flex_1().min_w_0().children(li.elements);
-
-                                    let item_row = div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_start()
-                                        .child(marker_span)
-                                        .w_full()
-                                        .min_w_0()
-                                        .flex_wrap()
-                                        .child(content);
-                                    elements.push(item_row.into_any_element());
+                                    elements.push(render_list_item(li));
                                 }
                             }
                             MarkdownBlock::List(_, depth) => {
@@ -415,25 +338,10 @@ impl MarkdownEditor {
                             }
                             MarkdownBlock::Paragraph => {
                                 if !current_line.is_empty() {
-                                    let wrapped = div()
-                                        .flex()
-                                        .flex_wrap()
-                                        .items_start()
-                                        .w_full()
-                                        .min_w_0()
-                                        .children(current_line.drain(..))
-                                        .into_any_element();
-                                    paragraph_lines.push(wrapped);
+                                    paragraph_lines.push(wrap_line(&mut current_line));
                                 }
                                 if !paragraph_lines.is_empty() {
-                                    let wrapped = div()
-                                        .flex()
-                                        .flex_col()
-                                        .w_full()
-                                        .min_w_0()
-                                        .children(paragraph_lines.drain(..))
-                                        .into_any_element();
-                                    elements.push(wrapped);
+                                    elements.push(wrap_paragraph(&mut paragraph_lines));
                                 }
                                 in_paragraph = false;
                                 elements.push(div().m_2().into_any_element());
@@ -446,19 +354,9 @@ impl MarkdownEditor {
                     }
                 }
                 MarkdownEvent::Image { url, alt } => {
-                    // Flush any pending inline content before the image
-                    if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
-                        current_line.push(element);
-                    }
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line, cx);
                     if !current_line.is_empty() {
-                        let wrapped = div()
-                            .flex()
-                            .flex_wrap()
-                            .items_start()
-                            .w_full()
-                            .min_w_0()
-                            .children(current_line.drain(..))
-                            .into_any_element();
+                        let wrapped = wrap_line(&mut current_line);
                         if in_paragraph {
                             paragraph_lines.push(wrapped);
                         } else {
@@ -466,14 +364,7 @@ impl MarkdownEditor {
                         }
                     }
                     if in_paragraph && !paragraph_lines.is_empty() {
-                        let para = div()
-                            .flex()
-                            .flex_col()
-                            .w_full()
-                            .min_w_0()
-                            .children(paragraph_lines.drain(..))
-                            .into_any_element();
-                        elements.push(para);
+                        elements.push(wrap_paragraph(&mut paragraph_lines));
                         in_paragraph = false;
                     }
                     elements.push(self.render_image(&url, &alt, cx));
@@ -486,35 +377,10 @@ impl MarkdownEditor {
         }
 
         if let Some(li) = current_list_item.take() {
-            let marker = if li.is_ordered {
-                format!("{}. ", li.marker_text)
-            } else {
-                "\u{2022} ".to_string()
-            };
-            let indent_str = MD_LIST_INDENT.repeat(li.indent);
-            let full_marker = format!("{}{}", indent_str, marker);
-            let marker_span = div().flex_shrink_0().child(full_marker);
-
-            let item_row = div()
-                .flex()
-                .flex_row()
-                .items_start()
-                .child(marker_span)
-                .w_full()
-                .min_w_0()
-                .flex_wrap()
-                .children(li.elements);
-            elements.push(item_row.into_any_element());
+            elements.push(render_list_item(li));
         }
         if !current_line.is_empty() {
-            let wrapped = div()
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .w_full()
-                .min_w_0()
-                .children(current_line.drain(..))
-                .into_any_element();
+            let wrapped = wrap_line(&mut current_line);
             if in_paragraph {
                 paragraph_lines.push(wrapped);
             } else {
@@ -522,14 +388,7 @@ impl MarkdownEditor {
             }
         }
         if !paragraph_lines.is_empty() {
-            let wrapped = div()
-                .flex()
-                .flex_col()
-                .w_full()
-                .min_w_0()
-                .children(paragraph_lines.drain(..))
-                .into_any_element();
-            elements.push(wrapped);
+            elements.push(wrap_paragraph(&mut paragraph_lines));
         }
 
         div()
@@ -684,6 +543,64 @@ fn build_highlight_style(style: &MarkdownStyle, cx: &App) -> HighlightStyle {
             ..Default::default()
         },
         MarkdownStyle::Normal => HighlightStyle::default(),
+    }
+}
+
+fn render_list_item(li: ListItemData) -> AnyElement {
+    let marker = if li.is_ordered {
+        format!("{}. ", li.marker_text)
+    } else {
+        "\u{2022} ".to_string()
+    };
+    let indent_str = MD_LIST_INDENT.repeat(li.indent);
+    let full_marker = format!("{}{}", indent_str, marker);
+    let marker_span = div().flex_shrink_0().child(full_marker);
+    let content = div().flex_1().min_w_0().children(li.elements);
+    div()
+        .flex()
+        .flex_row()
+        .items_start()
+        .child(marker_span)
+        .w_full()
+        .min_w_0()
+        .flex_wrap()
+        .child(content)
+        .into_any_element()
+}
+
+fn wrap_line(current_line: &mut Vec<AnyElement>) -> AnyElement {
+    div()
+        .flex()
+        .flex_wrap()
+        .items_start()
+        .w_full()
+        .min_w_0()
+        .children(current_line.drain(..))
+        .into_any_element()
+}
+
+fn wrap_paragraph(paragraph_lines: &mut Vec<AnyElement>) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .min_w_0()
+        .children(paragraph_lines.drain(..))
+        .into_any_element()
+}
+
+fn flush_inline(
+    text_buffer: &mut TextBuffer,
+    current_list_item: &mut Option<ListItemData>,
+    current_line: &mut Vec<AnyElement>,
+    cx: &mut Context<MarkdownEditor>,
+) {
+    if let Some(element) = flush_text_buffer(text_buffer, cx) {
+        if let Some(li) = current_list_item {
+            li.elements.push(element);
+        } else {
+            current_line.push(element);
+        }
     }
 }
 
