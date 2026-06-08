@@ -187,19 +187,12 @@ impl MarkdownEditor {
                     } else {
                         in_paragraph = true;
                     }
-                    if !current_line.is_empty() {
-                        elements.push(wrap_line(&mut current_line));
-                    }
                     block_stack.push(block.clone());
                     match block {
-                        MarkdownBlock::Heading => {}
-                        MarkdownBlock::Paragraph => {}
                         MarkdownBlock::List(ordered, depth) => {
                             in_ordered_list = ordered;
                             if ordered {
-                                while ordered_counters.len() <= depth {
-                                    ordered_counters.push(0);
-                                }
+                                ensure_counter_depth(&mut ordered_counters, depth);
                                 ordered_counters[depth - 1] = 0;
                             }
                         }
@@ -208,9 +201,7 @@ impl MarkdownEditor {
                                 elements.push(render_list_item(li));
                             }
                             let marker_text = if in_ordered_list {
-                                while ordered_counters.len() <= depth {
-                                    ordered_counters.push(0);
-                                }
+                                ensure_counter_depth(&mut ordered_counters, depth);
                                 ordered_counters[depth - 1] += 1;
                                 format!("{}", ordered_counters[depth - 1])
                             } else {
@@ -249,74 +240,9 @@ impl MarkdownEditor {
                             );
                         }
                         MarkdownBlock::Frontmatter(fm_content) => {
-                            let lines: Vec<&str> = fm_content.lines().collect();
-
-                            let mut max_key_len = 0;
-                            for line in &lines {
-                                if let Some(colon_pos) = line.find(':') {
-                                    let key = &line[..colon_pos];
-                                    max_key_len = max_key_len.max(key.len());
-                                }
-                            }
-
-                            let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
-                            let line_h = px(font_size * MD_LINE_HEIGHT);
-                            let key_width = if max_key_len > 0 {
-                                px(font_size * max_key_len as f32 * 0.6)
-                            } else {
-                                px(0.0)
-                            };
-
-                            let mut content_elements: Vec<AnyElement> = Vec::new();
-                            for line in lines {
-                                if let Some(colon_pos) = line.find(':') {
-                                    let key = &line[..colon_pos];
-                                    let value = line[colon_pos + 1..].trim();
-                                    content_elements.push(
-                                        div()
-                                            .flex()
-                                            .gap_1()
-                                            .child(
-                                                div()
-                                                    .w(key_width)
-                                                    .flex_shrink_0()
-                                                    .text_size(px(font_size))
-                                                    .line_height(line_h)
-                                                    .text_color(cx.theme().foreground)
-                                                    .font_weight(FontWeight::BOLD)
-                                                    .child(key.to_string()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .text_size(px(font_size))
-                                                    .line_height(line_h)
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(value.to_string()),
-                                            )
-                                            .into_any_element(),
-                                    );
-                                } else {
-                                    content_elements.push(
-                                        div()
-                                            .text_size(px(font_size))
-                                            .line_height(line_h)
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(line.to_string())
-                                            .into_any_element(),
-                                    );
-                                }
-                            }
-                            elements.push(
-                                div()
-                                    .bg(cx.theme().tab_bar)
-                                    .rounded(px(MD_FRONTMATTER_RADIUS))
-                                    .p(px(MD_FRONTMATTER_PADDING))
-                                    .mb(px(MD_FRONTMATTER_MARGIN))
-                                    .children(content_elements)
-                                    .into_any_element(),
-                            );
+                            elements.push(render_frontmatter(&fm_content, base_font_size, cx));
                         }
+                        _ => {}
                     }
                 }
                 MarkdownEvent::BlockEnd => {
@@ -372,10 +298,7 @@ impl MarkdownEditor {
             }
         }
 
-        if let Some(element) = flush_text_buffer(&mut text_buffer, cx) {
-            current_line.push(element);
-        }
-
+        flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line, cx);
         if let Some(li) = current_list_item.take() {
             elements.push(render_list_item(li));
         }
@@ -443,7 +366,7 @@ struct TextBuffer {
     heading_level: Option<u32>,
 }
 
-struct TextBufferData {
+struct FlushedText {
     text: String,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
     links: Vec<(Range<usize>, SharedString)>,
@@ -484,30 +407,39 @@ impl TextBuffer {
         self.text.push_str(text);
         let end = self.text.len();
         let base_highlight = build_highlight_style(style, cx);
-        let link_highlight = HighlightStyle {
-            color: Some(cx.theme().primary),
-            underline: Some(UnderlineStyle {
-                thickness: px(1.0),
-                ..Default::default()
-            }),
+        let link = link_highlight_style(cx);
+        let combined = HighlightStyle {
+            color: link.color,
+            underline: link.underline,
             ..base_highlight
         };
-        self.highlights.push((start..end, link_highlight));
+        self.highlights.push((start..end, combined));
         self.links
             .push((start..end, SharedString::from(url.to_string())));
     }
 
-    fn take(&mut self) -> Option<TextBufferData> {
+    fn flush(&mut self) -> Option<FlushedText> {
         if self.text.is_empty() {
             return None;
         }
-        Some(TextBufferData {
+        Some(FlushedText {
             text: std::mem::take(&mut self.text),
             highlights: std::mem::take(&mut self.highlights),
             links: std::mem::take(&mut self.links),
             layout: self.layout.clone(),
             heading_level: self.heading_level.take(),
         })
+    }
+}
+
+fn link_highlight_style(cx: &App) -> HighlightStyle {
+    HighlightStyle {
+        color: Some(cx.theme().primary),
+        underline: Some(UnderlineStyle {
+            thickness: px(1.0),
+            ..Default::default()
+        }),
+        ..Default::default()
     }
 }
 
@@ -530,19 +462,84 @@ fn build_highlight_style(style: &MarkdownStyle, cx: &App) -> HighlightStyle {
             background_color: Some(cx.theme().muted),
             ..Default::default()
         },
-        MarkdownStyle::Link => HighlightStyle {
-            color: Some(cx.theme().primary),
-            underline: Some(UnderlineStyle {
-                thickness: px(1.0),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
+        MarkdownStyle::Link => link_highlight_style(cx),
         MarkdownStyle::Heading(_) => HighlightStyle {
             font_weight: Some(FontWeight::BOLD),
             ..Default::default()
         },
         MarkdownStyle::Normal => HighlightStyle::default(),
+    }
+}
+
+fn render_frontmatter(content: &str, base_font_size: f32, cx: &App) -> AnyElement {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut max_key_len = 0;
+    for line in &lines {
+        if let Some(colon_pos) = line.find(':') {
+            max_key_len = max_key_len.max(colon_pos);
+        }
+    }
+
+    let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
+    let line_h = px(font_size * MD_LINE_HEIGHT);
+    let key_width = if max_key_len > 0 {
+        px(font_size * max_key_len as f32 * 0.6)
+    } else {
+        px(0.0)
+    };
+
+    let mut content_elements: Vec<AnyElement> = Vec::new();
+    for line in lines {
+        if let Some(colon_pos) = line.find(':') {
+            let key = &line[..colon_pos];
+            let value = line[colon_pos + 1..].trim();
+            content_elements.push(
+                div()
+                    .flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .w(key_width)
+                            .flex_shrink_0()
+                            .text_size(px(font_size))
+                            .line_height(line_h)
+                            .text_color(cx.theme().foreground)
+                            .font_weight(FontWeight::BOLD)
+                            .child(key.to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(font_size))
+                            .line_height(line_h)
+                            .text_color(cx.theme().muted_foreground)
+                            .child(value.to_string()),
+                    )
+                    .into_any_element(),
+            );
+        } else {
+            content_elements.push(
+                div()
+                    .text_size(px(font_size))
+                    .line_height(line_h)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(line.to_string())
+                    .into_any_element(),
+            );
+        }
+    }
+    div()
+        .bg(cx.theme().tab_bar)
+        .rounded(px(MD_FRONTMATTER_RADIUS))
+        .p(px(MD_FRONTMATTER_PADDING))
+        .mb(px(MD_FRONTMATTER_MARGIN))
+        .children(content_elements)
+        .into_any_element()
+}
+
+fn ensure_counter_depth(counters: &mut Vec<u32>, depth: usize) {
+    while counters.len() <= depth {
+        counters.push(0);
     }
 }
 
@@ -608,7 +605,7 @@ fn flush_text_buffer(
     text_buffer: &mut TextBuffer,
     cx: &mut Context<MarkdownEditor>,
 ) -> Option<AnyElement> {
-    let data = text_buffer.take()?;
+    let data = text_buffer.flush()?;
     let layout = data.layout.clone();
     let links = data.links;
     let heading_level = data.heading_level;
