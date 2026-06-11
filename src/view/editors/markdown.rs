@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use gpui::*;
 use gpui_component::input::{Input, InputState};
@@ -7,19 +7,19 @@ use crate::consts::{BASE_FONT_SIZE, MD_LINE_HEIGHT};
 
 pub(crate) struct MarkdownEditor {
     input: Entity<InputState>,
-    file_path: PathBuf,
 }
 
 impl MarkdownEditor {
-    pub(crate) fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
-        Self { input, file_path }
+    pub(crate) fn new(input: Entity<InputState>) -> Self {
+        Self { input }
     }
 
     pub(crate) fn new_state(
-        content: String,
+        path: &Path,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<InputState> {
+        let content = std::fs::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             InputState::new(window, cx)
                 .code_editor("markdown")
@@ -31,10 +31,6 @@ impl MarkdownEditor {
 
     pub(crate) fn input(&self) -> &Entity<InputState> {
         &self.input
-    }
-
-    pub(crate) fn file_path(&self) -> &PathBuf {
-        &self.file_path
     }
 
     pub(crate) fn render(&self, _cx: &mut App) -> AnyElement {
