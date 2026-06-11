@@ -16,7 +16,7 @@ use crate::consts::{
     MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
-use crate::view::viewer::{MarkdownViewerEvent, SharedEvents};
+use crate::view::viewers::{MarkdownViewerEvent, SharedEvents};
 
 pub(crate) struct MarkdownViewer {
     input: Entity<InputState>,

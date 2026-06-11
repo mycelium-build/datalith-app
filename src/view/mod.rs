@@ -1,4 +1,3 @@
-pub(crate) mod editor;
 pub(crate) mod editors;
 pub(crate) mod file_handler;
 pub(crate) mod palette;
@@ -7,7 +6,6 @@ pub(crate) mod render;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod tabs;
-pub(crate) mod viewer;
 pub(crate) mod viewers;
 
 use std::path::{Path, PathBuf};
