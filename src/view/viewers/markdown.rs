@@ -40,6 +40,7 @@ impl MarkdownViewer {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn events(&self) -> &SharedEvents {
         &self.events
     }
@@ -154,11 +155,7 @@ impl MarkdownViewer {
                     if text_buffer.is_whitespace_only() {
                         text_buffer.clear();
                     } else {
-                        flush_inline(
-                            &mut text_buffer,
-                            &mut current_list_item,
-                            &mut current_line,
-                        );
+                        flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
                     }
                     current_link_url = Some(url);
                     current_link_text.clear();
@@ -167,10 +164,9 @@ impl MarkdownViewer {
                 MarkdownEvent::LinkEnd => {
                     if let Some(url) = current_link_url.take() {
                         if !current_link_text.is_empty() {
-                            let link_styled = StyledText::new(SharedString::from(
-                                current_link_text.clone(),
-                            ))
-                            .with_highlights(current_link_highlights.clone());
+                            let link_styled =
+                                StyledText::new(SharedString::from(current_link_text.clone()))
+                                    .with_highlights(current_link_highlights.clone());
                             let events_clone = shared_events.clone();
                             let link_url = url.clone();
                             let link_el = div()
@@ -199,11 +195,7 @@ impl MarkdownViewer {
                     }
                 }
                 MarkdownEvent::BlockStart(block) => {
-                    flush_inline(
-                        &mut text_buffer,
-                        &mut current_list_item,
-                        &mut current_line,
-                    );
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
                     if !matches!(block, MarkdownBlock::Paragraph) {
                         if !current_line.is_empty() {
                             paragraph_lines.push(wrap_line(&mut current_line));
@@ -274,11 +266,7 @@ impl MarkdownViewer {
                     }
                 }
                 MarkdownEvent::BlockEnd => {
-                    flush_inline(
-                        &mut text_buffer,
-                        &mut current_list_item,
-                        &mut current_line,
-                    );
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
                     if let Some(popped) = block_stack.pop() {
                         match popped {
                             MarkdownBlock::ListItem(_) => {
@@ -287,10 +275,7 @@ impl MarkdownViewer {
                                 }
                             }
                             MarkdownBlock::List(_, depth) => {
-                                if in_ordered_list
-                                    && depth > 0
-                                    && ordered_counters.len() > depth
-                                {
+                                if in_ordered_list && depth > 0 && ordered_counters.len() > depth {
                                     ordered_counters.truncate(depth);
                                 }
                                 if depth == 1 {
@@ -315,11 +300,7 @@ impl MarkdownViewer {
                     }
                 }
                 MarkdownEvent::Image { url, alt } => {
-                    flush_inline(
-                        &mut text_buffer,
-                        &mut current_list_item,
-                        &mut current_line,
-                    );
+                    flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
                     if !current_line.is_empty() {
                         let wrapped = wrap_line(&mut current_line);
                         if in_paragraph {
