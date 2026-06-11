@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use gpui::*;
 use gpui_component::input::{Input, InputState};
 
@@ -11,10 +13,11 @@ impl PlainTextEditor {
     }
 
     pub(crate) fn new_state(
-        content: String,
+        path: &Path,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<InputState> {
+        let content = std::fs::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)

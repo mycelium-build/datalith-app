@@ -33,9 +33,8 @@ impl FileRegistry {
             configs: HashMap::new(),
             fallback: FileTypeConfig {
                 editor_factory: Some(|path, window, cx| {
-                    let content = std::fs::read_to_string(path).unwrap_or_default();
                     EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
-                        content, window, cx,
+                        path, window, cx,
                     )))
                 }),
                 viewer_factory: None,
@@ -87,10 +86,8 @@ pub(crate) fn default_registry() -> FileRegistry {
         "md",
         FileTypeConfig {
             editor_factory: Some(|path, window, cx| {
-                let content = std::fs::read_to_string(path).unwrap_or_default();
                 EditorKind::Markdown(MarkdownEditor::new(
-                    MarkdownEditor::new_state(content, window, cx),
-                    path.to_path_buf(),
+                    MarkdownEditor::new_state(path, window, cx),
                 ))
             }),
             viewer_factory: Some(|path, editor, _cx| {
