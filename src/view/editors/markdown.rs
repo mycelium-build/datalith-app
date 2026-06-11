@@ -16,6 +16,20 @@ impl MarkdownEditor {
         Self { input, file_path }
     }
 
+    pub(crate) fn new_state(
+        content: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<InputState> {
+        cx.new(|cx| {
+            InputState::new(window, cx)
+                .code_editor("markdown")
+                .line_number(false)
+                .folding(false)
+                .default_value(content)
+        })
+    }
+
     pub(crate) fn input(&self) -> &Entity<InputState> {
         &self.input
     }

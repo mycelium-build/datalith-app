@@ -10,6 +10,19 @@ impl PlainTextEditor {
         Self { input }
     }
 
+    pub(crate) fn new_state(
+        content: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<InputState> {
+        cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .searchable(true)
+                .default_value(content)
+        })
+    }
+
     pub(crate) fn input(&self) -> &Entity<InputState> {
         &self.input
     }

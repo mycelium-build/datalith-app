@@ -45,20 +45,17 @@ impl DatalithView {
             }
         }
 
-        let content = fs::read_to_string(&path).unwrap_or_default();
-        let state = self.registry.create_input_state(&path, content.clone(), window, cx);
+        let handler = cx.new(|cx| self.registry.create_handler(&path, window, cx));
 
-        let handler = cx.new(|cx| self.registry.create_handler(&path, &state, cx));
-
-        let sub = {
+        let sub = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
-            cx.subscribe_in(&state, window, move |_view, editor, event, _window, _cx| {
+            cx.subscribe_in(&state, window, move |_view, state, event, _window, cx| {
                 if let InputEvent::Change = event {
-                    let content = editor.read(_cx).value();
+                    let content = state.read(cx).value();
                     let _ = fs::write(&path, content.to_string());
                 }
             })
-        };
+        });
 
         let event_sub = cx.subscribe_in(
             &handler,
@@ -88,7 +85,7 @@ impl DatalithView {
         let open_file = OpenFile {
             path: path.clone(),
             handler,
-            _sub: Some(sub),
+            _sub: sub,
             _event_sub: Some(event_sub),
             navigation_stack: nav_stack,
             navigation_position: nav_pos,
@@ -119,9 +116,7 @@ impl DatalithView {
     }
 
     pub(crate) fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
-        let handler = cx.new(|_cx| {
-            FileHandler::new(ViewMode::Edit, None, None)
-        });
+        let handler = cx.new(|_cx| FileHandler::new(ViewMode::Edit, None, None));
         self.open_files.push(OpenFile {
             path: PathBuf::new(),
             handler,
@@ -307,10 +302,7 @@ impl DatalithView {
             )
             .selected_index(active_tab)
             .suffix({
-                let handler_entity = self
-                    .open_files
-                    .get(active_tab)
-                    .map(|f| f.handler.clone());
+                let handler_entity = self.open_files.get(active_tab).map(|f| f.handler.clone());
 
                 let supports_editing = handler_entity
                     .as_ref()
@@ -379,4 +371,3 @@ impl DatalithView {
             }))
     }
 }
-
