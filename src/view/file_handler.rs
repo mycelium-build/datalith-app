@@ -40,7 +40,7 @@ impl FileHandler {
     }
 
     pub(crate) fn supports_editing(&self) -> bool {
-        self.editor.is_some() && self.viewer.as_ref().map_or(true, |v| v.supports_editing())
+        self.editor.is_some()
     }
 
     pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
