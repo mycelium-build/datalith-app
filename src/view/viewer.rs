@@ -33,13 +33,6 @@ impl ViewerKind {
         }
     }
 
-    pub(crate) fn supports_editing(&self) -> bool {
-        match self {
-            ViewerKind::Markdown(_) => true,
-            ViewerKind::Image(_) => false,
-        }
-    }
-
     pub(crate) fn drain_events(&self) -> Vec<MarkdownViewerEvent> {
         match self {
             ViewerKind::Markdown(viewer) => viewer.drain_events(),
