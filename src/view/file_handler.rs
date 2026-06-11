@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_component::input::InputState;
 
 use super::editor::EditorKind;
 use super::viewer::{MarkdownViewerEvent, ViewerKind};
@@ -39,11 +40,7 @@ impl FileHandler {
     }
 
     pub(crate) fn supports_editing(&self) -> bool {
-        self.editor.is_some()
-            && self
-                .viewer
-                .as_ref()
-                .map_or(true, |v| v.supports_editing())
+        self.editor.is_some() && self.viewer.as_ref().map_or(true, |v| v.supports_editing())
     }
 
     pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
@@ -55,6 +52,10 @@ impl FileHandler {
             ViewMode::View => ViewMode::Edit,
         };
         cx.notify();
+    }
+
+    pub(crate) fn input(&self) -> Option<&Entity<InputState>> {
+        self.editor.as_ref().and_then(|e| e.input())
     }
 
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
@@ -116,9 +117,6 @@ impl Render for FileHandler {
 
         self.drain_viewer_events(cx);
 
-        div()
-            .size_full()
-            .overflow_hidden()
-            .child(content)
+        div().size_full().overflow_hidden().child(content)
     }
 }

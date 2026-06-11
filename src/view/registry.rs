@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use gpui::*;
-use gpui_component::input::InputState;
 
 use super::editor::EditorKind;
 use super::editors::markdown::MarkdownEditor;
@@ -18,11 +17,10 @@ pub(crate) struct FileTypeConfig {
     pub(crate) default_mode: ViewMode,
 }
 
-pub(crate) type EditorFactory =
-    fn(&Path, &Entity<InputState>, &mut Context<FileHandler>) -> EditorKind;
+pub(crate) type EditorFactory = fn(&Path, &mut Window, &mut Context<FileHandler>) -> EditorKind;
 
 pub(crate) type ViewerFactory =
-    fn(&Path, &Entity<InputState>, &mut Context<FileHandler>) -> ViewerKind;
+    fn(&Path, Option<&EditorKind>, &mut Context<FileHandler>) -> Option<ViewerKind>;
 
 pub(crate) struct FileRegistry {
     configs: HashMap<String, FileTypeConfig>,
@@ -34,8 +32,11 @@ impl FileRegistry {
         Self {
             configs: HashMap::new(),
             fallback: FileTypeConfig {
-                editor_factory: Some(|_path, state, _cx| {
-                    EditorKind::PlainText(PlainTextEditor::new(state.clone()))
+                editor_factory: Some(|path, window, cx| {
+                    let content = std::fs::read_to_string(path).unwrap_or_default();
+                    EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
+                        content, window, cx,
+                    )))
                 }),
                 viewer_factory: None,
                 default_mode: ViewMode::Edit,
@@ -61,46 +62,19 @@ impl FileRegistry {
             .unwrap_or(false)
     }
 
-    pub(crate) fn create_input_state(
-        &self,
-        path: &Path,
-        content: String,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<InputState> {
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
-            if ext == "md" {
-                state = state
-                    .code_editor("markdown")
-                    .line_number(false)
-                    .folding(false);
-            } else {
-                state = state.multi_line(true).searchable(true);
-            }
-            state.default_value(content)
-        })
-    }
-
     pub(crate) fn create_handler(
         &self,
         path: &Path,
-        state: &Entity<InputState>,
+        window: &mut Window,
         cx: &mut Context<FileHandler>,
     ) -> FileHandler {
         let config = self.config_for(path);
         let editor = config
             .editor_factory
-            .map(|factory| factory(path, state, cx));
+            .map(|factory| factory(path, window, cx));
         let viewer = config
             .viewer_factory
-            .map(|factory| factory(path, state, cx));
+            .and_then(|factory| factory(path, editor.as_ref(), cx));
         FileHandler::new(config.default_mode, editor, viewer)
     }
 }
@@ -112,11 +86,20 @@ pub(crate) fn default_registry() -> FileRegistry {
     registry.register(
         "md",
         FileTypeConfig {
-            editor_factory: Some(|path, state, _cx| {
-                EditorKind::Markdown(MarkdownEditor::new(state.clone(), path.to_path_buf()))
+            editor_factory: Some(|path, window, cx| {
+                let content = std::fs::read_to_string(path).unwrap_or_default();
+                EditorKind::Markdown(MarkdownEditor::new(
+                    MarkdownEditor::new_state(content, window, cx),
+                    path.to_path_buf(),
+                ))
             }),
-            viewer_factory: Some(|path, state, _cx| {
-                ViewerKind::Markdown(MarkdownViewer::new(state.clone(), path.to_path_buf()))
+            viewer_factory: Some(|path, editor, _cx| {
+                let editor = editor?;
+                let state = editor.input()?.clone();
+                Some(ViewerKind::Markdown(MarkdownViewer::new(
+                    state,
+                    path.to_path_buf(),
+                )))
             }),
             default_mode: ViewMode::Edit,
         },
@@ -128,8 +111,8 @@ pub(crate) fn default_registry() -> FileRegistry {
             ext,
             FileTypeConfig {
                 editor_factory: None,
-                viewer_factory: Some(|path, _state, _cx| {
-                    ViewerKind::Image(ImageViewer::new(path.to_path_buf()))
+                viewer_factory: Some(|path, _editor, _cx| {
+                    Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
                 }),
                 default_mode: ViewMode::View,
             },
