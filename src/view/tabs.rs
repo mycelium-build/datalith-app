@@ -6,21 +6,15 @@ use gpui_component::{
     Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
-    input::{InputEvent, InputState},
+    input::InputEvent,
     tab::{Tab, TabBar},
 };
 use percent_encoding::percent_decode_str;
 
-use super::markdown_editor::{EditorMode, MarkdownEditor, MarkdownEditorEvent};
+use super::file_handler::{FileHandler, FileHandlerEvent, ViewMode};
 use super::{DatalithView, NavigationAction, OpenFile};
 use crate::assets::PEN_ICON;
-use crate::utils::{file_name_str, is_image_file, is_supported_file};
-
-fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .map(|ext| ext.to_string_lossy().to_lowercase() == "md")
-        .unwrap_or(false)
-}
+use crate::utils::file_name_str;
 
 impl DatalithView {
     pub(crate) fn open_file(
@@ -30,7 +24,7 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !is_supported_file(&path) {
+        if !self.registry.is_supported(&path) {
             return;
         }
 
@@ -41,92 +35,20 @@ impl DatalithView {
         if !self.in_navigation {
             if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
                 self.active_tab = index;
-                if let Some(ref state) = self.open_files[index].state {
-                    state.focus_handle(cx).focus(window, cx);
-                }
+                self.open_files[index]
+                    .handler
+                    .read(cx)
+                    .focus_handle(cx)
+                    .focus(window, cx);
                 cx.notify();
                 return;
             }
         }
 
-        // Image files: open as a read-only viewer — no text state needed
-        if is_image_file(&path) {
-            let (nav_stack, nav_pos) = if new_tab || self.open_files.is_empty() {
-                (vec![path.clone()], 0)
-            } else {
-                let active = self.active_tab.min(self.open_files.len() - 1);
-                let old = &self.open_files[active];
-                (old.navigation_stack.clone(), old.navigation_position)
-            };
-            let open_file = OpenFile {
-                path: path.clone(),
-                state: None,
-                markdown_editor: None,
-                _sub: None,
-                _md_sub: None,
-                editor_mode: false,
-                navigation_stack: nav_stack,
-                navigation_position: nav_pos,
-            };
-            if new_tab || self.open_files.is_empty() {
-                self.open_files.push(open_file);
-                self.active_tab = self.open_files.len() - 1;
-            } else {
-                let active = self.active_tab.min(self.open_files.len() - 1);
-                let old_path = self.open_files[active].path.clone();
-                if !old_path.as_os_str().is_empty() {
-                    self.track_file_edited(&old_path);
-                }
-                self.open_files[active] = open_file;
-            }
-            cx.notify();
-            return;
-        }
-
         let content = fs::read_to_string(&path).unwrap_or_default();
-        let state = if is_markdown(&path) {
-            cx.new(|cx| {
-                InputState::new(window, cx)
-                    .code_editor("markdown")
-                    .line_number(false)
-                    .folding(false)
-                    .default_value(content.clone())
-            })
-        } else {
-            cx.new(|cx| {
-                InputState::new(window, cx)
-                    .multi_line(true)
-                    .searchable(true)
-                    .default_value(content.clone())
-            })
-        };
+        let state = self.registry.create_input_state(&path, content.clone(), window, cx);
 
-        let markdown_editor = if is_markdown(&path) {
-            Some(cx.new(|cx| MarkdownEditor::new(state.clone(), EditorMode::Edit, Some(path.clone()), cx)))
-        } else {
-            None
-        };
-
-        let md_sub = if let Some(ref editor) = markdown_editor {
-            Some(cx.subscribe_in(
-                editor,
-                window,
-                move |view, _, event, window, cx| match event {
-                    MarkdownEditorEvent::LinkClicked(url, new_tab) => {
-                        let decoded_url = percent_decode_str(url).decode_utf8_lossy();
-                        if let Some(ref cache) = view.link_cache {
-                            if let Some(resolved) = cache.resolve(&decoded_url) {
-                                view.open_file(resolved, *new_tab, window, cx);
-                                return;
-                            }
-                        }
-                        cx.open_url(url);
-                    }
-                },
-            ))
-        } else {
-            None
-        };
+        let handler = cx.new(|cx| self.registry.create_handler(&path, &state, cx));
 
         let sub = {
             let path = path.clone();
@@ -138,6 +60,23 @@ impl DatalithView {
             })
         };
 
+        let event_sub = cx.subscribe_in(
+            &handler,
+            window,
+            |view, _handler, event: &FileHandlerEvent, window, cx| match event {
+                FileHandlerEvent::LinkClicked(url, new_tab) => {
+                    let decoded_url = percent_decode_str(url).decode_utf8_lossy();
+                    if let Some(ref cache) = view.link_cache {
+                        if let Some(resolved) = cache.resolve(&decoded_url) {
+                            view.open_file(resolved.clone(), *new_tab, window, cx);
+                            return;
+                        }
+                    }
+                    cx.open_url(url);
+                }
+            },
+        );
+
         let (nav_stack, nav_pos) = if new_tab || self.open_files.is_empty() {
             (vec![path.clone()], 0)
         } else {
@@ -148,19 +87,21 @@ impl DatalithView {
 
         let open_file = OpenFile {
             path: path.clone(),
-            state: Some(state.clone()),
-            markdown_editor,
+            handler,
             _sub: Some(sub),
-            _md_sub: md_sub,
-            editor_mode: true,
+            _event_sub: Some(event_sub),
             navigation_stack: nav_stack,
             navigation_position: nav_pos,
         };
 
         if new_tab || self.open_files.is_empty() {
-            state.focus_handle(cx).focus(window, cx);
             self.open_files.push(open_file);
             self.active_tab = self.open_files.len() - 1;
+            self.open_files[self.active_tab]
+                .handler
+                .read(cx)
+                .focus_handle(cx)
+                .focus(window, cx);
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
             let old_path = self.open_files[active].path.clone();
@@ -168,21 +109,24 @@ impl DatalithView {
                 self.track_file_edited(&old_path);
             }
             self.open_files[active] = open_file;
-            if let Some(ref s) = self.open_files[active].state {
-                s.focus_handle(cx).focus(window, cx);
-            }
+            self.open_files[active]
+                .handler
+                .read(cx)
+                .focus_handle(cx)
+                .focus(window, cx);
         }
         cx.notify();
     }
 
     pub(crate) fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
+        let handler = cx.new(|_cx| {
+            FileHandler::new(ViewMode::Edit, None, None)
+        });
         self.open_files.push(OpenFile {
             path: PathBuf::new(),
-            state: None,
-            markdown_editor: None,
+            handler,
             _sub: None,
-            _md_sub: None,
-            editor_mode: true,
+            _event_sub: None,
             navigation_stack: Vec::new(),
             navigation_position: 0,
         });
@@ -363,32 +307,40 @@ impl DatalithView {
             )
             .selected_index(active_tab)
             .suffix({
-                let md_entity = self
+                let handler_entity = self
                     .open_files
                     .get(active_tab)
-                    .and_then(|f| f.markdown_editor.clone());
-                let is_editing = md_entity
+                    .map(|f| f.handler.clone());
+
+                let supports_editing = handler_entity
+                    .as_ref()
+                    .map(|e| e.read(cx).supports_editing())
+                    .unwrap_or(false);
+
+                let is_editing = handler_entity
                     .as_ref()
                     .map(|e| e.read(cx).is_editing())
                     .unwrap_or(false);
 
                 let mut suffix = h_flex().gap_0().px_1();
 
-                if let Some(entity) = md_entity {
-                    let icon: Icon = if is_editing {
-                        Icon::new(IconName::Eye)
-                    } else {
-                        Icon::default().path(SharedString::from(PEN_ICON))
-                    };
-                    suffix = suffix.child(
-                        Button::new("toggle-mode")
-                            .ghost()
-                            .xsmall()
-                            .icon(icon)
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                entity.update(cx, |editor, cx| editor.toggle_editing(cx));
-                            })),
-                    );
+                if let Some(entity) = handler_entity {
+                    if supports_editing {
+                        let icon: Icon = if is_editing {
+                            Icon::new(IconName::Eye)
+                        } else {
+                            Icon::default().path(SharedString::from(PEN_ICON))
+                        };
+                        suffix = suffix.child(
+                            Button::new("toggle-mode")
+                                .ghost()
+                                .xsmall()
+                                .icon(icon)
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    entity.update(cx, |handler, cx| handler.toggle_editing(cx));
+                                })),
+                        );
+                    }
                 }
 
                 suffix.child(
@@ -427,3 +379,4 @@ impl DatalithView {
             }))
     }
 }
+

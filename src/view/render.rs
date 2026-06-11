@@ -1,9 +1,7 @@
-use crate::consts::{MD_IMAGE_MAX_WIDTH, SIDEBAR_WIDTH};
-use crate::utils::is_image_file;
+use crate::consts::SIDEBAR_WIDTH;
 use gpui::*;
 use gpui_component::{
     h_flex,
-    input::Input,
     resizable::{h_resizable, resizable_panel},
     v_flex,
 };
@@ -28,15 +26,10 @@ impl Render for DatalithView {
             self.focus_editor_requested = false;
             let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
             if let Some(ref file) = self.open_files.get(active_tab) {
-                if let Some(ref md_editor) = file.markdown_editor {
-                    md_editor
-                        .read(cx)
-                        .input()
-                        .focus_handle(cx)
-                        .focus(_window, cx);
-                } else if let Some(ref state) = file.state {
-                    state.focus_handle(cx).focus(_window, cx);
-                }
+                file.handler
+                    .read(cx)
+                    .focus_handle(cx)
+                    .focus(_window, cx);
             }
         }
 
@@ -129,34 +122,12 @@ impl DatalithView {
                     .gap_4()
                     .child("Empty tab")
                     .into_any_element()
-            } else if is_image_file(&active_file.path) {
-                div()
-                    .id("image-viewer")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .p_4()
-                    .child(
-                        img(active_file.path.clone())
-                            .w_full()
-                            .max_w(px(MD_IMAGE_MAX_WIDTH)),
-                    )
-                    .into_any_element()
-            } else if let Some(ref md_editor) = active_file.markdown_editor {
+            } else {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(md_editor.clone())
+                    .child(active_file.handler.clone())
                     .into_any_element()
-            } else if let Some(ref active_state) = active_file.state {
-                div()
-                    .flex_1()
-                    .child(Input::new(active_state).h_full().appearance(false))
-                    .into_any_element()
-            } else {
-                div().flex_1().into_any_element()
             })
             .into_any_element()
     }
