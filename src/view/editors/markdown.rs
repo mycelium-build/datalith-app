@@ -4,7 +4,6 @@ use gpui::*;
 use gpui_component::input::{Input, InputState};
 
 use crate::consts::{BASE_FONT_SIZE, MD_LINE_HEIGHT};
-use crate::markdown::find_link_at_offset;
 
 pub(crate) struct MarkdownEditor {
     input: Entity<InputState>,
@@ -36,12 +35,6 @@ impl MarkdownEditor {
 
     pub(crate) fn file_path(&self) -> &PathBuf {
         &self.file_path
-    }
-
-    pub(crate) fn open_link_at_cursor(&self, cx: &mut App) -> Option<(String, bool)> {
-        let offset = self.input.read(cx).cursor();
-        let text = self.input.read(cx).value().to_string();
-        find_link_at_offset(&text, offset).map(|url| (url, true))
     }
 
     pub(crate) fn render(&self, _cx: &mut App) -> AnyElement {
