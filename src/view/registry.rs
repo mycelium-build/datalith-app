@@ -3,11 +3,11 @@ use std::path::Path;
 
 use gpui::*;
 
-use super::editor::EditorKind;
+use super::editors::EditorKind;
 use super::editors::markdown::MarkdownEditor;
 use super::editors::plain_text::PlainTextEditor;
 use super::file_handler::{FileHandler, ViewMode};
-use super::viewer::ViewerKind;
+use super::viewers::ViewerKind;
 use super::viewers::image::ImageViewer;
 use super::viewers::markdown::MarkdownViewer;
 

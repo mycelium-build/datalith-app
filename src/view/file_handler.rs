@@ -1,8 +1,8 @@
 use gpui::*;
 use gpui_component::input::InputState;
 
-use super::editor::EditorKind;
-use super::viewer::{MarkdownViewerEvent, ViewerKind};
+use super::editors::EditorKind;
+use super::viewers::{MarkdownViewerEvent, ViewerKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ViewMode {
