@@ -1,9 +1,12 @@
-pub(crate) mod markdown_editor;
+pub(crate) mod editors;
+pub(crate) mod file_handler;
 pub(crate) mod palette;
+pub(crate) mod registry;
 pub(crate) mod render;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod tabs;
+pub(crate) mod viewers;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -20,7 +23,8 @@ use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
 use crate::link_cache::LinkCache;
 use crate::search::SearchEngine;
 use crate::utils::file_name_str;
-use crate::view::markdown_editor::MarkdownEditor;
+use crate::view::file_handler::FileHandler;
+use crate::view::registry::FileRegistry;
 use crate::view::sidebar::file_tree::build_file_items_with_expanded;
 use palette::Palette;
 use settings::SettingsView;
@@ -60,11 +64,9 @@ impl SelectItem for VaultEntry {
 
 pub(crate) struct OpenFile {
     pub(crate) path: PathBuf,
-    pub(crate) state: Option<Entity<InputState>>,
-    pub(crate) markdown_editor: Option<Entity<MarkdownEditor>>,
+    pub(crate) handler: Entity<FileHandler>,
     pub(crate) _sub: Option<Subscription>,
-    pub(crate) _md_sub: Option<Subscription>,
-    pub(crate) editor_mode: bool,
+    pub(crate) _event_sub: Option<Subscription>,
     pub(crate) navigation_stack: Vec<PathBuf>,
     pub(crate) navigation_position: usize,
 }
@@ -98,6 +100,7 @@ pub(crate) struct DatalithView {
     pub(crate) last_sidebar_selection: Option<PathBuf>,
     pub(crate) pending_navigation: Option<NavigationAction>,
     in_navigation: bool,
+    pub(crate) registry: FileRegistry,
 }
 
 fn build_vault_entries() -> Vec<VaultEntry> {
@@ -192,6 +195,7 @@ impl DatalithView {
             last_sidebar_selection: None,
             pending_navigation: None,
             in_navigation: false,
+            registry: registry::default_registry(),
         }
     }
 

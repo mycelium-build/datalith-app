@@ -6,6 +6,7 @@ use crate::app::AppState;
 use crate::fs_ops;
 use crate::utils;
 use crate::view::NavigationAction;
+use crate::view::file_handler::FileHandlerEvent;
 use crate::view::palette::PaletteKind;
 
 actions!(
@@ -270,14 +271,10 @@ pub(crate) fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
         if let Some(ref file) = view.open_files.get(active_tab) {
-            if let Some(ref md_editor) = file.markdown_editor {
-                md_editor.update(cx, |editor, cx| {
-                    editor.toggle_editing(cx);
-                });
-                let is_editing = md_editor.read(cx).is_editing();
-                view.open_files[active_tab].editor_mode = is_editing;
-                view.focus_editor_requested = true;
-            }
+            file.handler.update(cx, |handler, cx| {
+                handler.toggle_editing(cx);
+            });
+            view.focus_editor_requested = true;
         }
         cx.notify();
     });
@@ -370,9 +367,18 @@ pub(crate) fn handle_open_link(_: &OpenLink, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
         if let Some(ref file) = view.open_files.get(active_tab) {
-            if let Some(ref md_editor) = file.markdown_editor {
-                md_editor.update(cx, |editor, cx| {
-                    editor.open_link_at_cursor(cx);
+            let handler = file.handler.read(cx);
+            let link_info = handler.editor.as_ref().and_then(|editor| {
+                let md = editor.as_markdown()?;
+                let input = md.input().read(cx);
+                let offset = input.cursor();
+                let text = input.value().to_string();
+                crate::markdown::find_link_at_offset(&text, offset).map(|url| (url, true))
+            });
+            let _ = handler;
+            if let Some((url, new_tab)) = link_info {
+                file.handler.update(cx, |_handler, cx| {
+                    cx.emit(FileHandlerEvent::LinkClicked(url, new_tab));
                 });
             }
         }

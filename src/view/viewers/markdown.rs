@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
-use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
 
@@ -13,28 +13,13 @@ use crate::consts::{
     MD_FRONTMATTER_PADDING, MD_FRONTMATTER_RADIUS, MD_HEADING_MARGIN, MD_HEADING_SIZES,
     MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
-use crate::markdown::{
-    MarkdownBlock, MarkdownEvent, MarkdownStyle, find_link_at_offset, parse_markdown,
-};
+use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
+use crate::view::file_handler::{FileHandler, FileHandlerEvent};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EditorMode {
-    Edit,
-    Preview,
-}
-
-pub(crate) enum MarkdownEditorEvent {
-    LinkClicked(String, bool),
-}
-
-pub(crate) struct MarkdownEditor {
+pub(crate) struct MarkdownViewer {
     input: Entity<InputState>,
-    mode: EditorMode,
-    file_path: Option<PathBuf>,
-    _sub: Option<Subscription>,
+    file_path: PathBuf,
 }
-
-impl EventEmitter<MarkdownEditorEvent> for MarkdownEditor {}
 
 struct ListItemData {
     marker_text: String,
@@ -43,60 +28,23 @@ struct ListItemData {
     elements: Vec<AnyElement>,
 }
 
-impl MarkdownEditor {
-    pub(crate) fn new(
-        input: Entity<InputState>,
-        mode: EditorMode,
-        file_path: Option<PathBuf>,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let sub = cx.subscribe(&input, |_this, _, event, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        });
-
-        Self {
-            input,
-            mode,
-            file_path,
-            _sub: Some(sub),
-        }
+impl MarkdownViewer {
+    pub(crate) fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
+        Self { input, file_path }
     }
 
-    pub(crate) fn input(&self) -> &Entity<InputState> {
-        &self.input
+    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.input.focus_handle(cx)
     }
 
-    pub(crate) fn is_editing(&self) -> bool {
-        self.mode == EditorMode::Edit
-    }
-
-    pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
-        self.mode = match self.mode {
-            EditorMode::Edit => EditorMode::Preview,
-            EditorMode::Preview => EditorMode::Edit,
-        };
-        cx.notify();
-    }
-
-    pub(crate) fn open_link_at_cursor(&self, cx: &mut Context<Self>) {
-        let offset = self.input.read(cx).cursor();
-        let text = self.input.read(cx).value().to_string();
-        if let Some(url) = find_link_at_offset(&text, offset) {
-            cx.emit(MarkdownEditorEvent::LinkClicked(url, true));
-        }
-    }
-
-    fn render_image(&self, url: &str, alt: &str, cx: &mut Context<Self>) -> AnyElement {
+    fn render_image(&self, url: &str, alt: &str, cx: &mut App) -> AnyElement {
         let base_font_size = BASE_FONT_SIZE as f32;
 
         if !url.starts_with("http://") && !url.starts_with("https://") {
             let decoded = percent_decode_str(url).decode_utf8_lossy().to_string();
             let path = self
                 .file_path
-                .as_ref()
-                .and_then(|fp| fp.parent())
+                .parent()
                 .map(|parent| parent.join(&decoded))
                 .unwrap_or_else(|| PathBuf::from(&decoded));
 
@@ -110,7 +58,6 @@ impl MarkdownEditor {
             }
         }
 
-        // Fallback: muted bordered box with alt text
         div()
             .w_full()
             .max_w(px(MD_IMAGE_MAX_WIDTH))
@@ -129,7 +76,7 @@ impl MarkdownEditor {
             .into_any_element()
     }
 
-    fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         let base_font_size = BASE_FONT_SIZE as f32;
 
@@ -172,7 +119,11 @@ impl MarkdownEditor {
                         let parts: Vec<&str> = text.split('\n').collect();
                         for (i, part) in parts.iter().enumerate() {
                             if i > 0 {
-                                flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
+                                flush_inline(
+                                    &mut text_buffer,
+                                    &mut current_list_item,
+                                    &mut current_line,
+                                );
                                 if !current_line.is_empty() {
                                     paragraph_lines.push(wrap_line(&mut current_line));
                                 }
@@ -199,17 +150,21 @@ impl MarkdownEditor {
                             let link_styled =
                                 StyledText::new(SharedString::from(current_link_text.clone()))
                                     .with_highlights(current_link_highlights.clone());
+                            let handler_clone = handler.clone();
+                            let link_url = url.clone();
                             let link_el = div()
                                 .id(SharedString::from(format!("link-{}", url)))
                                 .text_color(cx.theme().primary)
                                 .underline()
                                 .cursor_pointer()
-                                .on_click(cx.listener(move |_, event: &ClickEvent, _, cx| {
-                                    cx.emit(MarkdownEditorEvent::LinkClicked(
-                                        url.clone(),
-                                        event.modifiers().platform,
-                                    ));
-                                }))
+                                .on_click(move |event: &ClickEvent, _window, cx| {
+                                    handler_clone.update(cx, |_, cx| {
+                                        cx.emit(FileHandlerEvent::LinkClicked(
+                                            link_url.clone(),
+                                            event.modifiers().platform,
+                                        ));
+                                    });
+                                })
                                 .child(link_styled)
                                 .into_any_element();
                             if let Some(ref mut li) = current_list_item {
@@ -372,37 +327,6 @@ impl MarkdownEditor {
             .line_height(px(base_font_size * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements))
             .into_any_element()
-    }
-
-    fn render_editing(&self, _cx: &mut Context<Self>) -> AnyElement {
-        let base_font_size = BASE_FONT_SIZE as f32;
-
-        div()
-            .size_full()
-            .child(
-                Input::new(&self.input)
-                    .h_full()
-                    .appearance(false)
-                    .text_size(px(base_font_size))
-                    .line_height(px(base_font_size * MD_LINE_HEIGHT)),
-            )
-            .into_any_element()
-    }
-}
-
-impl Focusable for MarkdownEditor {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.focus_handle(cx)
-    }
-}
-
-impl Render for MarkdownEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(if self.mode == EditorMode::Edit {
-            self.render_editing(cx)
-        } else {
-            self.render_preview(cx)
-        })
     }
 }
 
