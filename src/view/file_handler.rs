@@ -2,7 +2,7 @@ use gpui::*;
 use gpui_component::input::InputState;
 
 use super::editors::EditorKind;
-use super::viewers::{MarkdownViewerEvent, ViewerKind};
+use super::viewers::ViewerKind;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ViewMode {
@@ -72,41 +72,31 @@ impl FileHandler {
                 .unwrap_or_else(|| cx.focus_handle()),
         }
     }
-
-    fn drain_viewer_events(&self, cx: &mut Context<Self>) {
-        if let Some(ref viewer) = self.viewer {
-            for event in viewer.drain_events() {
-                match event {
-                    MarkdownViewerEvent::LinkClicked(url, new_tab) => {
-                        cx.emit(FileHandlerEvent::LinkClicked(url, new_tab));
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Focusable for FileHandler {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
+        // Delegates to the inherent method above (inherent methods shadow trait methods)
         self.focus_handle(cx)
     }
 }
 
 impl Render for FileHandler {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity();
         let content = match self.mode {
             ViewMode::Edit => {
                 if let Some(ref editor) = self.editor {
                     editor.render(cx)
-                } else if let Some(ref mut viewer) = self.viewer {
-                    viewer.render(cx)
+                } else if let Some(ref viewer) = self.viewer {
+                    viewer.render(entity, cx)
                 } else {
                     div().flex_1().into_any_element()
                 }
             }
             ViewMode::View => {
-                if let Some(ref mut viewer) = self.viewer {
-                    viewer.render(cx)
+                if let Some(ref viewer) = self.viewer {
+                    viewer.render(entity, cx)
                 } else if let Some(ref editor) = self.editor {
                     editor.render(cx)
                 } else {
@@ -114,8 +104,6 @@ impl Render for FileHandler {
                 }
             }
         };
-
-        self.drain_viewer_events(cx);
 
         div().size_full().overflow_hidden().child(content)
     }

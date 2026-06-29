@@ -1,7 +1,5 @@
-use std::cell::Cell;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
@@ -16,12 +14,11 @@ use crate::consts::{
     MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT, MD_LIST_INDENT,
 };
 use crate::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
-use crate::view::viewers::{MarkdownViewerEvent, SharedEvents};
+use crate::view::file_handler::{FileHandler, FileHandlerEvent};
 
 pub(crate) struct MarkdownViewer {
     input: Entity<InputState>,
     file_path: PathBuf,
-    events: SharedEvents,
 }
 
 struct ListItemData {
@@ -33,20 +30,7 @@ struct ListItemData {
 
 impl MarkdownViewer {
     pub(crate) fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
-        Self {
-            input,
-            file_path,
-            events: Rc::new(Cell::new(Vec::new())),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn events(&self) -> &SharedEvents {
-        &self.events
-    }
-
-    pub(crate) fn drain_events(&self) -> Vec<MarkdownViewerEvent> {
-        self.events.take()
+        Self { input, file_path }
     }
 
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
@@ -92,7 +76,7 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    pub(crate) fn render(&self, cx: &mut App) -> AnyElement {
+    pub(crate) fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         let base_font_size = BASE_FONT_SIZE as f32;
 
@@ -121,7 +105,6 @@ impl MarkdownViewer {
         let mut in_paragraph = false;
 
         let mut text_buffer = TextBuffer::new();
-        let shared_events = self.events.clone();
 
         for event in events {
             match event {
@@ -167,20 +150,20 @@ impl MarkdownViewer {
                             let link_styled =
                                 StyledText::new(SharedString::from(current_link_text.clone()))
                                     .with_highlights(current_link_highlights.clone());
-                            let events_clone = shared_events.clone();
+                            let handler_clone = handler.clone();
                             let link_url = url.clone();
                             let link_el = div()
                                 .id(SharedString::from(format!("link-{}", url)))
                                 .text_color(cx.theme().primary)
                                 .underline()
                                 .cursor_pointer()
-                                .on_click(move |event: &ClickEvent, _window, _app| {
-                                    let mut evts = events_clone.take();
-                                    evts.push(MarkdownViewerEvent::LinkClicked(
-                                        link_url.clone(),
-                                        event.modifiers().platform,
-                                    ));
-                                    events_clone.set(evts);
+                                .on_click(move |event: &ClickEvent, _window, cx| {
+                                    handler_clone.update(cx, |_, cx| {
+                                        cx.emit(FileHandlerEvent::LinkClicked(
+                                            link_url.clone(),
+                                            event.modifiers().platform,
+                                        ));
+                                    });
                                 })
                                 .child(link_styled)
                                 .into_any_element();
