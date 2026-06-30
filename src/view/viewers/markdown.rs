@@ -135,18 +135,27 @@ impl MarkdownViewer {
                     }
                 }
                 MarkdownEvent::LinkStart(url) => {
-                    if text_buffer.is_whitespace_only() {
-                        text_buffer.clear();
+                    if current_list_item.is_some() {
+                        current_link_url = Some(url);
+                        current_link_text.clear();
+                        current_link_highlights.clear();
                     } else {
-                        flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
+                        if text_buffer.is_whitespace_only() {
+                            text_buffer.clear();
+                        } else {
+                            flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
+                        }
+                        current_link_url = Some(url);
+                        current_link_text.clear();
+                        current_link_highlights.clear();
                     }
-                    current_link_url = Some(url);
-                    current_link_text.clear();
-                    current_link_highlights.clear();
                 }
                 MarkdownEvent::LinkEnd => {
                     if let Some(url) = current_link_url.take() {
-                        if !current_link_text.is_empty() {
+                        if current_list_item.is_some() {
+                            let link_style = MarkdownStyle::Link;
+                            text_buffer.push(&current_link_text, &link_style, cx);
+                        } else if !current_link_text.is_empty() {
                             let link_styled =
                                 StyledText::new(SharedString::from(current_link_text.clone()))
                                     .with_highlights(current_link_highlights.clone());
@@ -167,11 +176,7 @@ impl MarkdownViewer {
                                 })
                                 .child(link_styled)
                                 .into_any_element();
-                            if let Some(ref mut li) = current_list_item {
-                                li.elements.push(link_el);
-                            } else {
-                                current_line.push(link_el);
-                            }
+                            current_line.push(link_el);
                         }
                         current_link_text.clear();
                         current_link_highlights.clear();
