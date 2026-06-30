@@ -1,5 +1,6 @@
-decouple editor and renderer
-    image
+x decouple editor and renderer
+    x Markdown
+    x image
     todo.txt (need TxTodo.rs)
     bases
         list
@@ -10,7 +11,7 @@ decouple editor and renderer
     canvas
     graph
 
-custom themes (explore GPUI components)
+custom themes editor (explore GPUI components)
 
 right sidebar
     outline
