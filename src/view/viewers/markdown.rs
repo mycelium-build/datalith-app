@@ -281,6 +281,12 @@ impl MarkdownViewer {
                                 elements.push(div().m_2().into_any_element());
                             }
                             MarkdownBlock::Heading => {
+                                if !current_line.is_empty() {
+                                    paragraph_lines.push(wrap_line(&mut current_line));
+                                }
+                                if !paragraph_lines.is_empty() {
+                                    elements.push(wrap_paragraph(&mut paragraph_lines));
+                                }
                                 elements.push(div().m_2().into_any_element());
                             }
                             _ => {}
