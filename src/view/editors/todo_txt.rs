@@ -961,6 +961,22 @@ impl TodoTxtState {
         visible: &[(usize, bool)],
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if visible.is_empty() {
+            return v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .text_color(cx.theme().muted_foreground)
+                .child(
+                    Icon::new(IconName::Inbox)
+                        .size_8()
+                        .text_color(cx.theme().muted_foreground.opacity(0.4)),
+                )
+                .child(div().text_sm().child("No tasks to display"))
+                .into_any_element();
+        }
+
         let entity = cx.entity().clone();
         let sizes = self.item_sizes.clone();
         let selected = self.selected;
