@@ -935,7 +935,17 @@ impl TodoTxtState {
                         this.new_task_input.focus_handle(cx).focus(window, cx);
                     })),
             )
-            .child(div().flex_1().min_w(px(100.0)).child(search))
+            .child(div().flex_1().min_w(px(100.0)).child(search)
+                .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "down" {
+                        let visible = this.visible_tasks();
+                        if let Some(&(first_fi, _)) = visible.first() {
+                            if let Some(e) = this.desc_inputs.get(&first_fi) {
+                                e.focus_handle(cx).focus(window, cx);
+                            }
+                        }
+                    }
+                })))
             .child(div().flex_shrink_0().w(px(90.0)).child(filter_select))
             .child(div().flex_shrink_0().w(px(100.0)).child(sort_select))
             .child(
@@ -1082,7 +1092,11 @@ impl TodoTxtState {
                     .justify_center()
                     .cursor_pointer()
                     .tab_index(0)
-                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)))
+                    .focus_visible(|s| {
+                        s.border_1()
+                            .border_color(cx.theme().ring)
+                            .rounded(px(TODO_PILL_RADIUS))
+                    })
                     .child(Icon::new(arrow_icon).size_3())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.toggle_expand(fi, cx);
@@ -1226,10 +1240,18 @@ impl TodoTxtState {
                     .when(true, |el| {
                         el.group_hover("todo-row", |style| style.opacity(0.6))
                     })
-                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)).opacity(1.0));
+                    .focus_visible(|s| {
+                        s.border_1()
+                            .border_color(cx.theme().ring)
+                            .rounded(px(TODO_PILL_RADIUS))
+                            .opacity(1.0)
+                    });
             } else {
-                cell = cell
-                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)));
+                cell = cell.focus_visible(|s| {
+                    s.border_1()
+                        .border_color(cx.theme().ring)
+                        .rounded(px(TODO_PILL_RADIUS))
+                });
             }
 
             row = row.child(cell.child(content));
@@ -1290,16 +1312,34 @@ impl TodoTxtState {
                     .items_center()
                     .child(desc_input)
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                        if event.keystroke.key == "escape" {
-                            if let Some(e) = this.desc_inputs.get(&fi) {
-                                let original = this
-                                    .todo
-                                    .list()
-                                    .get(fi)
-                                    .map(|t| t.description.clone())
-                                    .unwrap_or_default();
-                                e.update(cx, |s, cx| s.set_value(original, window, cx));
+                        match event.keystroke.key.as_str() {
+                            "up" => {
+                                let visible = this.visible_tasks();
+                                if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
+                                    if pos > 0 {
+                                        let prev_fi = visible[pos - 1].0;
+                                        if let Some(e) = this.desc_inputs.get(&prev_fi) {
+                                            e.focus_handle(cx).focus(window, cx);
+                                        }
+                                    } else {
+                                        this.search_input.focus_handle(cx).focus(window, cx);
+                                    }
+                                }
                             }
+                            "down" => {
+                                let visible = this.visible_tasks();
+                                if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
+                                    if pos + 1 < visible.len() {
+                                        let next_fi = visible[pos + 1].0;
+                                        if let Some(e) = this.desc_inputs.get(&next_fi) {
+                                            e.focus_handle(cx).focus(window, cx);
+                                        }
+                                    } else {
+                                        this.new_task_input.focus_handle(cx).focus(window, cx);
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     })),
             );
@@ -1468,23 +1508,33 @@ impl TodoTxtState {
                     .id("new-task-input-wrap")
                     .child(Input::new(&self.new_task_input).appearance(false))
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                        if event.keystroke.key == "enter" && !event.keystroke.modifiers.secondary()
-                        {
-                            let value = this.new_task_input.read(cx).value();
-                            let trimmed = value.trim().to_string();
-                            if !trimmed.is_empty() {
-                                let today = today_string();
-                                let line = format!("{today} {trimmed}");
-                                if let Err(e) = this.todo.add(line) {
-                                    this.parse_errors.push(format!("Add task failed: {e}"));
+                        match event.keystroke.key.as_str() {
+                            "enter" if !event.keystroke.modifiers.secondary() => {
+                                let value = this.new_task_input.read(cx).value();
+                                let trimmed = value.trim().to_string();
+                                if !trimmed.is_empty() {
+                                    let today = today_string();
+                                    let line = format!("{today} {trimmed}");
+                                    if let Err(e) = this.todo.add(line) {
+                                        this.parse_errors.push(format!("Add task failed: {e}"));
+                                    }
+                                    let _ = this.todo.save(None);
+                                    this.refresh_item_sizes();
+                                    cx.notify();
                                 }
-                                let _ = this.todo.save(None);
-                                this.refresh_item_sizes();
-                                cx.notify();
+                                this.new_task_input.update(cx, |state, cx| {
+                                    state.set_value("", window, cx);
+                                });
                             }
-                            this.new_task_input.update(cx, |state, cx| {
-                                state.set_value("", window, cx);
-                            });
+                            "up" => {
+                                let visible = this.visible_tasks();
+                                if let Some(&(last_fi, _)) = visible.last() {
+                                    if let Some(e) = this.desc_inputs.get(&last_fi) {
+                                        e.focus_handle(cx).focus(window, cx);
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     })),
             )
