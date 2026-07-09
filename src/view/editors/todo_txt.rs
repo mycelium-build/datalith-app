@@ -323,6 +323,16 @@ impl TodoTxtEditor {
                 },
             ));
 
+            let entity = cx.entity();
+            subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
+                if event.keystroke.key.as_str() == "f" && event.keystroke.modifiers.secondary() {
+                    entity.update(cx, |this, cx| {
+                        this.search_input.focus_handle(cx).focus(window, cx);
+                    });
+                    cx.stop_propagation();
+                }
+            }));
+
             TodoTxtState {
                 todo,
                 _path: path,
