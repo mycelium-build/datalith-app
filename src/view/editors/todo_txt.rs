@@ -939,6 +939,8 @@ impl TodoTxtState {
                     .cursor_pointer()
                     .flex_shrink_0()
                     .tab_index(0)
+                    .rounded(px(TODO_PILL_RADIUS))
+                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)))
                     .child(sort_icon)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sort_desc = !this.sort_desc;
@@ -1073,6 +1075,7 @@ impl TodoTxtState {
                     .justify_center()
                     .cursor_pointer()
                     .tab_index(0)
+                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)))
                     .child(Icon::new(arrow_icon).size_3())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.toggle_expand(fi, cx);
@@ -1097,6 +1100,7 @@ impl TodoTxtState {
                 .justify_center()
                 .items_center()
                 .tab_index(0)
+                .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded_sm())
                 .child(
                     Icon::new(IconName::Check)
                         .size_3()
@@ -1118,6 +1122,7 @@ impl TodoTxtState {
                 .justify_center()
                 .items_center()
                 .tab_index(0)
+                .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded_sm())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.toggle_complete(fi, cx);
                 }))
@@ -1213,7 +1218,11 @@ impl TodoTxtState {
                     .group("todo-row")
                     .when(true, |el| {
                         el.group_hover("todo-row", |style| style.opacity(0.6))
-                    });
+                    })
+                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)).opacity(1.0));
+            } else {
+                cell = cell
+                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)));
             }
 
             row = row.child(cell.child(content));
