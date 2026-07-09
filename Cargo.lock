@@ -6980,9 +6980,9 @@ dependencies = [
 
 [[package]]
 name = "txtodo"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8ef89a52c9e966f2941b565e1cfba15fceaf107e47df40b887bf02aa12772cb"
+checksum = "38786c9a770839b916e9eee6bb9eb8dc335e2bba06be21f604a60b656b685a70"
 dependencies = [
  "indexmap",
  "thiserror 2.0.18",
