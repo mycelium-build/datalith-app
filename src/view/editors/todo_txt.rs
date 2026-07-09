@@ -928,6 +928,7 @@ impl TodoTxtState {
                     .id("todo-sort-dir")
                     .cursor_pointer()
                     .flex_shrink_0()
+                    .tab_index(0)
                     .child(sort_icon)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sort_desc = !this.sort_desc;
@@ -1061,6 +1062,7 @@ impl TodoTxtState {
                     .w(px(TODO_COL_EXPAND))
                     .justify_center()
                     .cursor_pointer()
+                    .tab_index(0)
                     .child(Icon::new(arrow_icon).size_3())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.toggle_expand(fi, cx);
@@ -1084,6 +1086,7 @@ impl TodoTxtState {
                 .flex()
                 .justify_center()
                 .items_center()
+                .tab_index(0)
                 .child(
                     Icon::new(IconName::Check)
                         .size_3()
@@ -1104,6 +1107,7 @@ impl TodoTxtState {
                 .flex()
                 .justify_center()
                 .items_center()
+                .tab_index(0)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.toggle_complete(fi, cx);
                 }))
@@ -1154,9 +1158,40 @@ impl TodoTxtState {
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
+                .tab_index(0)
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.priority_picker_open = Some(fi);
                     cx.notify();
+                }))
+                .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _window, cx| {
+                    let current = this.todo.list().get(fi).and_then(|t| t.priority);
+                    let priorities: [Option<char>; 6] =
+                        [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
+                    let current_idx = current
+                        .map(|p| {
+                            priorities
+                                .iter()
+                                .position(|&x| x == Some(p.as_char()))
+                                .unwrap_or(0)
+                        })
+                        .unwrap_or(0);
+                    let new_idx = match event.keystroke.key.as_str() {
+                        "up" => {
+                            if current_idx == 0 {
+                                priorities.len() - 1
+                            } else {
+                                current_idx - 1
+                            }
+                        }
+                        "down" => (current_idx + 1) % priorities.len(),
+                        _ => return,
+                    };
+                    let new_priority = priorities[new_idx];
+                    let value = match new_priority {
+                        Some(c) => format!("({c})"),
+                        None => String::new(),
+                    };
+                    this.commit_priority(fi, &value, cx);
                 }));
 
             if task.priority.is_none() {
@@ -1328,12 +1363,12 @@ impl TodoTxtState {
         let content =
             move |_: &mut PopoverState, _window: &mut Window, cx: &mut Context<PopoverState>| {
                 let options: [(Option<Priority>, &str); 6] = [
+                    (None, "×"),
                     (Some(Priority('A')), "A"),
                     (Some(Priority('B')), "B"),
                     (Some(Priority('C')), "C"),
                     (Some(Priority('D')), "D"),
                     (Some(Priority('E')), "E"),
-                    (None, "×"),
                 ];
                 let mut menu = v_flex().py_1().min_w(px(80.0));
 
