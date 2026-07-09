@@ -1313,6 +1313,9 @@ impl TodoTxtState {
                     .child(desc_input)
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
+                            "enter" => {
+                                this.toggle_complete(fi, cx);
+                            }
                             "up" => {
                                 let visible = this.visible_tasks();
                                 if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
