@@ -925,6 +925,11 @@ impl TodoTxtState {
                     .id("todo-add-btn")
                     .cursor_pointer()
                     .flex_shrink_0()
+                    .tab_index(0)
+                    .rounded(px(TODO_PILL_RADIUS))
+                    .border_1()
+                    .border_color(gpui::transparent_black())
+                    .focus_visible(|s| s.border_color(cx.theme().ring))
                     .child(Icon::new(IconName::Plus).size_4())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.new_task_input.focus_handle(cx).focus(window, cx);
@@ -940,7 +945,9 @@ impl TodoTxtState {
                     .flex_shrink_0()
                     .tab_index(0)
                     .rounded(px(TODO_PILL_RADIUS))
-                    .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded(px(TODO_PILL_RADIUS)))
+                    .border_1()
+                    .border_color(gpui::transparent_black())
+                    .focus_visible(|s| s.border_color(cx.theme().ring))
                     .child(sort_icon)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sort_desc = !this.sort_desc;
