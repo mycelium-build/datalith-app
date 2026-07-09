@@ -343,6 +343,7 @@ impl TodoTxtEditor {
                 expanded,
                 selected: None,
                 priority_picker_open: None,
+                pending_focus_desc: None,
                 parse_errors,
                 search_input,
                 filter_select,
@@ -383,6 +384,7 @@ pub(crate) struct TodoTxtState {
     expanded: HashSet<usize>,
     selected: Option<usize>,
     priority_picker_open: Option<usize>,
+    pending_focus_desc: Option<usize>,
     parse_errors: Vec<String>,
     search_input: Entity<InputState>,
     filter_select: Entity<SelectState<Vec<String>>>,
@@ -569,6 +571,7 @@ impl TodoTxtState {
                 }
             }
             self.clear_row_inputs();
+            self.pending_focus_desc = Some(insert_at);
         }
         self.refresh_item_sizes();
         cx.notify();
@@ -867,6 +870,12 @@ impl Render for TodoTxtState {
                 let (ref desc, ref date_str, _) = task_data[flat_index];
                 let ds = date_str.clone().unwrap_or_default();
                 self.ensure_row_inputs(flat_index, desc, &ds, window, cx);
+            }
+        }
+
+        if let Some(focus_idx) = self.pending_focus_desc.take() {
+            if let Some(e) = self.desc_inputs.get(&focus_idx) {
+                e.focus_handle(cx).focus(window, cx);
             }
         }
 
@@ -1313,6 +1322,9 @@ impl TodoTxtState {
                     .child(desc_input)
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
+                            "enter" if event.keystroke.modifiers.shift => {
+                                this.add_subtask(fi, cx);
+                            }
                             "enter" => {
                                 this.toggle_complete(fi, cx);
                             }
