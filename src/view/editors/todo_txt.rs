@@ -344,6 +344,7 @@ impl TodoTxtEditor {
                 selected: None,
                 priority_picker_open: None,
                 pending_focus_desc: None,
+                pending_focus_search: false,
                 parse_errors,
                 search_input,
                 filter_select,
@@ -385,6 +386,7 @@ pub(crate) struct TodoTxtState {
     selected: Option<usize>,
     priority_picker_open: Option<usize>,
     pending_focus_desc: Option<usize>,
+    pending_focus_search: bool,
     parse_errors: Vec<String>,
     search_input: Entity<InputState>,
     filter_select: Entity<SelectState<Vec<String>>>,
@@ -524,34 +526,6 @@ impl TodoTxtState {
         cx.notify();
     }
 
-    fn delete_task(&mut self, index: usize, cx: &mut Context<Self>) {
-        let old_len = self.todo.list().len();
-        let _ = self.todo.remove([index as i64]);
-        let new_len = self.todo.list().len();
-        let removed = old_len.saturating_sub(new_len);
-
-        let old = std::mem::take(&mut self.expanded);
-        for idx in old {
-            if idx < index {
-                self.expanded.insert(idx);
-            } else if idx >= index + removed {
-                self.expanded.insert(idx - removed);
-            }
-        }
-
-        self.clear_row_inputs();
-        if let Some(sel) = self.selected {
-            let len = self.todo.list().len();
-            if sel >= len && len > 0 {
-                self.selected = Some(len - 1);
-            } else if sel >= index + removed {
-                self.selected = Some(sel - removed);
-            }
-        }
-        self.refresh_item_sizes();
-        cx.notify();
-    }
-
     fn add_subtask(&mut self, parent_index: usize, cx: &mut Context<Self>) {
         let flat = self.todo.list();
         if let Some(parent) = flat.get(parent_index) {
@@ -572,6 +546,41 @@ impl TodoTxtState {
             }
             self.clear_row_inputs();
             self.pending_focus_desc = Some(insert_at);
+        }
+        self.refresh_item_sizes();
+        cx.notify();
+    }
+
+    fn delete_task(&mut self, index: usize, cx: &mut Context<Self>) {
+        let old_len = self.todo.list().len();
+        let _ = self.todo.remove([index as i64]);
+        let new_len = self.todo.list().len();
+        let removed = old_len.saturating_sub(new_len);
+
+        let old = std::mem::take(&mut self.expanded);
+        for idx in old {
+            if idx < index {
+                self.expanded.insert(idx);
+            } else if idx >= index + removed {
+                self.expanded.insert(idx - removed);
+            }
+        }
+
+        self.clear_row_inputs();
+        if index > 0 && self.todo.list().len() > 0 {
+            self.pending_focus_desc = Some(index - 1);
+        } else if self.todo.list().is_empty() {
+            self.pending_focus_search = true;
+        } else {
+            self.pending_focus_desc = Some(0);
+        }
+        if let Some(sel) = self.selected {
+            let len = self.todo.list().len();
+            if sel >= len && len > 0 {
+                self.selected = Some(len - 1);
+            } else if sel >= index + removed {
+                self.selected = Some(sel - removed);
+            }
         }
         self.refresh_item_sizes();
         cx.notify();
@@ -877,6 +886,10 @@ impl Render for TodoTxtState {
             if let Some(e) = self.desc_inputs.get(&focus_idx) {
                 e.focus_handle(cx).focus(window, cx);
             }
+        }
+        if self.pending_focus_search {
+            self.pending_focus_search = false;
+            self.search_input.focus_handle(cx).focus(window, cx);
         }
 
         let header = self.render_header(cx);
