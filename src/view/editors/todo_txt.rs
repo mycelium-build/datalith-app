@@ -952,6 +952,8 @@ impl TodoTxtState {
                             if let Some(e) = this.desc_inputs.get(&first_fi) {
                                 e.focus_handle(cx).focus(window, cx);
                             }
+                        } else {
+                            this.new_task_input.focus_handle(cx).focus(window, cx);
                         }
                     }
                 })))
@@ -1547,6 +1549,8 @@ impl TodoTxtState {
                                     if let Some(e) = this.desc_inputs.get(&last_fi) {
                                         e.focus_handle(cx).focus(window, cx);
                                     }
+                                } else {
+                                    this.search_input.focus_handle(cx).focus(window, cx);
                                 }
                             }
                             _ => {}
