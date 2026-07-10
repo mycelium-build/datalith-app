@@ -1330,6 +1330,9 @@ impl TodoTxtState {
                             "enter" => {
                                 this.toggle_complete(fi, cx);
                             }
+                            "backspace" if event.keystroke.modifiers.shift && event.keystroke.modifiers.secondary() => {
+                                this.delete_task(fi, cx);
+                            }
                             "up" => {
                                 let visible = this.visible_tasks();
                                 if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
