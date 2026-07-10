@@ -8,8 +8,9 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::popover::{Popover, PopoverState};
 use gpui_component::select::{Select, SelectEvent, SelectState};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, IndexPath, Selectable, VirtualListScrollHandle, h_flex, v_flex,
-    v_virtual_list,
+    ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable, VirtualListScrollHandle,
+    button::{Button, ButtonVariants as _},
+    h_flex, v_flex, v_virtual_list,
 };
 use txtodo::{
     Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
@@ -959,17 +960,10 @@ impl TodoTxtState {
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
-                div()
-                    .id("todo-add-btn")
+                Button::new("todo-add-btn")
+                    .ghost()
+                    .icon(IconName::Plus)
                     .mr_1()
-                    .cursor_pointer()
-                    .flex_shrink_0()
-                    .tab_index(0)
-                    .rounded(px(TODO_PILL_RADIUS))
-                    .border_1()
-                    .border_color(gpui::transparent_black())
-                    .focus_visible(|s| s.border_color(cx.theme().ring))
-                    .child(Icon::new(IconName::Plus).size_4())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.new_task_input.focus_handle(cx).focus(window, cx);
                     })),
@@ -1008,16 +1002,9 @@ impl TodoTxtState {
             )
             .child(div().ml_1().flex_shrink_0().w(px(120.0)).child(sort_select))
             .child(
-                div()
-                    .id("todo-sort-dir")
-                    .cursor_pointer()
-                    .flex_shrink_0()
-                    .tab_index(0)
-                    .rounded(px(TODO_PILL_RADIUS))
-                    .border_1()
-                    .border_color(gpui::transparent_black())
-                    .focus_visible(|s| s.border_color(cx.theme().ring))
-                    .child(sort_icon)
+                Button::new("todo-sort-dir")
+                    .ghost()
+                    .icon(sort_icon)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sort_desc = !this.sort_desc;
                         this.refresh_item_sizes();
@@ -1144,19 +1131,10 @@ impl TodoTxtState {
                 IconName::ChevronRight
             };
             row = row.child(
-                div()
-                    .id(ElementId::NamedInteger("todo-expand".into(), fi as u64))
-                    .flex_shrink_0()
-                    .w(px(TODO_COL_EXPAND))
-                    .justify_center()
-                    .cursor_pointer()
-                    .tab_index(0)
-                    .focus_visible(|s| {
-                        s.border_1()
-                            .border_color(cx.theme().ring)
-                            .rounded(px(TODO_PILL_RADIUS))
-                    })
-                    .child(Icon::new(arrow_icon).size_3())
+                Button::new(ElementId::NamedInteger("todo-expand".into(), fi as u64))
+                    .ghost()
+                    .xsmall()
+                    .icon(arrow_icon)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.toggle_expand(fi, cx);
                     })),
@@ -1169,40 +1147,22 @@ impl TodoTxtState {
         let completed = task.completed;
         let fi = flat_index;
         let checkbox = if completed {
-            div()
-                .id(ElementId::NamedInteger("todo-check".into(), fi as u64))
-                .flex_shrink_0()
-                .w(px(TODO_COL_CHECK))
-                .h(px(TODO_COL_CHECK))
+            Button::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
+                .ghost()
+                .xsmall()
                 .rounded_sm()
                 .bg(cx.theme().accent)
-                .flex()
-                .justify_center()
-                .items_center()
-                .tab_index(0)
-                .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded_sm())
-                .child(
-                    Icon::new(IconName::Check)
-                        .size_3()
-                        .text_color(cx.theme().accent_foreground),
-                )
+                .icon(Icon::new(IconName::Check).text_color(cx.theme().accent_foreground))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.toggle_complete(fi, cx);
                 }))
         } else {
-            div()
-                .id(ElementId::NamedInteger("todo-check".into(), fi as u64))
-                .flex_shrink_0()
-                .w(px(TODO_COL_CHECK))
-                .h(px(TODO_COL_CHECK))
+            Button::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
+                .ghost()
+                .xsmall()
+                .outline()
                 .rounded_sm()
-                .border_1()
                 .border_color(cx.theme().muted_foreground.opacity(0.4))
-                .flex()
-                .justify_center()
-                .items_center()
-                .tab_index(0)
-                .focus_visible(|s| s.border_1().border_color(cx.theme().ring).rounded_sm())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.toggle_complete(fi, cx);
                 }))
