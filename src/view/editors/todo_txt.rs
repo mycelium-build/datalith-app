@@ -8,13 +8,15 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::popover::{Popover, PopoverState};
 use gpui_component::select::{Select, SelectEvent, SelectState};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable, VirtualListScrollHandle, h_flex,
-    v_flex, v_virtual_list,
+    ActiveTheme, Icon, IconName, IndexPath, Selectable, VirtualListScrollHandle, h_flex, v_flex,
+    v_virtual_list,
 };
 use txtodo::{
     Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
     TodoOptions, TodoTxt, TodoTxtParser,
 };
+
+use crate::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 
 const TODO_ROW_HEIGHT: f32 = 32.0;
 const TODO_HEADER_HEIGHT: f32 = 40.0;
@@ -80,6 +82,8 @@ enum SortKind {
     Priority,
     DateCreated,
     Description,
+    Project,
+    Context,
 }
 
 impl SortKind {
@@ -87,6 +91,8 @@ impl SortKind {
         SortKind::Priority,
         SortKind::DateCreated,
         SortKind::Description,
+        SortKind::Project,
+        SortKind::Context,
     ];
 
     fn label(self) -> &'static str {
@@ -94,6 +100,8 @@ impl SortKind {
             SortKind::Priority => "Priority",
             SortKind::DateCreated => "Date",
             SortKind::Description => "Description",
+            SortKind::Project => "Project",
+            SortKind::Context => "Context",
         }
     }
 
@@ -111,6 +119,8 @@ impl SortKind {
             SortKind::Priority => TaskSorts::by_priority(dir),
             SortKind::DateCreated => TaskSorts::by_date_created(dir),
             SortKind::Description => TaskSorts::by_description(dir),
+            SortKind::Project => TaskSorts::by_project(dir),
+            SortKind::Context => TaskSorts::by_context(dir),
         }
     }
 }
@@ -925,13 +935,17 @@ impl Render for TodoTxtState {
 impl TodoTxtState {
     fn render_header(&self, cx: &mut Context<Self>) -> AnyElement {
         let search = Input::new(&self.search_input).cleanable(true);
-        let filter_select = Select::new(&self.filter_select).small();
-        let sort_select = Select::new(&self.sort_select).small();
+        let filter_select = Select::new(&self.filter_select);
+        let sort_select = Select::new(&self.sort_select);
 
         let sort_icon = if self.sort_desc {
-            Icon::new(IconName::ChevronDown).size_3()
+            Icon::default()
+                .path(SharedString::from(ARROW_DOWN_AZ_ICON))
+                .size_4()
         } else {
-            Icon::new(IconName::ChevronUp).size_3()
+            Icon::default()
+                .path(SharedString::from(ARROW_UP_AZ_ICON))
+                .size_4()
         };
 
         h_flex()
@@ -945,6 +959,7 @@ impl TodoTxtState {
             .child(
                 div()
                     .id("todo-add-btn")
+                    .mr_1()
                     .cursor_pointer()
                     .flex_shrink_0()
                     .tab_index(0)
@@ -957,21 +972,39 @@ impl TodoTxtState {
                         this.new_task_input.focus_handle(cx).focus(window, cx);
                     })),
             )
-            .child(div().flex_1().min_w(px(100.0)).child(search)
-                .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                    if event.keystroke.key == "down" {
-                        let visible = this.visible_tasks();
-                        if let Some(&(first_fi, _)) = visible.first() {
-                            if let Some(e) = this.desc_inputs.get(&first_fi) {
-                                e.focus_handle(cx).focus(window, cx);
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(100.0))
+                    .child(search)
+                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                        if event.keystroke.key == "down" {
+                            let visible = this.visible_tasks();
+                            if let Some(&(first_fi, _)) = visible.first() {
+                                if let Some(e) = this.desc_inputs.get(&first_fi) {
+                                    e.focus_handle(cx).focus(window, cx);
+                                }
+                            } else {
+                                this.new_task_input.focus_handle(cx).focus(window, cx);
                             }
-                        } else {
-                            this.new_task_input.focus_handle(cx).focus(window, cx);
                         }
-                    }
-                })))
-            .child(div().flex_shrink_0().w(px(90.0)).child(filter_select))
-            .child(div().flex_shrink_0().w(px(100.0)).child(sort_select))
+                    })),
+            )
+            .child(
+                h_flex()
+                    .items_center()
+                    .ml_4()
+                    .gap_0p5()
+                    .flex_shrink_0()
+                    .child(
+                        Icon::default()
+                            .path(SharedString::from(FUNNEL_ICON))
+                            .size_4()
+                            .text_color(cx.theme().muted_foreground),
+                    )
+                    .child(div().w(px(120.0)).child(filter_select)),
+            )
+            .child(div().ml_1().flex_shrink_0().w(px(120.0)).child(sort_select))
             .child(
                 div()
                     .id("todo-sort-dir")
@@ -1343,7 +1376,10 @@ impl TodoTxtState {
                             "enter" => {
                                 this.toggle_complete(fi, cx);
                             }
-                            "backspace" if event.keystroke.modifiers.shift && event.keystroke.modifiers.secondary() => {
+                            "backspace"
+                                if event.keystroke.modifiers.shift
+                                    && event.keystroke.modifiers.secondary() =>
+                            {
                                 this.delete_task(fi, cx);
                             }
                             "up" => {
