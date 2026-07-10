@@ -425,9 +425,30 @@ impl TodoTxtState {
         let query = self.search_query.to_lowercase();
         let filter_fn = self.filter.to_filter();
 
+        let n = flat.len();
+        let mut subtree_match = vec![false; n];
+        for i in (0..n).rev() {
+            let task = &flat[i];
+            let self_match = filter_fn.as_ref().map_or(true, |f| f(task))
+                && (query.is_empty() || matches_task(task, &query));
+            let child_match = {
+                let mut c = false;
+                for j in (i + 1)..n {
+                    if flat[j].indent_level <= task.indent_level {
+                        break;
+                    }
+                    if flat[j].indent_level == task.indent_level + 1 && subtree_match[j] {
+                        c = true;
+                        break;
+                    }
+                }
+                c
+            };
+            subtree_match[i] = self_match || child_match;
+        }
+
         let mut visible_indices: Vec<usize> = Vec::new();
         let mut collapsed_depth: Option<usize> = None;
-        let mut skip_depth: Option<usize> = None;
 
         for (i, task) in flat.iter().enumerate() {
             if let Some(depth) = collapsed_depth {
@@ -437,20 +458,7 @@ impl TodoTxtState {
                 collapsed_depth = None;
             }
 
-            if let Some(depth) = skip_depth {
-                if task.indent_level > depth {
-                    continue;
-                }
-                skip_depth = None;
-            }
-
-            let passes_filter = filter_fn.as_ref().map_or(true, |f| f(task));
-            let passes_search = query.is_empty() || matches_task(task, &query);
-
-            if !passes_filter || !passes_search {
-                if !task.subtasks.is_empty() {
-                    skip_depth = Some(task.indent_level);
-                }
+            if !subtree_match[i] {
                 continue;
             }
 
@@ -637,10 +645,8 @@ impl TodoTxtState {
             if let Some(p) = task.priority {
                 prefix_parts.push(format!("({})", p.as_char()));
             }
-            if !task.completed {
-                if let Some(d) = task.creation_date {
-                    prefix_parts.push(d.to_string());
-                }
+            if let Some(d) = task.creation_date {
+                prefix_parts.push(d.to_string());
             }
             prefix_parts.push(value.to_string());
             let raw_line = prefix_parts.join(" ");
@@ -699,12 +705,10 @@ impl TodoTxtState {
             if let Some(p) = task.priority {
                 prefix_parts.push(format!("({})", p.as_char()));
             }
-            if !task.completed {
-                if let Some(d) = date {
-                    prefix_parts.push(d.to_string());
-                } else if let Some(d) = task.creation_date {
-                    prefix_parts.push(d.to_string());
-                }
+            if let Some(d) = date {
+                prefix_parts.push(d.to_string());
+            } else if let Some(d) = task.creation_date {
+                prefix_parts.push(d.to_string());
             }
             prefix_parts.push(task.description.clone());
             let raw_line = prefix_parts.join(" ");
@@ -764,10 +768,8 @@ impl TodoTxtState {
             if let Some(p) = priority {
                 prefix_parts.push(format!("({})", p.as_char()));
             }
-            if !task.completed {
-                if let Some(d) = task.creation_date {
-                    prefix_parts.push(d.to_string());
-                }
+            if let Some(d) = task.creation_date {
+                prefix_parts.push(d.to_string());
             }
             prefix_parts.push(task.description.clone());
             let raw_line = prefix_parts.join(" ");
