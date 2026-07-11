@@ -30,6 +30,8 @@ const TODO_COL_EXPAND: f32 = 24.0;
 const TODO_COL_CHECK: f32 = 24.0;
 const TODO_COL_PRIORITY: f32 = 56.0;
 const TODO_COL_DATE: f32 = 90.0;
+const PRIORITY_VALUES: [Option<char>; 6] =
+    [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FilterKind {
@@ -181,21 +183,21 @@ impl RenderOnce for PriorityTrigger {
                 }
                 let _ = app.update_entity(&editor, |this, cx| {
                     let current = this.todo.list().get(task_index).and_then(|t| t.priority);
-                    let priorities: [Option<char>; 6] =
-                        [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
                     let current_idx = current
                         .and_then(|p| {
-                            priorities
+                            PRIORITY_VALUES
                                 .iter()
                                 .position(|&item| item == Some(p.as_char()))
                         })
                         .unwrap_or(0);
                     let new_idx = if key == "up" {
-                        current_idx.checked_sub(1).unwrap_or(priorities.len() - 1)
+                        current_idx
+                            .checked_sub(1)
+                            .unwrap_or(PRIORITY_VALUES.len() - 1)
                     } else {
-                        (current_idx + 1) % priorities.len()
+                        (current_idx + 1) % PRIORITY_VALUES.len()
                     };
-                    let value = priorities[new_idx]
+                    let value = PRIORITY_VALUES[new_idx]
                         .map(|priority| format!("({priority})"))
                         .unwrap_or_default();
                     this.commit_priority(task_index, &value, cx);
@@ -354,22 +356,7 @@ impl TodoTxtEditor {
                 window,
                 |this: &mut TodoTxtState, _input, event, window, cx| {
                     if let InputEvent::PressEnter { .. } = event {
-                        let value = this.new_task_input.read(cx).value();
-                        let trimmed = value.trim().to_string();
-                        if !trimmed.is_empty() {
-                            let today = today_string();
-                            let line = format!("{today} {trimmed}");
-                            if let Err(e) = this.todo.add(line) {
-                                this.parse_errors.push(format!("Add task failed: {e}"));
-                            }
-                            let _ = this.todo.save(None);
-                            this.clear_row_inputs();
-                            this.refresh_item_sizes();
-                            cx.notify();
-                        }
-                        this.new_task_input.update(cx, |state, cx| {
-                            state.set_value("", window, cx);
-                        });
+                        this.add_task(window, cx);
                     }
                 },
             ));
@@ -461,6 +448,23 @@ impl Focusable for TodoTxtState {
 }
 
 impl TodoTxtState {
+    fn add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.new_task_input.read(cx).value();
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let line = format!("{} {trimmed}", today_string());
+            if let Err(error) = self.todo.add(line) {
+                self.parse_errors.push(format!("Add task failed: {error}"));
+            }
+            let _ = self.todo.save(None);
+            self.clear_row_inputs();
+            self.refresh_item_sizes();
+            cx.notify();
+        }
+        self.new_task_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+    }
+
     fn visible_tasks(&self) -> Vec<(usize, bool)> {
         let flat = self.todo.list();
         let query = self.search_query.to_lowercase();
@@ -676,50 +680,8 @@ impl TodoTxtState {
     fn commit_description(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
         let flat = self.todo.list();
         if let Some(task) = flat.get(index) {
-            let mut prefix_parts: Vec<String> = Vec::new();
-            if task.completed {
-                prefix_parts.push("x".to_string());
-                if let Some(d) = task.completion_date {
-                    prefix_parts.push(d.to_string());
-                }
-            }
-            if let Some(p) = task.priority {
-                prefix_parts.push(format!("({})", p.as_char()));
-            }
-            if let Some(d) = task.creation_date {
-                prefix_parts.push(d.to_string());
-            }
-            prefix_parts.push(value.to_string());
-            let raw_line = prefix_parts.join(" ");
-
-            let parser = TodoTxtParser::new();
-            match parser.parse_line(&raw_line) {
-                Ok(parsed) => {
-                    self.update_task_field(
-                        index,
-                        TaskPatch {
-                            raw: Some(raw_line),
-                            description: Some(parsed.description),
-                            projects: Some(parsed.projects),
-                            contexts: Some(parsed.contexts),
-                            extensions: Some(parsed.extensions),
-                            ..Default::default()
-                        },
-                        cx,
-                    );
-                }
-                Err(_) => {
-                    self.update_task_field(
-                        index,
-                        TaskPatch {
-                            raw: Some(raw_line),
-                            description: Some(value.to_string()),
-                            ..Default::default()
-                        },
-                        cx,
-                    );
-                }
-            }
+            let raw = rebuild_task_line(task, task.priority, task.creation_date, value);
+            self.update_task_field(index, patch_from_raw(raw, value), cx);
         } else {
             self.update_task_field(
                 index,
@@ -736,49 +698,11 @@ impl TodoTxtState {
         let date = parse_date(value);
         let flat = self.todo.list();
         if let Some(task) = flat.get(index) {
-            let mut prefix_parts: Vec<String> = Vec::new();
-            if task.completed {
-                prefix_parts.push("x".to_string());
-                if let Some(d) = task.completion_date {
-                    prefix_parts.push(d.to_string());
-                }
-            }
-            if let Some(p) = task.priority {
-                prefix_parts.push(format!("({})", p.as_char()));
-            }
-            if let Some(d) = date {
-                prefix_parts.push(d.to_string());
-            } else if let Some(d) = task.creation_date {
-                prefix_parts.push(d.to_string());
-            }
-            prefix_parts.push(task.description.clone());
-            let raw_line = prefix_parts.join(" ");
-
-            let parser = TodoTxtParser::new();
-            if let Ok(parsed) = parser.parse_line(&raw_line) {
-                self.update_task_field(
-                    index,
-                    TaskPatch {
-                        raw: Some(raw_line),
-                        creation_date: Some(date),
-                        description: Some(parsed.description),
-                        projects: Some(parsed.projects),
-                        contexts: Some(parsed.contexts),
-                        extensions: Some(parsed.extensions),
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            } else {
-                self.update_task_field(
-                    index,
-                    TaskPatch {
-                        creation_date: Some(date),
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            }
+            let effective_date = date.or(task.creation_date);
+            let raw = rebuild_task_line(task, task.priority, effective_date, &task.description);
+            let mut patch = patch_from_raw(raw, &task.description);
+            patch.creation_date = Some(date);
+            self.update_task_field(index, patch, cx);
         } else {
             self.update_task_field(
                 index,
@@ -799,47 +723,10 @@ impl TodoTxtState {
         };
         let flat = self.todo.list();
         if let Some(task) = flat.get(index) {
-            let mut prefix_parts: Vec<String> = Vec::new();
-            if task.completed {
-                prefix_parts.push("x".to_string());
-                if let Some(d) = task.completion_date {
-                    prefix_parts.push(d.to_string());
-                }
-            }
-            if let Some(p) = priority {
-                prefix_parts.push(format!("({})", p.as_char()));
-            }
-            if let Some(d) = task.creation_date {
-                prefix_parts.push(d.to_string());
-            }
-            prefix_parts.push(task.description.clone());
-            let raw_line = prefix_parts.join(" ");
-
-            let parser = TodoTxtParser::new();
-            if let Ok(parsed) = parser.parse_line(&raw_line) {
-                self.update_task_field(
-                    index,
-                    TaskPatch {
-                        raw: Some(raw_line),
-                        priority: Some(priority),
-                        description: Some(parsed.description),
-                        projects: Some(parsed.projects),
-                        contexts: Some(parsed.contexts),
-                        extensions: Some(parsed.extensions),
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            } else {
-                self.update_task_field(
-                    index,
-                    TaskPatch {
-                        priority: Some(priority),
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            }
+            let raw = rebuild_task_line(task, priority, task.creation_date, &task.description);
+            let mut patch = patch_from_raw(raw, &task.description);
+            patch.priority = Some(priority);
+            self.update_task_field(index, patch, cx);
         } else {
             self.update_task_field(
                 index,
@@ -1167,13 +1054,21 @@ impl TodoTxtState {
                 IconName::ChevronRight
             };
             row = row.child(
-                Button::new(ElementId::NamedInteger("todo-expand".into(), fi as u64))
-                    .ghost()
-                    .xsmall()
-                    .icon(arrow_icon)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_expand(fi, cx);
-                    })),
+                div()
+                    .flex_shrink_0()
+                    .w(px(TODO_COL_EXPAND))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Button::new(ElementId::NamedInteger("todo-expand".into(), fi as u64))
+                            .ghost()
+                            .xsmall()
+                            .icon(arrow_icon)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_expand(fi, cx);
+                            })),
+                    ),
             );
         } else {
             row = row.child(div().flex_shrink_0().w(px(TODO_COL_EXPAND)));
@@ -1378,17 +1273,11 @@ impl TodoTxtState {
         let content_entity = entity.clone();
         let content =
             move |_: &mut PopoverState, _window: &mut Window, cx: &mut Context<PopoverState>| {
-                let options: [(Option<Priority>, &str); 6] = [
-                    (None, "×"),
-                    (Some(Priority('A')), "A"),
-                    (Some(Priority('B')), "B"),
-                    (Some(Priority('C')), "C"),
-                    (Some(Priority('D')), "D"),
-                    (Some(Priority('E')), "E"),
-                ];
                 let mut menu = v_flex().py_1().min_w(px(80.0));
 
-                for (pri, label) in &options {
+                for value in PRIORITY_VALUES {
+                    let pri = value.map(Priority);
+                    let label = value.map_or_else(|| "×".to_string(), |value| value.to_string());
                     let color = match pri {
                         Some(p) => priority_color(p.as_char()),
                         None => cx.theme().muted_foreground,
@@ -1407,7 +1296,7 @@ impl TodoTxtState {
                             .hover(|s| s.bg(cx.theme().accent.opacity(0.1)))
                             .text_sm()
                             .text_color(color)
-                            .child(*label)
+                            .child(label)
                             .on_click(move |_, window, app| {
                                 let value = match pri_char {
                                     Some(c) => format!("({c})"),
@@ -1462,21 +1351,7 @@ impl TodoTxtState {
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
                             "enter" if !event.keystroke.modifiers.secondary() => {
-                                let value = this.new_task_input.read(cx).value();
-                                let trimmed = value.trim().to_string();
-                                if !trimmed.is_empty() {
-                                    let today = today_string();
-                                    let line = format!("{today} {trimmed}");
-                                    if let Err(e) = this.todo.add(line) {
-                                        this.parse_errors.push(format!("Add task failed: {e}"));
-                                    }
-                                    let _ = this.todo.save(None);
-                                    this.refresh_item_sizes();
-                                    cx.notify();
-                                }
-                                this.new_task_input.update(cx, |state, cx| {
-                                    state.set_value("", window, cx);
-                                });
+                                this.add_task(window, cx);
                             }
                             "up" => {
                                 let visible = this.visible_tasks();
@@ -1501,6 +1376,47 @@ impl TodoTxtState {
 fn today_string() -> String {
     let now = time::OffsetDateTime::now_utc();
     now.date().to_string()
+}
+
+fn rebuild_task_line(
+    task: &Task,
+    priority: Option<Priority>,
+    creation_date: Option<time::Date>,
+    description: &str,
+) -> String {
+    let mut parts = Vec::new();
+    if task.completed {
+        parts.push("x".to_string());
+        if let Some(date) = task.completion_date {
+            parts.push(date.to_string());
+        }
+    }
+    if let Some(priority) = priority {
+        parts.push(format!("({})", priority.as_char()));
+    }
+    if let Some(date) = creation_date {
+        parts.push(date.to_string());
+    }
+    parts.push(description.to_string());
+    parts.join(" ")
+}
+
+fn patch_from_raw(raw: String, fallback_description: &str) -> TaskPatch {
+    match TodoTxtParser::new().parse_line(&raw) {
+        Ok(parsed) => TaskPatch {
+            raw: Some(raw),
+            description: Some(parsed.description),
+            projects: Some(parsed.projects),
+            contexts: Some(parsed.contexts),
+            extensions: Some(parsed.extensions),
+            ..Default::default()
+        },
+        Err(_) => TaskPatch {
+            raw: Some(raw),
+            description: Some(fallback_description.to_string()),
+            ..Default::default()
+        },
+    }
 }
 
 fn matches_task(task: &Task, query: &str) -> bool {
