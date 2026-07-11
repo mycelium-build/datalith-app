@@ -1147,18 +1147,12 @@ impl TodoTxtState {
         // Checkbox
         let completed = task.completed;
         let fi = flat_index;
-        let checkbox = Checkbox::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
-            .checked(completed)
-            .on_click(cx.listener(move |this, _checked, _window, cx| {
-                this.toggle_complete(fi, cx);
-            }));
         row = row.child(
-            checkbox
-                .flex_shrink_0()
-                .w(px(TODO_COL_CHECK))
-                .flex()
-                .items_center()
-                .justify_center(),
+            Checkbox::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
+                .checked(completed)
+                .on_click(cx.listener(move |this, _checked, _window, cx| {
+                    this.toggle_complete(fi, cx);
+                })),
         );
 
         // Priority (popover)
@@ -1191,7 +1185,6 @@ impl TodoTxtState {
             let mut cell = Button::new(ElementId::NamedInteger("todo-pri".into(), fi as u64))
                 .ghost()
                 .xsmall()
-                .flex_shrink_0()
                 .w(px(TODO_COL_PRIORITY))
                 .h(px(TODO_COL_CHECK))
                 .cursor_pointer()
