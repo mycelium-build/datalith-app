@@ -166,28 +166,35 @@ impl RenderOnce for PriorityTrigger {
             .flex()
             .items_center()
             .justify_center()
+            .rounded(px(TODO_PILL_RADIUS))
+            .text_sm()
             .cursor_pointer();
 
         if let Some(color) = color {
-            pill.child(
-                div()
-                    .w_full()
-                    .h(px(TODO_COL_CHECK))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .px(px(TODO_PILL_PADDING_H))
-                    .rounded(px(TODO_PILL_RADIUS))
-                    .bg(color.opacity(0.15))
-                    .text_color(color)
-                    .text_sm()
-                    .font_weight(FontWeight::BOLD)
-                    .child(label),
-            )
+            pill.bg(color.opacity(0.15))
+                .hover(|style| style.bg(color.opacity(0.25)))
+                .focus_visible(|style| {
+                    style
+                        .border(px(1.5))
+                        .border_color(cx.theme().ring.alpha(0.2))
+                })
+                .text_color(color)
+                .font_weight(FontWeight::BOLD)
+                .child(label)
         } else {
-            pill.rounded(px(TODO_PILL_RADIUS))
-                .border_1()
+            pill.border_1()
                 .border_color(cx.theme().muted_foreground.opacity(0.2))
+                .opacity(0.0)
+                .group("todo-row")
+                .when(true, |el| {
+                    el.group_hover("todo-row", |style| style.opacity(0.6))
+                })
+                .focus_visible(|style| {
+                    style
+                        .opacity(1.0)
+                        .border(px(1.5))
+                        .border_color(cx.theme().ring.alpha(0.2))
+                })
                 .child(
                     Icon::new(IconName::Plus)
                         .size_3()
@@ -1168,7 +1175,6 @@ impl TodoTxtState {
                 };
                 div()
                     .text_color(color)
-                    .text_sm()
                     .font_weight(FontWeight::BOLD)
                     .child(format!("({})", priority.as_char()))
                     .into_any()
@@ -1182,12 +1188,18 @@ impl TodoTxtState {
                     .into_any()
             };
 
-            let mut cell = Button::new(ElementId::NamedInteger("todo-pri".into(), fi as u64))
-                .ghost()
-                .xsmall()
+            let mut cell = div()
+                .id(ElementId::NamedInteger("todo-pri".into(), fi as u64))
+                .flex_shrink_0()
                 .w(px(TODO_COL_PRIORITY))
                 .h(px(TODO_COL_CHECK))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(TODO_PILL_RADIUS))
+                .text_sm()
                 .cursor_pointer()
+                .tab_index(0)
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.priority_picker_open = Some(fi);
                     cx.notify();
@@ -1229,7 +1241,14 @@ impl TodoTxtState {
                 } else {
                     priority_color(priority.as_char())
                 };
-                cell = cell.bg(color.opacity(0.15));
+                cell = cell
+                    .bg(color.opacity(0.15))
+                    .hover(|style| style.bg(color.opacity(0.25)))
+                    .focus_visible(|style| {
+                        style
+                            .border(px(1.5))
+                            .border_color(cx.theme().ring.alpha(0.2))
+                    });
             } else {
                 cell = cell
                     .rounded(px(TODO_PILL_RADIUS))
@@ -1240,7 +1259,12 @@ impl TodoTxtState {
                     .when(true, |el| {
                         el.group_hover("todo-row", |style| style.opacity(0.6))
                     })
-                    .focus_visible(|style| style.opacity(1.0));
+                    .focus_visible(|style| {
+                        style
+                            .opacity(1.0)
+                            .border(px(1.5))
+                            .border_color(cx.theme().ring.alpha(0.2))
+                    });
             }
 
             row = row.child(cell.child(content));
