@@ -103,6 +103,7 @@ impl MarkdownViewer {
         let mut current_line: Vec<AnyElement> = Vec::new();
         let mut paragraph_lines: Vec<AnyElement> = Vec::new();
         let mut in_paragraph = false;
+        let mut blockquote_depth = 0usize;
 
         let mut text_buffer = TextBuffer::new();
 
@@ -143,7 +144,11 @@ impl MarkdownViewer {
                         if text_buffer.is_whitespace_only() {
                             text_buffer.clear();
                         } else {
-                            flush_inline(&mut text_buffer, &mut current_list_item, &mut current_line);
+                            flush_inline(
+                                &mut text_buffer,
+                                &mut current_list_item,
+                                &mut current_line,
+                            );
                         }
                         current_link_url = Some(url);
                         current_link_text.clear();
@@ -189,7 +194,11 @@ impl MarkdownViewer {
                             paragraph_lines.push(wrap_line(&mut current_line));
                         }
                         if !paragraph_lines.is_empty() {
-                            elements.push(wrap_paragraph(&mut paragraph_lines));
+                            elements.push(wrap_paragraph(
+                                &mut paragraph_lines,
+                                blockquote_depth > 0,
+                                cx,
+                            ));
                         }
                         in_paragraph = false;
                     } else {
@@ -223,15 +232,7 @@ impl MarkdownViewer {
                             });
                         }
                         MarkdownBlock::BlockQuote => {
-                            elements.push(
-                                div()
-                                    .pl(px(MD_BLOCKQUOTE_PADDING))
-                                    .border_l(px(MD_BLOCKQUOTE_BORDER))
-                                    .border_color(cx.theme().border)
-                                    .text_color(cx.theme().muted_foreground)
-                                    .mb_2()
-                                    .into_any_element(),
-                            );
+                            blockquote_depth += 1;
                         }
                         MarkdownBlock::Code(code) => {
                             elements.push(
@@ -275,7 +276,11 @@ impl MarkdownViewer {
                                     paragraph_lines.push(wrap_line(&mut current_line));
                                 }
                                 if !paragraph_lines.is_empty() {
-                                    elements.push(wrap_paragraph(&mut paragraph_lines));
+                                    elements.push(wrap_paragraph(
+                                        &mut paragraph_lines,
+                                        blockquote_depth > 0,
+                                        cx,
+                                    ));
                                 }
                                 in_paragraph = false;
                                 elements.push(div().m_2().into_any_element());
@@ -285,9 +290,16 @@ impl MarkdownViewer {
                                     paragraph_lines.push(wrap_line(&mut current_line));
                                 }
                                 if !paragraph_lines.is_empty() {
-                                    elements.push(wrap_paragraph(&mut paragraph_lines));
+                                    elements.push(wrap_paragraph(
+                                        &mut paragraph_lines,
+                                        blockquote_depth > 0,
+                                        cx,
+                                    ));
                                 }
                                 elements.push(div().m_2().into_any_element());
+                            }
+                            MarkdownBlock::BlockQuote => {
+                                blockquote_depth = blockquote_depth.saturating_sub(1);
                             }
                             _ => {}
                         }
@@ -304,7 +316,11 @@ impl MarkdownViewer {
                         }
                     }
                     if in_paragraph && !paragraph_lines.is_empty() {
-                        elements.push(wrap_paragraph(&mut paragraph_lines));
+                        elements.push(wrap_paragraph(
+                            &mut paragraph_lines,
+                            blockquote_depth > 0,
+                            cx,
+                        ));
                         in_paragraph = false;
                     }
                     elements.push(self.render_image(&url, &alt, cx));
@@ -325,7 +341,11 @@ impl MarkdownViewer {
             }
         }
         if !paragraph_lines.is_empty() {
-            elements.push(wrap_paragraph(&mut paragraph_lines));
+            elements.push(wrap_paragraph(
+                &mut paragraph_lines,
+                blockquote_depth > 0,
+                cx,
+            ));
         }
 
         div()
@@ -536,12 +556,20 @@ fn wrap_line(current_line: &mut Vec<AnyElement>) -> AnyElement {
         .into_any_element()
 }
 
-fn wrap_paragraph(paragraph_lines: &mut Vec<AnyElement>) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .w_full()
-        .min_w_0()
+fn wrap_paragraph(
+    paragraph_lines: &mut Vec<AnyElement>,
+    is_blockquote: bool,
+    cx: &App,
+) -> AnyElement {
+    let mut paragraph = div().flex().flex_col().w_full().min_w_0();
+    if is_blockquote {
+        paragraph = paragraph
+            .pl(px(MD_BLOCKQUOTE_PADDING))
+            .border_l(px(MD_BLOCKQUOTE_BORDER))
+            .border_color(cx.theme().border)
+            .text_color(cx.theme().muted_foreground);
+    }
+    paragraph
         .children(paragraph_lines.drain(..))
         .into_any_element()
 }
