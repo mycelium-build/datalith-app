@@ -456,7 +456,6 @@ impl TodoTxtState {
             if let Err(error) = self.todo.add(line) {
                 self.parse_errors.push(format!("Add task failed: {error}"));
             }
-            let _ = self.todo.save(None);
             self.clear_row_inputs();
             self.refresh_item_sizes();
             cx.notify();
@@ -599,7 +598,6 @@ impl TodoTxtState {
             if let Err(e) = self.todo.insert(insert_at as i64, raw) {
                 self.parse_errors.push(format!("Add subtask failed: {e}"));
             }
-            let _ = self.todo.save(None);
             self.shift_expanded_after_insert(insert_at);
             self.expanded.insert(parent_index);
             if let Some(sel) = self.selected {
@@ -671,48 +669,40 @@ impl TodoTxtState {
         if let Err(e) = self.todo.update(index as i64, patch) {
             self.parse_errors.push(format!("Save failed: {e}"));
         }
-        let _ = self.todo.save(None);
         self.priority_picker_open = None;
         self.refresh_item_sizes();
         cx.notify();
     }
 
     fn commit_description(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
-        let flat = self.todo.list();
-        if let Some(task) = flat.get(index) {
-            let raw = rebuild_task_line(task, task.priority, task.creation_date, value);
-            self.update_task_field(index, patch_from_raw(raw, value), cx);
-        } else {
-            self.update_task_field(
-                index,
-                TaskPatch {
-                    description: Some(value.to_string()),
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
+        let parsed = TodoTxtParser::new().parse_line(value).ok();
+        self.update_task_field(
+            index,
+            TaskPatch {
+                description: Some(
+                    parsed
+                        .as_ref()
+                        .map_or_else(|| value.to_string(), |task| task.description.clone()),
+                ),
+                projects: parsed.as_ref().map(|task| task.projects.clone()),
+                contexts: parsed.as_ref().map(|task| task.contexts.clone()),
+                extensions: parsed.map(|task| task.extensions),
+                ..Default::default()
+            },
+            cx,
+        );
     }
 
     fn commit_date(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
         let date = parse_date(value);
-        let flat = self.todo.list();
-        if let Some(task) = flat.get(index) {
-            let effective_date = date.or(task.creation_date);
-            let raw = rebuild_task_line(task, task.priority, effective_date, &task.description);
-            let mut patch = patch_from_raw(raw, &task.description);
-            patch.creation_date = Some(date);
-            self.update_task_field(index, patch, cx);
-        } else {
-            self.update_task_field(
-                index,
-                TaskPatch {
-                    creation_date: Some(date),
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
+        self.update_task_field(
+            index,
+            TaskPatch {
+                creation_date: Some(date),
+                ..Default::default()
+            },
+            cx,
+        );
     }
 
     fn commit_priority(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
@@ -721,22 +711,14 @@ impl TodoTxtState {
         } else {
             Priority::from_token(value).ok()
         };
-        let flat = self.todo.list();
-        if let Some(task) = flat.get(index) {
-            let raw = rebuild_task_line(task, priority, task.creation_date, &task.description);
-            let mut patch = patch_from_raw(raw, &task.description);
-            patch.priority = Some(priority);
-            self.update_task_field(index, patch, cx);
-        } else {
-            self.update_task_field(
-                index,
-                TaskPatch {
-                    priority: Some(priority),
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
+        self.update_task_field(
+            index,
+            TaskPatch {
+                priority: Some(priority),
+                ..Default::default()
+            },
+            cx,
+        );
     }
 
     fn ensure_row_inputs(
@@ -1376,47 +1358,6 @@ impl TodoTxtState {
 fn today_string() -> String {
     let now = time::OffsetDateTime::now_utc();
     now.date().to_string()
-}
-
-fn rebuild_task_line(
-    task: &Task,
-    priority: Option<Priority>,
-    creation_date: Option<time::Date>,
-    description: &str,
-) -> String {
-    let mut parts = Vec::new();
-    if task.completed {
-        parts.push("x".to_string());
-        if let Some(date) = task.completion_date {
-            parts.push(date.to_string());
-        }
-    }
-    if let Some(priority) = priority {
-        parts.push(format!("({})", priority.as_char()));
-    }
-    if let Some(date) = creation_date {
-        parts.push(date.to_string());
-    }
-    parts.push(description.to_string());
-    parts.join(" ")
-}
-
-fn patch_from_raw(raw: String, fallback_description: &str) -> TaskPatch {
-    match TodoTxtParser::new().parse_line(&raw) {
-        Ok(parsed) => TaskPatch {
-            raw: Some(raw),
-            description: Some(parsed.description),
-            projects: Some(parsed.projects),
-            contexts: Some(parsed.contexts),
-            extensions: Some(parsed.extensions),
-            ..Default::default()
-        },
-        Err(_) => TaskPatch {
-            raw: Some(raw),
-            description: Some(fallback_description.to_string()),
-            ..Default::default()
-        },
-    }
 }
 
 fn matches_task(task: &Task, query: &str) -> bool {
