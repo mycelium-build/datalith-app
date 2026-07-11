@@ -1181,14 +1181,6 @@ impl TodoTxtState {
                     priority_color(priority.as_char())
                 };
                 div()
-                    .w_full()
-                    .h(px(TODO_COL_CHECK))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .px(px(TODO_PILL_PADDING_H))
-                    .rounded(px(TODO_PILL_RADIUS))
-                    .bg(color.opacity(0.15))
                     .text_color(color)
                     .text_sm()
                     .font_weight(FontWeight::BOLD)
@@ -1204,16 +1196,13 @@ impl TodoTxtState {
                     .into_any()
             };
 
-            let mut cell = div()
-                .id(ElementId::NamedInteger("todo-pri".into(), fi as u64))
+            let mut cell = Button::new(ElementId::NamedInteger("todo-pri".into(), fi as u64))
+                .ghost()
+                .xsmall()
                 .flex_shrink_0()
                 .w(px(TODO_COL_PRIORITY))
                 .h(px(TODO_COL_CHECK))
-                .flex()
-                .items_center()
-                .justify_center()
                 .cursor_pointer()
-                .tab_index(0)
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.priority_picker_open = Some(fi);
                     cx.notify();
@@ -1249,7 +1238,14 @@ impl TodoTxtState {
                     this.commit_priority(fi, &value, cx);
                 }));
 
-            if task.priority.is_none() {
+            if let Some(ref priority) = task.priority {
+                let color = if task.completed {
+                    cx.theme().muted_foreground
+                } else {
+                    priority_color(priority.as_char())
+                };
+                cell = cell.bg(color.opacity(0.15));
+            } else {
                 cell = cell
                     .rounded(px(TODO_PILL_RADIUS))
                     .border_1()
@@ -1259,18 +1255,7 @@ impl TodoTxtState {
                     .when(true, |el| {
                         el.group_hover("todo-row", |style| style.opacity(0.6))
                     })
-                    .focus_visible(|s| {
-                        s.border_1()
-                            .border_color(cx.theme().ring)
-                            .rounded(px(TODO_PILL_RADIUS))
-                            .opacity(1.0)
-                    });
-            } else {
-                cell = cell.focus_visible(|s| {
-                    s.border_1()
-                        .border_color(cx.theme().ring)
-                        .rounded(px(TODO_PILL_RADIUS))
-                });
+                    .focus_visible(|style| style.opacity(1.0));
             }
 
             row = row.child(cell.child(content));
