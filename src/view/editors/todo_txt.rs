@@ -130,6 +130,8 @@ impl SortKind {
 #[derive(IntoElement)]
 struct PriorityTrigger {
     id: ElementId,
+    editor: Entity<TodoTxtState>,
+    task_index: usize,
     current: Option<Priority>,
     completed: bool,
 }
@@ -158,6 +160,8 @@ impl RenderOnce for PriorityTrigger {
             .map(|p| format!("({})", p.as_char()))
             .unwrap_or_default();
 
+        let task_index = self.task_index;
+        let editor = self.editor;
         let pill = div()
             .id(self.id)
             .flex_shrink_0()
@@ -168,7 +172,35 @@ impl RenderOnce for PriorityTrigger {
             .justify_center()
             .rounded(px(TODO_PILL_RADIUS))
             .text_sm()
-            .cursor_pointer();
+            .cursor_pointer()
+            .tab_index(0)
+            .on_key_down(move |event: &KeyDownEvent, _window, app| {
+                let key = event.keystroke.key.as_str();
+                if key != "up" && key != "down" {
+                    return;
+                }
+                let _ = app.update_entity(&editor, |this, cx| {
+                    let current = this.todo.list().get(task_index).and_then(|t| t.priority);
+                    let priorities: [Option<char>; 6] =
+                        [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
+                    let current_idx = current
+                        .and_then(|p| {
+                            priorities
+                                .iter()
+                                .position(|&item| item == Some(p.as_char()))
+                        })
+                        .unwrap_or(0);
+                    let new_idx = if key == "up" {
+                        current_idx.checked_sub(1).unwrap_or(priorities.len() - 1)
+                    } else {
+                        (current_idx + 1) % priorities.len()
+                    };
+                    let value = priorities[new_idx]
+                        .map(|priority| format!("({priority})"))
+                        .unwrap_or_default();
+                    this.commit_priority(task_index, &value, cx);
+                });
+            });
 
         if let Some(color) = color {
             pill.bg(color.opacity(0.15))
@@ -1064,7 +1096,6 @@ impl TodoTxtState {
         let entity = cx.entity().clone();
         let sizes = self.item_sizes.clone();
         let selected = self.selected;
-        let priority_picker_open = self.priority_picker_open;
         let visible_owned = visible.to_vec();
 
         v_virtual_list(
@@ -1082,9 +1113,7 @@ impl TodoTxtState {
                         };
                         let depth = task.indent_level;
                         let is_selected = selected == Some(i);
-                        let is_pri_open = priority_picker_open == Some(flat_index);
-
-                        state.render_task_row(flat_index, task, depth, is_selected, is_pri_open, cx)
+                        state.render_task_row(flat_index, task, depth, is_selected, cx)
                     })
                     .collect()
             },
@@ -1100,7 +1129,6 @@ impl TodoTxtState {
         task: &Task,
         depth: usize,
         is_selected: bool,
-        is_pri_open: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let indent = px(depth as f32 * TODO_INDENT_PX);
@@ -1163,112 +1191,7 @@ impl TodoTxtState {
         );
 
         // Priority (popover)
-        if is_pri_open {
-            row = row.child(self.render_priority_picker(flat_index, cx));
-        } else {
-            let fi = flat_index;
-            let content: AnyElement = if let Some(ref priority) = task.priority {
-                let color = if task.completed {
-                    cx.theme().muted_foreground
-                } else {
-                    priority_color(priority.as_char())
-                };
-                div()
-                    .text_color(color)
-                    .font_weight(FontWeight::BOLD)
-                    .child(format!("({})", priority.as_char()))
-                    .into_any()
-            } else {
-                div()
-                    .child(
-                        Icon::new(IconName::Plus)
-                            .size_3()
-                            .text_color(cx.theme().muted_foreground),
-                    )
-                    .into_any()
-            };
-
-            let mut cell = div()
-                .id(ElementId::NamedInteger("todo-pri".into(), fi as u64))
-                .flex_shrink_0()
-                .w(px(TODO_COL_PRIORITY))
-                .h(px(TODO_COL_CHECK))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(TODO_PILL_RADIUS))
-                .text_sm()
-                .cursor_pointer()
-                .tab_index(0)
-                .on_click(cx.listener(move |this, _, _window, cx| {
-                    this.priority_picker_open = Some(fi);
-                    cx.notify();
-                }))
-                .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _window, cx| {
-                    let current = this.todo.list().get(fi).and_then(|t| t.priority);
-                    let priorities: [Option<char>; 6] =
-                        [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
-                    let current_idx = current
-                        .map(|p| {
-                            priorities
-                                .iter()
-                                .position(|&x| x == Some(p.as_char()))
-                                .unwrap_or(0)
-                        })
-                        .unwrap_or(0);
-                    let new_idx = match event.keystroke.key.as_str() {
-                        "up" => {
-                            if current_idx == 0 {
-                                priorities.len() - 1
-                            } else {
-                                current_idx - 1
-                            }
-                        }
-                        "down" => (current_idx + 1) % priorities.len(),
-                        _ => return,
-                    };
-                    let new_priority = priorities[new_idx];
-                    let value = match new_priority {
-                        Some(c) => format!("({c})"),
-                        None => String::new(),
-                    };
-                    this.commit_priority(fi, &value, cx);
-                }));
-
-            if let Some(ref priority) = task.priority {
-                let color = if task.completed {
-                    cx.theme().muted_foreground
-                } else {
-                    priority_color(priority.as_char())
-                };
-                cell = cell
-                    .bg(color.opacity(0.15))
-                    .hover(|style| style.bg(color.opacity(0.25)))
-                    .focus_visible(|style| {
-                        style
-                            .border(px(1.5))
-                            .border_color(cx.theme().ring.alpha(0.2))
-                    });
-            } else {
-                cell = cell
-                    .rounded(px(TODO_PILL_RADIUS))
-                    .border_1()
-                    .border_color(cx.theme().muted_foreground.opacity(0.2))
-                    .opacity(0.0)
-                    .group("todo-row")
-                    .when(true, |el| {
-                        el.group_hover("todo-row", |style| style.opacity(0.6))
-                    })
-                    .focus_visible(|style| {
-                        style
-                            .opacity(1.0)
-                            .border(px(1.5))
-                            .border_color(cx.theme().ring.alpha(0.2))
-                    });
-            }
-
-            row = row.child(cell.child(content));
-        }
+        row = row.child(self.render_priority_picker(flat_index, cx));
 
         // Date
         if let Some(date_entity) = self.date_inputs.get(&flat_index) {
@@ -1442,6 +1365,8 @@ impl TodoTxtState {
 
         let trigger = PriorityTrigger {
             id: ElementId::NamedInteger("pri-trigger".into(), flat_index as u64),
+            editor: entity.clone(),
+            task_index: flat_index,
             current: self.todo.list().get(flat_index).and_then(|t| t.priority),
             completed: self
                 .todo
@@ -1501,15 +1426,17 @@ impl TodoTxtState {
             };
 
         Popover::new(ElementId::NamedInteger("pri-pop".into(), flat_index as u64))
-            .open(self.priority_picker_open.is_some())
+            .open(self.priority_picker_open == Some(flat_index))
             .on_open_change({
                 let ent = entity.clone();
                 move |open: &bool, _window: &mut Window, app: &mut App| {
-                    if !open {
-                        let _ = app.update_entity(&ent, |this: &mut TodoTxtState, _cx| {
+                    let _ = app.update_entity(&ent, |this: &mut TodoTxtState, _cx| {
+                        if *open {
+                            this.priority_picker_open = Some(flat_index);
+                        } else if this.priority_picker_open == Some(flat_index) {
                             this.priority_picker_open = None;
-                        });
-                    }
+                        }
+                    });
                 }
             })
             .trigger(trigger)
