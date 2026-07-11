@@ -146,6 +146,10 @@ pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
                     }
                 }
                 TagEnd::CodeBlock => {
+                    code_block_content = code_block_content
+                        .strip_suffix('\n')
+                        .unwrap_or(&code_block_content)
+                        .to_string();
                     events.push(MarkdownEvent::BlockStart(MarkdownBlock::Code(
                         code_block_content.clone(),
                     )));
