@@ -196,7 +196,7 @@ impl MarkdownViewer {
                         if !paragraph_lines.is_empty() {
                             elements.push(wrap_paragraph(
                                 &mut paragraph_lines,
-                                blockquote_depth > 0,
+                                blockquote_depth,
                                 cx,
                             ));
                         }
@@ -278,12 +278,14 @@ impl MarkdownViewer {
                                 if !paragraph_lines.is_empty() {
                                     elements.push(wrap_paragraph(
                                         &mut paragraph_lines,
-                                        blockquote_depth > 0,
+                                        blockquote_depth,
                                         cx,
                                     ));
                                 }
                                 in_paragraph = false;
-                                elements.push(div().m_2().into_any_element());
+                                if blockquote_depth == 0 {
+                                    elements.push(div().m_2().into_any_element());
+                                }
                             }
                             MarkdownBlock::Heading => {
                                 if !current_line.is_empty() {
@@ -292,7 +294,7 @@ impl MarkdownViewer {
                                 if !paragraph_lines.is_empty() {
                                     elements.push(wrap_paragraph(
                                         &mut paragraph_lines,
-                                        blockquote_depth > 0,
+                                        blockquote_depth,
                                         cx,
                                     ));
                                 }
@@ -318,7 +320,7 @@ impl MarkdownViewer {
                     if in_paragraph && !paragraph_lines.is_empty() {
                         elements.push(wrap_paragraph(
                             &mut paragraph_lines,
-                            blockquote_depth > 0,
+                            blockquote_depth,
                             cx,
                         ));
                         in_paragraph = false;
@@ -343,7 +345,7 @@ impl MarkdownViewer {
         if !paragraph_lines.is_empty() {
             elements.push(wrap_paragraph(
                 &mut paragraph_lines,
-                blockquote_depth > 0,
+                blockquote_depth,
                 cx,
             ));
         }
@@ -558,20 +560,28 @@ fn wrap_line(current_line: &mut Vec<AnyElement>) -> AnyElement {
 
 fn wrap_paragraph(
     paragraph_lines: &mut Vec<AnyElement>,
-    is_blockquote: bool,
+    blockquote_depth: usize,
     cx: &App,
 ) -> AnyElement {
-    let mut paragraph = div().flex().flex_col().w_full().min_w_0();
-    if is_blockquote {
-        paragraph = paragraph
+    let mut paragraph = div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .min_w_0()
+        .children(paragraph_lines.drain(..))
+        .into_any_element();
+    for _ in 0..blockquote_depth {
+        paragraph = div()
+            .w_full()
+            .min_w_0()
             .pl(px(MD_BLOCKQUOTE_PADDING))
             .border_l(px(MD_BLOCKQUOTE_BORDER))
             .border_color(cx.theme().border)
-            .text_color(cx.theme().muted_foreground);
+            .text_color(cx.theme().muted_foreground)
+            .child(paragraph)
+            .into_any_element();
     }
     paragraph
-        .children(paragraph_lines.drain(..))
-        .into_any_element()
 }
 
 fn flush_inline(
