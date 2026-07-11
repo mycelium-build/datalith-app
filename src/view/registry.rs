@@ -6,6 +6,7 @@ use gpui::*;
 use super::editors::EditorKind;
 use super::editors::markdown::MarkdownEditor;
 use super::editors::plain_text::PlainTextEditor;
+use super::editors::todo_txt::TodoTxtEditor;
 use super::file_handler::{FileHandler, ViewMode};
 use super::viewers::ViewerKind;
 use super::viewers::image::ImageViewer;
@@ -86,9 +87,9 @@ pub(crate) fn default_registry() -> FileRegistry {
         "md",
         FileTypeConfig {
             editor_factory: Some(|path, window, cx| {
-                EditorKind::Markdown(MarkdownEditor::new(
-                    MarkdownEditor::new_state(path, window, cx),
-                ))
+                EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
+                    path, window, cx,
+                )))
             }),
             viewer_factory: Some(|path, editor, _cx| {
                 let editor = editor?;
@@ -115,6 +116,20 @@ pub(crate) fn default_registry() -> FileRegistry {
             },
         );
     }
+
+    // Todo.txt: editor only
+    registry.register(
+        "todotxt",
+        FileTypeConfig {
+            editor_factory: Some(|path, window, cx| {
+                EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(
+                    path, window, cx,
+                )))
+            }),
+            viewer_factory: None,
+            default_mode: ViewMode::Edit,
+        },
+    );
 
     registry
 }

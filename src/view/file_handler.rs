@@ -39,12 +39,12 @@ impl FileHandler {
         self.mode == ViewMode::Edit
     }
 
-    pub(crate) fn supports_editing(&self) -> bool {
-        self.editor.is_some()
+    pub(crate) fn can_toggle_mode(&self) -> bool {
+        self.editor.is_some() && self.viewer.is_some()
     }
 
     pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
-        if !self.supports_editing() {
+        if !self.can_toggle_mode() {
             return;
         }
         self.mode = match self.mode {

@@ -1,7 +1,8 @@
 x decouple editor and renderer
     x Markdown
     x image
-    todo.txt (need TxTodo.rs)
+    x todo.txt
+        x TxTodo.rs lib
     bases
         list
         table
@@ -10,6 +11,8 @@ x decouple editor and renderer
         calendar
     canvas
     graph
+
+hot reload side bar and files preview/editor
 
 custom themes editor (explore GPUI components)
 

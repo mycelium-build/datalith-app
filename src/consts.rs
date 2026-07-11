@@ -12,6 +12,9 @@ pub(crate) const VAULT_SELECT_MARKER: &str = "__open_new__";
 
 pub(crate) const SUPPORTED_EXTENSIONS: &[&str] = &["md"];
 
+pub(crate) const IMAGE_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "avif"];
+
 // UI
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
 pub(crate) const BORDER_WIDTH: f32 = 2.0;
@@ -46,6 +49,3 @@ pub(crate) const MD_BLOCKQUOTE_PADDING: f32 = 4.0;
 pub(crate) const MD_BLOCKQUOTE_BORDER: f32 = 3.0;
 
 pub(crate) const MD_IMAGE_MAX_WIDTH: f32 = 800.0;
-
-pub(crate) const IMAGE_EXTENSIONS: &[&str] =
-    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "avif"];

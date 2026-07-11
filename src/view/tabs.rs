@@ -304,9 +304,9 @@ impl DatalithView {
             .suffix({
                 let handler_entity = self.open_files.get(active_tab).map(|f| f.handler.clone());
 
-                let supports_editing = handler_entity
+                let can_toggle_mode = handler_entity
                     .as_ref()
-                    .map(|e| e.read(cx).supports_editing())
+                    .map(|e| e.read(cx).can_toggle_mode())
                     .unwrap_or(false);
 
                 let is_editing = handler_entity
@@ -317,7 +317,7 @@ impl DatalithView {
                 let mut suffix = h_flex().gap_0().px_1();
 
                 if let Some(entity) = handler_entity {
-                    if supports_editing {
+                    if can_toggle_mode {
                         let icon: Icon = if is_editing {
                             Icon::new(IconName::Eye)
                         } else {
