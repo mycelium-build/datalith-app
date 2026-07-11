@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
+use gpui_component::Disableable;
+use gpui_component::checkbox::Checkbox;
 use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
@@ -249,7 +251,12 @@ impl MarkdownViewer {
                             );
                         }
                         MarkdownBlock::Frontmatter(fm_content) => {
-                            elements.push(render_frontmatter(&fm_content, base_font_size, cx));
+                            elements.push(render_frontmatter(
+                                &fm_content,
+                                base_font_size,
+                                handler.clone(),
+                                cx,
+                            ));
                         }
                         _ => {}
                     }
@@ -318,11 +325,7 @@ impl MarkdownViewer {
                         }
                     }
                     if in_paragraph && !paragraph_lines.is_empty() {
-                        elements.push(wrap_paragraph(
-                            &mut paragraph_lines,
-                            blockquote_depth,
-                            cx,
-                        ));
+                        elements.push(wrap_paragraph(&mut paragraph_lines, blockquote_depth, cx));
                         in_paragraph = false;
                     }
                     elements.push(self.render_image(&url, &alt, cx));
@@ -343,11 +346,7 @@ impl MarkdownViewer {
             }
         }
         if !paragraph_lines.is_empty() {
-            elements.push(wrap_paragraph(
-                &mut paragraph_lines,
-                blockquote_depth,
-                cx,
-            ));
+            elements.push(wrap_paragraph(&mut paragraph_lines, blockquote_depth, cx));
         }
 
         div()
@@ -453,14 +452,56 @@ fn build_highlight_style(style: &MarkdownStyle, cx: &App) -> HighlightStyle {
     }
 }
 
-fn render_frontmatter(content: &str, base_font_size: f32, cx: &App) -> AnyElement {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut max_key_len = 0;
-    for line in &lines {
-        if let Some(colon_pos) = line.find(':') {
-            max_key_len = max_key_len.max(colon_pos);
+struct FrontmatterProperty {
+    key: String,
+    values: Vec<String>,
+}
+
+fn parse_frontmatter_properties(content: &str) -> Vec<FrontmatterProperty> {
+    let mut properties: Vec<FrontmatterProperty> = Vec::new();
+    for line in content.lines() {
+        if !line.starts_with(char::is_whitespace)
+            && let Some((key, value)) = line.split_once(':')
+        {
+            properties.push(FrontmatterProperty {
+                key: key.trim().to_string(),
+                values: if value.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![value.trim().to_string()]
+                },
+            });
+        } else if let Some(property) = properties.last_mut() {
+            let value = line.trim();
+            if !value.is_empty() {
+                property.values.push(value.to_string());
+            }
         }
     }
+    properties
+}
+
+fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
+    if let Some(link) = value
+        .strip_prefix("[[")
+        .and_then(|value| value.strip_suffix("]]"))
+    {
+        return Some(link.split_once('|').unwrap_or((link, link)));
+    }
+
+    let markdown = value.strip_prefix('[')?.strip_suffix(')')?;
+    let (label, target) = markdown.split_once("](")?;
+    Some((label, target))
+}
+
+fn render_frontmatter(
+    content: &str,
+    base_font_size: f32,
+    handler: Entity<FileHandler>,
+    cx: &App,
+) -> AnyElement {
+    let properties = parse_frontmatter_properties(content);
+    let max_key_len = properties.iter().map(|p| p.key.len()).max().unwrap_or(0);
 
     let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
     let line_h = px(font_size * MD_LINE_HEIGHT);
@@ -471,44 +512,73 @@ fn render_frontmatter(content: &str, base_font_size: f32, cx: &App) -> AnyElemen
     };
 
     let mut content_elements: Vec<AnyElement> = Vec::new();
-    for line in lines {
-        if let Some(colon_pos) = line.find(':') {
-            let key = &line[..colon_pos];
-            let value = line[colon_pos + 1..].trim();
-            content_elements.push(
+    for (property_index, property) in properties.into_iter().enumerate() {
+        let mut values: Vec<AnyElement> = Vec::new();
+        for (value_index, value) in property.values.into_iter().enumerate() {
+            let value_element = if matches!(value.as_str(), "true" | "false") {
+                Checkbox::new(ElementId::NamedInteger(
+                    "frontmatter-bool".into(),
+                    (property_index * 1000 + value_index) as u64,
+                ))
+                .checked(value == "true")
+                .disabled(true)
+                .tab_stop(false)
+                .into_any_element()
+            } else if let Some((label, target)) = parse_frontmatter_link(&value) {
+                let handler = handler.clone();
+                let target = target.to_string();
                 div()
-                    .flex()
-                    .gap_1()
-                    .child(
-                        div()
-                            .w(key_width)
-                            .flex_shrink_0()
-                            .text_size(px(font_size))
-                            .line_height(line_h)
-                            .text_color(cx.theme().foreground)
-                            .font_weight(FontWeight::BOLD)
-                            .child(key.to_string()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(font_size))
-                            .line_height(line_h)
-                            .text_color(cx.theme().muted_foreground)
-                            .child(value.to_string()),
-                    )
-                    .into_any_element(),
-            );
-        } else {
-            content_elements.push(
-                div()
-                    .text_size(px(font_size))
-                    .line_height(line_h)
-                    .text_color(cx.theme().muted_foreground)
-                    .child(line.to_string())
-                    .into_any_element(),
-            );
+                    .id(ElementId::NamedInteger(
+                        "frontmatter-link".into(),
+                        (property_index * 1000 + value_index) as u64,
+                    ))
+                    .text_color(cx.theme().primary)
+                    .underline()
+                    .cursor_pointer()
+                    .on_click(move |event: &ClickEvent, _window, cx| {
+                        handler.update(cx, |_, cx| {
+                            cx.emit(FileHandlerEvent::LinkClicked(
+                                target.clone(),
+                                event.modifiers().platform,
+                            ));
+                        });
+                    })
+                    .child(label.to_string())
+                    .into_any_element()
+            } else {
+                div().child(value).into_any_element()
+            };
+            values.push(value_element);
         }
+
+        content_elements.push(
+            div()
+                .flex()
+                .items_start()
+                .gap_1()
+                .child(
+                    div()
+                        .w(key_width)
+                        .flex_shrink_0()
+                        .text_size(px(font_size))
+                        .line_height(line_h)
+                        .text_color(cx.theme().foreground)
+                        .font_weight(FontWeight::BOLD)
+                        .child(property.key),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .ml_2()
+                        .flex()
+                        .flex_col()
+                        .text_size(px(font_size))
+                        .line_height(line_h)
+                        .text_color(cx.theme().muted_foreground)
+                        .children(values),
+                )
+                .into_any_element(),
+        );
     }
     div()
         .bg(cx.theme().tab_bar)
