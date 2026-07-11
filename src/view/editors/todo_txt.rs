@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::checkbox::Checkbox;
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::popover::{Popover, PopoverState};
 use gpui_component::select::{Select, SelectEvent, SelectState};
@@ -1146,28 +1147,19 @@ impl TodoTxtState {
         // Checkbox
         let completed = task.completed;
         let fi = flat_index;
-        let checkbox = if completed {
-            Button::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
-                .ghost()
-                .xsmall()
-                .rounded_sm()
-                .bg(cx.theme().accent)
-                .icon(Icon::new(IconName::Check).text_color(cx.theme().accent_foreground))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_complete(fi, cx);
-                }))
-        } else {
-            Button::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
-                .ghost()
-                .xsmall()
-                .outline()
-                .rounded_sm()
-                .border_color(cx.theme().muted_foreground.opacity(0.4))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_complete(fi, cx);
-                }))
-        };
-        row = row.child(checkbox);
+        let checkbox = Checkbox::new(ElementId::NamedInteger("todo-check".into(), fi as u64))
+            .checked(completed)
+            .on_click(cx.listener(move |this, _checked, _window, cx| {
+                this.toggle_complete(fi, cx);
+            }));
+        row = row.child(
+            checkbox
+                .flex_shrink_0()
+                .w(px(TODO_COL_CHECK))
+                .flex()
+                .items_center()
+                .justify_center(),
+        );
 
         // Priority (popover)
         if is_pri_open {
