@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use super::index::Indexer;
 use crate::utils::file_name_str;
 
 #[derive(Clone)]
@@ -11,9 +10,10 @@ pub(crate) struct QuickSwitcherEntry {
 }
 
 #[must_use]
-pub(crate) fn collect_from_engine(indexer: &Indexer) -> Vec<QuickSwitcherEntry> {
-    let mut entries: Vec<QuickSwitcherEntry> = indexer
-        .all_paths()
+pub(crate) fn collect_from_paths(
+    paths: impl IntoIterator<Item = PathBuf>,
+) -> Vec<QuickSwitcherEntry> {
+    let mut entries: Vec<QuickSwitcherEntry> = paths
         .into_iter()
         .map(|path| {
             let name = file_name_str(&path).to_string();

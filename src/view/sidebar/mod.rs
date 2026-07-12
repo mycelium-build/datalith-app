@@ -50,8 +50,14 @@ impl DatalithView {
         if old_path == new_path {
             return;
         }
-        let _ = std::fs::rename(old_path, new_path);
-        self.track_file_rename(old_path, new_path);
+        let Some(Ok(())) = self
+            .vault_catalog
+            .as_ref()
+            .map(|catalog| catalog.rename(old_path, new_path))
+        else {
+            return;
+        };
+        self.palette.rename_entry(old_path, new_path);
         for f in &mut self.open_files {
             if f.path == old_path {
                 f.path = new_path.to_path_buf();

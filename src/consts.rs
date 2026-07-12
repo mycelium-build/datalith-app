@@ -10,11 +10,6 @@ pub(crate) const DEFAULT_FOLDER_NAME: &str = "untitled";
 pub(crate) const UNKNOWN_NAME: &str = "Unknown";
 pub(crate) const VAULT_SELECT_MARKER: &str = "__open_new__";
 
-pub(crate) const SUPPORTED_EXTENSIONS: &[&str] = &["md"];
-
-pub(crate) const IMAGE_EXTENSIONS: &[&str] =
-    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "avif"];
-
 // UI
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
 pub(crate) const BORDER_WIDTH: f32 = 2.0;

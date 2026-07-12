@@ -12,11 +12,7 @@ impl PlainTextEditor {
         Self { input }
     }
 
-    pub(crate) fn new_state(
-        path: &Path,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<InputState> {
+    pub(crate) fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<InputState> {
         let content = std::fs::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             InputState::new(window, cx)

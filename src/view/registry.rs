@@ -3,18 +3,22 @@ use std::path::Path;
 
 use gpui::*;
 
+use crate::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+
 use super::editors::EditorKind;
 use super::editors::markdown::MarkdownEditor;
 use super::editors::plain_text::PlainTextEditor;
 use super::editors::todo_txt::TodoTxtEditor;
-use super::file_handler::{FileHandler, ViewMode};
+use super::file_handler::{FileHandler, ReloadAdapter, ReloadOutcome, ViewMode};
 use super::viewers::ViewerKind;
 use super::viewers::image::ImageViewer;
 use super::viewers::markdown::MarkdownViewer;
 
 pub(crate) struct FileTypeConfig {
+    pub(crate) capabilities: FileTypeCapabilities,
     pub(crate) editor_factory: Option<EditorFactory>,
     pub(crate) viewer_factory: Option<ViewerFactory>,
+    pub(crate) reload_adapter: Option<ReloadAdapter>,
     pub(crate) default_mode: ViewMode,
 }
 
@@ -33,12 +37,17 @@ impl FileRegistry {
         Self {
             configs: HashMap::new(),
             fallback: FileTypeConfig {
+                capabilities: FileTypeCapabilities {
+                    text_search: false,
+                    wiki_links: false,
+                },
                 editor_factory: Some(|path, window, cx| {
                     EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
                         path, window, cx,
                     )))
                 }),
                 viewer_factory: None,
+                reload_adapter: None,
                 default_mode: ViewMode::Edit,
             },
         }
@@ -62,6 +71,15 @@ impl FileRegistry {
             .unwrap_or(false)
     }
 
+    #[must_use]
+    pub(crate) fn registered_file_types(&self) -> RegisteredFileTypes {
+        RegisteredFileTypes::new(
+            self.configs
+                .iter()
+                .map(|(extension, config)| (extension.clone(), config.capabilities)),
+        )
+    }
+
     pub(crate) fn create_handler(
         &self,
         path: &Path,
@@ -76,6 +94,7 @@ impl FileRegistry {
             .viewer_factory
             .and_then(|factory| factory(path, editor.as_ref(), cx));
         FileHandler::new(config.default_mode, editor, viewer)
+            .with_reload_adapter(config.reload_adapter)
     }
 }
 
@@ -86,6 +105,10 @@ pub(crate) fn default_registry() -> FileRegistry {
     registry.register(
         "md",
         FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+            },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
                     path, window, cx,
@@ -99,6 +122,7 @@ pub(crate) fn default_registry() -> FileRegistry {
                     path.to_path_buf(),
                 )))
             }),
+            reload_adapter: Some(reload_text),
             default_mode: ViewMode::Edit,
         },
     );
@@ -108,10 +132,15 @@ pub(crate) fn default_registry() -> FileRegistry {
         registry.register(
             ext,
             FileTypeConfig {
+                capabilities: FileTypeCapabilities {
+                    text_search: false,
+                    wiki_links: false,
+                },
                 editor_factory: None,
                 viewer_factory: Some(|path, _editor, _cx| {
                     Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
                 }),
+                reload_adapter: Some(reload_image),
                 default_mode: ViewMode::View,
             },
         );
@@ -121,15 +150,58 @@ pub(crate) fn default_registry() -> FileRegistry {
     registry.register(
         "todotxt",
         FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: true,
+                wiki_links: false,
+            },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(
                     path, window, cx,
                 )))
             }),
             viewer_factory: None,
+            reload_adapter: Some(reload_todo_txt),
             default_mode: ViewMode::Edit,
         },
     );
 
     registry
+}
+
+fn reload_text(
+    path: &Path,
+    handler: &mut FileHandler,
+    window: &mut Window,
+    cx: &mut Context<FileHandler>,
+) -> anyhow::Result<ReloadOutcome> {
+    let Some(input) = handler.input().cloned() else {
+        return Ok(ReloadOutcome::Unsupported);
+    };
+    let content = std::fs::read_to_string(path)?;
+    if input.read(cx).value().as_ref() == content {
+        return Ok(ReloadOutcome::Unchanged);
+    }
+    input.update(cx, |input, cx| input.set_value(&content, window, cx));
+    Ok(ReloadOutcome::Reloaded)
+}
+
+fn reload_todo_txt(
+    _path: &Path,
+    handler: &mut FileHandler,
+    _window: &mut Window,
+    cx: &mut Context<FileHandler>,
+) -> anyhow::Result<ReloadOutcome> {
+    let Some(EditorKind::TodoTxt(editor)) = handler.editor.as_ref() else {
+        return Ok(ReloadOutcome::Unsupported);
+    };
+    editor.reload_from_disk(cx)
+}
+
+fn reload_image(
+    _path: &Path,
+    _handler: &mut FileHandler,
+    _window: &mut Window,
+    _cx: &mut Context<FileHandler>,
+) -> anyhow::Result<ReloadOutcome> {
+    Ok(ReloadOutcome::Unsupported)
 }

@@ -22,7 +22,12 @@ impl DatalithView {
         }
     }
 
-    fn handle_enter_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn handle_enter_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some((is_folder, id, path)) = ({
             let ts = self.tree_state.read(cx);
             ts.selected_entry().map(|e| {
@@ -37,7 +42,10 @@ impl DatalithView {
         };
 
         if is_folder {
-            let is_expanded = self.expanded_tree_ids.iter().any(|expanded_id| expanded_id == &id);
+            let is_expanded = self
+                .expanded_tree_ids
+                .iter()
+                .any(|expanded_id| expanded_id == &id);
             if is_expanded {
                 self.collapse_tree_item(&id, cx);
             } else {
@@ -80,7 +88,9 @@ impl DatalithView {
                 });
             }
 
-            if self.tree_state.read(cx).selected_entry().is_none() && self.visible_tree_entry_count() > 0 {
+            if self.tree_state.read(cx).selected_entry().is_none()
+                && self.visible_tree_entry_count() > 0
+            {
                 self.tree_state.update(cx, |state, cx| {
                     state.set_selected_index(Some(0), cx);
                 });

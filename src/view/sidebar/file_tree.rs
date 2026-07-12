@@ -18,7 +18,10 @@ use super::DatalithView;
 use super::DragFile;
 
 #[must_use]
-pub(crate) fn build_file_items_with_expanded(path: &Path, expanded_ids: &[SharedString]) -> Vec<TreeItem> {
+pub(crate) fn build_file_items_with_expanded(
+    path: &Path,
+    expanded_ids: &[SharedString],
+) -> Vec<TreeItem> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
 
@@ -34,10 +37,14 @@ pub(crate) fn build_file_items_with_expanded(path: &Path, expanded_ids: &[Shared
             if entry_path.is_dir() {
                 let children = build_file_items_with_expanded(&entry_path, expanded_ids);
                 let id = entry_path.to_string_lossy().to_string();
-                let expanded = expanded_ids.iter().any(|expanded_id| expanded_id.as_ref() == id);
+                let expanded = expanded_ids
+                    .iter()
+                    .any(|expanded_id| expanded_id.as_ref() == id);
                 dirs.push((
                     name.clone(),
-                    TreeItem::new(id, name).children(children).expanded(expanded),
+                    TreeItem::new(id, name)
+                        .children(children)
+                        .expanded(expanded),
                 ));
             } else {
                 files.push((
@@ -107,22 +114,28 @@ impl DatalithView {
 
                     let mut row = h_flex()
                         .id(("file-tree-row", ix))
-                        .on_mouse_down(MouseButton::Right, cx.listener({
-                            let path = path.clone();
-                            move |this, _event: &MouseDownEvent, _window, _cx| {
-                                this.context_menu_target = Some(path.clone());
-                                this.suppress_sidebar_context_menu = true;
-                            }
-                        }))
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener({
+                                let path = path.clone();
+                                move |this, _event: &MouseDownEvent, _window, _cx| {
+                                    this.context_menu_target = Some(path.clone());
+                                    this.suppress_sidebar_context_menu = true;
+                                }
+                            }),
+                        )
                         .gap_2()
                         .items_center()
                         .overflow_hidden()
                         .child(Icon::new(icon).size_4())
                         .child(div().flex_1().truncate().child(item_label.clone()))
-                        .on_drag(DragFile { path: path.clone() }, |drag, _offset, _window, cx| {
-                            cx.stop_propagation();
-                            cx.new(|_| drag.clone())
-                        });
+                        .on_drag(
+                            DragFile { path: path.clone() },
+                            |drag, _offset, _window, cx| {
+                                cx.stop_propagation();
+                                cx.new(|_| drag.clone())
+                            },
+                        );
 
                     if is_folder {
                         row = row

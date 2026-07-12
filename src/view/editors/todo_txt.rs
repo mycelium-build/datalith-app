@@ -15,8 +15,10 @@ use gpui_component::{
 };
 use txtodo::{
     Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
-    TodoOptions, TodoTxt, TodoTxtParser,
+    TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
 };
+
+use crate::view::file_handler::ReloadOutcome;
 
 use crate::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 
@@ -409,6 +411,11 @@ impl TodoTxtEditor {
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).search_input.focus_handle(cx)
     }
+
+    pub(crate) fn reload_from_disk(&self, cx: &mut App) -> anyhow::Result<ReloadOutcome> {
+        self.state
+            .update(cx, |state, cx| state.reload_from_disk(cx))
+    }
 }
 
 // --- TodoTxtState
@@ -448,6 +455,39 @@ impl Focusable for TodoTxtState {
 }
 
 impl TodoTxtState {
+    fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
+        // NOTE: full reload instead of a diff reload
+        let disk_content = std::fs::read_to_string(&self._path)?;
+        let current_content = TodoTxtSerializer::new()
+            .serialize_tasks(&self.todo.tasks)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if disk_content == current_content {
+            return Ok(ReloadOutcome::Unchanged);
+        }
+
+        if let Err(error) = self.todo.load(None) {
+            self.parse_errors = vec![error.to_string()];
+            cx.notify();
+            return Err(anyhow::anyhow!(error.to_string()));
+        }
+
+        self.parse_errors.clear();
+        self.clear_row_inputs();
+        let flat = self.todo.list();
+        self.expanded = flat
+            .iter()
+            .enumerate()
+            .filter_map(|(index, task)| (!task.subtasks.is_empty()).then_some(index))
+            .collect();
+        if self.selected.is_some_and(|index| index >= flat.len()) {
+            self.selected = flat.len().checked_sub(1);
+        }
+        drop(flat);
+        self.refresh_item_sizes();
+        cx.notify();
+        Ok(ReloadOutcome::Reloaded)
+    }
+
     fn add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let value = self.new_task_input.read(cx).value();
         let trimmed = value.trim();
@@ -553,6 +593,7 @@ impl TodoTxtState {
     }
 
     fn refresh_item_sizes(&mut self) {
+        // necessary because row count change and v_virtual_list GPUI components need a size for each rows (that can be different)
         let tasks = self.visible_tasks();
         self.item_sizes = Rc::new(
             tasks

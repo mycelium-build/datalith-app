@@ -14,7 +14,17 @@ impl Render for DatalithView {
         if self.palette.needs_focus {
             let open_paths: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
             self.palette
-                .focus_input(_window, cx, self.search_engine.as_ref(), &open_paths);
+                .focus_input(_window, cx, self.vault_catalog.as_ref(), &open_paths);
+        }
+
+        for path in std::mem::take(&mut self.pending_external_updates) {
+            if let Some(open_file) = self.open_files.iter().find(|file| file.path == path) {
+                open_file.handler.update(cx, |handler, cx| {
+                    if let Err(error) = handler.reload_from_disk(&path, _window, cx) {
+                        eprintln!("Failed to reload {}: {error}", path.display());
+                    }
+                });
+            }
         }
 
         if self.focus_sidebar_requested {
@@ -26,10 +36,7 @@ impl Render for DatalithView {
             self.focus_editor_requested = false;
             let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
             if let Some(ref file) = self.open_files.get(active_tab) {
-                file.handler
-                    .read(cx)
-                    .focus_handle(cx)
-                    .focus(_window, cx);
+                file.handler.read(cx).focus_handle(cx).focus(_window, cx);
             }
         }
 
