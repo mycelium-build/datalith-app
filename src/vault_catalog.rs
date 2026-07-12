@@ -27,6 +27,8 @@ pub(crate) enum CatalogSyncState {
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogUpdate {
     pub(crate) changed_paths: Arc<[PathBuf]>,
+    pub(crate) structure_changed: bool,
+    pub(crate) tracked_paths_changed: bool,
 }
 
 struct CatalogState {
@@ -117,7 +119,7 @@ impl VaultCatalog {
                         state.sync = CatalogSyncState::Current;
                     }
                 }
-                inner.publish(changed_paths);
+                inner.publish(changed_paths, true, true);
             })
             .context("Failed to start Vault Catalog initialization")?;
 
@@ -171,13 +173,14 @@ impl VaultCatalog {
 
     pub(crate) fn create_file(&self, target: &Path) -> Result<PathBuf> {
         let path = fs_ops::new_file_from_target(target)?;
-        self.finish_mutation(&path);
+        self.record_completed_write(&path);
+        self.inner.apply_path(&path);
         Ok(path)
     }
 
     pub(crate) fn create_folder(&self, target: &Path) -> Result<PathBuf> {
         let path = fs_ops::new_folder_from_target(target)?;
-        self.inner.publish(vec![path.clone()]);
+        self.inner.publish(vec![path.clone()], true, false);
         Ok(path)
     }
 
@@ -205,11 +208,11 @@ impl VaultCatalog {
     pub(crate) fn save(&self, path: &Path, contents: &str) -> Result<()> {
         self.ensure_tracked(path)?;
         fs::write(path, contents).with_context(|| format!("Failed to save {:?}", path))?;
-        self.finish_mutation(path);
+        self.record_completed_write(path);
         Ok(())
     }
 
-    fn finish_mutation(&self, path: &Path) {
+    fn record_completed_write(&self, path: &Path) {
         if let Some(fingerprint) = fingerprint(path) {
             self.inner
                 .state
@@ -218,7 +221,6 @@ impl VaultCatalog {
                 .completed_writes
                 .insert(path.to_path_buf(), fingerprint);
         }
-        self.inner.apply_path(path);
     }
 
     fn ensure_inside(&self, path: &Path) -> Result<()> {
@@ -261,12 +263,14 @@ impl CatalogInner {
             }
             let observed = fingerprint(&path);
             let self_write = {
-                let mut state = self.state.lock().unwrap();
-                state.completed_writes.remove(&path)
+                let state = self.state.lock().unwrap();
+                state.completed_writes.get(&path).copied()
             };
             if observed.is_some() && observed == self_write {
+                self.update_projections(&path);
                 continue;
             }
+            self.state.lock().unwrap().completed_writes.remove(&path);
             self.apply_path(&path);
         }
     }
@@ -297,17 +301,31 @@ impl CatalogInner {
                 links.add_file(path);
             }
         }
-        self.publish(removed.into_iter().chain(added).collect());
+        let tracked_paths_changed = !removed.is_empty() || !added.is_empty();
+        self.publish(
+            removed.into_iter().chain(added).collect(),
+            true,
+            tracked_paths_changed,
+        );
     }
 
     fn apply_path(&self, path: &Path) {
         let mut state = self.state.lock().unwrap();
-        if path.is_file() && self.file_types.is_tracked(path) {
-            state.files.insert(path.to_path_buf());
+        let tracked_paths_changed = if path.is_file() && self.file_types.is_tracked(path) {
+            state.files.insert(path.to_path_buf())
         } else {
-            state.files.remove(path);
-        }
+            state.files.remove(path)
+        };
         drop(state);
+        self.update_projections(path);
+        self.publish(
+            vec![path.to_path_buf()],
+            tracked_paths_changed,
+            tracked_paths_changed,
+        );
+    }
+
+    fn update_projections(&self, path: &Path) {
         if path.is_file() {
             if let Some(search) = self.search.lock().unwrap().as_ref() {
                 let _ = search.indexer.add_file(path);
@@ -323,18 +341,24 @@ impl CatalogInner {
                 links.remove_file(path);
             }
         }
-        self.publish(vec![path.to_path_buf()]);
     }
 
     fn set_degraded(&self) {
         self.state.lock().unwrap().sync = CatalogSyncState::Degraded;
-        self.publish(Vec::new());
+        self.publish(Vec::new(), false, false);
     }
 
-    fn publish(&self, changed_paths: Vec<PathBuf>) {
+    fn publish(
+        &self,
+        changed_paths: Vec<PathBuf>,
+        structure_changed: bool,
+        tracked_paths_changed: bool,
+    ) {
         let mut state = self.state.lock().unwrap();
         let update = CatalogUpdate {
             changed_paths: changed_paths.into(),
+            structure_changed,
+            tracked_paths_changed,
         };
         state
             .subscribers
@@ -427,8 +451,8 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let catalog = VaultCatalog::open(root.clone(), types()).unwrap();
 
-        catalog.save(&root.join("new.md"), "hello").unwrap();
-        assert!(catalog.tracked_paths().contains(&root.join("new.md")));
+        let created = catalog.create_file(&root).unwrap();
+        assert!(catalog.tracked_paths().contains(&created));
 
         drop(catalog);
         let _ = fs::remove_dir_all(root);
