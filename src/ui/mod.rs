@@ -4,6 +4,7 @@ pub(crate) mod render;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod tabs;
+pub(crate) mod themes;
 pub(crate) mod viewers;
 
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;

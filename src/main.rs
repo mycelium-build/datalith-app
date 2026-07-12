@@ -1,6 +1,5 @@
 mod app;
 mod document;
-mod themes;
 mod ui;
 mod vault;
 
@@ -21,7 +20,7 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
-        themes::load_embedded_themes(cx);
+        ui::themes::load_embedded_themes(cx);
         SettingsView::init_theme_options(cx);
 
         let saved_mode = load_theme_mode().unwrap_or(ThemeMode::Light);
