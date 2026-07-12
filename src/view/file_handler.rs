@@ -3,6 +3,21 @@ use gpui_component::input::InputState;
 
 use super::editors::EditorKind;
 use super::viewers::ViewerKind;
+use std::path::Path;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReloadOutcome {
+    Reloaded,
+    Unchanged,
+    Unsupported,
+}
+
+pub(crate) type ReloadAdapter = fn(
+    &Path,
+    &mut FileHandler,
+    &mut Window,
+    &mut Context<FileHandler>,
+) -> anyhow::Result<ReloadOutcome>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ViewMode {
@@ -18,6 +33,7 @@ pub(crate) struct FileHandler {
     pub(crate) mode: ViewMode,
     pub(crate) editor: Option<EditorKind>,
     pub(crate) viewer: Option<ViewerKind>,
+    reload_adapter: Option<ReloadAdapter>,
 }
 
 impl EventEmitter<FileHandlerEvent> for FileHandler {}
@@ -32,7 +48,29 @@ impl FileHandler {
             mode,
             editor,
             viewer,
+            reload_adapter: None,
         }
+    }
+
+    pub(crate) fn with_reload_adapter(mut self, reload_adapter: Option<ReloadAdapter>) -> Self {
+        self.reload_adapter = reload_adapter;
+        self
+    }
+
+    pub(crate) fn reload_from_disk(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<ReloadOutcome> {
+        let Some(reload) = self.reload_adapter else {
+            return Ok(ReloadOutcome::Unsupported);
+        };
+        let outcome = reload(path, self, window, cx)?;
+        if outcome == ReloadOutcome::Reloaded {
+            cx.notify();
+        }
+        Ok(outcome)
     }
 
     pub(crate) fn is_editing(&self) -> bool {

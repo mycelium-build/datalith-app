@@ -18,12 +18,12 @@ impl Render for DatalithView {
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
-            if let Some(open_file) = self.open_files.iter().find(|file| file.path == path)
-                && let Some(input) = open_file.handler.read(cx).input().cloned()
-                && let Ok(content) = std::fs::read_to_string(&path)
-                && input.read(cx).value().as_ref() != content
-            {
-                input.update(cx, |input, cx| input.set_value(&content, _window, cx));
+            if let Some(open_file) = self.open_files.iter().find(|file| file.path == path) {
+                open_file.handler.update(cx, |handler, cx| {
+                    if let Err(error) = handler.reload_from_disk(&path, _window, cx) {
+                        eprintln!("Failed to reload {}: {error}", path.display());
+                    }
+                });
             }
         }
 

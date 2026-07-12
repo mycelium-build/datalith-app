@@ -18,6 +18,8 @@ use txtodo::{
     TodoOptions, TodoTxt, TodoTxtParser,
 };
 
+use crate::view::file_handler::ReloadOutcome;
+
 use crate::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 
 const TODO_ROW_HEIGHT: f32 = 32.0;
@@ -409,6 +411,11 @@ impl TodoTxtEditor {
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).search_input.focus_handle(cx)
     }
+
+    pub(crate) fn reload_from_disk(&self, cx: &mut App) -> anyhow::Result<ReloadOutcome> {
+        self.state
+            .update(cx, |state, cx| state.reload_from_disk(cx))
+    }
 }
 
 // --- TodoTxtState
@@ -448,6 +455,30 @@ impl Focusable for TodoTxtState {
 }
 
 impl TodoTxtState {
+    fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
+        if let Err(error) = self.todo.load(None) {
+            self.parse_errors = vec![error.to_string()];
+            cx.notify();
+            return Err(anyhow::anyhow!(error.to_string()));
+        }
+
+        self.parse_errors.clear();
+        self.clear_row_inputs();
+        let flat = self.todo.list();
+        self.expanded = flat
+            .iter()
+            .enumerate()
+            .filter_map(|(index, task)| (!task.subtasks.is_empty()).then_some(index))
+            .collect();
+        if self.selected.is_some_and(|index| index >= flat.len()) {
+            self.selected = flat.len().checked_sub(1);
+        }
+        drop(flat);
+        self.refresh_item_sizes();
+        cx.notify();
+        Ok(ReloadOutcome::Reloaded)
+    }
+
     fn add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let value = self.new_task_input.read(cx).value();
         let trimmed = value.trim();
