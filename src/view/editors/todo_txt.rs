@@ -15,7 +15,7 @@ use gpui_component::{
 };
 use txtodo::{
     Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
-    TodoOptions, TodoTxt, TodoTxtParser,
+    TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
 };
 
 use crate::view::file_handler::ReloadOutcome;
@@ -456,6 +456,14 @@ impl Focusable for TodoTxtState {
 
 impl TodoTxtState {
     fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
+        let disk_content = std::fs::read_to_string(&self._path)?;
+        let current_content = TodoTxtSerializer::new()
+            .serialize_tasks(&self.todo.tasks)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if disk_content == current_content {
+            return Ok(ReloadOutcome::Unchanged);
+        }
+
         if let Err(error) = self.todo.load(None) {
             self.parse_errors = vec![error.to_string()];
             cx.notify();
