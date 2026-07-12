@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -14,13 +14,11 @@ use gpui_component::{
     h_flex, v_flex, v_virtual_list,
 };
 
-use txtodo::{
-    Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
-    TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
-};
+use txtodo::{Priority, Task};
 
 use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 use crate::document::handler::{FileHandler, ReloadOutcome};
+use crate::document::todo_txt::{FilterKind, FocusTarget, SortKind, TodoTxtWorkspace, parse_date};
 
 const TODO_ROW_HEIGHT: f32 = 32.0;
 const TODO_NEW_ROW_HEIGHT: f32 = 36.0;
@@ -50,102 +48,6 @@ pub(crate) fn reload_todo_txt(
         return Ok(ReloadOutcome::Unsupported);
     };
     editor.reload_from_disk(cx)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FilterKind {
-    All,
-    Incomplete,
-    Completed,
-    PriorityA,
-    PriorityB,
-    PriorityC,
-}
-
-impl FilterKind {
-    const ALL: &[FilterKind] = &[
-        FilterKind::All,
-        FilterKind::Incomplete,
-        FilterKind::Completed,
-        FilterKind::PriorityA,
-        FilterKind::PriorityB,
-        FilterKind::PriorityC,
-    ];
-
-    fn label(self) -> &'static str {
-        match self {
-            FilterKind::All => "All",
-            FilterKind::Incomplete => "Incomplete",
-            FilterKind::Completed => "Completed",
-            FilterKind::PriorityA => "Priority A",
-            FilterKind::PriorityB => "Priority B",
-            FilterKind::PriorityC => "Priority C",
-        }
-    }
-
-    fn from_index(ix: usize) -> Self {
-        Self::ALL.get(ix).copied().unwrap_or(FilterKind::All)
-    }
-
-    #[allow(dead_code)]
-    fn to_filter(self) -> Option<TaskFilter> {
-        match self {
-            FilterKind::All => None,
-            FilterKind::Incomplete => Some(TaskFilters::incomplete()),
-            FilterKind::Completed => Some(TaskFilters::completed()),
-            FilterKind::PriorityA => Some(TaskFilters::by_priority(Priority('A'))),
-            FilterKind::PriorityB => Some(TaskFilters::by_priority(Priority('B'))),
-            FilterKind::PriorityC => Some(TaskFilters::by_priority(Priority('C'))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SortKind {
-    Priority,
-    DateCreated,
-    Description,
-    Project,
-    Context,
-}
-
-impl SortKind {
-    const ALL: &[SortKind] = &[
-        SortKind::Priority,
-        SortKind::DateCreated,
-        SortKind::Description,
-        SortKind::Project,
-        SortKind::Context,
-    ];
-
-    fn label(self) -> &'static str {
-        match self {
-            SortKind::Priority => "Priority",
-            SortKind::DateCreated => "Date",
-            SortKind::Description => "Description",
-            SortKind::Project => "Project",
-            SortKind::Context => "Context",
-        }
-    }
-
-    fn from_index(ix: usize) -> Option<Self> {
-        Self::ALL.get(ix).copied()
-    }
-
-    fn to_sorter(self, desc: bool) -> TaskSorter {
-        let dir = if desc {
-            SortDirection::Desc
-        } else {
-            SortDirection::Asc
-        };
-        match self {
-            SortKind::Priority => TaskSorts::by_priority(dir),
-            SortKind::DateCreated => TaskSorts::by_date_created(dir),
-            SortKind::Description => TaskSorts::by_description(dir),
-            SortKind::Project => TaskSorts::by_project(dir),
-            SortKind::Context => TaskSorts::by_context(dir),
-        }
-    }
 }
 
 #[derive(IntoElement)]
@@ -200,8 +102,8 @@ impl RenderOnce for PriorityTrigger {
                 if key != "up" && key != "down" {
                     return;
                 }
-                let _ = app.update_entity(&editor, |this, cx| {
-                    let current = this.todo.list().get(task_index).and_then(|t| t.priority);
+                app.update_entity(&editor, |this, cx| {
+                    let current = this.workspace.task(task_index).and_then(|t| t.priority);
                     let current_idx = current
                         .and_then(|p| {
                             PRIORITY_VALUES
@@ -273,28 +175,8 @@ impl TodoTxtEditor {
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<TodoTxtState> {
-        let path = path.to_path_buf();
-        let mut todo = TodoTxt::new(TodoOptions {
-            file_path: Some(path.to_string_lossy().to_string()),
-            auto_save: true,
-            ..Default::default()
-        })
-        .expect("Failed to create TodoTxt");
-
-        let parse_errors = match todo.load(None) {
-            Ok(_) => Vec::new(),
-            Err(e) => vec![e.to_string()],
-        };
-
-        let flat = todo.list();
-        let mut expanded = HashSet::new();
-        for (i, task) in flat.iter().enumerate() {
-            if !task.subtasks.is_empty() {
-                expanded.insert(i);
-            }
-        }
-        let total = flat.len();
-        drop(flat);
+        let workspace = TodoTxtWorkspace::open(path);
+        let total = workspace.task_count();
 
         cx.new(|cx| {
             let search_input =
@@ -339,7 +221,8 @@ impl TodoTxtEditor {
                 window,
                 |this: &mut TodoTxtState, _input, event, _window, cx| {
                     if let InputEvent::Change = event {
-                        this.search_query = this.search_input.read(cx).value().to_string();
+                        this.workspace
+                            .set_search_query(this.search_input.read(cx).value().to_string());
                         this.refresh_item_sizes();
                         cx.notify();
                     }
@@ -351,7 +234,8 @@ impl TodoTxtEditor {
                 window,
                 |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
                     if let Some(index_path) = state.read(cx).selected_index(cx) {
-                        this.filter = FilterKind::from_index(index_path.row);
+                        this.workspace
+                            .set_filter(FilterKind::from_index(index_path.row));
                         this.refresh_item_sizes();
                         cx.notify();
                     }
@@ -363,7 +247,8 @@ impl TodoTxtEditor {
                 window,
                 |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
                     if let Some(index_path) = state.read(cx).selected_index(cx) {
-                        this.sort = SortKind::from_index(index_path.row);
+                        this.workspace
+                            .set_sort(SortKind::from_index(index_path.row));
                         this.refresh_item_sizes();
                         cx.notify();
                     }
@@ -391,18 +276,10 @@ impl TodoTxtEditor {
             }));
 
             TodoTxtState {
-                todo,
-                _path: path,
-                search_query: String::new(),
-                filter: FilterKind::All,
-                sort: Some(SortKind::DateCreated),
-                sort_desc: false,
-                expanded,
-                selected: None,
+                workspace,
                 priority_picker_open: None,
                 pending_focus_desc: None,
                 pending_focus_search: false,
-                parse_errors,
                 search_input,
                 filter_select,
                 sort_select,
@@ -438,18 +315,10 @@ impl TodoTxtEditor {
 // --- TodoTxtState
 
 pub(crate) struct TodoTxtState {
-    todo: TodoTxt,
-    _path: std::path::PathBuf,
-    search_query: String,
-    filter: FilterKind,
-    sort: Option<SortKind>,
-    sort_desc: bool,
-    expanded: HashSet<usize>,
-    selected: Option<usize>,
+    workspace: TodoTxtWorkspace,
     priority_picker_open: Option<usize>,
     pending_focus_desc: Option<usize>,
     pending_focus_search: bool,
-    parse_errors: Vec<String>,
     search_input: Entity<InputState>,
     filter_select: Entity<SelectState<Vec<String>>>,
     sort_select: Entity<SelectState<Vec<String>>>,
@@ -473,46 +342,19 @@ impl Focusable for TodoTxtState {
 
 impl TodoTxtState {
     fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
-        // NOTE: full reload instead of a diff reload
-        let disk_content = std::fs::read_to_string(&self._path)?;
-        let current_content = TodoTxtSerializer::new()
-            .serialize_tasks(&self.todo.tasks)
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        if disk_content == current_content {
-            return Ok(ReloadOutcome::Unchanged);
-        }
-
-        if let Err(error) = self.todo.load(None) {
-            self.parse_errors = vec![error.to_string()];
+        let outcome = self.workspace.reload_from_disk()?;
+        if outcome == ReloadOutcome::Reloaded {
+            self.clear_row_inputs();
+            self.refresh_item_sizes();
             cx.notify();
-            return Err(anyhow::anyhow!(error.to_string()));
         }
-
-        self.parse_errors.clear();
-        self.clear_row_inputs();
-        let flat = self.todo.list();
-        self.expanded = flat
-            .iter()
-            .enumerate()
-            .filter_map(|(index, task)| (!task.subtasks.is_empty()).then_some(index))
-            .collect();
-        if self.selected.is_some_and(|index| index >= flat.len()) {
-            self.selected = flat.len().checked_sub(1);
-        }
-        drop(flat);
-        self.refresh_item_sizes();
-        cx.notify();
-        Ok(ReloadOutcome::Reloaded)
+        Ok(outcome)
     }
 
     fn add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let value = self.new_task_input.read(cx).value();
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            let line = format!("{} {trimmed}", today_string());
-            if let Err(error) = self.todo.add(line) {
-                self.parse_errors.push(format!("Add task failed: {error}"));
-            }
+        if !value.trim().is_empty() {
+            self.workspace.add_task(&value);
             self.clear_row_inputs();
             self.refresh_item_sizes();
             cx.notify();
@@ -521,97 +363,9 @@ impl TodoTxtState {
             .update(cx, |state, cx| state.set_value("", window, cx));
     }
 
-    fn visible_tasks(&self) -> Vec<(usize, bool)> {
-        let flat = self.todo.list();
-        let query = self.search_query.to_lowercase();
-        let filter_fn = self.filter.to_filter();
-
-        let n = flat.len();
-        let mut subtree_match = vec![false; n];
-        for i in (0..n).rev() {
-            let task = &flat[i];
-            let self_match = filter_fn.as_ref().map_or(true, |f| f(task))
-                && (query.is_empty() || matches_task(task, &query));
-            let child_match = {
-                let mut c = false;
-                for j in (i + 1)..n {
-                    if flat[j].indent_level <= task.indent_level {
-                        break;
-                    }
-                    if flat[j].indent_level == task.indent_level + 1 && subtree_match[j] {
-                        c = true;
-                        break;
-                    }
-                }
-                c
-            };
-            subtree_match[i] = self_match || child_match;
-        }
-
-        let mut visible_indices: Vec<usize> = Vec::new();
-        let mut collapsed_depth: Option<usize> = None;
-
-        for (i, task) in flat.iter().enumerate() {
-            if let Some(depth) = collapsed_depth {
-                if task.indent_level > depth {
-                    continue;
-                }
-                collapsed_depth = None;
-            }
-
-            if !subtree_match[i] {
-                continue;
-            }
-
-            visible_indices.push(i);
-
-            let has_subtasks = !task.subtasks.is_empty();
-            let is_expanded = self.expanded.contains(&i);
-            if has_subtasks && !is_expanded {
-                collapsed_depth = Some(task.indent_level);
-            }
-        }
-
-        if self.sort.is_some() {
-            let sorter = self.sort.unwrap().to_sorter(self.sort_desc);
-            let top_level: Vec<usize> = visible_indices
-                .iter()
-                .copied()
-                .filter(|&i| flat[i].indent_level == 0)
-                .collect();
-            let mut sorted_groups: Vec<(usize, Vec<usize>)> = Vec::new();
-            for &tl in &top_level {
-                let mut group = vec![tl];
-                let tl_depth = flat[tl].indent_level;
-                let pos = visible_indices.iter().position(|&x| x == tl).unwrap();
-                for &idx in &visible_indices[pos + 1..] {
-                    if flat[idx].indent_level <= tl_depth {
-                        break;
-                    }
-                    group.push(idx);
-                }
-                sorted_groups.push((tl, group));
-            }
-            sorted_groups.sort_by(|&(a, _), &(b, _)| sorter(&flat[a], &flat[b]));
-            visible_indices = sorted_groups
-                .into_iter()
-                .flat_map(|(_, group)| group)
-                .collect();
-        }
-
-        visible_indices
-            .into_iter()
-            .map(|i| {
-                let has_subtasks = !flat[i].subtasks.is_empty();
-                let is_expanded = self.expanded.contains(&i);
-                (i, has_subtasks && is_expanded)
-            })
-            .collect()
-    }
-
     fn refresh_item_sizes(&mut self) {
         // necessary because row count change and v_virtual_list GPUI components need a size for each rows (that can be different)
-        let tasks = self.visible_tasks();
+        let tasks = self.workspace.visible_tasks();
         self.item_sizes = Rc::new(
             tasks
                 .iter()
@@ -624,96 +378,37 @@ impl TodoTxtState {
     }
 
     fn toggle_complete(&mut self, index: usize, cx: &mut Context<Self>) {
-        let flat = self.todo.list();
-        if let Some(task) = flat.get(index) {
-            if task.completed {
-                let _ = self.todo.unmark([index as i64]);
-            } else {
-                let _ = self.todo.mark([index as i64]);
-            }
-        }
+        self.workspace.toggle_complete(index);
         self.refresh_item_sizes();
         cx.notify();
     }
 
     fn toggle_expand(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.expanded.contains(&index) {
-            self.expanded.remove(&index);
-        } else {
-            self.expanded.insert(index);
-        }
+        self.workspace.toggle_expanded(index);
         self.refresh_item_sizes();
         cx.notify();
     }
 
     fn add_subtask(&mut self, parent_index: usize, cx: &mut Context<Self>) {
-        let flat = self.todo.list();
-        if let Some(parent) = flat.get(parent_index) {
-            let indent = " ".repeat(parent.indent_level + 1);
-            let today = today_string();
-            let raw = format!("{indent}{today} New subtask");
-            let insert_at = parent_index + 1;
-            if let Err(e) = self.todo.insert(insert_at as i64, raw) {
-                self.parse_errors.push(format!("Add subtask failed: {e}"));
-            }
-            self.shift_expanded_after_insert(insert_at);
-            self.expanded.insert(parent_index);
-            if let Some(sel) = self.selected {
-                if sel >= insert_at {
-                    self.selected = Some(sel + 1);
-                }
-            }
+        let outcome = self.workspace.add_subtask(parent_index);
+        if let Some(FocusTarget::Task(index)) = outcome.focus {
             self.clear_row_inputs();
-            self.pending_focus_desc = Some(insert_at);
+            self.pending_focus_desc = Some(index);
         }
         self.refresh_item_sizes();
         cx.notify();
     }
 
     fn delete_task(&mut self, index: usize, cx: &mut Context<Self>) {
-        let old_len = self.todo.list().len();
-        let _ = self.todo.remove([index as i64]);
-        let new_len = self.todo.list().len();
-        let removed = old_len.saturating_sub(new_len);
-
-        let old = std::mem::take(&mut self.expanded);
-        for idx in old {
-            if idx < index {
-                self.expanded.insert(idx);
-            } else if idx >= index + removed {
-                self.expanded.insert(idx - removed);
-            }
-        }
-
+        let outcome = self.workspace.delete_task(index);
         self.clear_row_inputs();
-        if index > 0 && self.todo.list().len() > 0 {
-            self.pending_focus_desc = Some(index - 1);
-        } else if self.todo.list().is_empty() {
-            self.pending_focus_search = true;
-        } else {
-            self.pending_focus_desc = Some(0);
-        }
-        if let Some(sel) = self.selected {
-            let len = self.todo.list().len();
-            if sel >= len && len > 0 {
-                self.selected = Some(len - 1);
-            } else if sel >= index + removed {
-                self.selected = Some(sel - removed);
-            }
+        match outcome.focus {
+            Some(FocusTarget::Task(index)) => self.pending_focus_desc = Some(index),
+            Some(FocusTarget::Search) => self.pending_focus_search = true,
+            None => {}
         }
         self.refresh_item_sizes();
         cx.notify();
-    }
-
-    fn shift_expanded_after_insert(&mut self, at: usize) {
-        let old = std::mem::take(&mut self.expanded);
-        for idx in old {
-            if idx >= at {
-                self.expanded.insert(idx + 1);
-            } else {
-                self.expanded.insert(idx);
-            }
-        }
     }
 
     fn clear_row_inputs(&mut self) {
@@ -723,60 +418,25 @@ impl TodoTxtState {
         self.date_subs.clear();
     }
 
-    fn update_task_field(&mut self, index: usize, patch: TaskPatch, cx: &mut Context<Self>) {
-        if let Err(e) = self.todo.update(index as i64, patch) {
-            self.parse_errors.push(format!("Save failed: {e}"));
-        }
-        self.priority_picker_open = None;
-        self.refresh_item_sizes();
-        cx.notify();
-    }
-
     fn commit_description(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
-        let parsed = TodoTxtParser::new().parse_line(value).ok();
-        self.update_task_field(
-            index,
-            TaskPatch {
-                description: Some(
-                    parsed
-                        .as_ref()
-                        .map_or_else(|| value.to_string(), |task| task.description.clone()),
-                ),
-                projects: parsed.as_ref().map(|task| task.projects.clone()),
-                contexts: parsed.as_ref().map(|task| task.contexts.clone()),
-                extensions: parsed.map(|task| task.extensions),
-                ..Default::default()
-            },
-            cx,
-        );
+        self.workspace.update_description(index, value);
+        self.refresh_after_update(cx);
     }
 
     fn commit_date(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
-        let date = parse_date(value);
-        self.update_task_field(
-            index,
-            TaskPatch {
-                creation_date: Some(date),
-                ..Default::default()
-            },
-            cx,
-        );
+        self.workspace.update_date(index, value);
+        self.refresh_after_update(cx);
     }
 
     fn commit_priority(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
-        let priority = if value.is_empty() {
-            None
-        } else {
-            Priority::from_token(value).ok()
-        };
-        self.update_task_field(
-            index,
-            TaskPatch {
-                priority: Some(priority),
-                ..Default::default()
-            },
-            cx,
-        );
+        self.workspace.update_priority(index, value);
+        self.refresh_after_update(cx);
+    }
+
+    fn refresh_after_update(&mut self, cx: &mut Context<Self>) {
+        self.priority_picker_open = None;
+        self.refresh_item_sizes();
+        cx.notify();
     }
 
     fn ensure_row_inputs(
@@ -831,11 +491,11 @@ impl TodoTxtState {
 
 impl Render for TodoTxtState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let visible = self.visible_tasks();
+        let visible = self.workspace.visible_tasks();
 
-        let task_count = self.todo.list().len();
+        let task_count = self.workspace.task_count();
         let task_data: Vec<(String, Option<String>, bool)> = {
-            let flat = self.todo.list();
+            let flat = self.workspace.tasks();
             flat.iter()
                 .map(|t| {
                     (
@@ -862,10 +522,10 @@ impl Render for TodoTxtState {
             }
         }
 
-        if let Some(focus_idx) = self.pending_focus_desc.take() {
-            if let Some(e) = self.desc_inputs.get(&focus_idx) {
-                e.focus_handle(cx).focus(window, cx);
-            }
+        if let Some(focus_idx) = self.pending_focus_desc.take()
+            && let Some(e) = self.desc_inputs.get(&focus_idx)
+        {
+            e.focus_handle(cx).focus(window, cx);
         }
         if self.pending_focus_search {
             self.pending_focus_search = false;
@@ -877,8 +537,8 @@ impl Render for TodoTxtState {
         let task_list = self.render_task_list(&visible, cx);
         let new_row = self.render_new_task_row(cx);
 
-        let total = self.todo.list().len();
-        let completed = self.todo.list().iter().filter(|t| t.completed).count();
+        let total = self.workspace.task_count();
+        let completed = self.workspace.completed_count();
         let progress = if total > 0 {
             completed as f32 / total as f32
         } else {
@@ -908,7 +568,7 @@ impl TodoTxtState {
         let filter_select = Select::new(&self.filter_select);
         let sort_select = Select::new(&self.sort_select);
 
-        let sort_icon = if self.sort_desc {
+        let sort_icon = if self.workspace.sort_descending() {
             Icon::default()
                 .path(SharedString::from(ARROW_DOWN_AZ_ICON))
                 .size_4()
@@ -942,7 +602,7 @@ impl TodoTxtState {
                     .child(search)
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                         if event.keystroke.key == "down" {
-                            let visible = this.visible_tasks();
+                            let visible = this.workspace.visible_tasks();
                             if let Some(&(first_fi, _)) = visible.first() {
                                 if let Some(e) = this.desc_inputs.get(&first_fi) {
                                     e.focus_handle(cx).focus(window, cx);
@@ -973,7 +633,7 @@ impl TodoTxtState {
                     .ghost()
                     .icon(sort_icon)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.sort_desc = !this.sort_desc;
+                        this.workspace.toggle_sort_direction();
                         this.refresh_item_sizes();
                         cx.notify();
                     })),
@@ -982,10 +642,10 @@ impl TodoTxtState {
     }
 
     fn render_error_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.parse_errors.is_empty() {
+        if self.workspace.parse_error_count() == 0 {
             return None;
         }
-        let count = self.parse_errors.len();
+        let count = self.workspace.parse_error_count();
         Some(
             h_flex()
                 .w_full()
@@ -1022,7 +682,7 @@ impl TodoTxtState {
 
         let entity = cx.entity().clone();
         let sizes = self.item_sizes.clone();
-        let selected = self.selected;
+        let selected = self.workspace.selected();
         let visible_owned = visible.to_vec();
 
         v_virtual_list(
@@ -1033,8 +693,7 @@ impl TodoTxtState {
                 range
                     .map(|i| {
                         let (flat_index, _) = visible_owned[i];
-                        let flat = state.todo.list();
-                        let task = match flat.get(flat_index) {
+                        let task = match state.workspace.task(flat_index) {
                             Some(t) => t,
                             None => return div().h(px(TODO_ROW_HEIGHT)).into_any(),
                         };
@@ -1060,7 +719,7 @@ impl TodoTxtState {
     ) -> AnyElement {
         let indent = px(depth as f32 * TODO_INDENT_PX);
         let has_subtasks = !task.subtasks.is_empty();
-        let is_expanded = self.expanded.contains(&flat_index);
+        let is_expanded = self.workspace.is_expanded(flat_index);
 
         let row_bg = if is_selected {
             cx.theme().accent.opacity(0.1)
@@ -1151,17 +810,16 @@ impl TodoTxtState {
                     .text_sm()
                     .child(date_input)
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                        if event.keystroke.key == "escape" {
-                            if let Some(e) = this.date_inputs.get(&fi) {
-                                let original = this
-                                    .todo
-                                    .list()
-                                    .get(fi)
-                                    .and_then(|t| t.creation_date)
-                                    .map(|d| d.to_string())
-                                    .unwrap_or_default();
-                                e.update(cx, |s, cx| s.set_value(original, window, cx));
-                            }
+                        if event.keystroke.key == "escape"
+                            && let Some(e) = this.date_inputs.get(&fi)
+                        {
+                            let original = this
+                                .workspace
+                                .task(fi)
+                                .and_then(|t| t.creation_date)
+                                .map(|d| d.to_string())
+                                .unwrap_or_default();
+                            e.update(cx, |s, cx| s.set_value(original, window, cx));
                         }
                     })),
             );
@@ -1197,7 +855,7 @@ impl TodoTxtState {
                                 this.delete_task(fi, cx);
                             }
                             "up" => {
-                                let visible = this.visible_tasks();
+                                let visible = this.workspace.visible_tasks();
                                 if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
                                     if pos > 0 {
                                         let prev_fi = visible[pos - 1].0;
@@ -1210,7 +868,7 @@ impl TodoTxtState {
                                 }
                             }
                             "down" => {
-                                let visible = this.visible_tasks();
+                                let visible = this.workspace.visible_tasks();
                                 if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
                                     if pos + 1 < visible.len() {
                                         let next_fi = visible[pos + 1].0;
@@ -1302,12 +960,8 @@ impl TodoTxtState {
             id: ElementId::NamedInteger("pri-trigger".into(), flat_index as u64),
             editor: entity.clone(),
             task_index: flat_index,
-            current: self.todo.list().get(flat_index).and_then(|t| t.priority),
-            completed: self
-                .todo
-                .list()
-                .get(flat_index)
-                .map_or(false, |t| t.completed),
+            current: self.workspace.task(flat_index).and_then(|t| t.priority),
+            completed: self.workspace.task(flat_index).is_some_and(|t| t.completed),
         };
 
         let content_entity = entity.clone();
@@ -1342,7 +996,7 @@ impl TodoTxtState {
                                     Some(c) => format!("({c})"),
                                     None => String::new(),
                                 };
-                                let _ = app.update_entity(&ent, |this: &mut TodoTxtState, cx| {
+                                app.update_entity(&ent, |this: &mut TodoTxtState, cx| {
                                     this.commit_priority(flat_index, &value, cx);
                                     this.priority_picker_open = None;
                                 });
@@ -1359,7 +1013,7 @@ impl TodoTxtState {
             .on_open_change({
                 let ent = entity.clone();
                 move |open: &bool, _window: &mut Window, app: &mut App| {
-                    let _ = app.update_entity(&ent, |this: &mut TodoTxtState, _cx| {
+                    app.update_entity(&ent, |this: &mut TodoTxtState, _cx| {
                         if *open {
                             this.priority_picker_open = Some(flat_index);
                         } else if this.priority_picker_open == Some(flat_index) {
@@ -1394,7 +1048,7 @@ impl TodoTxtState {
                                 this.add_task(window, cx);
                             }
                             "up" => {
-                                let visible = this.visible_tasks();
+                                let visible = this.workspace.visible_tasks();
                                 if let Some(&(last_fi, _)) = visible.last() {
                                     if let Some(e) = this.desc_inputs.get(&last_fi) {
                                         e.focus_handle(cx).focus(window, cx);
@@ -1413,43 +1067,6 @@ impl TodoTxtState {
 
 // --- Helpers
 
-fn today_string() -> String {
-    let now = time::OffsetDateTime::now_utc();
-    now.date().to_string()
-}
-
-fn matches_task(task: &Task, query: &str) -> bool {
-    if task.description.to_lowercase().contains(query) {
-        return true;
-    }
-    if let Some(ref p) = task.priority {
-        if p.to_string().to_lowercase().contains(query) {
-            return true;
-        }
-    }
-    if let Some(d) = task.creation_date {
-        if d.to_string().to_lowercase().contains(query) {
-            return true;
-        }
-    }
-    for proj in &task.projects {
-        if proj.to_lowercase().contains(query) {
-            return true;
-        }
-    }
-    for ctx in &task.contexts {
-        if ctx.to_lowercase().contains(query) {
-            return true;
-        }
-    }
-    for (key, val) in &task.extensions {
-        if key.to_lowercase().contains(query) || val.to_string().to_lowercase().contains(query) {
-            return true;
-        }
-    }
-    false
-}
-
 fn priority_color(c: char) -> Hsla {
     match c {
         'A' => rgb(0xEF4444).into(),
@@ -1459,18 +1076,6 @@ fn priority_color(c: char) -> Hsla {
         'E' => rgb(0x3B82F6).into(),
         _ => rgb(0x9CA3AF).into(),
     }
-}
-
-fn parse_date(s: &str) -> Option<time::Date> {
-    let parts: Vec<&str> = s.split('-').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-    let year: i32 = parts[0].parse().ok()?;
-    let month: u8 = parts[1].parse().ok()?;
-    let day: u8 = parts[2].parse().ok()?;
-    let month = time::Month::try_from(month).ok()?;
-    time::Date::from_calendar_date(year, month, day).ok()
 }
 
 fn render_pill(label: &str, color: Hsla) -> AnyElement {
