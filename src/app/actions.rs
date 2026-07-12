@@ -50,6 +50,38 @@ macro_rules! with_view {
     };
 }
 
+pub(crate) fn register(cx: &mut App) {
+    cx.on_action(open_vault);
+    cx.on_action(toggle_search);
+    cx.on_action(toggle_quick_switcher);
+    cx.on_action(close_palette);
+    cx.on_action(handle_new_file);
+    cx.on_action(handle_new_folder);
+    cx.on_action(handle_rename);
+    cx.on_action(handle_delete);
+    cx.on_action(handle_duplicate);
+    cx.on_action(handle_open_in_explorer);
+    cx.on_action(handle_copy_path);
+    cx.on_action(handle_close_tab);
+    cx.on_action(handle_new_tab);
+    cx.on_action(handle_focus_sidebar);
+    cx.on_action(toggle_theme);
+    cx.on_action(handle_select_tab_1);
+    cx.on_action(handle_select_tab_2);
+    cx.on_action(handle_select_tab_3);
+    cx.on_action(handle_select_tab_4);
+    cx.on_action(handle_select_tab_5);
+    cx.on_action(handle_select_tab_6);
+    cx.on_action(handle_select_tab_7);
+    cx.on_action(handle_select_tab_8);
+    cx.on_action(handle_select_tab_9);
+    cx.on_action(open_settings);
+    cx.on_action(toggle_editor_mode);
+    cx.on_action(go_back);
+    cx.on_action(go_forward);
+    cx.on_action(handle_open_link);
+}
+
 pub(crate) fn open_vault(_: &OpenVault, cx: &mut App) {
     let rx = cx.prompt_for_paths(PathPromptOptions {
         files: false,

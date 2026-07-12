@@ -6,6 +6,7 @@ pub(crate) mod sidebar;
 pub(crate) mod tabs;
 pub(crate) mod themes;
 pub(crate) mod viewers;
+pub(crate) mod window;
 
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
 const VAULT_SELECT_MARKER: &str = "__open_new__";
