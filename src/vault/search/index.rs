@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
 
-use crate::consts::INDEX_WRITER_BUDGET;
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::path::display_name;
+
+const INDEX_WRITER_BUDGET: usize = 50_000_000;
 
 pub(crate) struct Indexer {
     pub(crate) index: Index,

@@ -1,3 +1,6 @@
+mod constants;
+mod frontmatter;
+
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -7,16 +10,12 @@ use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
 
-use crate::consts::{
-    BASE_FONT_SIZE, MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING,
-    MD_CODE_BLOCK_RADIUS, MD_CODE_FONT_SCALE, MD_HEADING_MARGIN, MD_HEADING_SIZES,
-    MD_IMAGE_MAX_WIDTH, MD_LINE_HEIGHT, MD_LIST_INDENT,
-};
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownBlock, MarkdownEvent, MarkdownStyle, parse_markdown};
+use crate::ui::BASE_FONT_SIZE;
 
-mod frontmatter;
-
+use super::image::IMAGE_MAX_WIDTH;
+use constants::*;
 use frontmatter::render_frontmatter;
 
 pub(crate) struct MarkdownViewer {
@@ -54,7 +53,7 @@ impl MarkdownViewer {
             if path.exists() {
                 return div()
                     .w_full()
-                    .max_w(px(MD_IMAGE_MAX_WIDTH))
+                    .max_w(px(IMAGE_MAX_WIDTH))
                     .my_2()
                     .child(img(path).w_full())
                     .into_any_element();
@@ -63,7 +62,7 @@ impl MarkdownViewer {
 
         div()
             .w_full()
-            .max_w(px(MD_IMAGE_MAX_WIDTH))
+            .max_w(px(IMAGE_MAX_WIDTH))
             .my_2()
             .p_2()
             .rounded(px(4.))

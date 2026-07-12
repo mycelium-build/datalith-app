@@ -1,5 +1,4 @@
 mod app;
-mod consts;
 mod document;
 mod themes;
 mod ui;
@@ -69,7 +68,7 @@ fn main() {
 
         if let Some(multiplier) = load_font_size_multiplier() {
             gpui_component::Theme::global_mut(cx).font_size =
-                gpui::px(crate::consts::BASE_FONT_SIZE as f32 * multiplier as f32);
+                gpui::px(crate::ui::BASE_FONT_SIZE as f32 * multiplier as f32);
         }
 
         cx.set_global(AppState { view: None });

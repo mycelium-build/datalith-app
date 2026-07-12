@@ -3,7 +3,9 @@ use std::path::Path;
 use gpui::*;
 use gpui_component::input::{Input, InputState};
 
-use crate::consts::{BASE_FONT_SIZE, MD_LINE_HEIGHT};
+use crate::ui::BASE_FONT_SIZE;
+
+const MD_LINE_HEIGHT: f32 = 1.6;
 
 pub(crate) struct MarkdownEditor {
     input: Entity<InputState>,

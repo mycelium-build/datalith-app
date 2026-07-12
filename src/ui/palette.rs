@@ -7,13 +7,16 @@ use gpui_component::{
     v_flex, v_virtual_list,
 };
 
-use crate::consts::{
-    BORDER_WIDTH, MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH,
-};
 use crate::ui::DatalithView;
 use crate::vault::VaultCatalog;
 use crate::vault::path::display_name;
 use crate::vault::search::picker;
+
+const BORDER_WIDTH: f32 = 2.0;
+const MIN_SEARCH_QUERY_LENGTH: usize = 3;
+const PALETTE_WIDTH: f32 = 600.0;
+const ITEM_HEIGHT: f32 = 28.0;
+const PALETTE_MAX_HEIGHT: f32 = 400.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PaletteKind {
@@ -113,8 +116,7 @@ impl Palette {
                 .map(|catalog| catalog.search(&query))
                 .unwrap_or_default()
         };
-        self.item_sizes =
-            vec![size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT)); self.search_results.len()];
+        self.item_sizes = vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.search_results.len()];
     }
 
     pub(crate) fn refresh_quick_switcher(
@@ -134,19 +136,15 @@ impl Palette {
         results.sort_by_key(|a| a.name.to_lowercase());
 
         self.quick_switcher_entries = results;
-        self.item_sizes = vec![
-            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
-            self.quick_switcher_entries.len()
-        ];
+        self.item_sizes =
+            vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
     }
 
     pub(crate) fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
         self.quick_switcher_entries =
             picker::filter(&self.quick_switcher_all_files, open_files, &query);
-        self.item_sizes = vec![
-            size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT));
-            self.quick_switcher_entries.len()
-        ];
+        self.item_sizes =
+            vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
     }
 
     pub(crate) fn scroll_to(&mut self, index: usize) {
@@ -178,7 +176,7 @@ impl Palette {
                             let path = r.clone();
                             div()
                                 .px_2()
-                                .h(px(PALETTE_ITEM_HEIGHT))
+                                .h(px(ITEM_HEIGHT))
                                 .bg(bg)
                                 .hover(|s| s.bg(cx.theme().muted))
                                 .cursor_pointer()
@@ -216,7 +214,7 @@ impl Palette {
                             };
                             div()
                                 .px_2()
-                                .h(px(PALETTE_ITEM_HEIGHT))
+                                .h(px(ITEM_HEIGHT))
                                 .bg(bg)
                                 .hover(|s| s.bg(cx.theme().muted))
                                 .cursor_pointer()

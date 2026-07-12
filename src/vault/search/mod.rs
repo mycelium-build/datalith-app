@@ -10,8 +10,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tantivy::{TantivyDocument, collector::TopDocs, schema::Value};
 
-use crate::consts::MAX_SEARCH_RESULTS;
 use crate::document::file_types::RegisteredFileTypes;
+
+const MAX_SEARCH_RESULTS: usize = 25;
 
 pub(crate) struct SearchEngine {
     pub(crate) indexer: Indexer,

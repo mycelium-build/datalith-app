@@ -1,4 +1,3 @@
-use crate::consts::SIDEBAR_WIDTH;
 use gpui::*;
 use gpui_component::{
     h_flex,
@@ -8,6 +7,8 @@ use gpui_component::{
 use std::path::PathBuf;
 
 use super::DatalithView;
+
+const SIDEBAR_WIDTH: f32 = 260.0;
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

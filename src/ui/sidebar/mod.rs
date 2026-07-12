@@ -13,11 +13,13 @@ use gpui_component::{
 };
 
 use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer};
-use crate::consts::BORDER_WIDTH;
 use crate::vault::file_ops;
 use crate::vault::path::display_name;
 
 use super::DatalithView;
+
+const BORDER_WIDTH: f32 = 2.0;
+pub(super) const TREE_PADDING_PX: f32 = 12.0;
 
 #[derive(Clone)]
 pub(crate) struct DragFile {

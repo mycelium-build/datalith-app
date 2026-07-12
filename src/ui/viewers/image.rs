@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use gpui::*;
 
-use crate::consts::MD_IMAGE_MAX_WIDTH;
+pub(crate) const IMAGE_MAX_WIDTH: f32 = 800.0;
 
 pub(crate) struct ImageViewer {
     file_path: PathBuf,
@@ -29,7 +29,7 @@ impl ImageViewer {
             .child(
                 img(self.file_path.clone())
                     .w_full()
-                    .max_w(px(MD_IMAGE_MAX_WIDTH)),
+                    .max_w(px(IMAGE_MAX_WIDTH)),
             )
             .into_any_element()
     }

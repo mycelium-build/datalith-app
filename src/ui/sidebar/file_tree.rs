@@ -13,11 +13,12 @@ use gpui_component::{
 use crate::app::actions::{
     CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
 };
-use crate::consts::{DRAG_HOVER_EXPAND_DELAY_MS, TREE_INDENT_PX, TREE_PADDING_PX};
 use crate::vault::path::display_name;
 
-use super::DatalithView;
-use super::DragFile;
+use super::{DatalithView, DragFile, TREE_PADDING_PX};
+
+const TREE_INDENT_PX: f32 = 16.0;
+const DRAG_HOVER_EXPAND_DELAY_MS: u64 = 800;
 
 #[must_use]
 pub(crate) fn build_file_items_with_expanded(

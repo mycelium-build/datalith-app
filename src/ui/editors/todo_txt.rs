@@ -13,25 +13,30 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, v_virtual_list,
 };
+
 use txtodo::{
     Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
     TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
 };
 
+use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 use crate::document::handler::{FileHandler, ReloadOutcome};
 
-use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
-
 const TODO_ROW_HEIGHT: f32 = 32.0;
+const TODO_NEW_ROW_HEIGHT: f32 = 36.0;
+
 const TODO_HEADER_HEIGHT: f32 = 40.0;
+
 const TODO_PILL_PADDING_H: f32 = 6.0;
 const TODO_PILL_RADIUS: f32 = 4.0;
+
 const TODO_INDENT_PX: f32 = 20.0;
-const TODO_NEW_ROW_HEIGHT: f32 = 36.0;
+
 const TODO_COL_EXPAND: f32 = 24.0;
 const TODO_COL_CHECK: f32 = 24.0;
 const TODO_COL_PRIORITY: f32 = 56.0;
 const TODO_COL_DATE: f32 = 90.0;
+
 const PRIORITY_VALUES: [Option<char>; 6] =
     [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
 

@@ -2,11 +2,12 @@ use gpui::*;
 use gpui_component::checkbox::Checkbox;
 use gpui_component::{ActiveTheme, Disableable};
 
-use crate::consts::{
+use crate::document::handler::{FileHandler, FileHandlerEvent};
+
+use super::constants::{
     MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
     MD_FRONTMATTER_RADIUS, MD_LINE_HEIGHT,
 };
-use crate::document::handler::{FileHandler, FileHandlerEvent};
 
 struct FrontmatterProperty {
     key: String,

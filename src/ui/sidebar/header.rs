@@ -2,8 +2,10 @@ use gpui::*;
 use gpui_component::{ActiveTheme, IconName, h_flex};
 
 use super::super::palette::PaletteKind;
-use super::DatalithView;
-use crate::consts::{BORDER_WIDTH, ICON_PADDING, TREE_PADDING_PX};
+use super::{DatalithView, TREE_PADDING_PX};
+
+const BORDER_WIDTH: f32 = 2.0;
+const ICON_PADDING: f32 = 4.0;
 
 impl DatalithView {
     pub(crate) fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {

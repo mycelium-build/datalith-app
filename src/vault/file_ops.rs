@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::consts::{DEFAULT_FILE_NAME, DEFAULT_FOLDER_NAME};
+const DEFAULT_FILE_NAME: &str = "untitled.md";
+const DEFAULT_FOLDER_NAME: &str = "untitled";
 
 #[must_use]
 pub(crate) fn parent_dir_for_target(target: &Path) -> PathBuf {

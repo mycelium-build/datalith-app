@@ -6,6 +6,9 @@ pub(crate) mod sidebar;
 pub(crate) mod tabs;
 pub(crate) mod viewers;
 
+pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
+const VAULT_SELECT_MARKER: &str = "__open_new__";
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -112,9 +115,7 @@ fn build_vault_entries() -> Vec<VaultEntry> {
         })
         .collect();
     let mut items = recent_vaults;
-    items.push(VaultEntry::OpenNew(SharedString::from(
-        crate::consts::VAULT_SELECT_MARKER,
-    )));
+    items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
     items
 }
 
@@ -136,7 +137,7 @@ impl DatalithView {
                 match event {
                     SelectEvent::Confirm(value) => {
                         if let Some(value) = value {
-                            if value == crate::consts::VAULT_SELECT_MARKER {
+                            if value == VAULT_SELECT_MARKER {
                                 window
                                     .dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
                             } else {
@@ -157,7 +158,7 @@ impl DatalithView {
                     return;
                 };
                 let val = value.start() as f64;
-                let new_size = px(crate::consts::BASE_FONT_SIZE as f32 * value.start());
+                let new_size = px(BASE_FONT_SIZE as f32 * value.start());
                 cx.global_mut::<settings::ThemeOptions>()
                     .font_size_multiplier = val;
                 gpui_component::Theme::global_mut(cx).font_size = new_size;
