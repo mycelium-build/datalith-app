@@ -456,6 +456,7 @@ impl Focusable for TodoTxtState {
 
 impl TodoTxtState {
     fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
+        // NOTE: full reload instead of a diff reload
         let disk_content = std::fs::read_to_string(&self._path)?;
         let current_content = TodoTxtSerializer::new()
             .serialize_tasks(&self.todo.tasks)
