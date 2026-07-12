@@ -1,32 +1,24 @@
-mod actions;
 mod app;
-mod assets;
-mod config;
 mod consts;
-mod file_types;
-mod fs_ops;
-mod link_cache;
-mod markdown;
-mod search;
+mod document;
 mod themes;
-mod utils;
-mod vault_catalog;
-mod view;
+mod ui;
+mod vault;
 
 use gpui::*;
 use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 
-use crate::actions::*;
 use crate::app::AppState;
-use crate::config::{
+use crate::app::actions::*;
+use crate::app::config::{
     load_dark_theme_name, load_font_size_multiplier, load_last_folder, load_light_theme_name,
     load_theme_mode,
 };
-use crate::view::DatalithView;
-use crate::view::settings::{SettingsView, ThemeOptions};
+use crate::ui::DatalithView;
+use crate::ui::settings::{SettingsView, ThemeOptions};
 
 fn main() {
-    let app = gpui_platform::application().with_assets(assets::DatalithAssets);
+    let app = gpui_platform::application().with_assets(app::assets::DatalithAssets);
 
     app.run(move |cx| {
         gpui_component::init(cx);
