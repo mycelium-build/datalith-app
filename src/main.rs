@@ -3,12 +3,14 @@ mod app;
 mod assets;
 mod config;
 mod consts;
+mod file_types;
 mod fs_ops;
 mod link_cache;
 mod markdown;
 mod search;
 mod themes;
 mod utils;
+mod vault_catalog;
 mod view;
 
 use gpui::*;

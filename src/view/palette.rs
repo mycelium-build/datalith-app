@@ -10,8 +10,9 @@ use gpui_component::{
 use crate::consts::{
     BORDER_WIDTH, MIN_SEARCH_QUERY_LENGTH, PALETTE_ITEM_HEIGHT, PALETTE_MAX_HEIGHT, PALETTE_WIDTH,
 };
-use crate::search::{SearchEngine, picker};
+use crate::search::picker;
 use crate::utils::file_name_str;
+use crate::vault_catalog::VaultCatalog;
 use crate::view::DatalithView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -74,9 +75,9 @@ impl Palette {
         self.open = false;
     }
 
-    pub(crate) fn set_root(&mut self, engine: Option<&SearchEngine>) {
-        if let Some(engine) = engine {
-            self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
+    pub(crate) fn set_root(&mut self, catalog: Option<&VaultCatalog>) {
+        if let Some(catalog) = catalog {
+            self.quick_switcher_all_files = picker::collect_from_paths(catalog.tracked_paths());
         }
     }
 
@@ -103,12 +104,14 @@ impl Palette {
         self.add_entry(new_path);
     }
 
-    pub(crate) fn search(&mut self, engine: Option<&SearchEngine>, query: SharedString) {
+    pub(crate) fn search(&mut self, catalog: Option<&VaultCatalog>, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
-            engine.map(|e| e.search(&query)).unwrap_or_default()
+            catalog
+                .map(|catalog| catalog.search(&query))
+                .unwrap_or_default()
         };
         self.item_sizes =
             vec![size(px(PALETTE_WIDTH), px(PALETTE_ITEM_HEIGHT)); self.search_results.len()];
@@ -116,11 +119,11 @@ impl Palette {
 
     pub(crate) fn refresh_quick_switcher(
         &mut self,
-        engine: Option<&SearchEngine>,
+        catalog: Option<&VaultCatalog>,
         open_files: &[PathBuf],
     ) {
-        if let Some(engine) = engine {
-            self.quick_switcher_all_files = picker::collect_from_engine(&engine.indexer);
+        if let Some(catalog) = catalog {
+            self.quick_switcher_all_files = picker::collect_from_paths(catalog.tracked_paths());
         }
 
         let mut results = self.quick_switcher_all_files.clone();
@@ -337,7 +340,7 @@ impl Palette {
                         match view.palette.kind {
                             PaletteKind::Search => {
                                 view.palette.search_query = value.clone();
-                                view.palette.search(view.search_engine.as_ref(), value);
+                                view.palette.search(view.vault_catalog.as_ref(), value);
                             }
                             PaletteKind::QuickSwitcher => {
                                 view.palette.qs_query = value.clone();
@@ -386,7 +389,7 @@ impl Palette {
         &mut self,
         window: &mut Window,
         cx: &mut Context<DatalithView>,
-        search_engine: Option<&SearchEngine>,
+        vault_catalog: Option<&VaultCatalog>,
         open_files: &[PathBuf],
     ) {
         let placeholder = match self.kind {
@@ -413,7 +416,7 @@ impl Palette {
         });
         match self.kind {
             PaletteKind::Search => {
-                self.search(search_engine, self.search_query.clone());
+                self.search(vault_catalog, self.search_query.clone());
                 if !self.search_query.trim().is_empty() {
                     self.selected = None;
                 } else {

@@ -3,6 +3,8 @@ use std::path::Path;
 
 use gpui::*;
 
+use crate::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+
 use super::editors::EditorKind;
 use super::editors::markdown::MarkdownEditor;
 use super::editors::plain_text::PlainTextEditor;
@@ -13,6 +15,7 @@ use super::viewers::image::ImageViewer;
 use super::viewers::markdown::MarkdownViewer;
 
 pub(crate) struct FileTypeConfig {
+    pub(crate) capabilities: FileTypeCapabilities,
     pub(crate) editor_factory: Option<EditorFactory>,
     pub(crate) viewer_factory: Option<ViewerFactory>,
     pub(crate) default_mode: ViewMode,
@@ -33,6 +36,10 @@ impl FileRegistry {
         Self {
             configs: HashMap::new(),
             fallback: FileTypeConfig {
+                capabilities: FileTypeCapabilities {
+                    text_search: false,
+                    wiki_links: false,
+                },
                 editor_factory: Some(|path, window, cx| {
                     EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
                         path, window, cx,
@@ -62,6 +69,15 @@ impl FileRegistry {
             .unwrap_or(false)
     }
 
+    #[must_use]
+    pub(crate) fn registered_file_types(&self) -> RegisteredFileTypes {
+        RegisteredFileTypes::new(
+            self.configs
+                .iter()
+                .map(|(extension, config)| (extension.clone(), config.capabilities)),
+        )
+    }
+
     pub(crate) fn create_handler(
         &self,
         path: &Path,
@@ -86,6 +102,10 @@ pub(crate) fn default_registry() -> FileRegistry {
     registry.register(
         "md",
         FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+            },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
                     path, window, cx,
@@ -108,6 +128,10 @@ pub(crate) fn default_registry() -> FileRegistry {
         registry.register(
             ext,
             FileTypeConfig {
+                capabilities: FileTypeCapabilities {
+                    text_search: false,
+                    wiki_links: false,
+                },
                 editor_factory: None,
                 viewer_factory: Some(|path, _editor, _cx| {
                     Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
@@ -121,6 +145,10 @@ pub(crate) fn default_registry() -> FileRegistry {
     registry.register(
         "todotxt",
         FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: true,
+                wiki_links: false,
+            },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(
                     path, window, cx,

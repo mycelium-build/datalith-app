@@ -3,7 +3,6 @@ use gpui_component::{Theme, ThemeMode};
 use std::path::PathBuf;
 
 use crate::app::AppState;
-use crate::fs_ops;
 use crate::utils;
 use crate::view::NavigationAction;
 use crate::view::file_handler::FileHandlerEvent;
@@ -82,7 +81,7 @@ pub(crate) fn toggle_search(_: &ToggleSearch, cx: &mut App) {
             view.palette.open_as(PaletteKind::Search);
             let query = view.palette.search_query.clone();
             if !query.trim().is_empty() {
-                view.palette.search(view.search_engine.as_ref(), query);
+                view.palette.search(view.vault_catalog.as_ref(), query);
             }
         }
         cx.notify();
@@ -99,7 +98,7 @@ pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
             let query = view.palette.qs_query.clone();
             if query.trim().is_empty() {
                 view.palette
-                    .refresh_quick_switcher(view.search_engine.as_ref(), &open);
+                    .refresh_quick_switcher(view.vault_catalog.as_ref(), &open);
             } else {
                 view.palette.filter_quick_switcher(&open, query);
             }
@@ -124,7 +123,11 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target {
-            if let Ok(created) = fs_ops::new_file_from_target(&target) {
+            if let Some(Ok(created)) = view
+                .vault_catalog
+                .as_ref()
+                .map(|catalog| catalog.create_file(&target))
+            {
                 view.track_new_file(&created);
                 if target.is_dir() {
                     let id: SharedString = target.to_string_lossy().to_string().into();
@@ -148,7 +151,11 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target {
-            if let Ok(created) = fs_ops::new_folder_from_target(&target) {
+            if let Some(Ok(created)) = view
+                .vault_catalog
+                .as_ref()
+                .map(|catalog| catalog.create_folder(&target))
+            {
                 view.refresh_tree(cx);
                 view.rename_target = Some(created);
             }
@@ -187,8 +194,11 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             .or_else(|| view.last_sidebar_selection.clone());
         view.commit_rename(cx);
         if let Some(target) = target {
-            view.track_file_delete(&target);
-            if let Err(e) = fs_ops::delete_target(&target) {
+            if let Some(Err(e)) = view
+                .vault_catalog
+                .as_ref()
+                .map(|catalog| catalog.delete(&target))
+            {
                 eprintln!("{e}");
             }
             view.close_tabs_under(&target, cx);
@@ -217,7 +227,11 @@ pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
-            if let Ok(duplicated) = fs_ops::duplicate_target(&target) {
+            if let Some(Ok(duplicated)) = view
+                .vault_catalog
+                .as_ref()
+                .map(|catalog| catalog.duplicate(&target))
+            {
                 view.track_new_file(&duplicated);
                 view.pending_open = Some(duplicated);
             }

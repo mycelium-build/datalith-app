@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
 
 use crate::consts::INDEX_WRITER_BUDGET;
-use crate::utils::{file_name_str, is_supported_file};
+use crate::file_types::RegisteredFileTypes;
+use crate::utils::file_name_str;
 
 pub(crate) struct Indexer {
     pub(crate) index: Index,
@@ -14,10 +15,11 @@ pub(crate) struct Indexer {
     pub(crate) name_field: Field,
     pub(crate) content_field: Field,
     pub(crate) fingerprint_field: Field,
+    file_types: RegisteredFileTypes,
 }
 
 impl Indexer {
-    pub(crate) fn new(root: &Path) -> Result<Self> {
+    pub(crate) fn new(root: &Path, file_types: &RegisteredFileTypes) -> Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
 
         let mut schema_builder = Schema::builder();
@@ -43,7 +45,7 @@ impl Indexer {
 
         if needs_build {
             let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
-            let files = walk_indexable_files(root);
+            let files = walk_indexable_files(root, file_types);
             index_files(
                 &mut writer,
                 &files,
@@ -61,6 +63,7 @@ impl Indexer {
                 name_field,
                 content_field,
                 fingerprint_field,
+                file_types,
             )?;
         }
 
@@ -70,11 +73,12 @@ impl Indexer {
             name_field,
             content_field,
             fingerprint_field,
+            file_types: file_types.clone(),
         })
     }
 
     pub(crate) fn add_file(&self, path: &Path) -> tantivy::Result<()> {
-        if !is_indexable(path) || !path.is_file() {
+        if !is_indexable(path, &self.file_types) || !path.is_file() {
             return Ok(());
         }
         let mut files = HashMap::new();
@@ -103,37 +107,6 @@ impl Indexer {
         writer.commit()?;
         Ok(())
     }
-
-    pub(crate) fn rename_file(&self, old_path: &Path, new_path: &Path) -> tantivy::Result<()> {
-        self.remove_file(old_path)?;
-        self.add_file(new_path)
-    }
-
-    #[must_use]
-    pub(crate) fn all_paths(&self) -> Vec<PathBuf> {
-        let reader = match self.index.reader() {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
-        };
-        let searcher = reader.searcher();
-        let mut paths = Vec::new();
-        for (segment_ord, seg_reader) in searcher.segment_readers().iter().enumerate() {
-            let segment_ord = segment_ord as u32;
-            for doc_id in 0..seg_reader.max_doc() {
-                if seg_reader.is_deleted(doc_id) {
-                    continue;
-                }
-                let addr = DocAddress::new(segment_ord, doc_id);
-                if let Ok(doc) = searcher.doc::<TantivyDocument>(addr) {
-                    if let Some(path_str) = doc.get_first(self.path_field).and_then(|v| v.as_str())
-                    {
-                        paths.push(PathBuf::from(path_str));
-                    }
-                }
-            }
-        }
-        paths
-    }
 }
 
 #[must_use]
@@ -153,12 +126,14 @@ pub(crate) fn file_fingerprint(path: &Path) -> u64 {
 }
 
 #[must_use]
-pub(crate) fn is_indexable(path: &Path) -> bool {
-    is_supported_file(path)
+pub(crate) fn is_indexable(path: &Path, file_types: &RegisteredFileTypes) -> bool {
+    file_types
+        .capabilities(path)
+        .is_some_and(|capabilities| capabilities.text_search)
 }
 
 #[must_use]
-pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn walk_indexable_files(root: &Path, file_types: &RegisteredFileTypes) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -171,7 +146,7 @@ pub(crate) fn walk_indexable_files(root: &Path) -> Vec<PathBuf> {
                 }
                 if path.is_dir() {
                     stack.push(path);
-                } else if is_indexable(&path) {
+                } else if is_indexable(&path, file_types) {
                     paths.push(path);
                 }
             }
@@ -230,11 +205,12 @@ pub(crate) fn incremental_update(
     name_field: Field,
     content_field: Field,
     fingerprint_field: Field,
+    file_types: &RegisteredFileTypes,
 ) -> tantivy::Result<()> {
     let reader = index.reader()?;
     let searcher = reader.searcher();
 
-    let current: HashMap<PathBuf, u64> = walk_indexable_files(root)
+    let current: HashMap<PathBuf, u64> = walk_indexable_files(root, file_types)
         .into_iter()
         .map(|p| (p.clone(), file_fingerprint(&p)))
         .collect();

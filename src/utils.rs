@@ -1,29 +1,12 @@
 use std::path::Path;
 
-use crate::consts::{IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, UNKNOWN_NAME};
+use crate::consts::UNKNOWN_NAME;
 
 #[must_use]
 pub(crate) fn file_name_str(path: &Path) -> &str {
     path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(UNKNOWN_NAME)
-}
-
-#[must_use]
-pub(crate) fn is_image_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
-}
-
-#[must_use]
-pub(crate) fn is_supported_file(path: &Path) -> bool {
-    is_image_file(path)
-        || matches!(
-            path.extension().and_then(|e| e.to_str()),
-            Some(ext) if SUPPORTED_EXTENSIONS.contains(&ext)
-        )
 }
 
 pub(crate) fn open_in_explorer(target: &Path) {
@@ -37,11 +20,15 @@ pub(crate) fn open_in_explorer(target: &Path) {
     };
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg(&path_to_open).spawn();
+        let _ = std::process::Command::new("open")
+            .arg(&path_to_open)
+            .spawn();
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = std::process::Command::new("xdg-open").arg(&path_to_open).spawn();
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&path_to_open)
+            .spawn();
     }
 }
 

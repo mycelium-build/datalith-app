@@ -9,7 +9,7 @@ pub(crate) mod tabs;
 pub(crate) mod viewers;
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui::*;
 use gpui_component::{
@@ -20,9 +20,8 @@ use gpui_component::{
 };
 
 use crate::config::{add_recent_vault, load_recent_vaults, save_last_folder};
-use crate::link_cache::LinkCache;
-use crate::search::SearchEngine;
 use crate::utils::file_name_str;
+use crate::vault_catalog::{CatalogUpdate, VaultCatalog};
 use crate::view::file_handler::FileHandler;
 use crate::view::registry::FileRegistry;
 use crate::view::sidebar::file_tree::build_file_items_with_expanded;
@@ -81,8 +80,10 @@ pub(crate) struct DatalithView {
     pub(crate) open_files: Vec<OpenFile>,
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) active_tab: usize,
-    pub(crate) search_engine: Option<SearchEngine>,
-    pub(crate) link_cache: Option<LinkCache>,
+    pub(crate) vault_catalog: Option<VaultCatalog>,
+    pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogUpdate>>,
+    catalog_poll_task: Task<()>,
+    pub(crate) pending_external_updates: Vec<PathBuf>,
     pub(crate) palette: Palette,
     _palette_sub: Subscription,
     pub(crate) settings: SettingsView,
@@ -173,8 +174,10 @@ impl DatalithView {
             root_name: "No folder open".into(),
             open_files: Vec::new(),
             active_tab: 0,
-            search_engine: None,
-            link_cache: None,
+            vault_catalog: None,
+            catalog_updates: None,
+            catalog_poll_task: Task::ready(()),
+            pending_external_updates: Vec::new(),
             palette,
             _palette_sub: palette_sub,
             settings,
@@ -213,17 +216,44 @@ impl DatalithView {
             state.set_items(items, cx);
         });
 
-        self.search_engine = match SearchEngine::new(&path) {
-            Ok(engine) => Some(engine),
+        let file_types = self.registry.registered_file_types();
+        self.vault_catalog = match VaultCatalog::open(path.clone(), file_types) {
+            Ok(catalog) => Some(catalog),
             Err(e) => {
-                eprintln!("Failed to build search index: {e}");
+                eprintln!("Failed to open Vault Catalog: {e}");
                 None
             }
         };
-
-        self.link_cache = Some(LinkCache::new(&path));
-
-        self.palette.set_root(self.search_engine.as_ref());
+        self.catalog_updates = self.vault_catalog.as_ref().map(VaultCatalog::subscribe);
+        self.palette.set_root(self.vault_catalog.as_ref());
+        self.catalog_poll_task = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(200))
+                    .await;
+                if this
+                    .update(cx, |view, cx| {
+                        let mut changed_paths = Vec::new();
+                        if let Some(ref updates) = view.catalog_updates {
+                            while let Ok(update) = updates.try_recv() {
+                                changed_paths.extend(update.changed_paths.iter().cloned());
+                            }
+                        }
+                        if !changed_paths.is_empty() {
+                            for removed in changed_paths.iter().filter(|path| !path.exists()) {
+                                view.close_tabs_under(removed, cx);
+                            }
+                            view.pending_external_updates.extend(changed_paths);
+                            view.refresh_tree(cx);
+                            view.palette.set_root(view.vault_catalog.as_ref());
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
 
         cx.notify();
     }
@@ -313,57 +343,6 @@ impl DatalithView {
     }
 
     pub(crate) fn track_new_file(&mut self, path: &Path) {
-        if let Some(ref engine) = self.search_engine {
-            let _ = engine.indexer.add_file(path);
-        }
-        if let Some(ref mut cache) = self.link_cache {
-            cache.add_file(path);
-        }
         self.palette.add_entry(path);
-    }
-
-    pub(crate) fn track_file_rename(&mut self, old_path: &Path, new_path: &Path) {
-        if let Some(ref engine) = self.search_engine {
-            let _ = engine.indexer.rename_file(old_path, new_path);
-        }
-        if let Some(ref mut cache) = self.link_cache {
-            cache.rename_file(old_path, new_path);
-        }
-        self.palette.rename_entry(old_path, new_path);
-    }
-
-    fn remove_indexed_under(&mut self, root: &Path) {
-        if let Some(ref engine) = self.search_engine {
-            let prefix = root.to_string_lossy().to_string();
-            for path in engine.indexer.all_paths() {
-                if path.to_string_lossy().starts_with(&prefix) {
-                    let _ = engine.indexer.remove_file(&path);
-                    self.palette.remove_entry(&path);
-                }
-            }
-        }
-        if let Some(ref mut cache) = self.link_cache {
-            cache.remove_under(root);
-        }
-    }
-
-    pub(crate) fn track_file_delete(&mut self, path: &Path) {
-        if path.is_dir() {
-            self.remove_indexed_under(path);
-        } else {
-            if let Some(ref engine) = self.search_engine {
-                let _ = engine.indexer.remove_file(path);
-            }
-            if let Some(ref mut cache) = self.link_cache {
-                cache.remove_file(path);
-            }
-            self.palette.remove_entry(path);
-        }
-    }
-
-    pub(crate) fn track_file_edited(&mut self, path: &Path) {
-        if let Some(ref engine) = self.search_engine {
-            let _ = engine.indexer.add_file(path);
-        }
     }
 }

@@ -11,14 +11,15 @@ use anyhow::Result;
 use tantivy::{TantivyDocument, collector::TopDocs, schema::Value};
 
 use crate::consts::MAX_SEARCH_RESULTS;
+use crate::file_types::RegisteredFileTypes;
 
 pub(crate) struct SearchEngine {
     pub(crate) indexer: Indexer,
 }
 
 impl SearchEngine {
-    pub(crate) fn new(root: &PathBuf) -> Result<Self> {
-        let indexer = Indexer::new(root)?;
+    pub(crate) fn new(root: &PathBuf, file_types: &RegisteredFileTypes) -> Result<Self> {
+        let indexer = Indexer::new(root, file_types)?;
         Ok(Self { indexer })
     }
 

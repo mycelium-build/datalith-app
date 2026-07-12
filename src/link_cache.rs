@@ -2,33 +2,28 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use crate::search::index::{is_indexable, walk_indexable_files};
+use crate::file_types::RegisteredFileTypes;
 use crate::utils::file_name_str;
 
 const CACHE_FILE: &str = "link_cache.json";
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize)]
 pub(crate) struct LinkCache {
     root: PathBuf,
     name_to_path: HashMap<String, PathBuf>,
+    #[serde(skip)]
+    file_types: RegisteredFileTypes,
 }
 
 impl LinkCache {
-    pub(crate) fn new(root: &Path) -> Self {
-        let cache_path = root.join(".datalith").join(CACHE_FILE);
-        if let Ok(data) = fs::read_to_string(&cache_path)
-            && let Ok(cache) = serde_json::from_str::<LinkCache>(&data)
-            && cache.root.as_path() == root
-        {
-            return cache;
-        }
-        Self::build(root)
+    pub(crate) fn new(root: &Path, file_types: &RegisteredFileTypes) -> Self {
+        Self::build(root, file_types)
     }
 
-    fn build(root: &Path) -> Self {
-        let files = walk_indexable_files(root);
+    fn build(root: &Path, file_types: &RegisteredFileTypes) -> Self {
+        let files = walk_linkable_files(root, file_types);
         let mut name_to_path: HashMap<String, PathBuf> = HashMap::with_capacity(files.len());
         for path in files {
             let name = file_stem_str(&path);
@@ -37,6 +32,7 @@ impl LinkCache {
         let cache = Self {
             root: root.to_path_buf(),
             name_to_path,
+            file_types: file_types.clone(),
         };
         cache.save();
         cache
@@ -64,7 +60,12 @@ impl LinkCache {
     }
 
     pub(crate) fn add_file(&mut self, path: &Path) {
-        if !is_indexable(path) || !path.is_file() {
+        if !self
+            .file_types
+            .capabilities(path)
+            .is_some_and(|capabilities| capabilities.wiki_links)
+            || !path.is_file()
+        {
             return;
         }
         let name = file_stem_str(path);
@@ -81,28 +82,30 @@ impl LinkCache {
             }
         }
     }
+}
 
-    pub(crate) fn rename_file(&mut self, old_path: &Path, new_path: &Path) {
-        self.remove_file(old_path);
-        self.add_file(new_path);
-    }
-
-    pub(crate) fn remove_under(&mut self, root: &Path) {
-        let prefix = root.to_string_lossy().to_string();
-        let keys_to_remove: Vec<String> = self
-            .name_to_path
-            .iter()
-            .filter(|(_, path)| path.to_string_lossy().starts_with(&prefix))
-            .map(|(k, _)| k.clone())
-            .collect();
-        let had_removals = !keys_to_remove.is_empty();
-        for key in keys_to_remove {
-            self.name_to_path.remove(&key);
+fn walk_linkable_files(root: &Path, file_types: &RegisteredFileTypes) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.file_name().is_some_and(|name| name == ".datalith") {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                } else if file_types
+                    .capabilities(&path)
+                    .is_some_and(|capabilities| capabilities.wiki_links)
+                {
+                    paths.push(path);
+                }
+            }
         }
-        if had_removals {
-            self.save();
-        }
     }
+    paths
 }
 
 fn file_stem_str(path: &Path) -> String {

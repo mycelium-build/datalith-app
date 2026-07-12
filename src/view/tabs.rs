@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use gpui::*;
@@ -49,10 +48,13 @@ impl DatalithView {
 
         let sub = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
+            let catalog = self.vault_catalog.clone();
             cx.subscribe_in(&state, window, move |_view, state, event, _window, cx| {
                 if let InputEvent::Change = event {
                     let content = state.read(cx).value();
-                    let _ = fs::write(&path, content.to_string());
+                    if let Some(ref catalog) = catalog {
+                        let _ = catalog.save(&path, &content);
+                    }
                 }
             })
         });
@@ -63,8 +65,8 @@ impl DatalithView {
             |view, _handler, event: &FileHandlerEvent, window, cx| match event {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     let decoded_url = percent_decode_str(url).decode_utf8_lossy();
-                    if let Some(ref cache) = view.link_cache {
-                        if let Some(resolved) = cache.resolve(&decoded_url) {
+                    if let Some(ref catalog) = view.vault_catalog {
+                        if let Some(resolved) = catalog.resolve_wiki_link(&decoded_url) {
                             view.open_file(resolved.clone(), *new_tab, window, cx);
                             return;
                         }
@@ -101,10 +103,6 @@ impl DatalithView {
                 .focus(window, cx);
         } else {
             let active = self.active_tab.min(self.open_files.len() - 1);
-            let old_path = self.open_files[active].path.clone();
-            if !old_path.as_os_str().is_empty() {
-                self.track_file_edited(&old_path);
-            }
             self.open_files[active] = open_file;
             self.open_files[active]
                 .handler
@@ -140,10 +138,6 @@ impl DatalithView {
     pub(crate) fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.open_files.len() {
             return;
-        }
-        let path = self.open_files[index].path.clone();
-        if !path.as_os_str().is_empty() {
-            self.track_file_edited(&path);
         }
         self.open_files.remove(index);
         if self.open_files.is_empty() {
