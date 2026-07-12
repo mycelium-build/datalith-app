@@ -593,6 +593,7 @@ impl TodoTxtState {
     }
 
     fn refresh_item_sizes(&mut self) {
+        // necessary because row count change and v_virtual_list GPUI components need a size for each rows (that can be different)
         let tasks = self.visible_tasks();
         self.item_sizes = Rc::new(
             tasks
