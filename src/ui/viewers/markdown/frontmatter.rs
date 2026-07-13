@@ -3,80 +3,46 @@ use gpui_component::checkbox::Checkbox;
 use gpui_component::{ActiveTheme, Disableable};
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
+use crate::document::markdown::{Frontmatter, FrontmatterValue};
 
 use super::constants::{
     MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
     MD_FRONTMATTER_RADIUS, MD_LINE_HEIGHT,
 };
 
-struct FrontmatterProperty {
-    key: String,
-    values: Vec<String>,
-}
-
-fn parse_properties(content: &str) -> Vec<FrontmatterProperty> {
-    let mut properties: Vec<FrontmatterProperty> = Vec::new();
-    for line in content.lines() {
-        if !line.starts_with(char::is_whitespace)
-            && let Some((key, value)) = line.split_once(':')
-        {
-            properties.push(FrontmatterProperty {
-                key: key.trim().to_string(),
-                values: if value.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    vec![value.trim().to_string()]
-                },
-            });
-        } else if let Some(property) = properties.last_mut() {
-            let value = line.trim();
-            if !value.is_empty() {
-                property.values.push(value.to_string());
-            }
-        }
-    }
-    properties
-}
-
-fn parse_link(value: &str) -> Option<(&str, &str)> {
-    if let Some(link) = value
-        .strip_prefix("[[")
-        .and_then(|value| value.strip_suffix("]]"))
-    {
-        return Some(link.split_once('|').unwrap_or((link, link)));
-    }
-
-    let markdown = value.strip_prefix('[')?.strip_suffix(')')?;
-    markdown.split_once("](")
-}
-
 pub(super) fn render_frontmatter(
-    content: &str,
+    frontmatter: &Frontmatter,
     base_font_size: f32,
     handler: Entity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
-    let properties = parse_properties(content);
-    let max_key_len = properties.iter().map(|p| p.key.len()).max().unwrap_or(0);
+    let max_key_len = frontmatter
+        .properties
+        .iter()
+        .map(|property| property.key.len())
+        .max()
+        .unwrap_or(0);
     let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
     let line_h = px(font_size * MD_LINE_HEIGHT);
     let key_width = px(font_size * max_key_len as f32 * 0.6);
     let mut rows: Vec<AnyElement> = Vec::new();
 
-    for (property_index, property) in properties.into_iter().enumerate() {
+    for (property_index, property) in frontmatter.properties.iter().enumerate() {
         let mut values: Vec<AnyElement> = Vec::new();
-        for (value_index, value) in property.values.into_iter().enumerate() {
+        for (value_index, value) in property.values.iter().enumerate() {
             let id = (property_index * 1000 + value_index) as u64;
-            let element = if matches!(value.as_str(), "true" | "false") {
-                Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
-                    .checked(value == "true")
-                    .disabled(true)
-                    .tab_stop(false)
-                    .into_any_element()
-            } else if let Some((label, target)) = parse_link(&value) {
-                render_link(label, target, id, handler.clone(), cx)
-            } else {
-                div().child(value).into_any_element()
+            let element = match value {
+                FrontmatterValue::Boolean(value) => {
+                    Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
+                        .checked(*value)
+                        .disabled(true)
+                        .tab_stop(false)
+                        .into_any_element()
+                }
+                FrontmatterValue::Link { label, target } => {
+                    render_link(label, target, id, handler.clone(), cx)
+                }
+                FrontmatterValue::Text(value) => div().child(value.clone()).into_any_element(),
             };
             values.push(element);
         }
@@ -94,7 +60,7 @@ pub(super) fn render_frontmatter(
                         .line_height(line_h)
                         .text_color(cx.theme().foreground)
                         .font_weight(FontWeight::BOLD)
-                        .child(property.key),
+                        .child(property.key.clone()),
                 )
                 .child(
                     div()

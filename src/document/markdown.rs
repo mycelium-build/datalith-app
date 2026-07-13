@@ -1,218 +1,329 @@
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use std::iter::Peekable;
+
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
-#[derive(Clone, Debug)]
-pub(crate) enum MarkdownEvent {
-    Text(String, MarkdownStyle),
-    BlockStart(MarkdownBlock),
-    BlockEnd,
-    LinkStart(String),
-    LinkEnd,
-    Image { url: String, alt: String },
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum MarkdownBlock {
-    Heading,
-    Paragraph,
-    List(bool, usize),
-    ListItem(usize),
-    BlockQuote,
-    Code(String),
-    Frontmatter(String),
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MarkdownDocument {
+    pub(crate) frontmatter: Option<Frontmatter>,
+    pub(crate) blocks: Vec<MarkdownBlock>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MarkdownStyle {
-    Heading(u32),
-    Bold,
-    Italic,
-    BoldItalic,
-    Code,
-    Link,
-    Normal,
+pub(crate) enum MarkdownBlock {
+    Heading {
+        level: u32,
+        content: Vec<MarkdownInline>,
+    },
+    Paragraph(Vec<MarkdownInline>),
+    List {
+        start: Option<u64>,
+        items: Vec<Vec<MarkdownBlock>>,
+    },
+    BlockQuote(Vec<MarkdownBlock>),
+    Code {
+        language: Option<String>,
+        content: String,
+    },
+    Rule,
 }
 
-pub(crate) fn parse_markdown(text: &str) -> Vec<MarkdownEvent> {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MarkdownInline {
+    Text(String),
+    Strong(Vec<MarkdownInline>),
+    Emphasis(Vec<MarkdownInline>),
+    Code(String),
+    Link {
+        url: String,
+        content: Vec<MarkdownInline>,
+    },
+    Image {
+        url: String,
+        alt: String,
+    },
+    Break,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Frontmatter {
+    pub(crate) properties: Vec<FrontmatterProperty>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FrontmatterProperty {
+    pub(crate) key: String,
+    pub(crate) values: Vec<FrontmatterValue>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum FrontmatterValue {
+    Boolean(bool),
+    Link { label: String, target: String },
+    Text(String),
+}
+
+pub(crate) fn parse_markdown(text: &str) -> MarkdownDocument {
     let (frontmatter, body) = extract_frontmatter(text);
     let body = normalize_blockquote_depth(&body);
     let body = convert_wiki_links(&body);
-
-    let mut events = Vec::new();
-
-    if let Some(fm) = frontmatter {
-        events.push(MarkdownEvent::BlockStart(MarkdownBlock::Frontmatter(fm)));
-        events.push(MarkdownEvent::BlockEnd);
-    }
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
-    let parser = Parser::new_ext(&body, options);
-    let mut style_stack: Vec<MarkdownStyle> = vec![MarkdownStyle::Normal];
-    let mut text_buffer = String::new();
-    let mut in_code_block = false;
-    let mut code_block_content = String::new();
-    let mut list_depth: usize = 0;
-    let mut in_image = false;
-    let mut image_url = String::new();
-    let mut image_alt = String::new();
+    let mut events = Parser::new_ext(&body, options).peekable();
+    MarkdownDocument {
+        frontmatter: frontmatter.map(|content| parse_frontmatter(&content)),
+        blocks: parse_blocks(&mut events, None),
+    }
+}
 
-    for (event, _range) in parser.into_offset_iter() {
+fn parse_blocks<'a, I>(events: &mut Peekable<I>, stop: Option<TagEnd>) -> Vec<MarkdownBlock>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    let mut blocks = Vec::new();
+    while let Some(event) = events.next() {
+        if let Event::End(end) = &event
+            && stop.as_ref() == Some(end)
+        {
+            break;
+        }
         match event {
-            Event::Start(tag) => match tag {
-                Tag::Heading { level, .. } => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    let lvl = match level {
-                        pulldown_cmark::HeadingLevel::H1 => 1,
-                        pulldown_cmark::HeadingLevel::H2 => 2,
-                        pulldown_cmark::HeadingLevel::H3 => 3,
-                        pulldown_cmark::HeadingLevel::H4 => 4,
-                        pulldown_cmark::HeadingLevel::H5 => 5,
-                        pulldown_cmark::HeadingLevel::H6 => 6,
-                    };
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::Heading));
-                    style_stack.push(MarkdownStyle::Heading(lvl));
-                }
-                Tag::Paragraph => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::Paragraph));
-                }
-                Tag::Strong => {
-                    style_stack.push(MarkdownStyle::Bold);
-                }
-                Tag::Emphasis => {
-                    style_stack.push(MarkdownStyle::Italic);
-                }
-                Tag::Link { dest_url, .. } => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::LinkStart(dest_url.to_string()));
-                    style_stack.push(MarkdownStyle::Link);
-                }
-                Tag::CodeBlock(_) => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    in_code_block = true;
-                    code_block_content.clear();
-                }
-                Tag::List(checked) => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    list_depth += 1;
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::List(
-                        checked.is_some(),
-                        list_depth,
-                    )));
-                }
-                Tag::Item => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::ListItem(
-                        list_depth,
-                    )));
-                }
-                Tag::BlockQuote(_) => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::BlockQuote));
-                }
-                Tag::Image { dest_url, .. } => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    in_image = true;
-                    image_url = dest_url.to_string();
-                    image_alt.clear();
-                }
-                _ => {}
-            },
-            Event::End(tag) => match tag {
-                TagEnd::Heading(_) => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockEnd);
-                    style_stack.retain(|s| !matches!(s, MarkdownStyle::Heading(_)));
-                }
-                TagEnd::Paragraph => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockEnd);
-                }
-                TagEnd::Strong | TagEnd::Emphasis => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    if style_stack.len() > 1 {
-                        style_stack.pop();
+            Event::Start(Tag::Heading { level, .. }) => blocks.push(MarkdownBlock::Heading {
+                level: heading_level(level),
+                content: parse_inlines(events, TagEnd::Heading(level)),
+            }),
+            Event::Start(Tag::Paragraph) => blocks.push(MarkdownBlock::Paragraph(parse_inlines(
+                events,
+                TagEnd::Paragraph,
+            ))),
+            Event::Start(Tag::BlockQuote(kind)) => blocks.push(MarkdownBlock::BlockQuote(
+                parse_blocks(events, Some(TagEnd::BlockQuote(kind))),
+            )),
+            Event::Start(Tag::List(start)) => {
+                let mut items = Vec::new();
+                while let Some(next) = events.next() {
+                    match next {
+                        Event::Start(Tag::Item) => {
+                            items.push(parse_blocks(events, Some(TagEnd::Item)))
+                        }
+                        Event::End(TagEnd::List(_)) => break,
+                        _ => {}
                     }
                 }
-                TagEnd::Link => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::LinkEnd);
-                    if style_stack.len() > 1 {
-                        style_stack.pop();
+                blocks.push(MarkdownBlock::List { start, items });
+            }
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let language = match kind {
+                    pulldown_cmark::CodeBlockKind::Indented => None,
+                    pulldown_cmark::CodeBlockKind::Fenced(language) if language.is_empty() => None,
+                    pulldown_cmark::CodeBlockKind::Fenced(language) => Some(language.to_string()),
+                };
+                let mut content = String::new();
+                for next in events.by_ref() {
+                    match next {
+                        Event::End(TagEnd::CodeBlock) => break,
+                        Event::Text(text) | Event::Code(text) => content.push_str(&text),
+                        Event::SoftBreak | Event::HardBreak => content.push('\n'),
+                        _ => {}
                     }
                 }
-                TagEnd::CodeBlock => {
-                    code_block_content = code_block_content
-                        .strip_suffix('\n')
-                        .unwrap_or(&code_block_content)
-                        .to_string();
-                    events.push(MarkdownEvent::BlockStart(MarkdownBlock::Code(
-                        code_block_content.clone(),
-                    )));
-                    events.push(MarkdownEvent::BlockEnd);
-                    in_code_block = false;
-                    code_block_content.clear();
+                if content.ends_with('\n') {
+                    content.pop();
                 }
-                TagEnd::List(_) => {
-                    events.push(MarkdownEvent::BlockEnd);
-                    list_depth = list_depth.saturating_sub(1);
-                }
-                TagEnd::Item => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockEnd);
-                }
-                TagEnd::BlockQuote(_) => {
-                    flush_text(&mut text_buffer, &style_stack, &mut events);
-                    events.push(MarkdownEvent::BlockEnd);
-                }
-                TagEnd::Image => {
-                    events.push(MarkdownEvent::Image {
-                        url: image_url.clone(),
-                        alt: image_alt.clone(),
-                    });
-                    in_image = false;
-                    image_url.clear();
-                    image_alt.clear();
-                }
-                _ => {}
-            },
-            Event::Text(t) => {
-                if in_code_block {
-                    code_block_content.push_str(&t);
-                } else if in_image {
-                    image_alt.push_str(&t);
-                } else {
-                    text_buffer.push_str(&t);
-                }
+                blocks.push(MarkdownBlock::Code { language, content });
             }
-            Event::Code(t) => {
-                events.push(MarkdownEvent::Text(t.to_string(), MarkdownStyle::Code));
+            Event::Rule => blocks.push(MarkdownBlock::Rule),
+            Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
+                append_inline(&mut blocks, MarkdownInline::Text(text.to_string()))
             }
+            Event::Code(code) => append_inline(&mut blocks, MarkdownInline::Code(code.to_string())),
             Event::SoftBreak | Event::HardBreak => {
-                if in_code_block {
-                    code_block_content.push('\n');
-                } else {
-                    text_buffer.push('\n');
+                append_inline(&mut blocks, MarkdownInline::Break)
+            }
+            Event::Start(Tag::Strong) => append_inline(
+                &mut blocks,
+                MarkdownInline::Strong(parse_inlines(events, TagEnd::Strong)),
+            ),
+            Event::Start(Tag::Emphasis) => append_inline(
+                &mut blocks,
+                MarkdownInline::Emphasis(parse_inlines(events, TagEnd::Emphasis)),
+            ),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                let content = parse_inlines(events, TagEnd::Link);
+                append_inline(
+                    &mut blocks,
+                    MarkdownInline::Link {
+                        url: dest_url.to_string(),
+                        content,
+                    },
+                );
+            }
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                let content = parse_inlines(events, TagEnd::Image);
+                append_inline(
+                    &mut blocks,
+                    MarkdownInline::Image {
+                        url: dest_url.to_string(),
+                        alt: inline_plain_text(&content),
+                    },
+                );
+            }
+            Event::Start(tag) => {
+                let end = tag.to_end();
+                let content = parse_inlines(events, end);
+                if !content.is_empty() {
+                    blocks.push(MarkdownBlock::Paragraph(content));
                 }
-            }
-            Event::Rule => {
-                flush_text(&mut text_buffer, &style_stack, &mut events);
-            }
-            Event::Html(t) | Event::InlineHtml(t) => {
-                text_buffer.push_str(&t);
             }
             _ => {}
         }
     }
+    blocks
+}
 
-    flush_text(&mut text_buffer, &style_stack, &mut events);
+fn append_inline(blocks: &mut Vec<MarkdownBlock>, inline: MarkdownInline) {
+    if let Some(MarkdownBlock::Paragraph(content)) = blocks.last_mut() {
+        content.push(inline);
+    } else {
+        blocks.push(MarkdownBlock::Paragraph(vec![inline]));
+    }
+}
 
-    events
+fn parse_inlines<'a, I>(events: &mut Peekable<I>, stop: TagEnd) -> Vec<MarkdownInline>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    let mut inlines = Vec::new();
+    while let Some(event) = events.next() {
+        match event {
+            Event::End(end) if end == stop => break,
+            Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
+                inlines.push(MarkdownInline::Text(text.to_string()))
+            }
+            Event::Code(code) => inlines.push(MarkdownInline::Code(code.to_string())),
+            Event::SoftBreak | Event::HardBreak => inlines.push(MarkdownInline::Break),
+            Event::Start(Tag::Strong) => inlines.push(MarkdownInline::Strong(parse_inlines(
+                events,
+                TagEnd::Strong,
+            ))),
+            Event::Start(Tag::Emphasis) => inlines.push(MarkdownInline::Emphasis(parse_inlines(
+                events,
+                TagEnd::Emphasis,
+            ))),
+            Event::Start(Tag::Link { dest_url, .. }) => inlines.push(MarkdownInline::Link {
+                url: dest_url.to_string(),
+                content: parse_inlines(events, TagEnd::Link),
+            }),
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                let content = parse_inlines(events, TagEnd::Image);
+                inlines.push(MarkdownInline::Image {
+                    url: dest_url.to_string(),
+                    alt: inline_plain_text(&content),
+                });
+            }
+            Event::Start(tag) => {
+                let end = tag.to_end();
+                inlines.extend(parse_inlines(events, end));
+            }
+            _ => {}
+        }
+    }
+    inlines
+}
+
+fn inline_plain_text(inlines: &[MarkdownInline]) -> String {
+    let mut text = String::new();
+    for inline in inlines {
+        match inline {
+            MarkdownInline::Text(value) | MarkdownInline::Code(value) => text.push_str(value),
+            MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
+                text.push_str(&inline_plain_text(children))
+            }
+            MarkdownInline::Link { content, .. } => text.push_str(&inline_plain_text(content)),
+            MarkdownInline::Image { alt, .. } => text.push_str(alt),
+            MarkdownInline::Break => text.push('\n'),
+        }
+    }
+    text
+}
+
+fn heading_level(level: HeadingLevel) -> u32 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+fn parse_frontmatter(content: &str) -> Frontmatter {
+    let mut properties: Vec<FrontmatterProperty> = Vec::new();
+    for line in content.lines() {
+        if !line.starts_with(char::is_whitespace)
+            && let Some((key, value)) = line.split_once(':')
+        {
+            properties.push(FrontmatterProperty {
+                key: key.trim().to_string(),
+                values: value
+                    .trim()
+                    .strip_prefix('[')
+                    .and_then(|value| value.strip_suffix(']'))
+                    .map(|value| {
+                        value
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .collect()
+                    })
+                    .unwrap_or_else(|| {
+                        let value = value.trim();
+                        if value.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![value]
+                        }
+                    })
+                    .into_iter()
+                    .map(parse_frontmatter_value)
+                    .collect(),
+            });
+        } else if let Some(property) = properties.last_mut() {
+            let value = line.trim().trim_start_matches('-').trim();
+            if !value.is_empty() {
+                property.values.push(parse_frontmatter_value(value));
+            }
+        }
+    }
+    Frontmatter { properties }
+}
+
+fn parse_frontmatter_value(value: &str) -> FrontmatterValue {
+    match value {
+        "true" => FrontmatterValue::Boolean(true),
+        "false" => FrontmatterValue::Boolean(false),
+        _ => parse_frontmatter_link(value).map_or_else(
+            || FrontmatterValue::Text(value.to_string()),
+            |(label, target)| FrontmatterValue::Link {
+                label: label.to_string(),
+                target: target.to_string(),
+            },
+        ),
+    }
+}
+
+fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
+    if let Some(link) = value.strip_prefix("[[").and_then(|v| v.strip_suffix("]]")) {
+        return Some(link.split_once('|').unwrap_or((link, link)));
+    }
+    let markdown = value.strip_prefix('[')?.strip_suffix(')')?;
+    markdown.split_once("](")
 }
 
 /// Make an explicit decrease in `>` markers close nested blockquotes.
@@ -455,60 +566,82 @@ fn find_matching_paren(text: &str, open_pos: usize) -> Option<usize> {
     None
 }
 
-fn flush_text(buffer: &mut String, style_stack: &[MarkdownStyle], events: &mut Vec<MarkdownEvent>) {
-    if !buffer.is_empty() {
-        let style = composite_style(style_stack);
-        events.push(MarkdownEvent::Text(buffer.clone(), style));
-        buffer.clear();
-    }
-}
-
-fn composite_style(stack: &[MarkdownStyle]) -> MarkdownStyle {
-    let mut has_bold = false;
-    let mut has_italic = false;
-    let mut has_link = false;
-    let mut heading: Option<u32> = None;
-
-    for style in stack {
-        match style {
-            MarkdownStyle::Bold => has_bold = true,
-            MarkdownStyle::Italic => has_italic = true,
-            MarkdownStyle::Link => has_link = true,
-            MarkdownStyle::Heading(level) => heading = Some(*level),
-            _ => {}
-        }
-    }
-
-    if let Some(level) = heading {
-        return MarkdownStyle::Heading(level);
-    }
-
-    if has_link {
-        return MarkdownStyle::Link;
-    }
-
-    if has_bold && has_italic {
-        return MarkdownStyle::BoldItalic;
-    }
-    if has_bold {
-        return MarkdownStyle::Bold;
-    }
-    if has_italic {
-        return MarkdownStyle::Italic;
-    }
-
-    MarkdownStyle::Normal
-}
-
 #[cfg(test)]
 mod tests {
-    use super::normalize_blockquote_depth;
+    use super::*;
 
     #[test]
     fn explicit_blockquote_depth_decrease_closes_the_inner_quote() {
         assert_eq!(
             normalize_blockquote_depth("> a\n> > b\n> c"),
             "> a\n> > b\n>\n> c"
+        );
+    }
+
+    #[test]
+    fn parses_nested_document_structure() {
+        let document = parse_markdown("# Title\n\n> 1. **bold** and [[Page|alias]]\n>    - child");
+
+        assert!(
+            matches!(
+                document.blocks.as_slice(),
+                [
+                    MarkdownBlock::Heading { level: 1, .. },
+                    MarkdownBlock::BlockQuote(blocks)
+                ] if matches!(blocks.as_slice(), [MarkdownBlock::List { start: Some(1), items }]
+                    if matches!(items[0].as_slice(), [MarkdownBlock::Paragraph(_), MarkdownBlock::List { start: None, .. }]))
+            ),
+            "{:#?}",
+            document.blocks
+        );
+        let MarkdownBlock::BlockQuote(quoted) = &document.blocks[1] else {
+            unreachable!()
+        };
+        let MarkdownBlock::List { items, .. } = &quoted[0] else {
+            unreachable!()
+        };
+        assert_eq!(
+            items[0][0],
+            MarkdownBlock::Paragraph(vec![
+                MarkdownInline::Strong(vec![MarkdownInline::Text("bold".into())]),
+                MarkdownInline::Text(" and ".into()),
+                MarkdownInline::Link {
+                    url: "alias".into(),
+                    content: vec![MarkdownInline::Text("Page".into())],
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_typed_frontmatter_properties() {
+        let document = parse_markdown(
+            "---\npublished: true\nrelated:\n  - [[Page|Alias]]\ntags: [rust, markdown]\n---\nBody",
+        );
+        let frontmatter = document.frontmatter.expect("frontmatter");
+
+        assert_eq!(
+            frontmatter.properties,
+            vec![
+                FrontmatterProperty {
+                    key: "published".into(),
+                    values: vec![FrontmatterValue::Boolean(true)],
+                },
+                FrontmatterProperty {
+                    key: "related".into(),
+                    values: vec![FrontmatterValue::Link {
+                        label: "Page".into(),
+                        target: "Alias".into(),
+                    }],
+                },
+                FrontmatterProperty {
+                    key: "tags".into(),
+                    values: vec![
+                        FrontmatterValue::Text("rust".into()),
+                        FrontmatterValue::Text("markdown".into()),
+                    ],
+                },
+            ]
         );
     }
 }
