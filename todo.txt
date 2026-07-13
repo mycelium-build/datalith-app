@@ -12,7 +12,7 @@ x decouple editor and renderer
     canvas
     graph
 
-hot reload side bar and files preview/editor
+x hot reload side bar and files preview/editor
 
 custom themes editor (explore GPUI components)
 
