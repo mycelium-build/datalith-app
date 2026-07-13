@@ -38,8 +38,13 @@ impl MarkdownViewer {
         self.input.focus_handle(cx)
     }
 
-    fn render_image(&self, url: &str, alt: &str, cx: &mut App) -> AnyElement {
+    fn render_image(&self, url: &str, alt: &str, grouped: bool, cx: &mut App) -> AnyElement {
         let base_font_size = BASE_FONT_SIZE as f32;
+        let container = if grouped {
+            div().min_w_0().flex_shrink_1().my_2()
+        } else {
+            div().w_full().my_2()
+        };
         if !url.starts_with("http://") && !url.starts_with("https://") {
             let decoded = percent_decode_str(url).decode_utf8_lossy().to_string();
             let path = self
@@ -48,17 +53,13 @@ impl MarkdownViewer {
                 .map(|parent| parent.join(&decoded))
                 .unwrap_or_else(|| PathBuf::from(&decoded));
             if path.exists() {
-                return div()
-                    .w_full()
-                    .my_2()
+                return container
                     .child(img(path).max_w(relative(1.)))
                     .into_any_element();
             }
         }
 
-        div()
-            .w_full()
-            .my_2()
+        container
             .p_2()
             .rounded(px(4.))
             .border_1()
@@ -229,9 +230,31 @@ impl MarkdownViewer {
         handler: Entity<FileHandler>,
         cx: &mut App,
     ) -> Vec<AnyElement> {
-        inlines
-            .iter()
-            .map(|inline| match inline {
+        let mut elements = Vec::new();
+        let mut index = 0;
+        while index < inlines.len() {
+            if let Some(end) = adjacent_image_run_end(inlines, index) {
+                let images = inlines[index..end].iter().filter_map(|inline| {
+                    let MarkdownInline::Image { url, alt } = inline else {
+                        return None;
+                    };
+                    Some(self.render_image(url, alt, true, cx))
+                });
+                elements.push(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .flex()
+                        .gap_2()
+                        .children(images)
+                        .into_any_element(),
+                );
+                index = end;
+                continue;
+            }
+
+            let inline = &inlines[index];
+            elements.push(match inline {
                 MarkdownInline::Text(text) => render_styled_text(text, style, cx),
                 MarkdownInline::Code(code) => render_styled_text(
                     code,
@@ -279,10 +302,12 @@ impl MarkdownViewer {
                         .children(self.render_inlines(content, style, handler.clone(), cx))
                         .into_any_element()
                 }
-                MarkdownInline::Image { url, alt } => self.render_image(url, alt, cx),
+                MarkdownInline::Image { url, alt } => self.render_image(url, alt, false, cx),
                 MarkdownInline::Break => div().w_full().into_any_element(),
-            })
-            .collect()
+            });
+            index += 1;
+        }
+        elements
     }
 
     fn wrap_inlines(
@@ -297,6 +322,27 @@ impl MarkdownViewer {
             .children(self.render_inlines(inlines, style, handler, cx))
             .into_any_element()
     }
+}
+
+fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -> Option<usize> {
+    if !matches!(inlines.get(start), Some(MarkdownInline::Image { .. })) {
+        return None;
+    }
+
+    let mut index = start + 1;
+    let mut image_count = 1;
+    while index < inlines.len() {
+        match &inlines[index] {
+            MarkdownInline::Image { .. } => {
+                image_count += 1;
+                index += 1;
+            }
+            MarkdownInline::Text(text) if text.chars().all(char::is_whitespace) => index += 1,
+            _ => break,
+        }
+    }
+
+    (image_count > 1).then_some(index)
 }
 
 fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
@@ -318,4 +364,45 @@ fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
         highlight,
     )]);
     div().min_w_0().child(styled).into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MarkdownInline, adjacent_image_run_end};
+
+    fn image(name: &str) -> MarkdownInline {
+        MarkdownInline::Image {
+            url: name.into(),
+            alt: String::new(),
+        }
+    }
+
+    #[test]
+    fn adjacent_images_form_a_run_across_inline_whitespace() {
+        let inlines = [
+            image("a.png"),
+            MarkdownInline::Text(" ".into()),
+            image("b.png"),
+        ];
+
+        assert_eq!(adjacent_image_run_end(&inlines, 0), Some(3));
+    }
+
+    #[test]
+    fn a_line_break_prevents_an_image_run() {
+        let inlines = [image("a.png"), MarkdownInline::Break, image("b.png")];
+
+        assert_eq!(adjacent_image_run_end(&inlines, 0), None);
+    }
+
+    #[test]
+    fn intervening_text_prevents_an_image_run() {
+        let inlines = [
+            image("a.png"),
+            MarkdownInline::Text(" some text ".into()),
+            image("b.png"),
+        ];
+
+        assert_eq!(adjacent_image_run_end(&inlines, 0), None);
+    }
 }
