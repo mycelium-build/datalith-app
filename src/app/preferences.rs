@@ -1,15 +1,17 @@
 use gpui::*;
 use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 
-use crate::app::config::{
-    load_dark_theme_name, load_font_size_multiplier, load_light_theme_name, load_theme_mode,
-};
+use crate::app::settings::{self, ColorMode};
 use crate::ui::settings::ThemeOptions;
 
 pub(crate) fn apply(cx: &mut App) {
-    let saved_mode = load_theme_mode().unwrap_or(ThemeMode::Light);
-    let saved_light_name = load_light_theme_name();
-    let saved_dark_name = load_dark_theme_name();
+    let settings = settings::snapshot();
+    let saved_mode = match settings.color_mode {
+        ColorMode::Light => ThemeMode::Light,
+        ColorMode::Dark => ThemeMode::Dark,
+    };
+    let saved_light_name = settings.light_theme_name;
+    let saved_dark_name = settings.dark_theme_name;
 
     let registry = ThemeRegistry::global(cx);
     let light_theme = saved_light_name.as_deref().and_then(|name| {
@@ -40,8 +42,7 @@ pub(crate) fn apply(cx: &mut App) {
     Theme::change(saved_mode, None, cx);
     Theme::global_mut(cx).mode = saved_mode;
 
-    if let Some(multiplier) = load_font_size_multiplier() {
-        Theme::global_mut(cx).font_size = px(crate::ui::BASE_FONT_SIZE as f32 * multiplier as f32);
-    }
+    Theme::global_mut(cx).font_size =
+        px(crate::ui::BASE_FONT_SIZE as f32 * settings.font_scale as f32);
     cx.refresh_windows();
 }

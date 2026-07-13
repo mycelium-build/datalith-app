@@ -2,7 +2,11 @@ use gpui::*;
 use gpui_component::{Theme, ThemeMode};
 use std::path::PathBuf;
 
-use crate::app::{AppState, system};
+use crate::app::{
+    AppState,
+    settings::{self, ColorMode},
+    system,
+};
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
@@ -335,7 +339,11 @@ pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemeMode::Dark,
         ThemeMode::Dark => ThemeMode::Light,
     };
-    let _ = crate::app::config::save_theme_mode(new_mode);
+    let color_mode = match new_mode {
+        ThemeMode::Light => ColorMode::Light,
+        ThemeMode::Dark => ColorMode::Dark,
+    };
+    let _ = settings::set_color_mode(color_mode);
     Theme::change(new_mode, None, cx);
     Theme::global_mut(cx).mode = new_mode;
     cx.refresh_windows();

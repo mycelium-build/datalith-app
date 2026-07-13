@@ -22,7 +22,7 @@ use gpui_component::{
     tree::{TreeItem, TreeState},
 };
 
-use crate::app::config::{add_recent_vault, load_recent_vaults, save_last_folder};
+use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;
@@ -90,7 +90,8 @@ pub(crate) struct DatalithView {
 }
 
 fn build_vault_entries() -> Vec<VaultEntry> {
-    let recent_vaults: Vec<VaultEntry> = load_recent_vaults()
+    let recent_vaults: Vec<VaultEntry> = app_settings::snapshot()
+        .recent_vaults
         .into_iter()
         .map(|p| {
             let path: SharedString = p.to_string_lossy().to_string().into();
@@ -147,7 +148,7 @@ impl DatalithView {
                     .font_size_multiplier = val;
                 gpui_component::Theme::global_mut(cx).font_size = new_size;
                 cx.refresh_windows();
-                let _ = crate::app::config::save_font_size_multiplier(val);
+                let _ = app_settings::set_font_scale(val);
             },
         );
 
@@ -187,8 +188,7 @@ impl DatalithView {
     pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.root_name = display_name(&path).into();
         self.root_path = Some(path.clone());
-        let _ = save_last_folder(&path);
-        let _ = add_recent_vault(&path);
+        let _ = app_settings::record_opened_vault(&path);
 
         self.pending_vault_refresh = true;
 

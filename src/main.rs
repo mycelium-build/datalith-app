@@ -17,6 +17,6 @@ fn main() {
             app::keymap::register(cx);
             app::menus::install(cx);
 
-            ui::window::open_initial(cx, app::config::load_last_folder());
+            ui::window::open_initial(cx, app::settings::snapshot().last_vault);
         });
 }

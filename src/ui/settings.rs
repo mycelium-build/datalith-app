@@ -8,7 +8,7 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::app::config::{save_dark_theme_name, save_light_theme_name};
+use crate::app::settings::{self, ThemeKind};
 
 use super::DatalithView;
 
@@ -16,7 +16,8 @@ use super::DatalithView;
 pub(crate) struct ThemeOptions {
     pub(crate) light_theme_name: SharedString,
     pub(crate) dark_theme_name: SharedString,
-    pub(crate) theme_options: Vec<(SharedString, SharedString)>,
+    pub(crate) light_theme_options: Vec<(SharedString, SharedString)>,
+    pub(crate) dark_theme_options: Vec<(SharedString, SharedString)>,
     pub(crate) font_size_multiplier: f64,
 }
 
@@ -30,7 +31,7 @@ pub(crate) struct SettingsView {
 
 impl SettingsView {
     pub(crate) fn new(cx: &mut App) -> Self {
-        let font_size_multiplier = crate::app::config::load_font_size_multiplier().unwrap_or(1.0);
+        let font_size_multiplier = settings::snapshot().font_scale;
         let font_size_slider_state = cx.new(|_| {
             SliderState::new()
                 .min(0.5)
@@ -55,37 +56,64 @@ impl SettingsView {
 
     pub(crate) fn init_theme_options(cx: &mut App) {
         let registry = gpui_component::ThemeRegistry::global(cx);
-        let mut theme_options: Vec<(SharedString, SharedString)> = registry
+        let mut light_theme_options: Vec<(SharedString, SharedString)> = registry
             .themes()
-            .keys()
-            .map(|n| (n.clone(), n.clone()))
+            .iter()
+            .filter(|(_, theme)| theme.mode == gpui_component::ThemeMode::Light)
+            .map(|(name, _)| (name.clone(), name.clone()))
             .collect();
-        theme_options.sort_by_key(|(n, _)| n.to_lowercase());
+        light_theme_options.sort_by_key(|(name, _)| name.to_lowercase());
+        let mut dark_theme_options: Vec<(SharedString, SharedString)> = registry
+            .themes()
+            .iter()
+            .filter(|(_, theme)| theme.mode == gpui_component::ThemeMode::Dark)
+            .map(|(name, _)| (name.clone(), name.clone()))
+            .collect();
+        dark_theme_options.sort_by_key(|(name, _)| name.to_lowercase());
 
-        let saved_light = crate::app::config::load_light_theme_name().unwrap_or_else(|| {
-            gpui_component::Theme::global(cx)
-                .light_theme
-                .name
-                .to_string()
-        });
-        let saved_dark = crate::app::config::load_dark_theme_name().unwrap_or_else(|| {
-            gpui_component::Theme::global(cx)
-                .dark_theme
-                .name
-                .to_string()
-        });
-        let font_size_multiplier = crate::app::config::load_font_size_multiplier().unwrap_or(1.0);
+        let settings = settings::snapshot();
+        let saved_light = settings
+            .light_theme_name
+            .filter(|name| {
+                registry
+                    .themes()
+                    .get(name.as_str())
+                    .is_some_and(|theme| theme.mode == gpui_component::ThemeMode::Light)
+            })
+            .unwrap_or_else(|| {
+                gpui_component::Theme::global(cx)
+                    .light_theme
+                    .name
+                    .to_string()
+            });
+        let saved_dark = settings
+            .dark_theme_name
+            .filter(|name| {
+                registry
+                    .themes()
+                    .get(name.as_str())
+                    .is_some_and(|theme| theme.mode == gpui_component::ThemeMode::Dark)
+            })
+            .unwrap_or_else(|| {
+                gpui_component::Theme::global(cx)
+                    .dark_theme
+                    .name
+                    .to_string()
+            });
+        let font_size_multiplier = settings.font_scale;
 
         cx.set_global(ThemeOptions {
             light_theme_name: saved_light.into(),
             dark_theme_name: saved_dark.into(),
-            theme_options,
+            light_theme_options,
+            dark_theme_options,
             font_size_multiplier,
         });
     }
 
     pub(crate) fn render_overlay(&self, cx: &mut Context<DatalithView>) -> impl IntoElement {
-        let theme_options = cx.global::<ThemeOptions>().theme_options.clone();
+        let light_theme_options = cx.global::<ThemeOptions>().light_theme_options.clone();
+        let dark_theme_options = cx.global::<ThemeOptions>().dark_theme_options.clone();
 
         div()
             .absolute()
@@ -149,7 +177,7 @@ impl SettingsView {
                                             SettingItem::new(
                                                 "Light Theme",
                                                 SettingField::scrollable_dropdown(
-                                                    theme_options.clone(),
+                                                    light_theme_options,
                                                     |cx| {
                                                         cx.global::<ThemeOptions>()
                                                             .light_theme_name
@@ -162,8 +190,13 @@ impl SettingsView {
                                                             gpui_component::ThemeRegistry::global(
                                                                 cx,
                                                             );
-                                                        if let Some(theme_config) =
-                                                            registry.themes().get(val.as_str())
+                                                        if let Some(theme_config) = registry
+                                                            .themes()
+                                                            .get(val.as_str())
+                                                            .filter(|theme| {
+                                                                theme.mode
+                                                                    == gpui_component::ThemeMode::Light
+                                                            })
                                                         {
                                                             gpui_component::Theme::global_mut(cx)
                                                                 .light_theme = theme_config.clone();
@@ -177,9 +210,12 @@ impl SettingsView {
                                                             );
                                                             gpui_component::Theme::global_mut(cx)
                                                                 .mode = current_mode;
+                                                            let _ = settings::select_theme(
+                                                                ThemeKind::Light,
+                                                                &val,
+                                                            );
                                                         }
                                                         cx.refresh_windows();
-                                                        let _ = save_light_theme_name(&val);
                                                     },
                                                 ),
                                             )
@@ -187,7 +223,7 @@ impl SettingsView {
                                             SettingItem::new(
                                                 "Dark Theme",
                                                 SettingField::scrollable_dropdown(
-                                                    theme_options.clone(),
+                                                    dark_theme_options,
                                                     |cx| {
                                                         cx.global::<ThemeOptions>()
                                                             .dark_theme_name
@@ -200,8 +236,13 @@ impl SettingsView {
                                                             gpui_component::ThemeRegistry::global(
                                                                 cx,
                                                             );
-                                                        if let Some(theme_config) =
-                                                            registry.themes().get(val.as_str())
+                                                        if let Some(theme_config) = registry
+                                                            .themes()
+                                                            .get(val.as_str())
+                                                            .filter(|theme| {
+                                                                theme.mode
+                                                                    == gpui_component::ThemeMode::Dark
+                                                            })
                                                         {
                                                             gpui_component::Theme::global_mut(cx)
                                                                 .dark_theme = theme_config.clone();
@@ -215,9 +256,12 @@ impl SettingsView {
                                                             );
                                                             gpui_component::Theme::global_mut(cx)
                                                                 .mode = current_mode;
+                                                            let _ = settings::select_theme(
+                                                                ThemeKind::Dark,
+                                                                &val,
+                                                            );
                                                         }
                                                         cx.refresh_windows();
-                                                        let _ = save_dark_theme_name(&val);
                                                     },
                                                 ),
                                             )
