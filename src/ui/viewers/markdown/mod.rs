@@ -14,7 +14,6 @@ use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownBlock, MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
 
-use super::image::IMAGE_MAX_WIDTH;
 use constants::*;
 use frontmatter::render_frontmatter;
 
@@ -51,16 +50,14 @@ impl MarkdownViewer {
             if path.exists() {
                 return div()
                     .w_full()
-                    .max_w(px(IMAGE_MAX_WIDTH))
                     .my_2()
-                    .child(img(path).w_full())
+                    .child(img(path).max_w(relative(1.)))
                     .into_any_element();
             }
         }
 
         div()
             .w_full()
-            .max_w(px(IMAGE_MAX_WIDTH))
             .my_2()
             .p_2()
             .rounded(px(4.))
