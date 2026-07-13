@@ -1,26 +1,24 @@
+use super::DatalithView;
 use gpui::*;
 use gpui_component::{
     h_flex,
     resizable::{h_resizable, resizable_panel},
     v_flex,
 };
-use std::path::PathBuf;
-
-use super::DatalithView;
 
 const SIDEBAR_WIDTH: f32 = 260.0;
 
 impl Render for DatalithView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
-            let open_paths: Vec<PathBuf> = self.open_files.iter().map(|f| f.path.clone()).collect();
+            let open_paths = self.tabs.open_paths();
             self.palette
                 .focus_input(_window, cx, self.vault_catalog.as_ref(), &open_paths);
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
-            if let Some(open_file) = self.open_files.iter().find(|file| file.path == path) {
-                open_file.handler.update(cx, |handler, cx| {
+            if let Some(handler) = self.tabs.handler_for_path(&path) {
+                handler.update(cx, |handler, cx| {
                     if let Err(error) = handler.reload_from_disk(&path, _window, cx) {
                         eprintln!("Failed to reload {}: {error}", path.display());
                     }
@@ -35,10 +33,7 @@ impl Render for DatalithView {
 
         if self.focus_editor_requested {
             self.focus_editor_requested = false;
-            let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
-            if let Some(ref file) = self.open_files.get(active_tab) {
-                file.handler.read(cx).focus_handle(cx).focus(_window, cx);
-            }
+            self.focus_active_tab(_window, cx);
         }
 
         if self.rename_target.is_none() {
@@ -49,8 +44,8 @@ impl Render for DatalithView {
 
         if let Some(action) = self.pending_navigation.take() {
             match action {
-                super::NavigationAction::GoBack => self.go_back(_window, cx),
-                super::NavigationAction::GoForward => self.go_forward(_window, cx),
+                super::tabs::NavigationAction::GoBack => self.go_back(_window, cx),
+                super::tabs::NavigationAction::GoForward => self.go_forward(_window, cx),
             }
         }
 
@@ -99,7 +94,7 @@ impl Render for DatalithView {
 
 impl DatalithView {
     fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.open_files.is_empty() {
+        if self.tabs.is_empty() {
             return div()
                 .size_full()
                 .flex()
@@ -112,14 +107,16 @@ impl DatalithView {
                 .into_any_element();
         }
 
-        let active_tab = self.active_tab.min(self.open_files.len().saturating_sub(1));
-        let active_file = &self.open_files[active_tab];
-        let is_empty = active_file.path.as_os_str().is_empty();
+        let active_tab = self
+            .tabs
+            .active()
+            .expect("non-empty tabs have an active tab");
+        let is_empty = active_tab.path().as_os_str().is_empty();
 
         v_flex()
             .size_full()
             .overflow_hidden()
-            .child(self.render_tab_bar(active_tab, cx))
+            .child(self.render_tab_bar(cx))
             .child(if is_empty {
                 div()
                     .flex_1()
@@ -134,7 +131,7 @@ impl DatalithView {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(active_file.handler.clone())
+                    .child(active_tab.handler().clone())
                     .into_any_element()
             })
             .into_any_element()

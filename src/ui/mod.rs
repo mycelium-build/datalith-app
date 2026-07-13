@@ -23,19 +23,12 @@ use gpui_component::{
 };
 
 use crate::app::config::{add_recent_vault, load_recent_vaults, save_last_folder};
-use crate::document::handler::FileHandler;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;
 use crate::vault::{CatalogUpdate, VaultCatalog};
 use palette::Palette;
 use settings::SettingsView;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum NavigationAction {
-    GoBack,
-    GoForward,
-}
 
 #[derive(Clone, Debug)]
 pub(crate) enum VaultEntry {
@@ -64,15 +57,6 @@ impl SelectItem for VaultEntry {
     }
 }
 
-pub(crate) struct OpenFile {
-    pub(crate) path: PathBuf,
-    pub(crate) handler: Entity<FileHandler>,
-    pub(crate) _sub: Option<Subscription>,
-    pub(crate) _event_sub: Option<Subscription>,
-    pub(crate) navigation_stack: Vec<PathBuf>,
-    pub(crate) navigation_position: usize,
-}
-
 pub(crate) struct DatalithView {
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
@@ -80,9 +64,8 @@ pub(crate) struct DatalithView {
     _vault_select_sub: Subscription,
     pub(crate) root_path: Option<PathBuf>,
     root_name: SharedString,
-    pub(crate) open_files: Vec<OpenFile>,
+    pub(crate) tabs: tabs::Tabs,
     pub(crate) pending_open: Option<PathBuf>,
-    pub(crate) active_tab: usize,
     pub(crate) vault_catalog: Option<VaultCatalog>,
     pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogUpdate>>,
     catalog_poll_task: Task<()>,
@@ -102,8 +85,7 @@ pub(crate) struct DatalithView {
     pub(crate) focus_editor_requested: bool,
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
-    pub(crate) pending_navigation: Option<NavigationAction>,
-    in_navigation: bool,
+    pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) registry: FileRegistry,
 }
 
@@ -174,8 +156,7 @@ impl DatalithView {
             vault_select_state,
             root_path: None,
             root_name: "No folder open".into(),
-            open_files: Vec::new(),
-            active_tab: 0,
+            tabs: tabs::Tabs::new(),
             vault_catalog: None,
             catalog_updates: None,
             catalog_poll_task: Task::ready(()),
@@ -199,7 +180,6 @@ impl DatalithView {
             sidebar_focus_handle,
             last_sidebar_selection: None,
             pending_navigation: None,
-            in_navigation: false,
             registry: registry::default_registry(),
         }
     }
@@ -281,10 +261,7 @@ impl DatalithView {
             .read(cx)
             .selected_entry()
             .map(|e| PathBuf::from(e.item().id.to_string()))
-            .or_else(|| {
-                let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
-                self.open_files.get(active).map(|f| f.path.clone())
-            })
+            .or_else(|| self.tabs.active_path().map(Path::to_path_buf))
             .or_else(|| self.last_sidebar_selection.clone())
     }
 

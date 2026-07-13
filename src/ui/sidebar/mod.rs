@@ -60,11 +60,7 @@ impl DatalithView {
             return;
         };
         self.palette.rename_entry(old_path, new_path);
-        for f in &mut self.open_files {
-            if f.path == old_path {
-                f.path = new_path.to_path_buf();
-            }
-        }
+        self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {
             self.pending_open = Some(new_path.to_path_buf());
         }

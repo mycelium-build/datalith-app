@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use crate::app::{AppState, system};
 use crate::document::handler::FileHandlerEvent;
-use crate::ui::NavigationAction;
 use crate::ui::palette::PaletteKind;
+use crate::ui::tabs::NavigationAction;
 
 actions!(
     datalith,
@@ -125,7 +125,7 @@ pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
             view.palette.close();
         } else {
             view.palette.open_as(PaletteKind::QuickSwitcher);
-            let open: Vec<PathBuf> = view.open_files.iter().map(|f| f.path.clone()).collect();
+            let open = view.tabs.open_paths();
             let query = view.palette.qs_query.clone();
             if query.trim().is_empty() {
                 view.palette
@@ -218,10 +218,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             .selected_entry()
             .map(|e| PathBuf::from(e.item().id.to_string()));
         let target = tree_entry
-            .or_else(|| {
-                let active = view.active_tab.min(view.open_files.len().saturating_sub(1));
-                view.open_files.get(active).map(|f| f.path.clone())
-            })
+            .or_else(|| view.tabs.active_path().map(|path| path.to_path_buf()))
             .or_else(|| view.last_sidebar_selection.clone());
         view.commit_rename(cx);
         if let Some(target) = target {
@@ -314,9 +311,8 @@ pub(crate) fn handle_new_tab(_: &NewTab, cx: &mut App) {
 
 pub(crate) fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
-        if let Some(ref file) = view.open_files.get(active_tab) {
-            file.handler.update(cx, |handler, cx| {
+        if let Some(handler) = view.tabs.active_handler().cloned() {
+            handler.update(cx, |handler, cx| {
                 handler.toggle_editing(cx);
             });
             view.focus_editor_requested = true;
@@ -354,8 +350,7 @@ pub(crate) fn open_settings(_: &OpenSettings, cx: &mut App) {
 
 fn select_tab_index(index: usize, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        if index < view.open_files.len() {
-            view.active_tab = index;
+        if view.tabs.select(index) {
             view.focus_editor_requested = true;
             cx.notify();
         }
@@ -385,9 +380,7 @@ define_tab_handlers!(
 
 pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        let index = view.open_files.len().saturating_sub(1);
-        if !view.open_files.is_empty() {
-            view.active_tab = index;
+        if view.tabs.select_last() {
             view.focus_editor_requested = true;
             cx.notify();
         }
@@ -410,9 +403,8 @@ pub(crate) fn go_forward(_: &GoForward, cx: &mut App) {
 
 pub(crate) fn handle_open_link(_: &OpenLink, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        let active_tab = view.active_tab.min(view.open_files.len().saturating_sub(1));
-        if let Some(ref file) = view.open_files.get(active_tab) {
-            let handler = file.handler.read(cx);
+        if let Some(file_handler) = view.tabs.active_handler().cloned() {
+            let handler = file_handler.read(cx);
             let link_info = handler.editor.as_ref().and_then(|editor| {
                 let md = editor.as_markdown()?;
                 let input = md.input().read(cx);
@@ -422,7 +414,7 @@ pub(crate) fn handle_open_link(_: &OpenLink, cx: &mut App) {
             });
             let _ = handler;
             if let Some((url, new_tab)) = link_info {
-                file.handler.update(cx, |_handler, cx| {
+                file_handler.update(cx, |_handler, cx| {
                     cx.emit(FileHandlerEvent::LinkClicked(url, new_tab));
                 });
             }

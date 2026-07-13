@@ -342,8 +342,7 @@ impl Palette {
                             }
                             PaletteKind::QuickSwitcher => {
                                 view.palette.qs_query = value.clone();
-                                let open_paths: Vec<PathBuf> =
-                                    view.open_files.iter().map(|f| f.path.clone()).collect();
+                                let open_paths = view.tabs.open_paths();
                                 view.palette.filter_quick_switcher(&open_paths, value);
                             }
                         }

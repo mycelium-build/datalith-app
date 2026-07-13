@@ -71,13 +71,11 @@ impl DatalithView {
         let has_selection = self.tree_state.read(cx).selected_entry().is_some();
 
         if !has_selection {
-            let active_path = {
-                let active = self.active_tab.min(self.open_files.len().saturating_sub(1));
-                self.open_files
-                    .get(active)
-                    .filter(|f| !f.path.as_os_str().is_empty())
-                    .map(|f| f.path.clone())
-            };
+            let active_path = self
+                .tabs
+                .active_path()
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.to_path_buf());
 
             if let Some(ref path) = active_path {
                 let id = path.to_string_lossy().to_string();
