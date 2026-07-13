@@ -51,9 +51,8 @@ impl Default for ApplicationSettings {
 struct StoredSettings {
     #[serde(default = "schema_version")]
     schema_version: u32,
-    // `last_folder` preserves compatibility with the original unversioned schema.
-    #[serde(default, alias = "last_vault")]
-    last_folder: Option<String>,
+    #[serde(default)]
+    last_vault: Option<String>,
     #[serde(default)]
     recent_vaults: Vec<String>,
     #[serde(default)]
@@ -84,7 +83,7 @@ impl StoredSettings {
 
         ApplicationSettings {
             last_vault: self
-                .last_folder
+                .last_vault
                 .map(PathBuf::from)
                 .filter(|path| path.is_dir()),
             recent_vaults,
@@ -101,7 +100,7 @@ impl StoredSettings {
     fn from_settings(settings: &ApplicationSettings) -> Self {
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
-            last_folder: settings
+            last_vault: settings
                 .last_vault
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
