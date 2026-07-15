@@ -12,7 +12,7 @@ use notify::{
 
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::file_ops;
-use crate::vault::links::LinkCache;
+use crate::vault::links::{WikiLinkEdge, WikiLinkIndex};
 use crate::vault::search::SearchEngine;
 
 const METADATA_DIR: &str = ".datalith";
@@ -43,7 +43,7 @@ struct CatalogInner {
     file_types: RegisteredFileTypes,
     state: Mutex<CatalogState>,
     search: Mutex<Option<SearchEngine>>,
-    links: Mutex<Option<LinkCache>>,
+    links: Mutex<Option<WikiLinkIndex>>,
     watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
@@ -104,7 +104,7 @@ impl VaultCatalog {
             .name("vault-catalog-initialization".into())
             .spawn(move || {
                 let search = SearchEngine::new(&initialization_root, &initialization_types).ok();
-                let links = LinkCache::new(&initialization_root, &initialization_types);
+                let links = WikiLinkIndex::new(&initialization_root, &initialization_types);
                 let Some(inner) = initialization_inner.upgrade() else {
                     return;
                 };
@@ -162,13 +162,24 @@ impl VaultCatalog {
     }
 
     #[must_use]
-    pub(crate) fn resolve_wiki_link(&self, name: &str) -> Option<PathBuf> {
+    pub(crate) fn resolve_wiki_link_from(&self, source: &Path, name: &str) -> Option<PathBuf> {
         self.inner
             .links
             .lock()
             .unwrap()
             .as_ref()
-            .and_then(|links| links.resolve(name))
+            .and_then(|links| links.resolve(Some(source), name))
+    }
+
+    #[must_use]
+    pub(crate) fn wiki_link_edges(&self) -> Vec<WikiLinkEdge> {
+        self.inner
+            .links
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(WikiLinkIndex::edges)
+            .unwrap_or_default()
     }
 
     pub(crate) fn create_file(&self, target: &Path) -> Result<PathBuf> {

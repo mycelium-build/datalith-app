@@ -79,14 +79,16 @@ impl DatalithView {
                 }
             })
         });
+        let link_source = path.clone();
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
-            |view, _handler, event: &FileHandlerEvent, window, cx| match event {
+            move |view, _handler, event: &FileHandlerEvent, window, cx| match event {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                     if let Some(ref catalog) = view.vault_catalog
-                        && let Some(resolved) = catalog.resolve_wiki_link(&decoded_url)
+                        && let Some(resolved) =
+                            catalog.resolve_wiki_link_from(&link_source, &decoded_url)
                     {
                         view.open_file(resolved, *new_tab, window, cx);
                         return;
