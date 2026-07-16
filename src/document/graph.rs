@@ -2,18 +2,30 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de::Error};
 use yaml_serde::Value;
 
 pub(crate) const DEFAULT_NODE_LIMIT: usize = 2_000;
 pub(crate) const HARD_NODE_LIMIT: usize = 10_000;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct GraphDefinition {
     pub(crate) limit: usize,
     pub(crate) filters: Filter,
     pub(crate) groups: Vec<GraphGroup>,
     pub(crate) display: GraphDisplay,
+}
+
+impl Default for GraphDefinition {
+    fn default() -> Self {
+        Self {
+            limit: DEFAULT_NODE_LIMIT,
+            filters: Filter::MatchAll,
+            groups: Vec::new(),
+            display: GraphDisplay::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,7 +37,24 @@ pub(crate) enum Filter {
     Not(Box<Filter>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl Default for Filter {
+    fn default() -> Self {
+        Self::MatchAll
+    }
+}
+
+impl<'de> Deserialize<'de> for Filter {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        parse_filter(&value).map_err(D::Error::custom)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct GraphGroup {
     pub(crate) name: String,
     pub(crate) filters: Filter,
@@ -33,7 +62,8 @@ pub(crate) struct GraphGroup {
     pub(crate) size: Option<f32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct GraphDisplay {
     pub(crate) node: NodeStyle,
     pub(crate) edge: EdgeStyle,
@@ -41,7 +71,8 @@ pub(crate) struct GraphDisplay {
     pub(crate) arrows: ArrowStyle,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct NodeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
@@ -58,19 +89,31 @@ impl Default for NodeStyle {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct EdgeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct OrphanStyle {
     pub(crate) show: bool,
     pub(crate) node: NodeStyle,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl Default for OrphanStyle {
+    fn default() -> Self {
+        Self {
+            show: true,
+            node: NodeStyle::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct ArrowStyle {
     pub(crate) show: bool,
     pub(crate) color: Option<GraphColor>,
@@ -82,6 +125,15 @@ pub(crate) struct GraphColor {
     pub(crate) green: f32,
     pub(crate) blue: f32,
     pub(crate) alpha: f32,
+}
+
+impl<'de> Deserialize<'de> for GraphColor {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        parse_color(&String::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -134,142 +186,43 @@ pub(crate) struct GraphFile<'a> {
     pub(crate) properties: &'a Value,
 }
 
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawDefinition {
-    limit: Option<usize>,
-    filters: Option<Value>,
-    groups: Vec<RawGroup>,
-    display: RawDisplay,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawGroup {
-    name: String,
-    filters: Value,
-    color: Option<String>,
-    size: Option<f32>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawDisplay {
-    node: RawNodeStyle,
-    edge: RawEdgeStyle,
-    orphans: RawOrphanStyle,
-    arrows: RawArrowStyle,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawNodeStyle {
-    color: Option<String>,
-    size: Option<f32>,
-    propertional: Option<bool>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawEdgeStyle {
-    color: Option<String>,
-    width: Option<f32>,
-}
-
-#[derive(Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct RawOrphanStyle {
-    show: bool,
-    node: RawNodeStyle,
-}
-
-impl Default for RawOrphanStyle {
-    fn default() -> Self {
-        Self {
-            show: true,
-            node: RawNodeStyle::default(),
-        }
-    }
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawArrowStyle {
-    show: bool,
-    color: Option<String>,
-}
-
 pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
-    let raw: RawDefinition = if source.trim().is_empty() {
-        RawDefinition::default()
+    let definition: GraphDefinition = if source.trim().is_empty() {
+        GraphDefinition::default()
     } else {
         yaml_serde::from_str(source).map_err(|error| anyhow!(format_yaml_error(error)))?
     };
-    let limit = raw.limit.unwrap_or(DEFAULT_NODE_LIMIT);
-    if !(1..=HARD_NODE_LIMIT).contains(&limit) {
+    if !(1..=HARD_NODE_LIMIT).contains(&definition.limit) {
         bail!("limit must be between 1 and {HARD_NODE_LIMIT}");
     }
 
     let mut names = HashSet::new();
-    let groups = raw
-        .groups
-        .into_iter()
-        .map(|group| {
-            if group.name.trim().is_empty() {
-                bail!("group name must not be empty");
-            }
-            if !names.insert(group.name.clone()) {
-                bail!("group name {:?} is duplicated", group.name);
-            }
-            if group.color.is_none() && group.size.is_none() {
-                bail!("group {:?} must define color or size", group.name);
-            }
-            Ok(GraphGroup {
-                name: group.name,
-                filters: parse_filter(&group.filters)?,
-                color: group.color.as_deref().map(parse_color).transpose()?,
-                size: validate_range(group.size, 0.5, 3.0, "group size")?,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(GraphDefinition {
-        limit,
-        filters: raw
-            .filters
-            .as_ref()
-            .map(parse_filter)
-            .transpose()?
-            .unwrap_or(Filter::MatchAll),
-        groups,
-        display: GraphDisplay {
-            node: node_style(raw.display.node, "display.node")?,
-            edge: EdgeStyle {
-                color: raw
-                    .display
-                    .edge
-                    .color
-                    .as_deref()
-                    .map(parse_color)
-                    .transpose()?,
-                width: validate_range(raw.display.edge.width, 0.5, 5.0, "display.edge.width")?,
-            },
-            orphans: OrphanStyle {
-                show: raw.display.orphans.show,
-                node: node_style(raw.display.orphans.node, "display.orphans.node")?,
-            },
-            arrows: ArrowStyle {
-                show: raw.display.arrows.show,
-                color: raw
-                    .display
-                    .arrows
-                    .color
-                    .as_deref()
-                    .map(parse_color)
-                    .transpose()?,
-            },
-        },
-    })
+    for group in &definition.groups {
+        if group.name.trim().is_empty() {
+            bail!("group name must not be empty");
+        }
+        if !names.insert(&group.name) {
+            bail!("group name {:?} is duplicated", group.name);
+        }
+        if group.color.is_none() && group.size.is_none() {
+            bail!("group {:?} must define color or size", group.name);
+        }
+        validate_range(group.size, 0.5, 3.0, "group size")?;
+    }
+    validate_range(definition.display.node.size, 0.5, 3.0, "display.node.size")?;
+    validate_range(
+        definition.display.edge.width,
+        0.5,
+        5.0,
+        "display.edge.width",
+    )?;
+    validate_range(
+        definition.display.orphans.node.size,
+        0.5,
+        3.0,
+        "display.orphans.node.size",
+    )?;
+    Ok(definition)
 }
 
 fn format_yaml_error(error: yaml_serde::Error) -> String {
@@ -283,14 +236,6 @@ fn format_yaml_error(error: yaml_serde::Error) -> String {
             )
         },
     )
-}
-
-fn node_style(raw: RawNodeStyle, name: &str) -> Result<NodeStyle> {
-    Ok(NodeStyle {
-        color: raw.color.as_deref().map(parse_color).transpose()?,
-        size: validate_range(raw.size, 0.5, 3.0, &format!("{name}.size"))?,
-        propertional: raw.propertional.unwrap_or(true),
-    })
 }
 
 fn validate_range(
