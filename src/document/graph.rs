@@ -489,16 +489,6 @@ fn parse_string(source: &str) -> Result<String> {
     Ok(source[1..source.len() - 1].to_string())
 }
 
-pub(crate) fn properties_from_markdown(source: &str) -> Value {
-    let Some(rest) = source.strip_prefix("---") else {
-        return Value::Mapping(Default::default());
-    };
-    let Some(end) = rest.find("\n---") else {
-        return Value::Mapping(Default::default());
-    };
-    yaml_serde::from_str(rest[..end].trim()).unwrap_or_else(|_| Value::Mapping(Default::default()))
-}
-
 pub(crate) fn matches_definition(
     definition: &GraphDefinition,
     path: &Path,

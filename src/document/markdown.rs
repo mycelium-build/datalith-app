@@ -2,6 +2,7 @@ use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use std::iter::Peekable;
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use yaml_serde::Value;
 
 const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
@@ -50,6 +51,7 @@ pub(crate) enum MarkdownInline {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Frontmatter {
     pub(crate) properties: Vec<FrontmatterProperty>,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -264,58 +266,70 @@ fn heading_level(level: HeadingLevel) -> u32 {
 }
 
 fn parse_frontmatter(content: &str) -> Frontmatter {
-    let mut properties: Vec<FrontmatterProperty> = Vec::new();
-    for line in content.lines() {
-        if !line.starts_with(char::is_whitespace)
-            && let Some((key, value)) = line.split_once(':')
-        {
-            properties.push(FrontmatterProperty {
-                key: key.trim().to_string(),
-                values: value
-                    .trim()
-                    .strip_prefix('[')
-                    .and_then(|value| value.strip_suffix(']'))
-                    .map(|value| {
-                        value
-                            .split(',')
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                            .collect()
-                    })
-                    .unwrap_or_else(|| {
-                        let value = value.trim();
-                        if value.is_empty() {
-                            Vec::new()
-                        } else {
-                            vec![value]
-                        }
-                    })
-                    .into_iter()
-                    .map(parse_frontmatter_value)
-                    .collect(),
-            });
-        } else if let Some(property) = properties.last_mut() {
-            let value = line.trim().trim_start_matches('-').trim();
-            if !value.is_empty() {
-                property.values.push(parse_frontmatter_value(value));
-            }
+    let mapping = match yaml_serde::from_str(content) {
+        Ok(Value::Mapping(mapping)) => mapping,
+        Ok(_) => {
+            return Frontmatter {
+                properties: Vec::new(),
+                error: Some(
+                    "YAML frontmatter must be a mapping of property names to values".into(),
+                ),
+            };
         }
+        Err(error) => {
+            return Frontmatter {
+                properties: Vec::new(),
+                error: Some(format!("Invalid YAML frontmatter: {error}")),
+            };
+        }
+    };
+    Frontmatter {
+        properties: mapping
+            .into_iter()
+            .filter_map(|(key, value)| {
+                Some(FrontmatterProperty {
+                    key: key.as_str()?.to_string(),
+                    values: frontmatter_values(value),
+                })
+            })
+            .collect(),
+        error: None,
     }
-    Frontmatter { properties }
 }
 
-fn parse_frontmatter_value(value: &str) -> FrontmatterValue {
+fn frontmatter_values(value: Value) -> Vec<FrontmatterValue> {
     match value {
-        "true" => FrontmatterValue::Boolean(true),
-        "false" => FrontmatterValue::Boolean(false),
-        _ => parse_frontmatter_link(value).map_or_else(
-            || FrontmatterValue::Text(value.to_string()),
-            |(label, target)| FrontmatterValue::Link {
-                label: label.to_string(),
-                target: target.to_string(),
+        Value::Null => Vec::new(),
+        Value::Sequence(values) => values.into_iter().flat_map(frontmatter_values).collect(),
+        Value::Bool(value) => vec![FrontmatterValue::Boolean(value)],
+        Value::String(value) => vec![
+            if let Some((label, target)) = parse_frontmatter_link(&value) {
+                FrontmatterValue::Link {
+                    label: label.to_string(),
+                    target: target.to_string(),
+                }
+            } else {
+                FrontmatterValue::Text(value)
             },
-        ),
+        ],
+        Value::Number(value) => vec![FrontmatterValue::Text(value.to_string())],
+        Value::Mapping(_) | Value::Tagged(_) => vec![FrontmatterValue::Text(
+            yaml_serde::to_string(&value)
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        )],
     }
+}
+
+pub(crate) fn properties_from_markdown(source: &str) -> Value {
+    let (frontmatter, _) = extract_frontmatter(source);
+    frontmatter.map_or_else(
+        || Value::Mapping(Default::default()),
+        |content| {
+            yaml_serde::from_str(&content).unwrap_or_else(|_| Value::Mapping(Default::default()))
+        },
+    )
 }
 
 fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
@@ -616,7 +630,7 @@ mod tests {
     #[test]
     fn parses_typed_frontmatter_properties() {
         let document = parse_markdown(
-            "---\npublished: true\nrelated:\n  - [[Page|Alias]]\ntags: [rust, markdown]\n---\nBody",
+            "---\npublished: true\nrelated:\n  - \"[[Page|Alias]]\"\ntags: [rust, markdown]\n---\nBody",
         );
         let frontmatter = document.frontmatter.expect("frontmatter");
 
@@ -642,6 +656,20 @@ mod tests {
                     ],
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn reports_invalid_yaml_frontmatter() {
+        let document = parse_markdown("---\nd:\n 1. a\n 1. b\nloose text\n---\nBody");
+        let frontmatter = document.frontmatter.expect("frontmatter");
+
+        assert!(frontmatter.properties.is_empty());
+        assert!(
+            frontmatter
+                .error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("Invalid YAML frontmatter:"))
         );
     }
 }

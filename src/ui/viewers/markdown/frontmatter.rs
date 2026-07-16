@@ -27,6 +27,21 @@ pub(super) fn render_frontmatter(
     let key_width = px(font_size * max_key_len as f32 * 0.6);
     let mut rows: Vec<AnyElement> = Vec::new();
 
+    if let Some(error) = &frontmatter.error {
+        rows.push(
+            div()
+                .border_1()
+                .border_color(cx.theme().danger)
+                .bg(cx.theme().danger.opacity(0.08))
+                .text_color(cx.theme().danger)
+                .rounded(px(4.0))
+                .p_2()
+                .text_size(px(font_size))
+                .child(error.clone())
+                .into_any_element(),
+        );
+    }
+
     for (property_index, property) in frontmatter.properties.iter().enumerate() {
         let mut values: Vec<AnyElement> = Vec::new();
         for (value_index, value) in property.values.iter().enumerate() {
