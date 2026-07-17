@@ -293,9 +293,9 @@ fn make_snapshot(
 }
 
 const VELOCITY_DAMPING: f32 = 0.64;
-const COOLING: f32 = 0.9999;
+const COOLING: f32 = 0.99;
 const SLEEP_ALPHA: f32 = 0.002;
-const BARNES_HUT_THETA: f32 = 0.64;
+const BARNES_HUT_THETA: f32 = 1.0;
 const MAX_ACCELERATION: f32 = 4.0;
 const MAX_VELOCITY: f32 = 16.0;
 
