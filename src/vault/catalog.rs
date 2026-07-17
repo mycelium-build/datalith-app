@@ -34,6 +34,7 @@ pub(crate) struct CatalogUpdate {
 struct CatalogState {
     files: BTreeSet<PathBuf>,
     sync: CatalogSyncState,
+    initialization_complete: bool,
     subscribers: Vec<mpsc::Sender<CatalogUpdate>>,
     completed_writes: HashMap<PathBuf, u64>,
 }
@@ -64,6 +65,7 @@ impl VaultCatalog {
             state: Mutex::new(CatalogState {
                 files: BTreeSet::new(),
                 sync: CatalogSyncState::Discovering,
+                initialization_complete: false,
                 subscribers: Vec::new(),
                 completed_writes: HashMap::new(),
             }),
@@ -115,6 +117,7 @@ impl VaultCatalog {
                 {
                     let mut state = inner.state.lock().unwrap();
                     state.files = files;
+                    state.initialization_complete = true;
                     if state.sync != CatalogSyncState::Degraded {
                         state.sync = CatalogSyncState::Current;
                     }
@@ -142,6 +145,16 @@ impl VaultCatalog {
             .iter()
             .cloned()
             .collect()
+    }
+
+    #[must_use]
+    pub(crate) fn root(&self) -> PathBuf {
+        self.inner.root.clone()
+    }
+
+    #[must_use]
+    pub(crate) fn initialization_complete(&self) -> bool {
+        self.inner.state.lock().unwrap().initialization_complete
     }
 
     #[must_use]
