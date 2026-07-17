@@ -6,6 +6,7 @@ use percent_encoding::percent_decode_str;
 
 use super::Tab;
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
+use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
 
 enum OpenMode {
@@ -66,7 +67,11 @@ impl DatalithView {
             }
         };
 
-        let handler = cx.new(|cx| self.registry.create_handler(&path, window, cx));
+        let dependencies = ViewerDependencies::new(self.vault_catalog.clone());
+        let handler = cx.new(|cx| {
+            self.registry
+                .create_handler(&path, &dependencies, window, cx)
+        });
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
             let catalog = self.vault_catalog.clone();
