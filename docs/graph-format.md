@@ -15,8 +15,9 @@ filters:
 groups:
   - name: Done
     filters: 'status == "done"'
-    color: '#ff0000cc'
-    size: 1.25
+    node:
+      color: '#ff0000cc'
+      size: 1.25
 
 display:
   node:
@@ -85,7 +86,7 @@ String comparisons are case-sensitive. Missing properties compare equal to `null
 
 Groups classify selected nodes after the graph filter has run. The first matching group wins, so group order matters.
 
-Every group requires a unique `name`, a `filters` expression, and at least one of `color` or `size`. A group's color and size override the corresponding regular node values. Group size is a relative multiplier from `0.5` through `3.0`.
+Every group requires a unique `name`, a `filters` expression, and a non-empty `node` object. `node` accepts `color`, `size`, `border`, and `hover`. Group node fields override the corresponding regular node fields individually; omitted fields inherit from `display.node`.
 
 ## Orphan nodes
 
@@ -95,9 +96,9 @@ When an orphan is displayed, `display.orphan.node` replaces both the regular nod
 
 ## Node sizing
 
-`display.node.size` and `display.orphan.node.size` are relative multipliers from `0.5` through `3.0`. A matching group's size is another multiplier on regular nodes.
+`display.node.size` and `display.orphan.node.size` are relative multipliers from `0.5` through `3.0`. `groups[].node.size` uses the same range and is an additional multiplier on the regular node size.
 
-`display.node.propertional` defaults to `true`. When enabled, incoming Wiki Link count adds damped logarithmic growth capped at 4 times the base radius. The display and group size multipliers are applied to that derived radius. Larger nodes also receive proportionally stronger center gravity. Set `propertional: false` to disable link-derived growth.
+`display.node.propertional` defaults to `true`. When enabled, incoming Wiki Link count adds damped logarithmic growth capped at 4 times the base radius. The display and group size multipliers are applied to that derived radius. Larger nodes also receive proportionally stronger center gravity. Set `propertional: false` to disable link-derived growth for regular and grouped nodes.
 
 ## Styling
 
@@ -109,11 +110,11 @@ Omitted colors are resolved from the active application theme. Explicit YAML col
 
 ### Node appearance
 
-`display.node.color` styles regular nodes. Group color overrides the regular color for the first matching group, while `display.orphan.node.color` overrides both for orphan nodes.
+`display.node.color` styles regular nodes. `groups[].node.color` overrides it for the first matching group, while `display.orphan.node.color` overrides both for orphan nodes.
 
 ### Node borders
 
-`display.node` and `display.orphan.node` accept the same `border` fields. Border width ranges from `0.0` through `5.0`; zero explicitly hides the border. A border color without a width uses `1.0`. A border width without a color uses the node's resolved fill color.
+`display.node`, `groups[].node`, and `display.orphan.node` accept the same `border` fields. Group border fields override regular border fields individually. Border width ranges from `0.0` through `5.0`; zero explicitly hides the border. A border color without a width uses `1.0`. A border width without a color uses the node's resolved fill color.
 
 ### Edge appearance
 
@@ -121,7 +122,7 @@ Omitted colors are resolved from the active application theme. Explicit YAML col
 
 ### Node hover appearance
 
-The `hover` fields under `display.node` and `display.orphan.node` override the resolved normal appearance one field at a time. An omitted hover color uses the application theme's accent color. Omitted hover-border fields inherit the resolved normal border. If the first configured border is a hover border with only a color, its width is `1.0`.
+The `hover` fields under `display.node`, `groups[].node`, and `display.orphan.node` override the resolved normal appearance one field at a time. Group hover fields override regular hover fields individually. An omitted hover color uses the application theme's accent color. Omitted hover-border fields inherit the resolved normal border. If the first configured border is a hover border with only a color, its width is `1.0`.
 
 `hover.size` is a multiplier from `0.5` through `3.0` and defaults to `1.0`. It applies after the node size, group size, and proportional incoming-link growth have been resolved.
 

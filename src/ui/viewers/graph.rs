@@ -17,7 +17,8 @@ use anyhow::{Context as _, Result, anyhow};
 
 use crate::document::graph::{
     BorderStyle as GraphBorderStyle, GraphColor, GraphDefinition, GraphEdge, GraphNode,
-    GraphPhysics, deduplicate_edges, matching_group, select_nodes,
+    GraphPhysics, GroupNodeStyle, NodeStyle as GraphNodeStyle, deduplicate_edges, matching_group,
+    select_nodes,
 };
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::properties_from_markdown;
@@ -237,6 +238,27 @@ fn hover_border_width(normal: &GraphBorderStyle, hover: &GraphBorderStyle) -> f3
     })
 }
 
+fn resolve_group_node_style(
+    base: &GraphNodeStyle,
+    group: Option<&GroupNodeStyle>,
+) -> GraphNodeStyle {
+    let Some(group) = group else {
+        return base.clone();
+    };
+    let mut resolved = base.clone();
+    resolved.color = group.color.or(resolved.color);
+    if let Some(size) = group.size {
+        resolved.size = Some(resolved.size.unwrap_or(1.0) * size);
+    }
+    resolved.border.color = group.border.color.or(resolved.border.color);
+    resolved.border.width = group.border.width.or(resolved.border.width);
+    resolved.hover.color = group.hover.color.or(resolved.hover.color);
+    resolved.hover.size = group.hover.size.or(resolved.hover.size);
+    resolved.hover.border.color = group.hover.border.color.or(resolved.hover.border.color);
+    resolved.hover.border.width = group.hover.border.width.or(resolved.hover.border.width);
+    resolved
+}
+
 fn hit_test_nodes(nodes: &[ViewNode], world: Point<f32>) -> Option<usize> {
     nodes.iter().enumerate().rev().find_map(|(index, node)| {
         let dx = world.x - node.position.x;
@@ -335,30 +357,18 @@ fn make_snapshot(
         .enumerate()
         .map(|(index, node)| {
             let orphan = !connected.contains(&node.path);
-            let (style, color, size, proportional) = if orphan {
-                let style = &definition.display.orphan.node;
-                (
-                    style,
-                    style.color,
-                    style.size.unwrap_or(1.0),
-                    style.propertional,
-                )
+            let style = if orphan {
+                definition.display.orphan.node.clone()
             } else {
-                let style = &definition.display.node;
                 let group = matching_group(definition, &node.path, &node.properties);
-                (
-                    style,
-                    group.and_then(|group| group.color).or(style.color),
-                    style.size.unwrap_or(1.0) * group.and_then(|group| group.size).unwrap_or(1.0),
-                    style.propertional,
-                )
+                resolve_group_node_style(&definition.display.node, group.map(|group| &group.node))
             };
-            let degree_scale = if proportional {
+            let degree_scale = if style.propertional {
                 incoming_link_scale(incoming[index])
             } else {
                 1.0
             };
-            let radius = BASE_NODE_RADIUS * size * degree_scale;
+            let radius = BASE_NODE_RADIUS * style.size.unwrap_or(1.0) * degree_scale;
             let path_string = node.path.to_string_lossy().replace('\\', "/");
             ViewNode {
                 label: node
@@ -369,7 +379,7 @@ fn make_snapshot(
                     .to_string(),
                 relative_path: node.path,
                 orphan,
-                color,
+                color: style.color,
                 border_color: style.border.color,
                 border_width: border_width(&style.border),
                 hover_color: style.hover.color,
@@ -1566,8 +1576,34 @@ mod tests {
 groups:
   - name: Done
     filters: 'status == "done"'
-    color: '#ff0000'
+    node:
+      color: '#ff0000'
+      size: 1.5
+      border:
+        color: '#444444'
+      hover:
+        color: '#555555'
+        size: 1.5
+        border:
+          width: 2.0
+  - name: Later
+    filters: 'status == "done"'
+    node:
+      color: '#00ff00'
 display:
+  node:
+    color: '#0000ff'
+    size: 2.0
+    propertional: false
+    border:
+      color: '#111111'
+      width: 1.0
+    hover:
+      color: '#222222'
+      size: 1.25
+      border:
+        color: '#333333'
+        width: 1.0
   orphan:
     show: false
 "##,
@@ -1584,8 +1620,8 @@ display:
             properties: yaml_serde::from_str(properties).unwrap(),
         });
         let edges = [GraphEdge {
-            source: PathBuf::from("one.md"),
-            target: PathBuf::from("two.md"),
+            source: PathBuf::from("two.md"),
+            target: PathBuf::from("one.md"),
         }];
 
         let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
@@ -1596,7 +1632,15 @@ display:
             .iter()
             .find(|node| node.relative_path == std::path::Path::new("one.md"))
             .unwrap();
-        assert!(done.color.is_some());
+        assert_eq!(done.color.unwrap().red, 1.0);
+        assert_eq!(done.color.unwrap().green, 0.0);
+        assert!((done.radius - BASE_NODE_RADIUS * 3.0).abs() < 0.001);
+        assert_eq!(done.border_color.unwrap().red, 0x44 as f32 / 255.0);
+        assert_eq!(done.border_width, 1.0);
+        assert_eq!(done.hover_color.unwrap().red, 0x55 as f32 / 255.0);
+        assert_eq!(done.hover_size, 1.5);
+        assert_eq!(done.hover_border_color.unwrap().red, 0x33 as f32 / 255.0);
+        assert_eq!(done.hover_border_width, 2.0);
     }
 
     #[test]
@@ -1721,7 +1765,8 @@ display:
 groups:
   - name: Everything
     filters: []
-    color: '#ff0000'
+    node:
+      color: '#ff0000'
 display:
   orphan:
     show: true

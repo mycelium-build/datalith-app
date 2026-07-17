@@ -64,8 +64,16 @@ impl<'de> Deserialize<'de> for Filter {
 pub(crate) struct GraphGroup {
     pub(crate) name: String,
     pub(crate) filters: Filter,
+    pub(crate) node: GroupNodeStyle,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct GroupNodeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
+    pub(crate) border: BorderStyle,
+    pub(crate) hover: HoverStyle,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -296,13 +304,12 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         if !names.insert(&group.name) {
             bail!("group name {:?} is duplicated", group.name);
         }
-        if group.color.is_none() && group.size.is_none() {
-            bail!("group {:?} must define color or size", group.name);
+        if group.node == GroupNodeStyle::default() {
+            bail!("group {:?} must define at least one node style", group.name);
         }
-        validate_range(group.size, 0.5, 3.0, "group size")?;
+        validate_group_node_style(&group.node, &format!("group {:?}.node", group.name))?;
     }
-    validate_range(definition.display.node.size, 0.5, 3.0, "display.node.size")?;
-    validate_node_interaction_style(&definition.display.node, "display.node")?;
+    validate_node_style(&definition.display.node, "display.node")?;
     validate_range(
         definition.display.edge.width,
         0.5,
@@ -327,13 +334,7 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         5.0,
         "display.edge.hover.direction.both.width",
     )?;
-    validate_range(
-        definition.display.orphan.node.size,
-        0.5,
-        3.0,
-        "display.orphan.node.size",
-    )?;
-    validate_node_interaction_style(&definition.display.orphan.node, "display.orphan.node")?;
+    validate_node_style(&definition.display.orphan.node, "display.orphan.node")?;
     validate_non_negative(
         definition.physics.center.strength,
         "physics.center.strength",
@@ -347,16 +348,25 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
     Ok(definition)
 }
 
-fn validate_node_interaction_style(style: &NodeStyle, name: &str) -> Result<()> {
+fn validate_node_style(style: &NodeStyle, name: &str) -> Result<()> {
+    validate_node_style_fields(style.size, &style.border, &style.hover, name)
+}
+
+fn validate_group_node_style(style: &GroupNodeStyle, name: &str) -> Result<()> {
+    validate_node_style_fields(style.size, &style.border, &style.hover, name)
+}
+
+fn validate_node_style_fields(
+    size: Option<f32>,
+    border: &BorderStyle,
+    hover: &HoverStyle,
+    name: &str,
+) -> Result<()> {
+    validate_range(size, 0.5, 3.0, &format!("{name}.size"))?;
+    validate_range(border.width, 0.0, 5.0, &format!("{name}.border.width"))?;
+    validate_range(hover.size, 0.5, 3.0, &format!("{name}.hover.size"))?;
     validate_range(
-        style.border.width,
-        0.0,
-        5.0,
-        &format!("{name}.border.width"),
-    )?;
-    validate_range(style.hover.size, 0.5, 3.0, &format!("{name}.hover.size"))?;
-    validate_range(
-        style.hover.border.width,
+        hover.border.width,
         0.0,
         5.0,
         &format!("{name}.hover.border.width"),
@@ -965,8 +975,18 @@ filters:
 groups:
   - name: Done
     filters: 'status == "done"'
-    color: '#ff000080'
-    size: 1.25
+    node:
+      color: '#ff000080'
+      size: 1.25
+      border:
+        color: '#112233'
+        width: 1.5
+      hover:
+        color: '#445566'
+        size: 1.5
+        border:
+          color: '#778899'
+          width: 2.0
 display:
   orphan:
     show: false
@@ -985,7 +1005,22 @@ display:
         assert!(!definition.display.orphan.show);
         assert!(definition.display.edge.arrow);
         assert!(definition.display.node.propertional);
-        assert_eq!(definition.groups[0].color.unwrap().alpha, 128.0 / 255.0);
+        let group_node = &definition.groups[0].node;
+        assert_eq!(group_node.color.unwrap().alpha, 128.0 / 255.0);
+        assert_eq!(group_node.size, Some(1.25));
+        assert_eq!(group_node.border.width, Some(1.5));
+        assert_eq!(group_node.hover.size, Some(1.5));
+        assert_eq!(group_node.hover.border.width, Some(2.0));
+        assert!(
+            parse_definition("groups:\n  - name: Old\n    filters: []\n    color: '#ff0000'",)
+                .is_err()
+        );
+        assert!(
+            parse_definition(
+                "groups:\n  - name: Invalid\n    filters: []\n    node:\n      propertional: false",
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1017,6 +1052,9 @@ display:
         );
         assert!(parse_definition("limit: 10001").is_err());
         assert!(parse_definition("groups:\n  - name: Empty\n    filters: []").is_err());
+        assert!(
+            parse_definition("groups:\n  - name: Empty\n    filters: []\n    node: {}").is_err()
+        );
         assert!(
             !parse_definition("display:\n  node:\n    propertional: false")
                 .unwrap()
@@ -1188,6 +1226,7 @@ display:
         for source in [
             "display:\n  node:\n    border:\n      width: -0.1",
             "display:\n  node:\n    hover:\n      size: 4.0",
+            "groups:\n  - name: Invalid\n    filters: []\n    node:\n      border:\n        width: 6.0",
             "physics:\n  center:\n    strength: -0.1",
             "physics:\n  repulsion:\n    strength: .inf",
             "physics:\n  link:\n    strength: -0.1",
@@ -1219,7 +1258,21 @@ display:
 
     #[test]
     fn selects_with_limit_uses_first_group_and_deduplicates_visible_edges() {
-        let definition = parse_definition("limit: 1\ngroups:\n  - name: First\n    filters: 'status == \"done\"'\n    color: '#ff0000'\n  - name: Second\n    filters: 'status == \"done\"'\n    color: '#00ff00'").unwrap();
+        let definition = parse_definition(
+            r##"
+limit: 1
+groups:
+  - name: First
+    filters: 'status == "done"'
+    node:
+      color: '#ff0000'
+  - name: Second
+    filters: 'status == "done"'
+    node:
+      color: '#00ff00'
+"##,
+        )
+        .unwrap();
         let properties: Value = yaml_serde::from_str("status: done").unwrap();
         let node = GraphNode {
             path: PathBuf::from("A.md"),
