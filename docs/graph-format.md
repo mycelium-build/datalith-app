@@ -35,6 +35,9 @@ display:
   edge:
     color: 'oklch(70% 0.02 260 / 45%)'
     width: 1.0
+    hover:
+      color: '#9aa5ff'
+      width: 2.0
   orphans:
     show: true
     node:
@@ -87,9 +90,15 @@ Orphan-node appearance overrides general and group node appearance. Arrowheads i
 
 `display.node` and `display.orphans.node` accept the same `border` and `hover` fields. Border widths range from `0.0` through `5.0`; zero explicitly hides the border. Supplying a border color without a width uses `1.0`, while supplying a width without a color uses the node's resolved fill color.
 
-Hover fields override the normal node appearance one field at a time. An omitted hover color keeps the resolved normal color, and omitted hover-border fields inherit their normal-border counterparts. If a hover border is the first border to specify only a color, its width is `1.0`.
+Node hover fields override the normal node appearance one field at a time. An omitted node hover color uses the application theme's accent color, and omitted hover-border fields inherit their normal-border counterparts. If a hover border is the first border to specify only a color, its width is `1.0`.
 
 `hover.size` is a multiplier from `0.5` through `3.0`. It applies to the fully resolved radius after the node size, Graph Group size, and proportional incoming-link growth have been applied. It defaults to `1.0`.
+
+`display.edge.hover` controls outgoing-edge highlighting. Its optional color defaults to the application theme's accent color, and its optional width defaults to `display.edge.width`. Hover edge widths use the same `0.5` through `5.0` range as normal edge widths.
+
+Hovering a node highlights that source node and only the edges leaving it. The direct target nodes of those outgoing edges remain fully visible, while every other node and edge is dimmed. Incoming edges and edges leaving a target node are not highlighted. This focus treatment is disabled while any node or the scene is being dragged.
+
+The hovered node's filename stem is rendered directly below the node without a bubble. No other node names are displayed.
 
 ## Physics
 

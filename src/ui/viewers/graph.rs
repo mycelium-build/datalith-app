@@ -156,9 +156,42 @@ struct GraphSnapshot {
     edges: Vec<ViewEdge>,
     edge_color: Option<GraphColor>,
     edge_width: f32,
+    edge_hover_color: Option<GraphColor>,
+    edge_hover_width: f32,
     arrows: bool,
     arrow_color: Option<GraphColor>,
     physics: GraphPhysics,
+}
+
+struct GraphFocus {
+    source: usize,
+    included_nodes: Vec<bool>,
+}
+
+impl GraphFocus {
+    fn new(snapshot: &GraphSnapshot, source: usize) -> Self {
+        let mut included_nodes = vec![false; snapshot.nodes.len()];
+        if let Some(included) = included_nodes.get_mut(source) {
+            *included = true;
+        }
+        for edge in &snapshot.edges {
+            if edge.source == source {
+                included_nodes[edge.target] = true;
+            }
+        }
+        Self {
+            source,
+            included_nodes,
+        }
+    }
+
+    fn includes_node(&self, node: usize) -> bool {
+        self.included_nodes.get(node).copied().unwrap_or(false)
+    }
+
+    fn includes_edge(&self, edge: &ViewEdge) -> bool {
+        edge.source == self.source
+    }
 }
 
 fn border_width(style: &GraphBorderStyle) -> f32 {
@@ -281,11 +314,14 @@ fn make_snapshot(
         })
         .collect();
 
+    let edge_width = definition.display.edge.width.unwrap_or(1.0);
     Ok(GraphSnapshot {
         nodes,
         edges: view_edges,
         edge_color: definition.display.edge.color,
-        edge_width: definition.display.edge.width.unwrap_or(1.0),
+        edge_width,
+        edge_hover_color: definition.display.edge.hover.color,
+        edge_hover_width: definition.display.edge.hover.width.unwrap_or(edge_width),
         arrows: definition.display.arrows.show,
         arrow_color: definition.display.arrows.color,
         physics: definition.physics,
@@ -959,9 +995,14 @@ impl GraphViewState {
             window.request_animation_frame();
         }
 
+        let active_hover = self
+            .interaction
+            .is_none()
+            .then_some(self.hovered_node)
+            .flatten();
         let snapshot_for_paint = snapshot.clone();
         let camera_for_paint = self.camera;
-        let hovered_for_paint = self.hovered_node;
+        let hovered_for_paint = active_hover;
         let entity = cx.entity().downgrade();
         let mut root = div()
             .id("graph-viewer")
@@ -988,20 +1029,22 @@ impl GraphViewState {
                 .size_full(),
             );
 
-        if let (Some(index), Some(bounds)) = (self.hovered_node, self.canvas_bounds)
+        if let (Some(index), Some(bounds)) = (active_hover, self.canvas_bounds)
             && let Some(node) = snapshot.nodes.get(index)
         {
             let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
             let screen = self.camera.world_to_screen(node.position, viewport);
+            let radius = (node.radius * node.hover_size * self.camera.zoom).max(1.0);
+            const LABEL_WIDTH: f32 = 240.0;
             root = root.child(
                 div()
                     .absolute()
-                    .left(px(screen.x + 12.0))
-                    .top(px(screen.y + 12.0))
-                    .px_2()
-                    .py_1()
-                    .rounded_sm()
-                    .bg(cx.theme().muted)
+                    .left(px(screen.x - LABEL_WIDTH / 2.0))
+                    .top(px(screen.y + radius + 6.0))
+                    .w(px(LABEL_WIDTH))
+                    .text_center()
+                    .text_sm()
+                    .whitespace_nowrap()
                     .text_color(cx.theme().foreground)
                     .child(node.label.clone()),
             );
@@ -1043,6 +1086,8 @@ fn screen_point(
     point(origin.x + px(local.x), origin.y + px(local.y))
 }
 
+const HOVER_DIM_OPACITY: f32 = 0.16;
+
 fn paint_graph(
     bounds: Bounds<Pixels>,
     snapshot: &GraphSnapshot,
@@ -1052,11 +1097,18 @@ fn paint_graph(
     cx: &mut App,
 ) {
     let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let focus = hovered_node.map(|source| GraphFocus::new(snapshot, source));
     let edge_color = snapshot
         .edge_color
         .map(graph_color)
         .unwrap_or_else(|| cx.theme().border.opacity(0.65));
+    let edge_hover_color = snapshot
+        .edge_hover_color
+        .map(graph_color)
+        .unwrap_or(cx.theme().info);
     let mut edge_builder = PathBuilder::stroke(px((snapshot.edge_width * camera.zoom).max(0.35)));
+    let mut focused_edge_builder =
+        PathBuilder::stroke(px((snapshot.edge_hover_width * camera.zoom).max(0.35)));
     for edge in &snapshot.edges {
         let source = screen_point(
             snapshot.nodes[edge.source].position,
@@ -1070,16 +1122,37 @@ fn paint_graph(
             viewport,
             bounds.origin,
         );
-        edge_builder.move_to(source);
-        edge_builder.line_to(target);
+        if focus
+            .as_ref()
+            .is_some_and(|focus| focus.includes_edge(edge))
+        {
+            focused_edge_builder.move_to(source);
+            focused_edge_builder.line_to(target);
+        } else {
+            edge_builder.move_to(source);
+            edge_builder.line_to(target);
+        }
     }
     if let Ok(path) = edge_builder.build() {
-        window.paint_path(path, edge_color);
+        window.paint_path(
+            path,
+            if focus.is_some() {
+                edge_color.opacity(HOVER_DIM_OPACITY)
+            } else {
+                edge_color
+            },
+        );
+    }
+    if focus.is_some()
+        && let Ok(path) = focused_edge_builder.build()
+    {
+        window.paint_path(path, edge_hover_color);
     }
 
     if snapshot.arrows {
         let arrow_color = snapshot.arrow_color.map(graph_color).unwrap_or(edge_color);
         let mut arrows = PathBuilder::fill();
+        let mut focused_arrows = PathBuilder::fill();
         for edge in &snapshot.edges {
             let source_node = &snapshot.nodes[edge.source];
             let target_node = &snapshot.nodes[edge.target];
@@ -1104,6 +1177,14 @@ fn paint_graph(
                 tip.x - px(direction.x * f32::from(arrow_size)),
                 tip.y - px(direction.y * f32::from(arrow_size)),
             );
+            let arrows = if focus
+                .as_ref()
+                .is_some_and(|focus| focus.includes_edge(edge))
+            {
+                &mut focused_arrows
+            } else {
+                &mut arrows
+            };
             arrows.move_to(tip);
             arrows.line_to(point(
                 base.x + px(perpendicular.x * f32::from(arrow_size) * 0.55),
@@ -1116,7 +1197,19 @@ fn paint_graph(
             arrows.close();
         }
         if let Ok(path) = arrows.build() {
-            window.paint_path(path, arrow_color);
+            window.paint_path(
+                path,
+                if focus.is_some() {
+                    arrow_color.opacity(HOVER_DIM_OPACITY)
+                } else {
+                    arrow_color
+                },
+            );
+        }
+        if focus.is_some()
+            && let Ok(path) = focused_arrows.build()
+        {
+            window.paint_path(path, edge_hover_color);
         }
     }
 
@@ -1137,7 +1230,7 @@ fn paint_graph(
             }
         });
         let color = if hovered {
-            node.hover_color.map(graph_color).unwrap_or(base_color)
+            node.hover_color.map(graph_color).unwrap_or(cx.theme().info)
         } else {
             base_color
         };
@@ -1146,7 +1239,15 @@ fn paint_graph(
         } else {
             (node.border_color, node.border_width)
         };
-        let border_color = border_color.map(graph_color).unwrap_or(color);
+        let mut border_color = border_color.map(graph_color).unwrap_or(color);
+        let mut color = color;
+        if focus
+            .as_ref()
+            .is_some_and(|focus| !focus.includes_node(index))
+        {
+            color = color.opacity(HOVER_DIM_OPACITY);
+            border_color = border_color.opacity(HOVER_DIM_OPACITY);
+        }
         let border_width = if border_width > 0.0 {
             (border_width * camera.zoom).max(0.35)
         } else {
@@ -1556,6 +1657,77 @@ display:
         assert_eq!(orphan.border_width, 0.5);
         assert_eq!(orphan.hover_border_width, 0.5);
         assert_eq!(orphan.hover_border_color.unwrap().red, 0x77 as f32 / 255.0);
+    }
+
+    #[test]
+    fn hover_focus_includes_only_the_source_and_its_outgoing_targets() {
+        use crate::document::graph::{GraphEdge, GraphNode, parse_definition};
+
+        let definition = parse_definition(
+            r##"
+display:
+  edge:
+    width: 1.5
+    hover:
+      color: '#abcdef'
+      width: 3.0
+"##,
+        )
+        .unwrap();
+        let nodes = ["source.md", "target.md", "inbound.md", "next.md"]
+            .into_iter()
+            .map(|path| GraphNode {
+                path: path.into(),
+                properties: yaml_serde::Value::Mapping(Default::default()),
+            });
+        let edges = [
+            GraphEdge {
+                source: "source.md".into(),
+                target: "target.md".into(),
+            },
+            GraphEdge {
+                source: "inbound.md".into(),
+                target: "source.md".into(),
+            },
+            GraphEdge {
+                source: "target.md".into(),
+                target: "next.md".into(),
+            },
+        ];
+        let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let index = |path: &str| {
+            snapshot
+                .nodes
+                .iter()
+                .position(|node| node.relative_path == std::path::Path::new(path))
+                .unwrap()
+        };
+        let source = index("source.md");
+        let focus = GraphFocus::new(&snapshot, source);
+
+        assert!(focus.includes_node(source));
+        assert!(focus.includes_node(index("target.md")));
+        assert!(!focus.includes_node(index("inbound.md")));
+        assert!(!focus.includes_node(index("next.md")));
+        assert!(focus.includes_edge(&ViewEdge {
+            source,
+            target: index("target.md"),
+        }));
+        assert!(!focus.includes_edge(&ViewEdge {
+            source: index("inbound.md"),
+            target: source,
+        }));
+        assert_eq!(snapshot.edge_hover_width, 3.0);
+        assert_eq!(snapshot.edge_hover_color.unwrap().red, 0xab as f32 / 255.0);
+
+        let inherited_definition = parse_definition("display:\n  edge:\n    width: 2.25").unwrap();
+        let inherited = make_snapshot(
+            &inherited_definition,
+            std::iter::empty::<GraphNode>(),
+            std::iter::empty::<GraphEdge>(),
+        )
+        .unwrap();
+        assert_eq!(inherited.edge_hover_width, 2.25);
     }
 
     #[test]

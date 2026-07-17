@@ -119,6 +119,14 @@ pub(crate) struct HoverStyle {
 pub(crate) struct EdgeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
+    pub(crate) hover: EdgeHoverStyle,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct EdgeHoverStyle {
+    pub(crate) color: Option<GraphColor>,
+    pub(crate) width: Option<f32>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -293,6 +301,12 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         0.5,
         5.0,
         "display.edge.width",
+    )?;
+    validate_range(
+        definition.display.edge.hover.width,
+        0.5,
+        5.0,
+        "display.edge.hover.width",
     )?;
     validate_range(
         definition.display.orphans.node.size,
@@ -1046,6 +1060,27 @@ physics:
         assert_eq!(definition.physics.repulsion.strength, 2048.0);
         assert_eq!(definition.physics.link.strength, 0.08);
         assert_eq!(definition.physics.link.distance, 96.0);
+    }
+
+    #[test]
+    fn parses_edge_hover_style() {
+        let definition = parse_definition(
+            r##"
+display:
+  edge:
+    hover:
+      color: '#abcdef'
+      width: 2.5
+"##,
+        )
+        .unwrap();
+
+        assert_eq!(
+            definition.display.edge.hover.color.unwrap(),
+            parse_color("#abcdef").unwrap()
+        );
+        assert_eq!(definition.display.edge.hover.width, Some(2.5));
+        assert!(parse_definition("display:\n  edge:\n    hover:\n      width: 0.1").is_err());
     }
 
     #[test]
