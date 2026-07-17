@@ -98,7 +98,9 @@ Node hover fields override the normal node appearance one field at a time. An om
 
 Hovering a node highlights that source node and only the edges leaving it. The direct target nodes of those outgoing edges remain fully visible, while every other node and edge is dimmed. Incoming edges and edges leaving a target node are not highlighted. This focus treatment is disabled while any node or the scene is being dragged.
 
-The hovered node's filename stem is rendered directly below the node without a bubble. No other node names are displayed.
+The hovered node's filename stem is rendered directly below the node without a bubble. Below the high-zoom threshold, no other node names are displayed.
+
+At `2.5×` zoom and above, the filename stem is displayed below every node whose circle is visible in the viewport. Off-screen nodes do not create labels. This high-zoom label mode remains active while dragging or panning because it depends on camera zoom rather than hover focus.
 
 ## Physics
 

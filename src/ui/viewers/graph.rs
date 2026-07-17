@@ -220,6 +220,43 @@ fn hit_test_nodes(nodes: &[ViewNode], world: Point<f32>) -> Option<usize> {
     })
 }
 
+const ALL_LABELS_MIN_ZOOM: f32 = 2.5;
+const NODE_LABEL_WIDTH: f32 = 240.0;
+
+fn label_node_indices(
+    nodes: &[ViewNode],
+    camera: Camera,
+    viewport: Point<f32>,
+    hovered_node: Option<usize>,
+) -> Vec<usize> {
+    if camera.zoom < ALL_LABELS_MIN_ZOOM {
+        return hovered_node
+            .filter(|index| *index < nodes.len())
+            .into_iter()
+            .collect();
+    }
+
+    nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let center = camera.world_to_screen(node.position, viewport);
+            let radius = node.radius
+                * if hovered_node == Some(index) {
+                    node.hover_size
+                } else {
+                    1.0
+                }
+                * camera.zoom;
+            (center.x + radius >= 0.0
+                && center.x - radius <= viewport.x
+                && center.y + radius >= 0.0
+                && center.y - radius <= viewport.y)
+                .then_some(index)
+        })
+        .collect()
+}
+
 fn make_snapshot(
     definition: &GraphDefinition,
     candidates: impl IntoIterator<Item = GraphNode>,
@@ -1029,25 +1066,33 @@ impl GraphViewState {
                 .size_full(),
             );
 
-        if let (Some(index), Some(bounds)) = (active_hover, self.canvas_bounds)
-            && let Some(node) = snapshot.nodes.get(index)
-        {
+        if let Some(bounds) = self.canvas_bounds {
             let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
-            let screen = self.camera.world_to_screen(node.position, viewport);
-            let radius = (node.radius * node.hover_size * self.camera.zoom).max(1.0);
-            const LABEL_WIDTH: f32 = 240.0;
-            root = root.child(
-                div()
-                    .absolute()
-                    .left(px(screen.x - LABEL_WIDTH / 2.0))
-                    .top(px(screen.y + radius + 6.0))
-                    .w(px(LABEL_WIDTH))
-                    .text_center()
-                    .text_sm()
-                    .whitespace_nowrap()
-                    .text_color(cx.theme().foreground)
-                    .child(node.label.clone()),
-            );
+            let focus = active_hover.map(|source| GraphFocus::new(snapshot, source));
+            for index in label_node_indices(&snapshot.nodes, self.camera, viewport, active_hover) {
+                let node = &snapshot.nodes[index];
+                let hovered = active_hover == Some(index);
+                let screen = self.camera.world_to_screen(node.position, viewport);
+                let radius =
+                    (node.radius * if hovered { node.hover_size } else { 1.0 } * self.camera.zoom)
+                        .max(1.0);
+                let dimmed = focus
+                    .as_ref()
+                    .is_some_and(|focus| !focus.includes_node(index));
+                root = root.child(
+                    div()
+                        .absolute()
+                        .left(px(screen.x - NODE_LABEL_WIDTH / 2.0))
+                        .top(px(screen.y + radius + 6.0))
+                        .w(px(NODE_LABEL_WIDTH))
+                        .text_center()
+                        .text_sm()
+                        .whitespace_nowrap()
+                        .text_color(cx.theme().foreground)
+                        .opacity(if dimmed { HOVER_DIM_OPACITY } else { 1.0 })
+                        .child(node.label.clone()),
+                );
+            }
         }
         root.into_any_element()
     }
@@ -1388,6 +1433,37 @@ mod tests {
         let after = camera.screen_to_world(pointer, viewport);
         assert!((before.x - after.x).abs() < 0.001);
         assert!((before.y - after.y).abs() < 0.001);
+    }
+
+    #[test]
+    fn high_zoom_labels_only_nodes_visible_in_the_viewport() {
+        use crate::document::graph::{GraphNode, parse_definition};
+
+        let definition = parse_definition("").unwrap();
+        let nodes = ["visible.md", "offscreen.md"]
+            .into_iter()
+            .map(|path| GraphNode {
+                path: path.into(),
+                properties: yaml_serde::Value::Mapping(Default::default()),
+            });
+        let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
+        snapshot.nodes[0].position = point(0.0, 0.0);
+        snapshot.nodes[1].position = point(1_000.0, 0.0);
+        let viewport = point(800.0, 600.0);
+        let high_zoom = Camera {
+            zoom: ALL_LABELS_MIN_ZOOM,
+            ..Camera::default()
+        };
+
+        assert_eq!(
+            label_node_indices(&snapshot.nodes, high_zoom, viewport, None),
+            [0]
+        );
+        assert_eq!(
+            label_node_indices(&snapshot.nodes, Camera::default(), viewport, Some(0)),
+            [0]
+        );
+        assert!(label_node_indices(&snapshot.nodes, Camera::default(), viewport, None).is_empty());
     }
 
     #[test]
