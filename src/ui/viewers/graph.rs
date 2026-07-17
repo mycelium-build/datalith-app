@@ -16,8 +16,8 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, anyhow};
 
 use crate::document::graph::{
-    GraphColor, GraphDefinition, GraphEdge, GraphNode, deduplicate_edges, matching_group,
-    select_nodes,
+    BorderStyle as GraphBorderStyle, GraphColor, GraphDefinition, GraphEdge, GraphNode,
+    GraphPhysics, deduplicate_edges, matching_group, select_nodes,
 };
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::properties_from_markdown;
@@ -132,6 +132,12 @@ struct ViewNode {
     label: String,
     orphan: bool,
     color: Option<GraphColor>,
+    border_color: Option<GraphColor>,
+    border_width: f32,
+    hover_color: Option<GraphColor>,
+    hover_size: f32,
+    hover_border_color: Option<GraphColor>,
+    hover_border_width: f32,
     radius: f32,
     center_weight: f32,
     position: Point<f32>,
@@ -152,6 +158,25 @@ struct GraphSnapshot {
     edge_width: f32,
     arrows: bool,
     arrow_color: Option<GraphColor>,
+    physics: GraphPhysics,
+}
+
+fn border_width(style: &GraphBorderStyle) -> f32 {
+    style
+        .width
+        .unwrap_or_else(|| if style.color.is_some() { 1.0 } else { 0.0 })
+}
+
+fn hover_border_width(normal: &GraphBorderStyle, hover: &GraphBorderStyle) -> f32 {
+    hover.width.unwrap_or_else(|| {
+        if normal.width.is_some() || normal.color.is_some() {
+            border_width(normal)
+        } else if hover.color.is_some() {
+            1.0
+        } else {
+            0.0
+        }
+    })
 }
 
 fn hit_test_nodes(nodes: &[ViewNode], world: Point<f32>) -> Option<usize> {
@@ -207,18 +232,22 @@ fn make_snapshot(
         .enumerate()
         .map(|(index, node)| {
             let orphan = !connected.contains(&node.path);
-            let (color, size, proportional) = if orphan {
+            let (style, color, size, proportional) = if orphan {
                 let style = &definition.display.orphans.node;
-                (style.color, style.size.unwrap_or(1.0), style.propertional)
+                (
+                    style,
+                    style.color,
+                    style.size.unwrap_or(1.0),
+                    style.propertional,
+                )
             } else {
+                let style = &definition.display.node;
                 let group = matching_group(definition, &node.path, &node.properties);
                 (
-                    group
-                        .and_then(|group| group.color)
-                        .or(definition.display.node.color),
-                    definition.display.node.size.unwrap_or(1.0)
-                        * group.and_then(|group| group.size).unwrap_or(1.0),
-                    definition.display.node.propertional,
+                    style,
+                    group.and_then(|group| group.color).or(style.color),
+                    style.size.unwrap_or(1.0) * group.and_then(|group| group.size).unwrap_or(1.0),
+                    style.propertional,
                 )
             };
             let degree_scale = if proportional {
@@ -238,6 +267,12 @@ fn make_snapshot(
                 relative_path: node.path,
                 orphan,
                 color,
+                border_color: style.border.color,
+                border_width: border_width(&style.border),
+                hover_color: style.hover.color,
+                hover_size: style.hover.size.unwrap_or(1.0),
+                hover_border_color: style.hover.border.color.or(style.border.color),
+                hover_border_width: hover_border_width(&style.border, &style.hover.border),
                 radius,
                 center_weight: radius / BASE_NODE_RADIUS,
                 position: deterministic_position(&path_string, node_count),
@@ -253,13 +288,10 @@ fn make_snapshot(
         edge_width: definition.display.edge.width.unwrap_or(1.0),
         arrows: definition.display.arrows.show,
         arrow_color: definition.display.arrows.color,
+        physics: definition.physics,
     })
 }
 
-const CENTER_STRENGTH: f32 = 0.002;
-const REPULSION_STRENGTH: f32 = 1_024.0;
-const LINK_STRENGTH: f32 = 0.04;
-const LINK_DISTANCE: f32 = 128.0;
 const VELOCITY_DAMPING: f32 = 0.64;
 const COOLING: f32 = 0.9999;
 const SLEEP_ALPHA: f32 = 0.002;
@@ -306,6 +338,7 @@ impl Simulation {
 
         let positions: Vec<_> = snapshot.nodes.iter().map(|node| node.position).collect();
         let tree = QuadTree::new(&positions);
+        let physics = snapshot.physics;
         let mut forces: Vec<Point<f32>> = vec![Point::default(); snapshot.nodes.len()];
         let mut link_degrees = vec![0_usize; snapshot.nodes.len()];
         for edge in &snapshot.edges {
@@ -314,11 +347,11 @@ impl Simulation {
         }
 
         for (index, node) in snapshot.nodes.iter().enumerate() {
-            let repel = tree.repulsion(index, node.position);
+            let repel = tree.repulsion(index, node.position, physics.repulsion.strength);
             forces[index].x += repel.x;
             forces[index].y += repel.y;
-            forces[index].x -= node.position.x * CENTER_STRENGTH * node.center_weight;
-            forces[index].y -= node.position.y * CENTER_STRENGTH * node.center_weight;
+            forces[index].x -= node.position.x * physics.center.strength * node.center_weight;
+            forces[index].y -= node.position.y * physics.center.strength * node.center_weight;
         }
 
         for edge in &snapshot.edges {
@@ -326,7 +359,7 @@ impl Simulation {
             let target = snapshot.nodes[edge.target].position;
             let delta = point(target.x - source.x, target.y - source.y);
             let distance = (delta.x * delta.x + delta.y * delta.y).sqrt().max(0.001);
-            let magnitude = (distance - LINK_DISTANCE) * LINK_STRENGTH;
+            let magnitude = (distance - physics.link.distance) * physics.link.strength;
             let force = point(
                 delta.x / distance * magnitude,
                 delta.y / distance * magnitude,
@@ -509,15 +542,21 @@ impl QuadTree {
         self.insert(child, body, depth);
     }
 
-    fn repulsion(&self, body: usize, position: Point<f32>) -> Point<f32> {
+    fn repulsion(&self, body: usize, position: Point<f32>, strength: f32) -> Point<f32> {
         if self.nodes.is_empty() {
             Point::default()
         } else {
-            self.repulsion_from(0, body, position)
+            self.repulsion_from(0, body, position, strength)
         }
     }
 
-    fn repulsion_from(&self, node_index: usize, body: usize, position: Point<f32>) -> Point<f32> {
+    fn repulsion_from(
+        &self,
+        node_index: usize,
+        body: usize,
+        position: Point<f32>,
+        strength: f32,
+    ) -> Point<f32> {
         let node = &self.nodes[node_index];
         if node.mass == 0.0 || node.body == Some(body) {
             return Point::default();
@@ -537,7 +576,7 @@ impl QuadTree {
         if is_leaf
             || (!node.contains(position) && node.half_size * 2.0 / distance < BARNES_HUT_THETA)
         {
-            let magnitude = REPULSION_STRENGTH * node.mass / distance_squared;
+            let magnitude = strength * node.mass / distance_squared;
             return point(
                 delta.x / distance * magnitude,
                 delta.y / distance * magnitude,
@@ -548,7 +587,7 @@ impl QuadTree {
             .iter()
             .flatten()
             .fold(Point::default(), |mut force, child| {
-                let child_force = self.repulsion_from(*child, body, position);
+                let child_force = self.repulsion_from(*child, body, position, strength);
                 force.x += child_force.x;
                 force.y += child_force.y;
                 force
@@ -922,6 +961,7 @@ impl GraphViewState {
 
         let snapshot_for_paint = snapshot.clone();
         let camera_for_paint = self.camera;
+        let hovered_for_paint = self.hovered_node;
         let entity = cx.entity().downgrade();
         let mut root = div()
             .id("graph-viewer")
@@ -941,7 +981,7 @@ impl GraphViewState {
                 canvas(
                     move |bounds, _window, _cx| (bounds, snapshot_for_paint, camera_for_paint),
                     move |_bounds, (bounds, snapshot, camera), window, cx| {
-                        paint_graph(bounds, &snapshot, camera, window, cx);
+                        paint_graph(bounds, &snapshot, camera, hovered_for_paint, window, cx);
                     },
                 )
                 .absolute()
@@ -1007,6 +1047,7 @@ fn paint_graph(
     bounds: Bounds<Pixels>,
     snapshot: &GraphSnapshot,
     camera: Camera,
+    hovered_node: Option<usize>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -1046,9 +1087,15 @@ fn paint_graph(
             let dy = target_node.position.y - source_node.position.y;
             let distance = (dx * dx + dy * dy).sqrt().max(0.001);
             let direction = point(dx / distance, dy / distance);
+            let target_radius = target_node.radius
+                * if hovered_node == Some(edge.target) {
+                    target_node.hover_size
+                } else {
+                    1.0
+                };
             let tip_world = point(
-                target_node.position.x - direction.x * target_node.radius,
-                target_node.position.y - direction.y * target_node.radius,
+                target_node.position.x - direction.x * target_radius,
+                target_node.position.y - direction.y * target_radius,
             );
             let tip = screen_point(tip_world, camera, viewport, bounds.origin);
             let arrow_size = px((6.0 * camera.zoom).clamp(3.0, 10.0));
@@ -1073,26 +1120,44 @@ fn paint_graph(
         }
     }
 
-    for node in &snapshot.nodes {
+    for (index, node) in snapshot.nodes.iter().enumerate() {
+        let hovered = hovered_node == Some(index);
         let center = screen_point(node.position, camera, viewport, bounds.origin);
-        let radius = px((node.radius * camera.zoom).max(1.0));
+        let radius =
+            px((node.radius * if hovered { node.hover_size } else { 1.0 } * camera.zoom).max(1.0));
         let node_bounds = Bounds::new(
             point(center.x - radius, center.y - radius),
             size(radius * 2.0, radius * 2.0),
         );
-        let color = node.color.map(graph_color).unwrap_or_else(|| {
+        let base_color = node.color.map(graph_color).unwrap_or_else(|| {
             if node.orphan {
                 cx.theme().muted_foreground
             } else {
                 cx.theme().primary
             }
         });
+        let color = if hovered {
+            node.hover_color.map(graph_color).unwrap_or(base_color)
+        } else {
+            base_color
+        };
+        let (border_color, border_width) = if hovered {
+            (node.hover_border_color, node.hover_border_width)
+        } else {
+            (node.border_color, node.border_width)
+        };
+        let border_color = border_color.map(graph_color).unwrap_or(color);
+        let border_width = if border_width > 0.0 {
+            (border_width * camera.zoom).max(0.35)
+        } else {
+            0.0
+        };
         window.paint_quad(quad(
             node_bounds,
             Corners::all(radius),
             color,
-            Edges::default(),
-            color,
+            Edges::all(px(border_width)),
+            border_color,
             BorderStyle::default(),
         ));
     }
@@ -1346,6 +1411,12 @@ display:
                 label: "bottom".into(),
                 orphan: false,
                 color: None,
+                border_color: None,
+                border_width: 0.0,
+                hover_color: None,
+                hover_size: 1.0,
+                hover_border_color: None,
+                hover_border_width: 0.0,
                 radius: 10.0,
                 center_weight: 1.0,
                 position: point(0.0, 0.0),
@@ -1356,6 +1427,12 @@ display:
                 label: "top".into(),
                 orphan: false,
                 color: None,
+                border_color: None,
+                border_width: 0.0,
+                hover_color: None,
+                hover_size: 1.0,
+                hover_border_color: None,
+                hover_border_width: 0.0,
                 radius: 10.0,
                 center_weight: 1.0,
                 position: point(2.0, 0.0),
@@ -1420,6 +1497,86 @@ display:
         assert_eq!(linked.color.unwrap().red, 1.0);
         assert_eq!(orphan.color.unwrap().blue, 1.0);
         assert!(orphan.orphan);
+    }
+
+    #[test]
+    fn snapshot_resolves_normal_hover_and_orphan_borders() {
+        use crate::document::graph::{GraphEdge, GraphNode, parse_definition};
+
+        let definition = parse_definition(
+            r##"
+display:
+  node:
+    border:
+      color: '#112233'
+    hover:
+      color: '#445566'
+      size: 1.5
+      border:
+        width: 2.0
+  orphans:
+    node:
+      border:
+        width: 0.5
+      hover:
+        border:
+          color: '#778899'
+"##,
+        )
+        .unwrap();
+        let nodes = ["linked-a.md", "linked-b.md", "orphan.md"]
+            .into_iter()
+            .map(|path| GraphNode {
+                path: path.into(),
+                properties: yaml_serde::Value::Mapping(Default::default()),
+            });
+        let edges = [GraphEdge {
+            source: "linked-a.md".into(),
+            target: "linked-b.md".into(),
+        }];
+
+        let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let linked = snapshot
+            .nodes
+            .iter()
+            .find(|node| node.relative_path == std::path::Path::new("linked-a.md"))
+            .unwrap();
+        let orphan = snapshot
+            .nodes
+            .iter()
+            .find(|node| node.relative_path == std::path::Path::new("orphan.md"))
+            .unwrap();
+
+        assert_eq!(linked.border_width, 1.0);
+        assert_eq!(linked.border_color.unwrap().red, 0x11 as f32 / 255.0);
+        assert_eq!(linked.hover_size, 1.5);
+        assert_eq!(linked.hover_color.unwrap().red, 0x44 as f32 / 255.0);
+        assert_eq!(linked.hover_border_width, 2.0);
+        assert_eq!(linked.hover_border_color, linked.border_color);
+        assert_eq!(orphan.border_width, 0.5);
+        assert_eq!(orphan.hover_border_width, 0.5);
+        assert_eq!(orphan.hover_border_color.unwrap().red, 0x77 as f32 / 255.0);
+    }
+
+    #[test]
+    fn configured_physics_controls_simulation_forces() {
+        use crate::document::graph::{GraphNode, parse_definition};
+
+        let definition = parse_definition(
+            "physics:\n  center:\n    strength: 0\n  repulsion:\n    strength: 0\n  link:\n    strength: 0",
+        )
+        .unwrap();
+        let nodes = [GraphNode {
+            path: "still.md".into(),
+            properties: yaml_serde::Value::Mapping(Default::default()),
+        }];
+        let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
+        snapshot.nodes[0].position = point(120.0, 0.0);
+
+        Simulation::default().step(&mut snapshot, None);
+
+        assert_eq!(snapshot.nodes[0].position, point(120.0, 0.0));
+        assert_eq!(snapshot.nodes[0].velocity, Point::default());
     }
 
     #[test]

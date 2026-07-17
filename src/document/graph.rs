@@ -7,6 +7,10 @@ use yaml_serde::Value;
 
 pub(crate) const DEFAULT_NODE_LIMIT: usize = 2_000;
 pub(crate) const HARD_NODE_LIMIT: usize = 10_000;
+pub(crate) const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
+pub(crate) const DEFAULT_REPULSION_STRENGTH: f32 = 1_024.0;
+pub(crate) const DEFAULT_LINK_STRENGTH: f32 = 0.04;
+pub(crate) const DEFAULT_LINK_DISTANCE: f32 = 128.0;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -15,6 +19,7 @@ pub(crate) struct GraphDefinition {
     pub(crate) filters: Filter,
     pub(crate) groups: Vec<GraphGroup>,
     pub(crate) display: GraphDisplay,
+    pub(crate) physics: GraphPhysics,
 }
 
 impl Default for GraphDefinition {
@@ -24,6 +29,7 @@ impl Default for GraphDefinition {
             filters: Filter::MatchAll,
             groups: Vec::new(),
             display: GraphDisplay::default(),
+            physics: GraphPhysics::default(),
         }
     }
 }
@@ -77,6 +83,8 @@ pub(crate) struct NodeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
     pub(crate) propertional: bool,
+    pub(crate) border: BorderStyle,
+    pub(crate) hover: HoverStyle,
 }
 
 impl Default for NodeStyle {
@@ -85,8 +93,25 @@ impl Default for NodeStyle {
             color: None,
             size: None,
             propertional: true,
+            border: BorderStyle::default(),
+            hover: HoverStyle::default(),
         }
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct BorderStyle {
+    pub(crate) color: Option<GraphColor>,
+    pub(crate) width: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct HoverStyle {
+    pub(crate) color: Option<GraphColor>,
+    pub(crate) size: Option<f32>,
+    pub(crate) border: BorderStyle,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -108,6 +133,58 @@ impl Default for OrphanStyle {
         Self {
             show: true,
             node: NodeStyle::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct GraphPhysics {
+    pub(crate) center: CenterForce,
+    pub(crate) repulsion: RepulsionForce,
+    pub(crate) link: LinkForce,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct CenterForce {
+    pub(crate) strength: f32,
+}
+
+impl Default for CenterForce {
+    fn default() -> Self {
+        Self {
+            strength: DEFAULT_CENTER_STRENGTH,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct RepulsionForce {
+    pub(crate) strength: f32,
+}
+
+impl Default for RepulsionForce {
+    fn default() -> Self {
+        Self {
+            strength: DEFAULT_REPULSION_STRENGTH,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct LinkForce {
+    pub(crate) strength: f32,
+    pub(crate) distance: f32,
+}
+
+impl Default for LinkForce {
+    fn default() -> Self {
+        Self {
+            strength: DEFAULT_LINK_STRENGTH,
+            distance: DEFAULT_LINK_DISTANCE,
         }
     }
 }
@@ -210,6 +287,7 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         validate_range(group.size, 0.5, 3.0, "group size")?;
     }
     validate_range(definition.display.node.size, 0.5, 3.0, "display.node.size")?;
+    validate_node_interaction_style(&definition.display.node, "display.node")?;
     validate_range(
         definition.display.edge.width,
         0.5,
@@ -222,7 +300,49 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         3.0,
         "display.orphans.node.size",
     )?;
+    validate_node_interaction_style(&definition.display.orphans.node, "display.orphans.node")?;
+    validate_non_negative(
+        definition.physics.center.strength,
+        "physics.center.strength",
+    )?;
+    validate_non_negative(
+        definition.physics.repulsion.strength,
+        "physics.repulsion.strength",
+    )?;
+    validate_non_negative(definition.physics.link.strength, "physics.link.strength")?;
+    validate_positive(definition.physics.link.distance, "physics.link.distance")?;
     Ok(definition)
+}
+
+fn validate_node_interaction_style(style: &NodeStyle, name: &str) -> Result<()> {
+    validate_range(
+        style.border.width,
+        0.0,
+        5.0,
+        &format!("{name}.border.width"),
+    )?;
+    validate_range(style.hover.size, 0.5, 3.0, &format!("{name}.hover.size"))?;
+    validate_range(
+        style.hover.border.width,
+        0.0,
+        5.0,
+        &format!("{name}.hover.border.width"),
+    )?;
+    Ok(())
+}
+
+fn validate_non_negative(value: f32, name: &str) -> Result<()> {
+    if !value.is_finite() || value < 0.0 {
+        bail!("{name} must be a finite non-negative number");
+    }
+    Ok(())
+}
+
+fn validate_positive(value: f32, name: &str) -> Result<()> {
+    if !value.is_finite() || value <= 0.0 {
+        bail!("{name} must be a finite positive number");
+    }
+    Ok(())
 }
 
 fn format_yaml_error(error: yaml_serde::Error) -> String {
@@ -874,6 +994,85 @@ display:
         );
         assert_eq!(parse_color("#00000000").unwrap().alpha, 0.0);
         assert!(parse_color("rgb(300 0 0)").is_err());
+    }
+
+    #[test]
+    fn parses_node_interaction_styles_and_physics() {
+        let definition = parse_definition(
+            r##"
+display:
+  node:
+    border:
+      color: '#112233'
+      width: 1.5
+    hover:
+      color: '#445566'
+      size: 1.25
+      border:
+        color: '#778899'
+        width: 2.5
+  orphans:
+    node:
+      border:
+        width: 0.5
+      hover:
+        size: 1.5
+physics:
+  center:
+    strength: 0.004
+  repulsion:
+    strength: 2048.0
+  link:
+    strength: 0.08
+    distance: 96.0
+"##,
+        )
+        .unwrap();
+
+        assert_eq!(definition.display.node.border.width, Some(1.5));
+        assert_eq!(
+            definition.display.node.border.color.unwrap(),
+            parse_color("#112233").unwrap()
+        );
+        assert_eq!(definition.display.node.hover.size, Some(1.25));
+        assert_eq!(
+            definition.display.node.hover.color.unwrap(),
+            parse_color("#445566").unwrap()
+        );
+        assert_eq!(definition.display.node.hover.border.width, Some(2.5));
+        assert_eq!(definition.display.orphans.node.border.width, Some(0.5));
+        assert_eq!(definition.display.orphans.node.hover.size, Some(1.5));
+        assert_eq!(definition.physics.center.strength, 0.004);
+        assert_eq!(definition.physics.repulsion.strength, 2048.0);
+        assert_eq!(definition.physics.link.strength, 0.08);
+        assert_eq!(definition.physics.link.distance, 96.0);
+    }
+
+    #[test]
+    fn graph_physics_defaults_match_the_tuned_values() {
+        let definition = parse_definition("").unwrap();
+
+        assert_eq!(definition.physics.center.strength, DEFAULT_CENTER_STRENGTH);
+        assert_eq!(
+            definition.physics.repulsion.strength,
+            DEFAULT_REPULSION_STRENGTH
+        );
+        assert_eq!(definition.physics.link.strength, DEFAULT_LINK_STRENGTH);
+        assert_eq!(definition.physics.link.distance, DEFAULT_LINK_DISTANCE);
+    }
+
+    #[test]
+    fn rejects_invalid_node_interaction_styles_and_physics() {
+        for source in [
+            "display:\n  node:\n    border:\n      width: -0.1",
+            "display:\n  node:\n    hover:\n      size: 4.0",
+            "physics:\n  center:\n    strength: -0.1",
+            "physics:\n  repulsion:\n    strength: .inf",
+            "physics:\n  link:\n    strength: -0.1",
+            "physics:\n  link:\n    distance: 0",
+        ] {
+            assert!(parse_definition(source).is_err(), "accepted {source}");
+        }
     }
 
     #[test]
