@@ -148,6 +148,13 @@ struct ViewNode {
 struct ViewEdge {
     source: usize,
     target: usize,
+    reciprocal: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ViewEdgeStyle {
+    color: Option<GraphColor>,
+    width: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -156,8 +163,9 @@ struct GraphSnapshot {
     edges: Vec<ViewEdge>,
     edge_color: Option<GraphColor>,
     edge_width: f32,
-    edge_hover_color: Option<GraphColor>,
-    edge_hover_width: f32,
+    edge_hover_outgoing: ViewEdgeStyle,
+    edge_hover_incoming: ViewEdgeStyle,
+    edge_hover_both: ViewEdgeStyle,
     arrows: bool,
     arrow_color: Option<GraphColor>,
     physics: GraphPhysics,
@@ -168,6 +176,13 @@ struct GraphFocus {
     included_nodes: Vec<bool>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IncidentDirection {
+    Outgoing,
+    Incoming,
+    Both,
+}
+
 impl GraphFocus {
     fn new(snapshot: &GraphSnapshot, source: usize) -> Self {
         let mut included_nodes = vec![false; snapshot.nodes.len()];
@@ -175,9 +190,12 @@ impl GraphFocus {
             *included = true;
         }
         for edge in &snapshot.edges {
-            if edge.source == source {
-                included_nodes[edge.target] = true;
-            }
+            let sibling = match (edge.source == source, edge.target == source) {
+                (true, _) => edge.target,
+                (_, true) => edge.source,
+                _ => continue,
+            };
+            included_nodes[sibling] = true;
         }
         Self {
             source,
@@ -189,8 +207,16 @@ impl GraphFocus {
         self.included_nodes.get(node).copied().unwrap_or(false)
     }
 
-    fn includes_edge(&self, edge: &ViewEdge) -> bool {
-        edge.source == self.source
+    fn direction_of(&self, edge: &ViewEdge) -> Option<IncidentDirection> {
+        if edge.source != self.source && edge.target != self.source {
+            None
+        } else if edge.reciprocal {
+            Some(IncidentDirection::Both)
+        } else if edge.source == self.source {
+            Some(IncidentDirection::Outgoing)
+        } else {
+            Some(IncidentDirection::Incoming)
+        }
     }
 }
 
@@ -282,15 +308,23 @@ fn make_snapshot(
         .enumerate()
         .map(|(index, node)| (node.path.clone(), index))
         .collect();
-    let view_edges: Vec<_> = edges
+    let mut view_edges: Vec<_> = edges
         .iter()
         .filter_map(|edge| {
             Some(ViewEdge {
                 source: *indices.get(&edge.source)?,
                 target: *indices.get(&edge.target)?,
+                reciprocal: false,
             })
         })
         .collect();
+    let directed_edges: HashSet<_> = view_edges
+        .iter()
+        .map(|edge| (edge.source, edge.target))
+        .collect();
+    for edge in &mut view_edges {
+        edge.reciprocal = directed_edges.contains(&(edge.target, edge.source));
+    }
     let mut incoming = vec![0_usize; nodes.len()];
     for edge in &view_edges {
         incoming[edge.target] += 1;
@@ -357,8 +391,39 @@ fn make_snapshot(
         edges: view_edges,
         edge_color: definition.display.edge.color,
         edge_width,
-        edge_hover_color: definition.display.edge.hover.color,
-        edge_hover_width: definition.display.edge.hover.width.unwrap_or(edge_width),
+        edge_hover_outgoing: ViewEdgeStyle {
+            color: definition.display.edge.hover.direction.outgoing.color,
+            width: definition
+                .display
+                .edge
+                .hover
+                .direction
+                .outgoing
+                .width
+                .unwrap_or(edge_width),
+        },
+        edge_hover_incoming: ViewEdgeStyle {
+            color: definition.display.edge.hover.direction.incoming.color,
+            width: definition
+                .display
+                .edge
+                .hover
+                .direction
+                .incoming
+                .width
+                .unwrap_or(edge_width),
+        },
+        edge_hover_both: ViewEdgeStyle {
+            color: definition.display.edge.hover.direction.both.color,
+            width: definition
+                .display
+                .edge
+                .hover
+                .direction
+                .both
+                .width
+                .unwrap_or(edge_width),
+        },
         arrows: definition.display.arrows.show,
         arrow_color: definition.display.arrows.color,
         physics: definition.physics,
@@ -1147,13 +1212,30 @@ fn paint_graph(
         .edge_color
         .map(graph_color)
         .unwrap_or_else(|| cx.theme().border.opacity(0.65));
-    let edge_hover_color = snapshot
-        .edge_hover_color
+    let outgoing_hover_color = snapshot
+        .edge_hover_outgoing
+        .color
+        .map(graph_color)
+        .unwrap_or(cx.theme().info);
+    let incoming_hover_color = snapshot
+        .edge_hover_incoming
+        .color
+        .map(graph_color)
+        .unwrap_or(cx.theme().info);
+    let both_hover_color = snapshot
+        .edge_hover_both
+        .color
         .map(graph_color)
         .unwrap_or(cx.theme().info);
     let mut edge_builder = PathBuilder::stroke(px((snapshot.edge_width * camera.zoom).max(0.35)));
-    let mut focused_edge_builder =
-        PathBuilder::stroke(px((snapshot.edge_hover_width * camera.zoom).max(0.35)));
+    let mut outgoing_edge_builder = PathBuilder::stroke(px((snapshot.edge_hover_outgoing.width
+        * camera.zoom)
+        .max(0.35)));
+    let mut incoming_edge_builder = PathBuilder::stroke(px((snapshot.edge_hover_incoming.width
+        * camera.zoom)
+        .max(0.35)));
+    let mut both_edge_builder =
+        PathBuilder::stroke(px((snapshot.edge_hover_both.width * camera.zoom).max(0.35)));
     for edge in &snapshot.edges {
         let source = screen_point(
             snapshot.nodes[edge.source].position,
@@ -1167,16 +1249,14 @@ fn paint_graph(
             viewport,
             bounds.origin,
         );
-        if focus
-            .as_ref()
-            .is_some_and(|focus| focus.includes_edge(edge))
-        {
-            focused_edge_builder.move_to(source);
-            focused_edge_builder.line_to(target);
-        } else {
-            edge_builder.move_to(source);
-            edge_builder.line_to(target);
-        }
+        let builder = match focus.as_ref().and_then(|focus| focus.direction_of(edge)) {
+            Some(IncidentDirection::Outgoing) => &mut outgoing_edge_builder,
+            Some(IncidentDirection::Incoming) => &mut incoming_edge_builder,
+            Some(IncidentDirection::Both) => &mut both_edge_builder,
+            None => &mut edge_builder,
+        };
+        builder.move_to(source);
+        builder.line_to(target);
     }
     if let Ok(path) = edge_builder.build() {
         window.paint_path(
@@ -1188,16 +1268,24 @@ fn paint_graph(
             },
         );
     }
-    if focus.is_some()
-        && let Ok(path) = focused_edge_builder.build()
-    {
-        window.paint_path(path, edge_hover_color);
+    if focus.is_some() {
+        if let Ok(path) = outgoing_edge_builder.build() {
+            window.paint_path(path, outgoing_hover_color);
+        }
+        if let Ok(path) = incoming_edge_builder.build() {
+            window.paint_path(path, incoming_hover_color);
+        }
+        if let Ok(path) = both_edge_builder.build() {
+            window.paint_path(path, both_hover_color);
+        }
     }
 
     if snapshot.arrows {
         let arrow_color = snapshot.arrow_color.map(graph_color).unwrap_or(edge_color);
         let mut arrows = PathBuilder::fill();
-        let mut focused_arrows = PathBuilder::fill();
+        let mut outgoing_arrows = PathBuilder::fill();
+        let mut incoming_arrows = PathBuilder::fill();
+        let mut both_arrows = PathBuilder::fill();
         for edge in &snapshot.edges {
             let source_node = &snapshot.nodes[edge.source];
             let target_node = &snapshot.nodes[edge.target];
@@ -1222,13 +1310,11 @@ fn paint_graph(
                 tip.x - px(direction.x * f32::from(arrow_size)),
                 tip.y - px(direction.y * f32::from(arrow_size)),
             );
-            let arrows = if focus
-                .as_ref()
-                .is_some_and(|focus| focus.includes_edge(edge))
-            {
-                &mut focused_arrows
-            } else {
-                &mut arrows
+            let arrows = match focus.as_ref().and_then(|focus| focus.direction_of(edge)) {
+                Some(IncidentDirection::Outgoing) => &mut outgoing_arrows,
+                Some(IncidentDirection::Incoming) => &mut incoming_arrows,
+                Some(IncidentDirection::Both) => &mut both_arrows,
+                None => &mut arrows,
             };
             arrows.move_to(tip);
             arrows.line_to(point(
@@ -1251,10 +1337,16 @@ fn paint_graph(
                 },
             );
         }
-        if focus.is_some()
-            && let Ok(path) = focused_arrows.build()
-        {
-            window.paint_path(path, edge_hover_color);
+        if focus.is_some() {
+            if let Ok(path) = outgoing_arrows.build() {
+                window.paint_path(path, outgoing_hover_color);
+            }
+            if let Ok(path) = incoming_arrows.build() {
+                window.paint_path(path, incoming_hover_color);
+            }
+            if let Ok(path) = both_arrows.build() {
+                window.paint_path(path, both_hover_color);
+            }
         }
     }
 
@@ -1736,7 +1828,7 @@ display:
     }
 
     #[test]
-    fn hover_focus_includes_only_the_source_and_its_outgoing_targets() {
+    fn hover_focus_includes_both_directions_with_independent_styles() {
         use crate::document::graph::{GraphEdge, GraphNode, parse_definition};
 
         let definition = parse_definition(
@@ -1745,28 +1837,50 @@ display:
   edge:
     width: 1.5
     hover:
-      color: '#abcdef'
-      width: 3.0
+      direction:
+        outgoing:
+          color: '#abcdef'
+          width: 3.0
+        incoming:
+          color: '#123456'
+          width: 4.0
+        both:
+          color: '#fedcba'
+          width: 5.0
 "##,
         )
         .unwrap();
-        let nodes = ["source.md", "target.md", "inbound.md", "next.md"]
-            .into_iter()
-            .map(|path| GraphNode {
-                path: path.into(),
-                properties: yaml_serde::Value::Mapping(Default::default()),
-            });
+        let nodes = [
+            "source.md",
+            "outgoing.md",
+            "both.md",
+            "inbound.md",
+            "next.md",
+        ]
+        .into_iter()
+        .map(|path| GraphNode {
+            path: path.into(),
+            properties: yaml_serde::Value::Mapping(Default::default()),
+        });
         let edges = [
             GraphEdge {
                 source: "source.md".into(),
-                target: "target.md".into(),
+                target: "outgoing.md".into(),
+            },
+            GraphEdge {
+                source: "source.md".into(),
+                target: "both.md".into(),
+            },
+            GraphEdge {
+                source: "both.md".into(),
+                target: "source.md".into(),
             },
             GraphEdge {
                 source: "inbound.md".into(),
                 target: "source.md".into(),
             },
             GraphEdge {
-                source: "target.md".into(),
+                source: "both.md".into(),
                 target: "next.md".into(),
             },
         ];
@@ -1782,19 +1896,49 @@ display:
         let focus = GraphFocus::new(&snapshot, source);
 
         assert!(focus.includes_node(source));
-        assert!(focus.includes_node(index("target.md")));
-        assert!(!focus.includes_node(index("inbound.md")));
+        assert!(focus.includes_node(index("outgoing.md")));
+        assert!(focus.includes_node(index("both.md")));
+        assert!(focus.includes_node(index("inbound.md")));
         assert!(!focus.includes_node(index("next.md")));
-        assert!(focus.includes_edge(&ViewEdge {
-            source,
-            target: index("target.md"),
-        }));
-        assert!(!focus.includes_edge(&ViewEdge {
-            source: index("inbound.md"),
-            target: source,
-        }));
-        assert_eq!(snapshot.edge_hover_width, 3.0);
-        assert_eq!(snapshot.edge_hover_color.unwrap().red, 0xab as f32 / 255.0);
+        let direction = |from: &str, to: &str| {
+            let edge = snapshot
+                .edges
+                .iter()
+                .find(|edge| edge.source == index(from) && edge.target == index(to))
+                .unwrap();
+            focus.direction_of(edge)
+        };
+        assert_eq!(
+            direction("source.md", "outgoing.md"),
+            Some(IncidentDirection::Outgoing)
+        );
+        assert_eq!(
+            direction("inbound.md", "source.md"),
+            Some(IncidentDirection::Incoming)
+        );
+        assert_eq!(
+            direction("source.md", "both.md"),
+            Some(IncidentDirection::Both)
+        );
+        assert_eq!(
+            direction("both.md", "source.md"),
+            Some(IncidentDirection::Both)
+        );
+        assert_eq!(snapshot.edge_hover_outgoing.width, 3.0);
+        assert_eq!(snapshot.edge_hover_incoming.width, 4.0);
+        assert_eq!(snapshot.edge_hover_both.width, 5.0);
+        assert_eq!(
+            snapshot.edge_hover_outgoing.color.unwrap().red,
+            0xab as f32 / 255.0
+        );
+        assert_eq!(
+            snapshot.edge_hover_incoming.color.unwrap().red,
+            0x12 as f32 / 255.0
+        );
+        assert_eq!(
+            snapshot.edge_hover_both.color.unwrap().red,
+            0xfe as f32 / 255.0
+        );
 
         let inherited_definition = parse_definition("display:\n  edge:\n    width: 2.25").unwrap();
         let inherited = make_snapshot(
@@ -1803,7 +1947,9 @@ display:
             std::iter::empty::<GraphEdge>(),
         )
         .unwrap();
-        assert_eq!(inherited.edge_hover_width, 2.25);
+        assert_eq!(inherited.edge_hover_outgoing.width, 2.25);
+        assert_eq!(inherited.edge_hover_incoming.width, 2.25);
+        assert_eq!(inherited.edge_hover_both.width, 2.25);
     }
 
     #[test]

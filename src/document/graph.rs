@@ -125,6 +125,20 @@ pub(crate) struct EdgeStyle {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct EdgeHoverStyle {
+    pub(crate) direction: EdgeHoverDirectionStyles,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct EdgeHoverDirectionStyles {
+    pub(crate) outgoing: DirectionalEdgeHoverStyle,
+    pub(crate) incoming: DirectionalEdgeHoverStyle,
+    pub(crate) both: DirectionalEdgeHoverStyle,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct DirectionalEdgeHoverStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
 }
@@ -303,10 +317,22 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         "display.edge.width",
     )?;
     validate_range(
-        definition.display.edge.hover.width,
+        definition.display.edge.hover.direction.outgoing.width,
         0.5,
         5.0,
-        "display.edge.hover.width",
+        "display.edge.hover.direction.outgoing.width",
+    )?;
+    validate_range(
+        definition.display.edge.hover.direction.incoming.width,
+        0.5,
+        5.0,
+        "display.edge.hover.direction.incoming.width",
+    )?;
+    validate_range(
+        definition.display.edge.hover.direction.both.width,
+        0.5,
+        5.0,
+        "display.edge.hover.direction.both.width",
     )?;
     validate_range(
         definition.display.orphans.node.size,
@@ -1069,18 +1095,80 @@ physics:
 display:
   edge:
     hover:
-      color: '#abcdef'
-      width: 2.5
+      direction:
+        outgoing:
+          color: '#abcdef'
+          width: 2.5
+        incoming:
+          color: '#123456'
+          width: 3.5
+        both:
+          color: '#fedcba'
+          width: 4.5
 "##,
         )
         .unwrap();
 
         assert_eq!(
-            definition.display.edge.hover.color.unwrap(),
+            definition
+                .display
+                .edge
+                .hover
+                .direction
+                .outgoing
+                .color
+                .unwrap(),
             parse_color("#abcdef").unwrap()
         );
-        assert_eq!(definition.display.edge.hover.width, Some(2.5));
-        assert!(parse_definition("display:\n  edge:\n    hover:\n      width: 0.1").is_err());
+        assert_eq!(
+            definition.display.edge.hover.direction.outgoing.width,
+            Some(2.5)
+        );
+        assert_eq!(
+            definition
+                .display
+                .edge
+                .hover
+                .direction
+                .incoming
+                .color
+                .unwrap(),
+            parse_color("#123456").unwrap()
+        );
+        assert_eq!(
+            definition.display.edge.hover.direction.incoming.width,
+            Some(3.5)
+        );
+        assert_eq!(
+            definition.display.edge.hover.direction.both.color.unwrap(),
+            parse_color("#fedcba").unwrap()
+        );
+        assert_eq!(
+            definition.display.edge.hover.direction.both.width,
+            Some(4.5)
+        );
+        assert!(
+            parse_definition(
+                "display:\n  edge:\n    hover:\n      direction:\n        outgoing:\n          width: 0.1",
+            )
+            .is_err()
+        );
+        assert!(
+            parse_definition(
+                "display:\n  edge:\n    hover:\n      direction:\n        incoming:\n          width: 5.1",
+            )
+            .is_err()
+        );
+        assert!(
+            parse_definition(
+                "display:\n  edge:\n    hover:\n      direction:\n        both:\n          width: 0.1",
+            )
+            .is_err()
+        );
+        assert!(
+            parse_definition("display:\n  edge:\n    hover:\n      outgoing:\n        width: 2")
+                .is_err()
+        );
     }
 
     #[test]

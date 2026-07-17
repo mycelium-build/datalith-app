@@ -36,8 +36,16 @@ display:
     color: 'oklch(70% 0.02 260 / 45%)'
     width: 1.0
     hover:
-      color: '#9aa5ff'
-      width: 2.0
+      direction:
+        outgoing:
+          color: '#9aa5ff'
+          width: 2.0
+        incoming:
+          color: '#ff9ad5'
+          width: 1.5
+        both:
+          color: '#c69aff'
+          width: 2.5
   orphans:
     show: true
     node:
@@ -94,9 +102,9 @@ Node hover fields override the normal node appearance one field at a time. An om
 
 `hover.size` is a multiplier from `0.5` through `3.0`. It applies to the fully resolved radius after the node size, Graph Group size, and proportional incoming-link growth have been applied. It defaults to `1.0`.
 
-`display.edge.hover` controls outgoing-edge highlighting. Its optional color defaults to the application theme's accent color, and its optional width defaults to `display.edge.width`. Hover edge widths use the same `0.5` through `5.0` range as normal edge widths.
+`display.edge.hover.direction.outgoing`, `display.edge.hover.direction.incoming`, and `display.edge.hover.direction.both` independently control highlighted edge styles. Each optional color defaults to the application theme's accent color, and each optional width defaults to `display.edge.width`. Hover edge widths use the same `0.5` through `5.0` range as normal edge widths.
 
-Hovering a node highlights that source node and only the edges leaving it. The direct target nodes of those outgoing edges remain fully visible, while every other node and edge is dimmed. Incoming edges and edges leaving a target node are not highlighted. This focus treatment is disabled while any node or the scene is being dragged.
+Hovering a node highlights every incident edge and directly connected sibling node. A one-way link leaving the hovered node uses `outgoing`, and a one-way link entering it uses `incoming`. When both directed Wiki Links exist between the hovered node and the same sibling, both edges use `both`. Arrowheads inherit the corresponding directional hover color. Every unrelated node and edge is dimmed, and edges beyond those directly incident to the hovered node are not highlighted. This focus treatment is disabled while any node or the scene is being dragged.
 
 The hovered node's filename stem is rendered directly below the node without a bubble. Below the high-zoom threshold, no other node names are displayed.
 
