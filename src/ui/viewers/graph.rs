@@ -166,8 +166,7 @@ struct GraphSnapshot {
     edge_hover_outgoing: ViewEdgeStyle,
     edge_hover_incoming: ViewEdgeStyle,
     edge_hover_both: ViewEdgeStyle,
-    arrows: bool,
-    arrow_color: Option<GraphColor>,
+    arrow: bool,
     physics: GraphPhysics,
 }
 
@@ -297,7 +296,7 @@ fn make_snapshot(
         .cloned()
         .collect();
 
-    if !definition.display.orphans.show {
+    if !definition.display.orphan.show {
         nodes.retain(|node| connected.contains(&node.path));
         let visible: HashSet<_> = nodes.iter().map(|node| node.path.clone()).collect();
         edges.retain(|edge| visible.contains(&edge.source) && visible.contains(&edge.target));
@@ -337,7 +336,7 @@ fn make_snapshot(
         .map(|(index, node)| {
             let orphan = !connected.contains(&node.path);
             let (style, color, size, proportional) = if orphan {
-                let style = &definition.display.orphans.node;
+                let style = &definition.display.orphan.node;
                 (
                     style,
                     style.color,
@@ -424,8 +423,7 @@ fn make_snapshot(
                 .width
                 .unwrap_or(edge_width),
         },
-        arrows: definition.display.arrows.show,
-        arrow_color: definition.display.arrows.color,
+        arrow: definition.display.edge.arrow,
         physics: definition.physics,
     })
 }
@@ -1280,8 +1278,7 @@ fn paint_graph(
         }
     }
 
-    if snapshot.arrows {
-        let arrow_color = snapshot.arrow_color.map(graph_color).unwrap_or(edge_color);
+    if snapshot.arrow {
         let mut arrows = PathBuilder::fill();
         let mut outgoing_arrows = PathBuilder::fill();
         let mut incoming_arrows = PathBuilder::fill();
@@ -1331,9 +1328,9 @@ fn paint_graph(
             window.paint_path(
                 path,
                 if focus.is_some() {
-                    arrow_color.opacity(HOVER_DIM_OPACITY)
+                    edge_color.opacity(HOVER_DIM_OPACITY)
                 } else {
-                    arrow_color
+                    edge_color
                 },
             );
         }
@@ -1571,7 +1568,7 @@ groups:
     filters: 'status == "done"'
     color: '#ff0000'
 display:
-  orphans:
+  orphan:
     show: false
 "##,
         )
@@ -1726,7 +1723,7 @@ groups:
     filters: []
     color: '#ff0000'
 display:
-  orphans:
+  orphan:
     show: true
     node:
       color: '#0000ff'
@@ -1783,7 +1780,7 @@ display:
       size: 1.5
       border:
         width: 2.0
-  orphans:
+  orphan:
     node:
       border:
         width: 0.5
@@ -1836,6 +1833,7 @@ display:
 display:
   edge:
     width: 1.5
+    arrow: true
     hover:
       direction:
         outgoing:
@@ -1927,6 +1925,7 @@ display:
         assert_eq!(snapshot.edge_hover_outgoing.width, 3.0);
         assert_eq!(snapshot.edge_hover_incoming.width, 4.0);
         assert_eq!(snapshot.edge_hover_both.width, 5.0);
+        assert!(snapshot.arrow);
         assert_eq!(
             snapshot.edge_hover_outgoing.color.unwrap().red,
             0xab as f32 / 255.0
@@ -1950,6 +1949,7 @@ display:
         assert_eq!(inherited.edge_hover_outgoing.width, 2.25);
         assert_eq!(inherited.edge_hover_incoming.width, 2.25);
         assert_eq!(inherited.edge_hover_both.width, 2.25);
+        assert!(!inherited.arrow);
     }
 
     #[test]

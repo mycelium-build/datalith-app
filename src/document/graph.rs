@@ -73,8 +73,7 @@ pub(crate) struct GraphGroup {
 pub(crate) struct GraphDisplay {
     pub(crate) node: NodeStyle,
     pub(crate) edge: EdgeStyle,
-    pub(crate) orphans: OrphanStyle,
-    pub(crate) arrows: ArrowStyle,
+    pub(crate) orphan: OrphanStyle,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -119,6 +118,7 @@ pub(crate) struct HoverStyle {
 pub(crate) struct EdgeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
+    pub(crate) arrow: bool,
     pub(crate) hover: EdgeHoverStyle,
 }
 
@@ -209,13 +209,6 @@ impl Default for LinkForce {
             distance: DEFAULT_LINK_DISTANCE,
         }
     }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-pub(crate) struct ArrowStyle {
-    pub(crate) show: bool,
-    pub(crate) color: Option<GraphColor>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -335,12 +328,12 @@ pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
         "display.edge.hover.direction.both.width",
     )?;
     validate_range(
-        definition.display.orphans.node.size,
+        definition.display.orphan.node.size,
         0.5,
         3.0,
-        "display.orphans.node.size",
+        "display.orphan.node.size",
     )?;
-    validate_node_interaction_style(&definition.display.orphans.node, "display.orphans.node")?;
+    validate_node_interaction_style(&definition.display.orphan.node, "display.orphan.node")?;
     validate_non_negative(
         definition.physics.center.strength,
         "physics.center.strength",
@@ -975,11 +968,10 @@ groups:
     color: '#ff000080'
     size: 1.25
 display:
-  orphans:
+  orphan:
     show: false
-  arrows:
-    show: true
-    color: 'oklch(62.8% 0.258 29.23 / 75%)'
+  edge:
+    arrow: true
 "##,
         )
         .unwrap();
@@ -990,8 +982,8 @@ display:
             Path::new("Inbox/Nested/Note.md"),
             &properties
         ));
-        assert!(!definition.display.orphans.show);
-        assert!(definition.display.arrows.show);
+        assert!(!definition.display.orphan.show);
+        assert!(definition.display.edge.arrow);
         assert!(definition.display.node.propertional);
         assert_eq!(definition.groups[0].color.unwrap().alpha, 128.0 / 255.0);
     }
@@ -1051,7 +1043,7 @@ display:
       border:
         color: '#778899'
         width: 2.5
-  orphans:
+  orphan:
     node:
       border:
         width: 0.5
@@ -1080,8 +1072,8 @@ physics:
             parse_color("#445566").unwrap()
         );
         assert_eq!(definition.display.node.hover.border.width, Some(2.5));
-        assert_eq!(definition.display.orphans.node.border.width, Some(0.5));
-        assert_eq!(definition.display.orphans.node.hover.size, Some(1.5));
+        assert_eq!(definition.display.orphan.node.border.width, Some(0.5));
+        assert_eq!(definition.display.orphan.node.hover.size, Some(1.5));
         assert_eq!(definition.physics.center.strength, 0.004);
         assert_eq!(definition.physics.repulsion.strength, 2048.0);
         assert_eq!(definition.physics.link.strength, 0.08);
@@ -1169,6 +1161,13 @@ display:
             parse_definition("display:\n  edge:\n    hover:\n      outgoing:\n        width: 2")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn rejects_removed_plural_orphan_and_arrow_styles() {
+        assert!(parse_definition("display:\n  orphans:\n    show: false").is_err());
+        assert!(parse_definition("display:\n  arrows:\n    show: true").is_err());
+        assert!(parse_definition("display:\n  edge:\n    arrow:\n      color: '#abcdef'").is_err());
     }
 
     #[test]
