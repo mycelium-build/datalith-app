@@ -32,4 +32,10 @@ impl ViewerKind {
             ViewerKind::Image(viewer) => viewer.focus_handle(cx),
         }
     }
+
+    pub(crate) fn refresh(&self, cx: &mut App) {
+        if let ViewerKind::Graph(viewer) = self {
+            viewer.refresh(cx);
+        }
+    }
 }
