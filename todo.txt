@@ -10,7 +10,7 @@ x decouple editor and renderer
         kanban
         calendar
     canvas
-    graph
+    x graph
 
 x hot reload side bar and files preview/editor
 
