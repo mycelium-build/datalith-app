@@ -1,3 +1,5 @@
+// NOTE: no live update too costly
+
 use gpui::{
     AnyElement, App, AppContext, BorderStyle, Bounds, Context, Corners, Edges, Entity, FocusHandle,
     Hsla, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
