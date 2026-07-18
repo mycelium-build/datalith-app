@@ -12,7 +12,7 @@ use notify::{
 
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::file_ops;
-use crate::vault::links::LinkCache;
+use crate::vault::links::{WikiLinkEdge, WikiLinkIndex};
 use crate::vault::search::SearchEngine;
 
 const METADATA_DIR: &str = ".datalith";
@@ -34,6 +34,7 @@ pub(crate) struct CatalogUpdate {
 struct CatalogState {
     files: BTreeSet<PathBuf>,
     sync: CatalogSyncState,
+    initialization_complete: bool,
     subscribers: Vec<mpsc::Sender<CatalogUpdate>>,
     completed_writes: HashMap<PathBuf, u64>,
 }
@@ -43,7 +44,7 @@ struct CatalogInner {
     file_types: RegisteredFileTypes,
     state: Mutex<CatalogState>,
     search: Mutex<Option<SearchEngine>>,
-    links: Mutex<Option<LinkCache>>,
+    links: Mutex<Option<WikiLinkIndex>>,
     watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
@@ -64,6 +65,7 @@ impl VaultCatalog {
             state: Mutex::new(CatalogState {
                 files: BTreeSet::new(),
                 sync: CatalogSyncState::Discovering,
+                initialization_complete: false,
                 subscribers: Vec::new(),
                 completed_writes: HashMap::new(),
             }),
@@ -104,7 +106,7 @@ impl VaultCatalog {
             .name("vault-catalog-initialization".into())
             .spawn(move || {
                 let search = SearchEngine::new(&initialization_root, &initialization_types).ok();
-                let links = LinkCache::new(&initialization_root, &initialization_types);
+                let links = WikiLinkIndex::new(&initialization_root, &initialization_types);
                 let Some(inner) = initialization_inner.upgrade() else {
                     return;
                 };
@@ -115,6 +117,7 @@ impl VaultCatalog {
                 {
                     let mut state = inner.state.lock().unwrap();
                     state.files = files;
+                    state.initialization_complete = true;
                     if state.sync != CatalogSyncState::Degraded {
                         state.sync = CatalogSyncState::Current;
                     }
@@ -145,6 +148,16 @@ impl VaultCatalog {
     }
 
     #[must_use]
+    pub(crate) fn root(&self) -> PathBuf {
+        self.inner.root.clone()
+    }
+
+    #[must_use]
+    pub(crate) fn initialization_complete(&self) -> bool {
+        self.inner.state.lock().unwrap().initialization_complete
+    }
+
+    #[must_use]
     #[allow(dead_code)]
     pub(crate) fn sync_state(&self) -> CatalogSyncState {
         self.inner.state.lock().unwrap().sync
@@ -162,13 +175,24 @@ impl VaultCatalog {
     }
 
     #[must_use]
-    pub(crate) fn resolve_wiki_link(&self, name: &str) -> Option<PathBuf> {
+    pub(crate) fn resolve_wiki_link_from(&self, source: &Path, name: &str) -> Option<PathBuf> {
         self.inner
             .links
             .lock()
             .unwrap()
             .as_ref()
-            .and_then(|links| links.resolve(name))
+            .and_then(|links| links.resolve(Some(source), name))
+    }
+
+    #[must_use]
+    pub(crate) fn wiki_link_edges(&self) -> Vec<WikiLinkEdge> {
+        self.inner
+            .links
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(WikiLinkIndex::edges)
+            .unwrap_or_default()
     }
 
     pub(crate) fn create_file(&self, target: &Path) -> Result<PathBuf> {

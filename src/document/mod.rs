@@ -1,4 +1,5 @@
 pub(crate) mod file_types;
+pub(crate) mod graph;
 pub(crate) mod handler;
 pub(crate) mod markdown;
 pub(crate) mod registry;

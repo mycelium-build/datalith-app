@@ -9,6 +9,7 @@ pub(crate) mod viewers;
 pub(crate) mod window;
 
 pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
+const LINE_HEIGHT: f32 = 1.6;
 const VAULT_SELECT_MARKER: &str = "__open_new__";
 
 use std::path::{Path, PathBuf};
@@ -230,6 +231,7 @@ impl DatalithView {
                                 view.close_tabs_under(removed, cx);
                             }
                             view.pending_external_updates.extend(changed_paths);
+                            cx.notify();
                         }
                         if structure_changed {
                             view.refresh_tree(cx);

@@ -86,7 +86,12 @@ impl FileHandler {
             return;
         }
         self.mode = match self.mode {
-            ViewMode::Edit => ViewMode::View,
+            ViewMode::Edit => {
+                if let Some(viewer) = &self.viewer {
+                    viewer.refresh(cx);
+                }
+                ViewMode::View
+            }
             ViewMode::View => ViewMode::Edit,
         };
         cx.notify();

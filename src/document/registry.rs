@@ -7,12 +7,15 @@ use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
 use super::handler::{FileHandler, ReloadAdapter, ViewMode};
 use crate::ui::editors::EditorKind;
+use crate::ui::editors::graph::GraphEditor;
 use crate::ui::editors::markdown::MarkdownEditor;
 use crate::ui::editors::plain_text::{PlainTextEditor, reload_text};
 use crate::ui::editors::todo_txt::{TodoTxtEditor, reload_todo_txt};
 use crate::ui::viewers::ViewerKind;
+use crate::ui::viewers::graph::GraphViewer;
 use crate::ui::viewers::image::ImageViewer;
 use crate::ui::viewers::markdown::MarkdownViewer;
+use crate::vault::VaultCatalog;
 
 pub(crate) struct FileTypeConfig {
     pub(crate) capabilities: FileTypeCapabilities,
@@ -24,8 +27,22 @@ pub(crate) struct FileTypeConfig {
 
 pub(crate) type EditorFactory = fn(&Path, &mut Window, &mut Context<FileHandler>) -> EditorKind;
 
-pub(crate) type ViewerFactory =
-    fn(&Path, Option<&EditorKind>, &mut Context<FileHandler>) -> Option<ViewerKind>;
+pub(crate) struct ViewerDependencies {
+    vault_catalog: Option<VaultCatalog>,
+}
+
+impl ViewerDependencies {
+    pub(crate) fn new(vault_catalog: Option<VaultCatalog>) -> Self {
+        Self { vault_catalog }
+    }
+}
+
+pub(crate) type ViewerFactory = fn(
+    &Path,
+    Option<&EditorKind>,
+    &ViewerDependencies,
+    &mut Context<FileHandler>,
+) -> Option<ViewerKind>;
 
 pub(crate) struct FileRegistry {
     configs: HashMap<String, FileTypeConfig>,
@@ -83,6 +100,7 @@ impl FileRegistry {
     pub(crate) fn create_handler(
         &self,
         path: &Path,
+        dependencies: &ViewerDependencies,
         window: &mut Window,
         cx: &mut Context<FileHandler>,
     ) -> FileHandler {
@@ -92,7 +110,7 @@ impl FileRegistry {
             .map(|factory| factory(path, window, cx));
         let viewer = config
             .viewer_factory
-            .and_then(|factory| factory(path, editor.as_ref(), cx));
+            .and_then(|factory| factory(path, editor.as_ref(), dependencies, cx));
         FileHandler::new(config.default_mode, editor, viewer)
             .with_reload_adapter(config.reload_adapter)
     }
@@ -100,6 +118,30 @@ impl FileRegistry {
 
 pub(crate) fn default_registry() -> FileRegistry {
     let mut registry = FileRegistry::new();
+
+    // Graph Definition: YAML editor + derived Graph View
+    registry.register(
+        "graph",
+        FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: false,
+                wiki_links: false,
+            },
+            editor_factory: Some(|path, window, cx| {
+                EditorKind::Graph(GraphEditor::new(GraphEditor::new_state(path, window, cx)))
+            }),
+            viewer_factory: Some(|_path, editor, dependencies, cx| {
+                let input = editor?.input()?.clone();
+                Some(ViewerKind::Graph(GraphViewer::new(
+                    input,
+                    dependencies.vault_catalog.clone(),
+                    cx,
+                )))
+            }),
+            reload_adapter: Some(reload_text),
+            default_mode: ViewMode::View,
+        },
+    );
 
     // Markdown: editor + viewer
     registry.register(
@@ -114,7 +156,7 @@ pub(crate) fn default_registry() -> FileRegistry {
                     path, window, cx,
                 )))
             }),
-            viewer_factory: Some(|path, editor, _cx| {
+            viewer_factory: Some(|path, editor, _dependencies, _cx| {
                 let editor = editor?;
                 let state = editor.input()?.clone();
                 Some(ViewerKind::Markdown(MarkdownViewer::new(
@@ -137,7 +179,7 @@ pub(crate) fn default_registry() -> FileRegistry {
                     wiki_links: false,
                 },
                 editor_factory: None,
-                viewer_factory: Some(|path, _editor, _cx| {
+                viewer_factory: Some(|path, _editor, _dependencies, _cx| {
                     Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
                 }),
                 reload_adapter: None,

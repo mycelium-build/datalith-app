@@ -6,6 +6,7 @@ use percent_encoding::percent_decode_str;
 
 use super::Tab;
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
+use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
 
 enum OpenMode {
@@ -66,7 +67,11 @@ impl DatalithView {
             }
         };
 
-        let handler = cx.new(|cx| self.registry.create_handler(&path, window, cx));
+        let dependencies = ViewerDependencies::new(self.vault_catalog.clone());
+        let handler = cx.new(|cx| {
+            self.registry
+                .create_handler(&path, &dependencies, window, cx)
+        });
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
             let catalog = self.vault_catalog.clone();
@@ -79,14 +84,16 @@ impl DatalithView {
                 }
             })
         });
+        let link_source = path.clone();
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
-            |view, _handler, event: &FileHandlerEvent, window, cx| match event {
+            move |view, _handler, event: &FileHandlerEvent, window, cx| match event {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                     if let Some(ref catalog) = view.vault_catalog
-                        && let Some(resolved) = catalog.resolve_wiki_link(&decoded_url)
+                        && let Some(resolved) =
+                            catalog.resolve_wiki_link_from(&link_source, &decoded_url)
                     {
                         view.open_file(resolved, *new_tab, window, cx);
                         return;
