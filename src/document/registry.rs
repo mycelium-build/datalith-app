@@ -57,6 +57,7 @@ impl FileRegistry {
                 capabilities: FileTypeCapabilities {
                     text_search: false,
                     wiki_links: false,
+                    yaml_frontmatter: false,
                 },
                 editor_factory: Some(|path, window, cx| {
                     EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
@@ -126,6 +127,7 @@ pub(crate) fn default_registry() -> FileRegistry {
             capabilities: FileTypeCapabilities {
                 text_search: false,
                 wiki_links: false,
+                yaml_frontmatter: false,
             },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Graph(GraphEditor::new(GraphEditor::new_state(path, window, cx)))
@@ -150,6 +152,7 @@ pub(crate) fn default_registry() -> FileRegistry {
             capabilities: FileTypeCapabilities {
                 text_search: true,
                 wiki_links: true,
+                yaml_frontmatter: true,
             },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
@@ -177,6 +180,7 @@ pub(crate) fn default_registry() -> FileRegistry {
                 capabilities: FileTypeCapabilities {
                     text_search: false,
                     wiki_links: false,
+                    yaml_frontmatter: false,
                 },
                 editor_factory: None,
                 viewer_factory: Some(|path, _editor, _dependencies, _cx| {
@@ -195,6 +199,7 @@ pub(crate) fn default_registry() -> FileRegistry {
             capabilities: FileTypeCapabilities {
                 text_search: true,
                 wiki_links: false,
+                yaml_frontmatter: false,
             },
             editor_factory: Some(|path, window, cx| {
                 EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(

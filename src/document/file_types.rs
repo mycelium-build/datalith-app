@@ -6,6 +6,7 @@ use std::sync::Arc;
 pub(crate) struct FileTypeCapabilities {
     pub(crate) text_search: bool,
     pub(crate) wiki_links: bool,
+    pub(crate) yaml_frontmatter: bool,
 }
 
 #[derive(Clone, Default)]
