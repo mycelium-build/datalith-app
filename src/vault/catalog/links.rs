@@ -4,7 +4,7 @@ use std::ops::Range;
 pub(super) struct WikiLinkOccurrence {
     pub(super) target: String,
     pub(super) target_range: Range<usize>,
-    pub(super) explicit_md_extension: bool,
+    pub(super) explicit_extension: bool,
 }
 
 pub(super) fn normalize_target(name: &str) -> String {
@@ -57,7 +57,7 @@ pub(super) fn extract_wiki_link_occurrences(source: &str) -> Vec<WikiLinkOccurre
                         let leading = target_authored.len() - target_authored.trim_start().len();
                         let trailing = target_authored.trim_end().len();
                         links.push(WikiLinkOccurrence {
-                            explicit_md_extension: target.ends_with(".md"),
+                            explicit_extension: std::path::Path::new(&target).extension().is_some(),
                             target,
                             target_range: (line_start + content_start + leading)
                                 ..(line_start + content_start + trailing),
@@ -100,6 +100,6 @@ mod tests {
         let link = extract_wiki_link_occurrences(source).pop().unwrap();
         assert_eq!(link.target, "Note.md");
         assert_eq!(&source[link.target_range], "Note.md");
-        assert!(link.explicit_md_extension);
+        assert!(link.explicit_extension);
     }
 }
