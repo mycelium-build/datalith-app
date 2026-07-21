@@ -142,7 +142,7 @@ impl CatalogDatabase {
         for relative in existing.keys() {
             let absolute = self.root.join(relative);
             if !paths.contains(&absolute) {
-                self.remove_file(&absolute).await?;
+                self.delete_document(relative).await?;
                 changed.push(absolute);
             }
         }
@@ -259,11 +259,16 @@ impl CatalogDatabase {
     pub(super) async fn remove_file(&self, path: &Path) -> Result<()> {
         let relative = relative_vault_path(&self.root, path)?;
         let keys = target_keys(&relative);
+        self.delete_document(&relative).await?;
+        self.update_matching_links(None, &keys).await
+    }
+
+    async fn delete_document(&self, relative: &str) -> Result<()> {
         let connection = self.connection().await?;
         connection
             .execute("DELETE FROM documents WHERE path = ?1", [relative])
             .await?;
-        self.update_matching_links(None, &keys).await
+        Ok(())
     }
 
     pub(super) async fn tracked_paths(&self) -> Result<Vec<PathBuf>> {
