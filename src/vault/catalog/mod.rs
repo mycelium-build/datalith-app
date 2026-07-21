@@ -442,16 +442,9 @@ impl VaultCatalog {
 
     fn perform_rename(&self, from: &Path, to: &Path) -> Result<()> {
         let database = self.inner.database.lock().unwrap().clone();
-        let moved_targets: BTreeSet<_> = database
-            .as_ref()
-            .and_then(|database| pollster::block_on(database.tracked_paths()).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|path| path == from || path.starts_with(from))
-            .collect();
         let affected = database
             .as_ref()
-            .map(|database| pollster::block_on(database.link_occurrences_to(&moved_targets)))
+            .map(|database| pollster::block_on(database.link_occurrences_under(from)))
             .transpose()?
             .unwrap_or_default();
         let replacements = database
@@ -638,18 +631,9 @@ impl CatalogInner {
 
     fn apply_external_rename(self: &Arc<Self>, from: &Path, to: &Path) {
         let database = self.database.lock().unwrap().clone();
-        let moved_targets: BTreeSet<_> = database
-            .as_ref()
-            .and_then(|database| pollster::block_on(database.tracked_paths()).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|path| path == from || path.starts_with(from))
-            .collect();
         let affected = database
             .as_ref()
-            .and_then(|database| {
-                pollster::block_on(database.link_occurrences_to(&moved_targets)).ok()
-            })
+            .and_then(|database| pollster::block_on(database.link_occurrences_under(from)).ok())
             .unwrap_or_default();
         if let Some(database) = database {
             let catalog = VaultCatalog {
@@ -729,8 +713,8 @@ impl CatalogInner {
             .lock()
             .unwrap()
             .as_ref()
-            .and_then(|database| pollster::block_on(database.tracked_paths()).ok())
-            .is_some_and(|paths| paths.iter().any(|tracked| tracked == path));
+            .and_then(|database| pollster::block_on(database.contains_document(path)).ok())
+            .unwrap_or(false);
         let is_tracked = path.is_file() && self.file_types.is_tracked(path);
         let tracked_paths_changed = was_tracked != is_tracked;
         if self.update_projections(path).is_err() {

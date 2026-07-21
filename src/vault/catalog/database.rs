@@ -283,6 +283,23 @@ impl CatalogDatabase {
         Ok(paths)
     }
 
+    pub(super) async fn contains_document(&self, path: &Path) -> Result<bool> {
+        let relative = relative_vault_path(&self.root, path)?;
+        let connection = self.connection().await?;
+        let mut rows = connection
+            .query(
+                "SELECT EXISTS(SELECT 1 FROM documents WHERE path = ?1)",
+                [relative],
+            )
+            .await?;
+        Ok(rows
+            .next()
+            .await?
+            .map(|row| row.get::<i64>(0))
+            .transpose()?
+            .is_some_and(|exists| exists != 0))
+    }
+
     pub(super) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
         let connection = self.connection().await?;
         self.query_documents_on(&connection, query).await
@@ -403,30 +420,29 @@ impl CatalogDatabase {
         Ok(candidates.first().map(|(path, _)| self.root.join(path)))
     }
 
-    pub(super) async fn link_occurrences_to(
+    pub(super) async fn link_occurrences_under(
         &self,
-        targets: &BTreeSet<PathBuf>,
+        path: &Path,
     ) -> Result<HashMap<PathBuf, Vec<(usize, PathBuf)>>> {
-        let targets = targets
-            .iter()
-            .map(|path| relative_vault_path(&self.root, path))
-            .collect::<Result<BTreeSet<_>>>()?;
+        let relative = relative_vault_path(&self.root, path)?;
         let connection = self.connection().await?;
         let mut rows = connection
             .query(
-                "SELECT source_path, ordinal, target_path FROM wiki_links WHERE target_path IS NOT NULL",
-                (),
+                "SELECT source_path, ordinal, target_path \
+                 FROM wiki_links \
+                 WHERE target_path = ?1 \
+                    OR substr(target_path, 1, length(?1) + 1) = ?1 || '/' \
+                 ORDER BY source_path, ordinal",
+                [relative],
             )
             .await?;
         let mut occurrences = HashMap::<PathBuf, Vec<(usize, PathBuf)>>::new();
         while let Some(row) = rows.next().await? {
             let target = row.get::<String>(2)?;
-            if targets.contains(&target) {
-                occurrences
-                    .entry(self.root.join(row.get::<String>(0)?))
-                    .or_default()
-                    .push((row.get::<i64>(1)? as usize, self.root.join(target)));
-            }
+            occurrences
+                .entry(self.root.join(row.get::<String>(0)?))
+                .or_default()
+                .push((row.get::<i64>(1)? as usize, self.root.join(target)));
         }
         Ok(occurrences)
     }
