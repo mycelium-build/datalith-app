@@ -20,6 +20,31 @@ pub(crate) struct Indexer {
 }
 
 impl Indexer {
+    pub(crate) fn apply(&self, removed: &[PathBuf], changed: &[PathBuf]) -> tantivy::Result<()> {
+        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
+        for path in removed.iter().chain(changed) {
+            writer.delete_term(Term::from_field_text(
+                self.path_field,
+                &path.to_string_lossy(),
+            ));
+        }
+        let files = changed
+            .iter()
+            .filter(|path| is_indexable(path, &self.file_types) && path.is_file())
+            .map(|path| (path.clone(), file_fingerprint(path)))
+            .collect();
+        add_files(
+            &mut writer,
+            &files,
+            self.path_field,
+            self.name_field,
+            self.content_field,
+            self.fingerprint_field,
+        )?;
+        writer.commit()?;
+        Ok(())
+    }
+
     pub(crate) fn new(root: &Path, file_types: &RegisteredFileTypes) -> Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
 
@@ -76,37 +101,6 @@ impl Indexer {
             fingerprint_field,
             file_types: file_types.clone(),
         })
-    }
-
-    pub(crate) fn add_file(&self, path: &Path) -> tantivy::Result<()> {
-        if !is_indexable(path, &self.file_types) || !path.is_file() {
-            return Ok(());
-        }
-        let mut files = HashMap::new();
-        files.insert(path.to_path_buf(), file_fingerprint(path));
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
-        writer.delete_term(Term::from_field_text(
-            self.path_field,
-            &path.to_string_lossy(),
-        ));
-        add_files(
-            &mut writer,
-            &files,
-            self.path_field,
-            self.name_field,
-            self.content_field,
-            self.fingerprint_field,
-        )?;
-        writer.commit()?;
-        Ok(())
-    }
-
-    pub(crate) fn remove_file(&self, path: &Path) -> tantivy::Result<()> {
-        let path_str = path.to_string_lossy();
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
-        writer.delete_term(Term::from_field_text(self.path_field, &path_str));
-        writer.commit()?;
-        Ok(())
     }
 }
 

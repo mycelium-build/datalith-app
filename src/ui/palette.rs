@@ -80,7 +80,7 @@ impl Palette {
 
     pub(crate) fn set_root(&mut self, catalog: Option<&VaultCatalog>) {
         if let Some(catalog) = catalog {
-            self.quick_switcher_all_files = picker::collect_from_paths(catalog.tracked_paths());
+            self.quick_switcher_all_files = picker::collect_from_paths(catalog.paths());
         }
     }
 
@@ -125,7 +125,7 @@ impl Palette {
         open_files: &[PathBuf],
     ) {
         if let Some(catalog) = catalog {
-            self.quick_switcher_all_files = picker::collect_from_paths(catalog.tracked_paths());
+            self.quick_switcher_all_files = picker::collect_from_paths(catalog.paths());
         }
 
         let mut results = self.quick_switcher_all_files.clone();

@@ -3,9 +3,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-const DEFAULT_FILE_NAME: &str = "untitled.md";
-const DEFAULT_FOLDER_NAME: &str = "untitled";
-
 #[must_use]
 pub(crate) fn parent_dir_for_target(target: &Path) -> PathBuf {
     if target.is_dir() {
@@ -32,20 +29,6 @@ pub(crate) fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
         counter += 1;
     }
     candidate
-}
-
-pub(crate) fn new_file_from_target(target: &Path) -> Result<PathBuf> {
-    let dir = parent_dir_for_target(target);
-    let path = unique_name(&dir, DEFAULT_FILE_NAME);
-    fs::write(&path, "").with_context(|| format!("Failed to create file {:?}", path))?;
-    Ok(path)
-}
-
-pub(crate) fn new_folder_from_target(target: &Path) -> Result<PathBuf> {
-    let dir = parent_dir_for_target(target);
-    let path = unique_name(&dir, DEFAULT_FOLDER_NAME);
-    fs::create_dir(&path).with_context(|| format!("Failed to create folder {:?}", path))?;
-    Ok(path)
 }
 
 pub(crate) fn delete_target(target: &Path) -> Result<()> {

@@ -11,7 +11,6 @@ use gpui_component::{ActiveTheme, ElementExt};
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::{Result, bail};
 
@@ -746,7 +745,7 @@ async fn load_snapshot(
 ) -> Result<GraphSnapshot> {
     let root = catalog.root();
     let selection = catalog
-        .query_documents_with_links(CatalogQuery {
+        .query_with_links(CatalogQuery {
             extension: Some("md".into()),
             filter: definition.catalog_filter(),
             limit: definition.limit,
@@ -862,11 +861,6 @@ impl GraphViewState {
         };
 
         self.build_task = cx.spawn(async move |this, cx| {
-            while !catalog.initialization_complete() {
-                cx.background_executor()
-                    .timer(Duration::from_millis(50))
-                    .await;
-            }
             let result = cx
                 .background_spawn(async move { load_snapshot(definition, catalog).await })
                 .await;
@@ -1467,14 +1461,7 @@ mod tests {
                 },
             ),
         ]);
-        let catalog = VaultCatalog::open(root.to_path_buf(), types).unwrap();
-        for _ in 0..200 {
-            if catalog.initialization_complete() {
-                return catalog;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        panic!("Vault Catalog did not finish initialization");
+        VaultCatalog::open(root.to_path_buf(), types).unwrap()
     }
 
     fn graph_test_root(name: &str) -> PathBuf {

@@ -27,7 +27,7 @@ use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;
-use crate::vault::{CatalogUpdate, VaultCatalog};
+use crate::vault::{CatalogEvent, VaultCatalog};
 use palette::Palette;
 use settings::SettingsView;
 
@@ -68,7 +68,7 @@ pub(crate) struct DatalithView {
     pub(crate) tabs: tabs::Tabs,
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) vault_catalog: Option<VaultCatalog>,
-    pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogUpdate>>,
+    pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogEvent>>,
     catalog_poll_task: Task<()>,
     pub(crate) pending_external_updates: Vec<PathBuf>,
     pub(crate) palette: Palette,
@@ -207,7 +207,7 @@ impl DatalithView {
                 None
             }
         };
-        self.catalog_updates = self.vault_catalog.as_ref().map(VaultCatalog::subscribe);
+        self.catalog_updates = self.vault_catalog.as_ref().map(VaultCatalog::events);
         self.palette.set_root(self.vault_catalog.as_ref());
         self.catalog_poll_task = cx.spawn(async move |this, cx| {
             loop {
@@ -217,13 +217,11 @@ impl DatalithView {
                 if this
                     .update(cx, |view, cx| {
                         let mut changed_paths = Vec::new();
-                        let mut structure_changed = false;
                         let mut tracked_paths_changed = false;
                         if let Some(ref updates) = view.catalog_updates {
                             while let Ok(update) = updates.try_recv() {
-                                structure_changed |= update.structure_changed;
-                                tracked_paths_changed |= update.tracked_paths_changed;
-                                changed_paths.extend(update.changed_paths.iter().cloned());
+                                tracked_paths_changed |= update.paths_changed;
+                                changed_paths.extend(update.paths.iter().cloned());
                             }
                         }
                         if !changed_paths.is_empty() {
@@ -232,9 +230,6 @@ impl DatalithView {
                             }
                             view.pending_external_updates.extend(changed_paths);
                             cx.notify();
-                        }
-                        if structure_changed {
-                            view.refresh_tree(cx);
                         }
                         if tracked_paths_changed {
                             view.palette.set_root(view.vault_catalog.as_ref());

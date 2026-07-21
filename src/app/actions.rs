@@ -161,7 +161,7 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
             if let Some(Ok(created)) = view
                 .vault_catalog
                 .as_ref()
-                .map(|catalog| catalog.create_file(&target))
+                .map(|catalog| catalog.create(&target))
             {
                 view.track_new_file(&created);
                 if target.is_dir() {

@@ -79,12 +79,11 @@ impl DatalithView {
                 if let InputEvent::Change = event {
                     let content = state.read(cx).value();
                     if let Some(ref catalog) = catalog {
-                        let _ = catalog.save(&path, &content);
+                        let _ = catalog.update(&path, &content);
                     }
                 }
             })
         });
-        let link_source = path.clone();
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
@@ -92,8 +91,7 @@ impl DatalithView {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                     if let Some(ref catalog) = view.vault_catalog
-                        && let Some(resolved) =
-                            catalog.resolve_wiki_link_from(&link_source, &decoded_url)
+                        && let Some(resolved) = catalog.resolve(&decoded_url)
                     {
                         view.open_file(resolved, *new_tab, window, cx);
                         return;
