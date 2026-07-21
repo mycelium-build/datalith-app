@@ -286,6 +286,60 @@ impl DatalithView {
         }
     }
 
+    pub(crate) fn refresh_tree_with_rename(
+        &mut self,
+        old_path: &Path,
+        new_path: &Path,
+        cx: &mut Context<Self>,
+    ) {
+        fn remap(path: &Path, old_path: &Path, new_path: &Path) -> PathBuf {
+            path.strip_prefix(old_path)
+                .map_or_else(|_| path.to_path_buf(), |suffix| new_path.join(suffix))
+        }
+
+        fn remap_items(items: &mut [TreeItem], old_path: &Path, new_path: &Path) {
+            for item in items {
+                let path = PathBuf::from(item.id.to_string());
+                if path == old_path || path.starts_with(old_path) {
+                    let renamed = remap(&path, old_path, new_path);
+                    item.id = renamed.to_string_lossy().to_string().into();
+                    if path == old_path {
+                        item.label = display_name(new_path).to_string().into();
+                    }
+                }
+                remap_items(&mut item.children, old_path, new_path);
+            }
+        }
+
+        let Some(ref root) = self.root_path else {
+            return;
+        };
+        let selected = self.tree_state.read(cx).selected_entry().map(|entry| {
+            remap(
+                &PathBuf::from(entry.item().id.to_string()),
+                old_path,
+                new_path,
+            )
+        });
+        let mut items = build_file_items_with_expanded(root, &self.expanded_tree_ids);
+        remap_items(&mut items, old_path, new_path);
+        for expanded in &mut self.expanded_tree_ids {
+            let renamed = remap(&PathBuf::from(expanded.to_string()), old_path, new_path);
+            *expanded = renamed.to_string_lossy().to_string().into();
+        }
+        self.tree_state.update(cx, |state, cx| {
+            state.set_items(items, cx);
+            if let Some(selected) = selected {
+                let selected = TreeItem::new(
+                    selected.to_string_lossy().to_string(),
+                    display_name(&selected).to_string(),
+                );
+                state.set_selected_item(Some(&selected), cx);
+            }
+        });
+        cx.notify();
+    }
+
     pub(crate) fn mark_tree_item_expanded(&mut self, id: &SharedString, expanded: bool) {
         if expanded {
             if !self
