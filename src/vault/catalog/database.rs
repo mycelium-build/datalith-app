@@ -9,16 +9,89 @@ use super::{
     CatalogComparison, CatalogDocument, CatalogFileField, CatalogFilter, CatalogProperty,
     CatalogQuery, CatalogScalar, DocumentSelection,
 };
+use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::links;
 
 const SCHEMA_VERSION: i64 = 3;
 const FILE_NAME_SQL: &str = "substr(path, \
     CASE WHEN folder = '' THEN 1 ELSE length(folder) + 2 END, \
     length(path) - CASE WHEN folder = '' THEN 1 ELSE length(folder) + 2 END - length(extension))";
+const FILE_BASENAME_SQL: &str =
+    "substr(path, CASE WHEN folder = '' THEN 1 ELSE length(folder) + 2 END)";
+const PATH_WITHOUT_EXTENSION_SQL: &str = "substr(path, 1, length(path) - length(extension) - 1)";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) struct StoredLink {
     pub(super) source: PathBuf,
     pub(super) target: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Backlink {
+    pub(crate) source: PathBuf,
+    pub(crate) ordinal: usize,
+    pub(crate) authored_target: String,
+    pub(crate) target_path: PathBuf,
+}
+
+pub(super) struct TrackedDocument {
+    path: PathBuf,
+    extension: String,
+    folder: String,
+    size_bytes: i64,
+    modified_ns: i64,
+    metadata: Option<serde_json::Value>,
+    links: Vec<String>,
+}
+
+impl TrackedDocument {
+    fn read(root: &Path, path: &Path, file_types: &RegisteredFileTypes) -> Option<Self> {
+        let capabilities = file_types.capabilities(path)?;
+        let relative = path.strip_prefix(root).ok()?.to_path_buf();
+        let metadata = fs::metadata(path).ok()?;
+        let needs_text =
+            capabilities.text_search || capabilities.wiki_links || capabilities.yaml_frontmatter;
+        let content = if needs_text {
+            Some(fs::read_to_string(path).ok()?)
+        } else {
+            None
+        };
+        let document_metadata = content
+            .as_deref()
+            .filter(|_| capabilities.yaml_frontmatter)
+            .and_then(frontmatter_metadata);
+        let document_links = content
+            .as_deref()
+            .filter(|_| capabilities.wiki_links)
+            .map(|content| {
+                links::occurrences(content)
+                    .into_iter()
+                    .map(|occurrence| occurrence.target)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let extension = relative.extension()?.to_str()?.to_lowercase();
+        let folder = relative
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(|parent| parent.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        let modified_ns = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+            .unwrap_or_default();
+        Some(Self {
+            path: relative,
+            extension,
+            folder,
+            size_bytes: metadata.len().min(i64::MAX as u64) as i64,
+            modified_ns,
+            metadata: document_metadata,
+            links: document_links,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -64,6 +137,135 @@ impl CatalogDatabase {
         let connection = self.database.connect()?;
         connection.execute("PRAGMA foreign_keys = ON", ()).await?;
         Ok(connection)
+    }
+
+    pub(super) async fn stored_paths(&self) -> Result<Vec<PathBuf>> {
+        let connection = self.connection().await?;
+        let mut rows = connection
+            .query("SELECT path FROM documents ORDER BY path", ())
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(row) = rows.next().await? {
+            paths.push(self.root.join(row.get::<String>(0)?));
+        }
+        Ok(paths)
+    }
+
+    pub(super) async fn resolve_path(&self, authored: &str) -> Result<Option<PathBuf>> {
+        let connection = self.connection().await?;
+        Ok(resolve_path_on(&connection, authored)
+            .await?
+            .map(|path| self.root.join(path)))
+    }
+
+    pub(super) async fn synchronize(
+        &self,
+        removed: &[PathBuf],
+        changed: &[PathBuf],
+        file_types: &RegisteredFileTypes,
+    ) -> Result<Vec<PathBuf>> {
+        let documents = changed
+            .iter()
+            .filter_map(|path| TrackedDocument::read(&self.root, path, file_types))
+            .collect::<Vec<_>>();
+        let synchronized = documents
+            .iter()
+            .map(|document| self.root.join(&document.path))
+            .collect::<Vec<_>>();
+        let connection = self.connection().await?;
+        connection.execute("BEGIN IMMEDIATE", ()).await?;
+        let result = async {
+            for path in removed.iter().chain(changed) {
+                if let Ok(relative) = path.strip_prefix(&self.root) {
+                    connection
+                        .execute(
+                            "DELETE FROM documents WHERE path = ?",
+                            [relative.to_string_lossy().replace('\\', "/")],
+                        )
+                        .await?;
+                }
+            }
+            for document in &documents {
+                let relative = document.path.to_string_lossy().replace('\\', "/");
+                let metadata_json = document
+                    .metadata
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END) \
+                         ON CONFLICT(path) DO
+                            UPDATE SET
+                                extension=excluded.extension,
+                                folder=excluded.folder, \
+                                size_bytes=excluded.size_bytes,
+                                modified_ns=excluded.modified_ns,
+                                metadata=excluded.metadata",
+                        turso::params![
+                            relative.clone(),
+                            document.extension.clone(),
+                            document.folder.clone(),
+                            document.size_bytes,
+                            document.modified_ns,
+                            metadata_json.clone(),
+                            metadata_json,
+                        ],
+                    )
+                    .await?;
+                for (ordinal, target) in document.links.iter().enumerate() {
+                    connection
+                        .execute(
+                            "INSERT INTO wiki_links(source_path, ordinal, target, target_path) VALUES (?, ?, ?, NULL)",
+                            turso::params![relative.clone(), ordinal as i64, target.clone()],
+                        )
+                        .await?;
+                }
+            }
+            resolve_all_links(&connection).await?;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        match result {
+            Ok(()) => {
+                connection.execute("COMMIT", ()).await?;
+                Ok(synchronized)
+            }
+            Err(error) => {
+                let _ = connection.execute("ROLLBACK", ()).await;
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) async fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
+        let relative_target = target
+            .strip_prefix(&self.root)
+            .context("Rename target is outside the Vault")?;
+        let relative_target = relative_target.to_string_lossy().replace('\\', "/");
+        let descendant_pattern = format!("{}/%", escape_like_pattern(&relative_target));
+        let connection = self.connection().await?;
+        let mut rows = connection
+            .query(
+                "SELECT source_path, ordinal, target, target_path \
+                 FROM wiki_links \
+                 WHERE target_path = ? \
+                    OR target_path LIKE ? ESCAPE '\\' \
+                 ORDER BY source_path, ordinal",
+                turso::params![relative_target, descendant_pattern],
+            )
+            .await?;
+        let mut backlinks = Vec::new();
+        while let Some(row) = rows.next().await? {
+            backlinks.push(Backlink {
+                source: PathBuf::from(row.get::<String>(0)?),
+                ordinal: row.get::<i64>(1)? as usize,
+                authored_target: row.get::<String>(2)?,
+                target_path: PathBuf::from(row.get::<String>(3)?),
+            });
+        }
+        Ok(backlinks)
     }
 
     async fn initialize_schema(&self) -> Result<()> {
@@ -205,6 +407,92 @@ impl CatalogDatabase {
             exceeded_limit,
         })
     }
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+async fn resolve_path_on(
+    connection: &turso::Connection,
+    authored: &str,
+) -> Result<Option<PathBuf>> {
+    let target = links::normalized_target(authored);
+    if target.is_empty() {
+        return Ok(None);
+    }
+    let qualified = target.contains('/');
+    let target_has_extension = Path::new(&target).extension().is_some();
+    let compared_field = match (qualified, target_has_extension) {
+        (true, true) => "path",
+        (true, false) => PATH_WITHOUT_EXTENSION_SQL,
+        (false, true) => FILE_BASENAME_SQL,
+        (false, false) => FILE_NAME_SQL,
+    };
+    let sql = format!(
+        "SELECT path FROM documents \
+         WHERE lower({compared_field}) = lower(?) \
+         ORDER BY \
+            length(path) - length(replace(path, '/', '')) ASC, \
+            CASE WHEN lower(extension) = 'md' THEN 0 ELSE 1 END ASC, \
+            lower(path) ASC, \
+            path ASC \
+         LIMIT 1"
+    );
+    let mut rows = connection.query(sql, [target]).await?;
+    rows.next()
+        .await?
+        .map(|row| row.get::<String>(0).map(PathBuf::from))
+        .transpose()
+        .map_err(Into::into)
+}
+
+async fn resolve_all_links(connection: &turso::Connection) -> Result<()> {
+    let targets = {
+        let mut rows = connection
+            .query("SELECT DISTINCT target FROM wiki_links", ())
+            .await?;
+        let mut targets = Vec::new();
+        while let Some(row) = rows.next().await? {
+            targets.push(row.get::<String>(0)?);
+        }
+        targets
+    };
+    let mut resolutions = Vec::with_capacity(targets.len());
+    for target in targets {
+        let resolved = resolve_path_on(connection, &target).await?;
+        resolutions.push((target, resolved));
+    }
+    connection
+        .execute("UPDATE wiki_links SET target_path = NULL", ())
+        .await?;
+    for (authored_target, resolved_path) in resolutions {
+        if let Some(resolved_path) = resolved_path {
+            connection
+                .execute(
+                    "UPDATE wiki_links SET target_path = ? WHERE target = ?",
+                    turso::params![
+                        resolved_path.to_string_lossy().replace('\\', "/"),
+                        authored_target
+                    ],
+                )
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+fn frontmatter_metadata(content: &str) -> Option<serde_json::Value> {
+    let normalized = content.replace("\r\n", "\n");
+    let rest = normalized.strip_prefix("---\n")?;
+    let closing = rest.find("\n---")?;
+    let yaml = &rest[..closing];
+    yaml_serde::from_str::<serde_json::Value>(yaml)
+        .ok()
+        .filter(serde_json::Value::is_object)
 }
 
 #[derive(Default)]
@@ -442,6 +730,96 @@ mod tests {
                 selection.documents[0].metadata.as_ref().unwrap()["priority"],
                 4
             );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_links_from_catalogued_paths_using_ambiguity_order() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-resolve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection().await.unwrap();
+            for (path, extension, folder) in [
+                ("Note.txt", "txt", ""),
+                ("a/Note.md", "md", "a"),
+                ("b/Other.txt", "txt", "b"),
+                ("c/Other.md", "md", "c"),
+                ("a/Same.md", "md", "a"),
+                ("b/Same.md", "md", "b"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, ?, ?, 0, 0, NULL)",
+                        turso::params![path, extension, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            assert_eq!(
+                database.resolve_path("Note").await.unwrap(),
+                Some(root.join("Note.txt"))
+            );
+            assert_eq!(
+                database.resolve_path("Other").await.unwrap(),
+                Some(root.join("c/Other.md"))
+            );
+            assert_eq!(
+                database.resolve_path("Same").await.unwrap(),
+                Some(root.join("a/Same.md"))
+            );
+            assert_eq!(
+                database.resolve_path("a/Same").await.unwrap(),
+                Some(root.join("a/Same.md"))
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backlink_descendant_query_treats_like_wildcards_as_path_text() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-backlinks-like-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection().await.unwrap();
+            for (path, folder) in [
+                ("Source.md", ""),
+                ("Other.md", ""),
+                ("%_/Target.md", "%_"),
+                ("ab/Target.md", "ab"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, 'md', ?, 0, 0, NULL)",
+                        turso::params![path, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+            connection
+                .execute(
+                    "INSERT INTO wiki_links(source_path, ordinal, target, target_path) \
+                     VALUES ('Source.md', 0, '%_/Target', '%_/Target.md'), \
+                            ('Other.md', 0, 'ab/Target', 'ab/Target.md')",
+                    (),
+                )
+                .await
+                .unwrap();
+
+            let backlinks = database.backlinks_under(&root.join("%_")).await.unwrap();
+
+            assert_eq!(backlinks.len(), 1);
+            assert_eq!(backlinks[0].source, PathBuf::from("Source.md"));
+            assert_eq!(backlinks[0].target_path, PathBuf::from("%_/Target.md"));
         });
         let _ = fs::remove_dir_all(root);
     }
