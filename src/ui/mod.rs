@@ -229,6 +229,7 @@ impl DatalithView {
                                 view.close_tabs_under(removed, cx);
                             }
                             view.pending_external_updates.extend(changed_paths);
+                            view.refresh_tree(cx);
                             cx.notify();
                         }
                         if tracked_paths_changed {

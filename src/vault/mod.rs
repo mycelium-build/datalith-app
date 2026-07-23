@@ -1,5 +1,6 @@
 mod catalog;
 pub(crate) mod file_ops;
+pub(crate) mod links;
 pub(crate) mod path;
 pub(crate) mod search;
 

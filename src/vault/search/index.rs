@@ -245,14 +245,14 @@ pub(crate) fn incremental_update(
         }
     }
 
-    let new_files: HashMap<PathBuf, u64> = current
+    let changed_files: HashMap<PathBuf, u64> = current
         .into_iter()
-        .filter(|(path, _)| !indexed_paths.contains_key(path))
+        .filter(|(path, fingerprint)| indexed_paths.get(path) != Some(fingerprint))
         .collect();
 
     add_files(
         &mut writer,
-        &new_files,
+        &changed_files,
         path_field,
         name_field,
         content_field,

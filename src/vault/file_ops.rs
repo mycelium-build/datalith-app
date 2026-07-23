@@ -1,10 +1,14 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::vault::VaultCatalog;
+use crate::vault::links;
+
 #[must_use]
-pub(crate) fn parent_dir_for_target(target: &Path) -> PathBuf {
+pub(crate) fn parent_dir(target: &Path) -> PathBuf {
     if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -31,7 +35,57 @@ pub(crate) fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     candidate
 }
 
-pub(crate) fn delete_target(target: &Path) -> Result<()> {
+pub(crate) fn create(target: &Path) -> Result<PathBuf> {
+    let directory = parent_dir(target);
+    let path = unique_name(&directory, "New Note.md");
+    fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
+    Ok(path)
+}
+
+pub(crate) fn create_folder(target: &Path) -> Result<PathBuf> {
+    let directory = parent_dir(target);
+    let path = unique_name(&directory, "New Folder");
+    fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
+    Ok(path)
+}
+
+pub(crate) fn update(path: &Path, content: &str) -> Result<()> {
+    fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
+}
+
+pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<()> {
+    let root = catalog.root();
+    let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
+    for backlink in catalog.backlinks_under(old_path)? {
+        let suffix = backlink
+            .target_path
+            .strip_prefix(old_path)
+            .unwrap_or_else(|_| Path::new(""));
+        let renamed_target = new_path.join(suffix);
+        let replacement = replacement_target(&backlink.authored_target, &renamed_target, &root);
+        by_source
+            .entry(backlink.source)
+            .or_default()
+            .push((backlink.ordinal, replacement));
+    }
+    for (source_path, replacements) in by_source {
+        let content = fs::read_to_string(&source_path)
+            .with_context(|| format!("Failed to read backlink source {}", source_path.display()))?;
+        let rewritten = links::rewrite(&content, &replacements);
+        if rewritten != content {
+            update(&source_path, &rewritten)?;
+        }
+    }
+    fs::rename(old_path, new_path).with_context(|| {
+        format!(
+            "Failed to rename {} to {}",
+            old_path.display(),
+            new_path.display()
+        )
+    })
+}
+
+pub(crate) fn delete(target: &Path) -> Result<()> {
     if target.is_dir() {
         fs::remove_dir_all(target)
             .with_context(|| format!("Failed to delete directory {:?}", target))?;
@@ -41,7 +95,7 @@ pub(crate) fn delete_target(target: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn duplicate_target(target: &Path) -> Result<PathBuf> {
+pub(crate) fn duplicate(target: &Path) -> Result<PathBuf> {
     if target.is_dir() {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
         let name = target
@@ -65,6 +119,23 @@ pub(crate) fn duplicate_target(target: &Path) -> Result<PathBuf> {
     }
 }
 
+fn replacement_target(authored: &str, path: &Path, root: &Path) -> String {
+    let qualified = authored.contains(['/', '\\']);
+    let include_extension = Path::new(authored).extension().is_some();
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let selected = if qualified {
+        relative.to_path_buf()
+    } else {
+        PathBuf::from(relative.file_name().unwrap_or(relative.as_os_str()))
+    };
+    let selected = if include_extension {
+        selected
+    } else {
+        selected.with_extension("")
+    };
+    selected.to_string_lossy().replace('\\', "/")
+}
+
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -78,4 +149,43 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+
+    #[test]
+    fn rename_rewrites_catalogued_backlinks_without_writing_catalog_state() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-file-ops-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let note = root.join("Note.md");
+        let renamed = root.join("Renamed.md");
+        let source = root.join("Source.md");
+        fs::write(&note, "target").unwrap();
+        fs::write(&source, "before [[Note#Heading|label]] after").unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+
+        rename(&catalog, &note, &renamed).unwrap();
+
+        assert!(!note.exists());
+        assert!(renamed.exists());
+        assert_eq!(
+            fs::read_to_string(&source).unwrap(),
+            "before [[Renamed#Heading|label]] after"
+        );
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
+    }
 }
