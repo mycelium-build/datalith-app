@@ -135,8 +135,7 @@ pub(crate) fn walk_indexable_files(root: &Path, file_types: &RegisteredFileTypes
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') {
+                if path.starts_with(root.join(".datalith")) {
                     continue;
                 }
                 if path.is_dir() {

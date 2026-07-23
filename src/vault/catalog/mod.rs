@@ -14,7 +14,6 @@ use crate::vault::search::SearchEngine;
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogEvent {
     pub(crate) paths: Vec<PathBuf>,
-    pub(crate) paths_changed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -313,7 +312,6 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
 
     let changed = changed.into_iter().collect::<Vec<_>>();
     let removed = removed.into_iter().collect::<Vec<_>>();
-    let paths_changed = !removed.is_empty() || changed.iter().any(|path| !known.contains(path));
     let Ok(synchronized) = pollster::block_on(inner.database.synchronize(
         &removed,
         &changed,
@@ -334,19 +332,16 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
     }
     let mut paths = removed_from_derived;
     paths.extend(synchronized);
-    publish_event(inner, paths, paths_changed);
+    publish_event(inner, paths);
 }
 
-fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>, paths_changed: bool) {
+fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>) {
     if paths.is_empty() {
         return;
     }
     paths.sort();
     paths.dedup();
-    let event = CatalogEvent {
-        paths,
-        paths_changed,
-    };
+    let event = CatalogEvent { paths };
     if let Ok(mut subscribers) = inner.subscribers.lock() {
         subscribers.retain(|subscriber| subscriber.send(event.clone()).is_ok());
     }

@@ -55,7 +55,6 @@ impl DatalithView {
         let Some(catalog) = self.vault_catalog.clone() else {
             return;
         };
-        self.palette.rename_entry(old_path, new_path);
         self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {
             self.pending_open = Some(new_path.to_path_buf());
@@ -66,7 +65,6 @@ impl DatalithView {
         });
         self.refresh_tree_with_rename(old_path, new_path, cx);
         if file_ops::rename(&catalog, old_path, new_path).is_err() {
-            self.palette.rename_entry(new_path, old_path);
             self.tabs.rename_path(new_path, old_path);
             self.refresh_tree(cx);
         }

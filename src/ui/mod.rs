@@ -208,7 +208,6 @@ impl DatalithView {
             }
         };
         self.catalog_updates = self.vault_catalog.as_ref().map(VaultCatalog::events);
-        self.palette.set_root(self.vault_catalog.as_ref());
         self.catalog_poll_task = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -217,10 +216,10 @@ impl DatalithView {
                 if this
                     .update(cx, |view, cx| {
                         let mut changed_paths = Vec::new();
-                        let mut tracked_paths_changed = false;
+                        let mut catalog_changed = false;
                         if let Some(ref updates) = view.catalog_updates {
                             while let Ok(update) = updates.try_recv() {
-                                tracked_paths_changed |= update.paths_changed;
+                                catalog_changed = true;
                                 changed_paths.extend(update.paths.iter().cloned());
                             }
                         }
@@ -232,8 +231,10 @@ impl DatalithView {
                             view.refresh_tree(cx);
                             cx.notify();
                         }
-                        if tracked_paths_changed {
-                            view.palette.set_root(view.vault_catalog.as_ref());
+                        if catalog_changed && view.palette.open {
+                            let open_files = view.tabs.open_paths();
+                            view.palette
+                                .refresh(view.vault_catalog.as_ref(), &open_files);
                         }
                     })
                     .is_err()
@@ -379,9 +380,5 @@ impl DatalithView {
                 ))
             })
             .unwrap_or(0)
-    }
-
-    pub(crate) fn track_new_file(&mut self, path: &Path) {
-        self.palette.add_entry(path);
     }
 }

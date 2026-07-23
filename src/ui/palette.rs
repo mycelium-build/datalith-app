@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::{
@@ -38,7 +38,6 @@ pub(crate) struct Palette {
     pub(crate) quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
     item_sizes: Vec<Size<Pixels>>,
     scroll_handle: VirtualListScrollHandle,
-    quick_switcher_all_files: Vec<picker::QuickSwitcherEntry>,
 }
 
 impl Palette {
@@ -57,7 +56,6 @@ impl Palette {
             item_sizes: Vec::new(),
             search_results: Vec::new(),
             quick_switcher_entries: Vec::new(),
-            quick_switcher_all_files: Vec::new(),
         }
     }
 
@@ -78,35 +76,6 @@ impl Palette {
         self.open = false;
     }
 
-    pub(crate) fn set_root(&mut self, catalog: Option<&VaultCatalog>) {
-        if let Some(catalog) = catalog {
-            self.quick_switcher_all_files = picker::collect_from_paths(catalog.paths());
-        }
-    }
-
-    pub(crate) fn add_entry(&mut self, path: &Path) {
-        if self.quick_switcher_all_files.iter().any(|e| e.path == path) {
-            return;
-        }
-        self.quick_switcher_all_files
-            .push(picker::QuickSwitcherEntry {
-                path: path.to_path_buf(),
-                name: display_name(path).to_string(),
-                open: false,
-            });
-        self.quick_switcher_all_files
-            .sort_by_key(|a| a.name.to_lowercase());
-    }
-
-    pub(crate) fn remove_entry(&mut self, path: &Path) {
-        self.quick_switcher_all_files.retain(|e| e.path != path);
-    }
-
-    pub(crate) fn rename_entry(&mut self, old_path: &Path, new_path: &Path) {
-        self.remove_entry(old_path);
-        self.add_entry(new_path);
-    }
-
     pub(crate) fn search(&mut self, catalog: Option<&VaultCatalog>, query: SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
@@ -123,28 +92,23 @@ impl Palette {
         &mut self,
         catalog: Option<&VaultCatalog>,
         open_files: &[PathBuf],
+        query: SharedString,
     ) {
-        if let Some(catalog) = catalog {
-            self.quick_switcher_all_files = picker::collect_from_paths(catalog.paths());
-        }
-
-        let mut results = self.quick_switcher_all_files.clone();
-        for entry in &mut results {
-            entry.open = open_files.contains(&entry.path);
-        }
-        results.retain(|e| e.open);
-        results.sort_by_key(|a| a.name.to_lowercase());
-
-        self.quick_switcher_entries = results;
+        let all_files = catalog
+            .map(|catalog| picker::collect_from_paths(catalog.paths()))
+            .unwrap_or_default();
+        self.quick_switcher_entries = picker::filter(&all_files, open_files, &query);
         self.item_sizes =
             vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
     }
 
-    pub(crate) fn filter_quick_switcher(&mut self, open_files: &[PathBuf], query: SharedString) {
-        self.quick_switcher_entries =
-            picker::filter(&self.quick_switcher_all_files, open_files, &query);
-        self.item_sizes =
-            vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
+    pub(crate) fn refresh(&mut self, catalog: Option<&VaultCatalog>, open_files: &[PathBuf]) {
+        match self.kind {
+            PaletteKind::Search => self.search(catalog, self.search_query.clone()),
+            PaletteKind::QuickSwitcher => {
+                self.refresh_quick_switcher(catalog, open_files, self.qs_query.clone());
+            }
+        }
     }
 
     pub(crate) fn scroll_to(&mut self, index: usize) {
@@ -343,7 +307,11 @@ impl Palette {
                             PaletteKind::QuickSwitcher => {
                                 view.palette.qs_query = value.clone();
                                 let open_paths = view.tabs.open_paths();
-                                view.palette.filter_quick_switcher(&open_paths, value);
+                                view.palette.refresh_quick_switcher(
+                                    view.vault_catalog.as_ref(),
+                                    &open_paths,
+                                    value,
+                                );
                             }
                         }
                         view.palette.selected = match view.palette.kind {
@@ -421,7 +389,7 @@ impl Palette {
                 }
             }
             PaletteKind::QuickSwitcher => {
-                self.filter_quick_switcher(open_files, self.qs_query.clone());
+                self.refresh_quick_switcher(vault_catalog, open_files, self.qs_query.clone());
                 self.selected = if self.quick_switcher_entries.is_empty() {
                     None
                 } else {

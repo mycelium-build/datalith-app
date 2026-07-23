@@ -10,6 +10,7 @@ use crate::app::{
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
+use crate::vault::file_ops;
 
 actions!(
     datalith,
@@ -131,12 +132,8 @@ pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
             view.palette.open_as(PaletteKind::QuickSwitcher);
             let open = view.tabs.open_paths();
             let query = view.palette.qs_query.clone();
-            if query.trim().is_empty() {
-                view.palette
-                    .refresh_quick_switcher(view.vault_catalog.as_ref(), &open);
-            } else {
-                view.palette.filter_quick_switcher(&open, query);
-            }
+            view.palette
+                .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, query);
         }
         cx.notify();
     });
@@ -158,12 +155,7 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target {
-            if let Some(Ok(created)) = view
-                .vault_catalog
-                .as_ref()
-                .map(|catalog| catalog.create(&target))
-            {
-                view.track_new_file(&created);
+            if let Ok(created) = file_ops::create(&target) {
                 if target.is_dir() {
                     let id: SharedString = target.to_string_lossy().to_string().into();
                     view.mark_tree_item_expanded(&id, true);
@@ -186,11 +178,7 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target {
-            if let Some(Ok(created)) = view
-                .vault_catalog
-                .as_ref()
-                .map(|catalog| catalog.create_folder(&target))
-            {
+            if let Ok(created) = file_ops::create_folder(&target) {
                 view.refresh_tree(cx);
                 view.rename_target = Some(created);
             }
@@ -226,12 +214,10 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             .or_else(|| view.last_sidebar_selection.clone());
         view.commit_rename(cx);
         if let Some(target) = target {
-            if let Some(Err(e)) = view
-                .vault_catalog
-                .as_ref()
-                .map(|catalog| catalog.delete(&target))
-            {
+            if let Err(e) = file_ops::delete(&target) {
                 eprintln!("{e}");
+                cx.notify();
+                return;
             }
             view.close_tabs_under(&target, cx);
             view.refresh_tree(cx);
@@ -259,13 +245,10 @@ pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
-            if let Some(Ok(duplicated)) = view
-                .vault_catalog
-                .as_ref()
-                .map(|catalog| catalog.duplicate(&target))
-            {
-                view.track_new_file(&duplicated);
-                view.pending_open = Some(duplicated);
+            if let Ok(duplicated) = file_ops::duplicate(&target) {
+                if duplicated.is_file() {
+                    view.pending_open = Some(duplicated);
+                }
             }
             view.refresh_tree(cx);
         }
