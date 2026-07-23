@@ -1,8 +1,21 @@
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
+
 use anyhow::{Context, Result, anyhow};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 mod database;
-use database::CatalogDatabase;
+use database::{Backlink, CatalogDatabase};
+
+use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::search::SearchEngine;
+
+#[derive(Clone, Debug)]
+pub(crate) struct CatalogEvent {
+    pub(crate) paths: Vec<PathBuf>,
+    pub(crate) paths_changed: bool,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct WikiLinkEdge {
@@ -86,29 +99,119 @@ pub(crate) enum CatalogScalar {
     String(String),
 }
 
-#[derive(Clone)]
-pub(crate) struct VaultCatalog {
+struct CatalogInner {
     root: PathBuf,
     database: CatalogDatabase,
+    file_types: RegisteredFileTypes,
+    search: Mutex<SearchEngine>,
+    subscribers: Mutex<Vec<mpsc::Sender<CatalogEvent>>>,
+    _watcher: Mutex<RecommendedWatcher>,
+}
+
+#[derive(Clone)]
+pub(crate) struct VaultCatalog {
+    inner: Arc<CatalogInner>,
 }
 
 impl VaultCatalog {
-    pub(crate) fn open(
-        root: PathBuf,
-        _file_types: crate::document::file_types::RegisteredFileTypes,
-    ) -> Result<Self> {
+    pub(crate) fn open(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
         let database = pollster::block_on(CatalogDatabase::open(&root))?;
-        Ok(Self { root, database })
+        let (notify_tx, notify_rx) = mpsc::channel();
+        let observed_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let logical_root = root.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |mut event: notify::Result<notify::Event>| {
+                if let Ok(event) = &mut event {
+                    for path in &mut event.paths {
+                        if let Ok(relative) = path.strip_prefix(&observed_root) {
+                            *path = logical_root.join(relative);
+                        }
+                    }
+                }
+                let _ = notify_tx.send(event);
+            })?;
+        watcher.watch(&root, RecursiveMode::Recursive)?;
+
+        let search = SearchEngine::new(&root, &file_types)?;
+        let initial = walk_tracked_files(&root, &file_types);
+        let stored = pollster::block_on(database.stored_paths())?;
+        let removed = stored
+            .into_iter()
+            .filter(|path| !initial.contains(path))
+            .collect::<Vec<_>>();
+        let initial = initial.into_iter().collect::<Vec<_>>();
+        let synchronized =
+            pollster::block_on(database.synchronize(&removed, &initial, &file_types))?;
+        let synchronized_set = synchronized.iter().cloned().collect::<BTreeSet<_>>();
+        let omitted = initial
+            .iter()
+            .filter(|path| !synchronized_set.contains(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        search.indexer.apply(&omitted, &[])?;
+
+        let inner = Arc::new(CatalogInner {
+            root,
+            database,
+            file_types,
+            search: Mutex::new(search),
+            subscribers: Mutex::new(Vec::new()),
+            _watcher: Mutex::new(watcher),
+        });
+        spawn_reconciler(&inner, notify_rx)?;
+        Ok(Self { inner })
     }
 
     #[must_use]
     pub(crate) fn root(&self) -> PathBuf {
-        self.root.clone()
+        self.inner.root.clone()
+    }
+
+    #[must_use]
+    pub(crate) fn paths(&self) -> Vec<PathBuf> {
+        pollster::block_on(self.inner.database.stored_paths()).unwrap_or_default()
+    }
+
+    #[must_use]
+    pub(crate) fn events(&self) -> mpsc::Receiver<CatalogEvent> {
+        let (sender, receiver) = mpsc::channel();
+        if let Ok(mut subscribers) = self.inner.subscribers.lock() {
+            subscribers.push(sender);
+        }
+        receiver
+    }
+
+    #[must_use]
+    pub(crate) fn search(&self, query: &str) -> Vec<PathBuf> {
+        self.inner
+            .search
+            .lock()
+            .map(|search| search.search(query))
+            .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub(crate) fn resolve(&self, authored: &str) -> Option<PathBuf> {
+        pollster::block_on(self.inner.database.resolve_path(authored)).unwrap_or_default()
+    }
+
+    pub(crate) fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
+        let root = self.root();
+        pollster::block_on(self.inner.database.backlinks_under(target)).map(|links| {
+            links
+                .into_iter()
+                .map(|mut link| {
+                    link.source = root.join(link.source);
+                    link.target_path = root.join(link.target_path);
+                    link
+                })
+                .collect()
+        })
     }
 
     #[allow(dead_code)]
     pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
-        let database = self.database.clone();
+        let database = self.inner.database.clone();
         std::thread::Builder::new()
             .name("vault-catalog-query".into())
             .stack_size(8 * 1024 * 1024)
@@ -122,7 +225,7 @@ impl VaultCatalog {
         &self,
         query: CatalogQuery,
     ) -> Result<LinkedDocumentSelection> {
-        let database = self.database.clone();
+        let database = self.inner.database.clone();
         let (selection, stored_links) = std::thread::Builder::new()
             .name("vault-catalog-query".into())
             .stack_size(8 * 1024 * 1024)
@@ -142,5 +245,199 @@ impl VaultCatalog {
             links,
             exceeded_limit: selection.exceeded_limit,
         })
+    }
+}
+
+fn spawn_reconciler(
+    inner: &Arc<CatalogInner>,
+    receiver: mpsc::Receiver<notify::Result<notify::Event>>,
+) -> Result<()> {
+    let weak = Arc::downgrade(inner);
+    std::thread::Builder::new()
+        .name("vault-catalog-reconciler".into())
+        .spawn(move || {
+            while let Ok(event) = receiver.recv() {
+                let Some(inner) = weak.upgrade() else { break };
+                let Ok(event) = event else { continue };
+                let mut event_paths = event.paths;
+                while let Ok(next) = receiver.try_recv() {
+                    if let Ok(next) = next {
+                        event_paths.extend(next.paths);
+                    }
+                }
+                reconcile_paths(&inner, event_paths);
+            }
+        })
+        .context("Failed to start Vault Catalog reconciler")?;
+    Ok(())
+}
+
+fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
+    let mut changed = BTreeSet::new();
+    let mut removed = BTreeSet::new();
+    let Ok(known) = pollster::block_on(inner.database.stored_paths()) else {
+        return;
+    };
+    let known = known.into_iter().collect::<BTreeSet<_>>();
+
+    for path in event_paths {
+        if !path.starts_with(&inner.root) || path.starts_with(inner.root.join(".datalith")) {
+            continue;
+        }
+        if path.is_dir() {
+            let current = walk_tracked_files(&path, &inner.file_types);
+            changed.extend(current.iter().cloned());
+            removed.extend(
+                known
+                    .iter()
+                    .filter(|known_path| {
+                        known_path.starts_with(&path) && !current.contains(*known_path)
+                    })
+                    .cloned(),
+            );
+        } else if path.is_file() && inner.file_types.is_tracked(&path) {
+            changed.insert(path);
+        } else {
+            removed.extend(
+                known
+                    .iter()
+                    .filter(|known_path| **known_path == path || known_path.starts_with(&path))
+                    .cloned(),
+            );
+        }
+    }
+    changed.retain(|path| !removed.contains(path));
+    if changed.is_empty() && removed.is_empty() {
+        return;
+    }
+
+    let changed = changed.into_iter().collect::<Vec<_>>();
+    let removed = removed.into_iter().collect::<Vec<_>>();
+    let paths_changed = !removed.is_empty() || changed.iter().any(|path| !known.contains(path));
+    let Ok(synchronized) = pollster::block_on(inner.database.synchronize(
+        &removed,
+        &changed,
+        &inner.file_types,
+    )) else {
+        return;
+    };
+    let synchronized_set = synchronized.iter().collect::<BTreeSet<_>>();
+    let omitted = changed
+        .iter()
+        .filter(|path| !synchronized_set.contains(path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut removed_from_derived = removed.clone();
+    removed_from_derived.extend(omitted);
+    if let Ok(search) = inner.search.lock() {
+        let _ = search.indexer.apply(&removed_from_derived, &synchronized);
+    }
+    let mut paths = removed_from_derived;
+    paths.extend(synchronized);
+    publish_event(inner, paths, paths_changed);
+}
+
+fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>, paths_changed: bool) {
+    if paths.is_empty() {
+        return;
+    }
+    paths.sort();
+    paths.dedup();
+    let event = CatalogEvent {
+        paths,
+        paths_changed,
+    };
+    if let Ok(mut subscribers) = inner.subscribers.lock() {
+        subscribers.retain(|subscriber| subscriber.send(event.clone()).is_ok());
+    }
+}
+
+fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> BTreeSet<PathBuf> {
+    let mut files = BTreeSet::new();
+    let mut directories = vec![root.to_path_buf()];
+    while let Some(directory) = directories.pop() {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.starts_with(root.join(".datalith")) {
+                continue;
+            }
+            if path.is_dir() {
+                directories.push(path);
+            } else if file_types.is_tracked(&path) {
+                files.insert(path);
+            }
+        }
+    }
+    files
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::file_types::FileTypeCapabilities;
+
+    #[test]
+    fn changed_paths_reconcile_catalog_and_search_index() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-notify-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let path = root.join("Observed.md");
+
+        std::fs::write(&path, "distinctive watcher content").unwrap();
+        reconcile_paths(&catalog.inner, vec![path.clone()]);
+
+        assert!(catalog.paths().contains(&path));
+        assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
+        assert_eq!(catalog.search("distinctive watcher"), vec![path.clone()]);
+        drop(catalog);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn directory_observation_publishes_only_tracked_files() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-catalog-observed-paths-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = root.join("folder");
+        std::fs::create_dir_all(&folder).unwrap();
+        let tracked = folder.join("Tracked.md");
+        let hidden_tracked = folder.join(".Hidden.md");
+        std::fs::write(&tracked, "tracked").unwrap();
+        std::fs::write(&hidden_tracked, "hidden but tracked").unwrap();
+        std::fs::write(folder.join("Ignored.txt"), "ignored").unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let events = catalog.events();
+
+        reconcile_paths(&catalog.inner, vec![folder]);
+
+        let event = events
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(event.paths, vec![hidden_tracked, tracked]);
+        drop(catalog);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

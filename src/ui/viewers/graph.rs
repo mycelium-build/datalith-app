@@ -745,7 +745,7 @@ async fn load_snapshot(
 ) -> Result<GraphSnapshot> {
     let root = catalog.root();
     let selection = catalog
-        .query_with_links(CatalogQuery {
+        .query_documents_with_links(CatalogQuery {
             extension: Some("md".into()),
             filter: definition.catalog_filter(),
             limit: definition.limit,
