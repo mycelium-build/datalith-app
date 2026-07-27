@@ -10,6 +10,7 @@ use super::{
     CatalogQuery, CatalogScalar, DocumentSelection,
 };
 use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::links;
 
 const SCHEMA_VERSION: i64 = 3;
@@ -102,7 +103,7 @@ pub(super) struct CatalogDatabase {
 
 impl CatalogDatabase {
     pub(super) async fn open(root: &Path) -> Result<Self> {
-        let metadata_dir = root.join(".datalith");
+        let metadata_dir = root.join(DATALITH_DIR_NAME);
         fs::create_dir_all(&metadata_dir).with_context(|| {
             format!(
                 "Failed to create catalog directory {}",

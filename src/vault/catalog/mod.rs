@@ -9,6 +9,7 @@ mod database;
 use database::{Backlink, CatalogDatabase};
 
 use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::search::SearchEngine;
 
 #[derive(Clone, Debug)]
@@ -273,7 +274,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
     let known = known.into_iter().collect::<BTreeSet<_>>();
 
     for path in event_paths {
-        if !path.starts_with(&inner.root) || path.starts_with(inner.root.join(".datalith")) {
+        if !path.starts_with(&inner.root) || path.starts_with(inner.root.join(DATALITH_DIR_NAME)) {
             continue;
         }
         if path.is_dir() {
@@ -349,7 +350,7 @@ fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> BTreeSet
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.starts_with(root.join(".datalith")) {
+            if path.starts_with(root.join(DATALITH_DIR_NAME)) {
                 continue;
             }
             if path.is_dir() {
