@@ -5,7 +5,7 @@ mod query;
 pub(crate) use index::Indexer;
 use query::build_query;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use tantivy::{TantivyDocument, collector::TopDocs, schema::Value};
@@ -19,8 +19,12 @@ pub(crate) struct SearchEngine {
 }
 
 impl SearchEngine {
-    pub(crate) fn new(root: &PathBuf, file_types: &RegisteredFileTypes) -> Result<Self> {
-        let indexer = Indexer::new(root, file_types)?;
+    pub(crate) fn new(
+        root: &Path,
+        file_types: &RegisteredFileTypes,
+        catalogued_paths: &[PathBuf],
+    ) -> Result<Self> {
+        let indexer = Indexer::new(root, file_types, catalogued_paths)?;
         Ok(Self { indexer })
     }
 

@@ -131,7 +131,6 @@ impl VaultCatalog {
             })?;
         watcher.watch(&root, RecursiveMode::Recursive)?;
 
-        let search = SearchEngine::new(&root, &file_types)?;
         let initial = walk_tracked_files(&root, &file_types);
         let stored = pollster::block_on(database.stored_paths())?;
         let removed = stored
@@ -141,13 +140,7 @@ impl VaultCatalog {
         let initial = initial.into_iter().collect::<Vec<_>>();
         let synchronized =
             pollster::block_on(database.synchronize(&removed, &initial, &file_types))?;
-        let synchronized_set = synchronized.iter().cloned().collect::<BTreeSet<_>>();
-        let omitted = initial
-            .iter()
-            .filter(|path| !synchronized_set.contains(*path))
-            .cloned()
-            .collect::<Vec<_>>();
-        search.indexer.apply(&omitted, &[])?;
+        let search = SearchEngine::new(&root, &file_types, &synchronized)?;
 
         let inner = Arc::new(CatalogInner {
             root,
@@ -424,6 +417,7 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        assert_eq!(catalog.search("hidden"), vec![hidden_tracked.clone()]);
         let events = catalog.events();
 
         reconcile_paths(&catalog.inner, vec![folder]);

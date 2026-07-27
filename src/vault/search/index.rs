@@ -45,7 +45,11 @@ impl Indexer {
         Ok(())
     }
 
-    pub(crate) fn new(root: &Path, file_types: &RegisteredFileTypes) -> Result<Self> {
+    pub(crate) fn new(
+        root: &Path,
+        file_types: &RegisteredFileTypes,
+        catalogued_paths: &[PathBuf],
+    ) -> Result<Self> {
         let index_path = root.join(".datalith").join("search_index");
 
         let mut schema_builder = Schema::builder();
@@ -71,7 +75,11 @@ impl Indexer {
 
         if needs_build {
             let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
-            let files = walk_indexable_files(root, file_types);
+            let files = catalogued_paths
+                .iter()
+                .filter(|path| is_indexable(path, file_types) && path.is_file())
+                .cloned()
+                .collect::<Vec<_>>();
             index_files(
                 &mut writer,
                 &files,
@@ -84,7 +92,7 @@ impl Indexer {
         } else {
             incremental_update(
                 &index,
-                root,
+                catalogued_paths,
                 path_field,
                 name_field,
                 content_field,
@@ -125,28 +133,6 @@ pub(crate) fn is_indexable(path: &Path, file_types: &RegisteredFileTypes) -> boo
     file_types
         .capabilities(path)
         .is_some_and(|capabilities| capabilities.text_search)
-}
-
-#[must_use]
-pub(crate) fn walk_indexable_files(root: &Path, file_types: &RegisteredFileTypes) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.starts_with(root.join(".datalith")) {
-                    continue;
-                }
-                if path.is_dir() {
-                    stack.push(path);
-                } else if is_indexable(&path, file_types) {
-                    paths.push(path);
-                }
-            }
-        }
-    }
-    paths
 }
 
 pub(crate) fn index_files(
@@ -194,7 +180,7 @@ pub(crate) fn add_files(
 
 pub(crate) fn incremental_update(
     index: &Index,
-    root: &Path,
+    catalogued_paths: &[PathBuf],
     path_field: Field,
     name_field: Field,
     content_field: Field,
@@ -204,9 +190,10 @@ pub(crate) fn incremental_update(
     let reader = index.reader()?;
     let searcher = reader.searcher();
 
-    let current: HashMap<PathBuf, u64> = walk_indexable_files(root, file_types)
-        .into_iter()
-        .map(|p| (p.clone(), file_fingerprint(&p)))
+    let current: HashMap<PathBuf, u64> = catalogued_paths
+        .iter()
+        .filter(|path| is_indexable(path, file_types) && path.is_file())
+        .map(|path| (path.clone(), file_fingerprint(path)))
         .collect();
 
     let mut indexed_paths: HashMap<PathBuf, u64> = HashMap::new();
