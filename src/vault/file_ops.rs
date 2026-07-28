@@ -68,7 +68,19 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
             .or_default()
             .push((backlink.ordinal, replacement));
     }
+
+    fs::rename(old_path, new_path).with_context(|| {
+        format!(
+            "Failed to rename {} to {}",
+            old_path.display(),
+            new_path.display()
+        )
+    })?;
+
     for (source_path, replacements) in by_source {
+        let source_path = source_path
+            .strip_prefix(old_path)
+            .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
         let content = fs::read_to_string(&source_path)
             .with_context(|| format!("Failed to read backlink source {}", source_path.display()))?;
         let rewritten = links::rewrite(&content, &replacements);
@@ -76,13 +88,7 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
             update(&source_path, &rewritten)?;
         }
     }
-    fs::rename(old_path, new_path).with_context(|| {
-        format!(
-            "Failed to rename {} to {}",
-            old_path.display(),
-            new_path.display()
-        )
-    })
+    Ok(())
 }
 
 pub(crate) fn delete(target: &Path) -> Result<()> {
@@ -185,6 +191,74 @@ mod tests {
             fs::read_to_string(&source).unwrap(),
             "before [[Renamed#Heading|label]] after"
         );
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rename_rewrites_backlinks_inside_a_renamed_folder() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-folder-rename-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let old_folder = root.join("Old");
+        let new_folder = root.join("New");
+        fs::create_dir_all(&old_folder).unwrap();
+        fs::write(old_folder.join("Target.md"), "target").unwrap();
+        fs::write(old_folder.join("Source.md"), "[[Old/Target]]").unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+
+        rename(&catalog, &old_folder, &new_folder).unwrap();
+
+        assert!(!old_folder.exists());
+        assert_eq!(
+            fs::read_to_string(new_folder.join("Source.md")).unwrap(),
+            "[[New/Target]]"
+        );
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_rename_does_not_rewrite_backlinks() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-failed-rename-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let note = root.join("Note.md");
+        let source = root.join("Source.md");
+        fs::write(&note, "target").unwrap();
+        fs::write(&source, "[[Note]]").unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+
+        let result = rename(
+            &catalog,
+            &note,
+            &root.join("missing-directory").join("Renamed.md"),
+        );
+
+        assert!(result.is_err());
+        assert!(note.exists());
+        assert_eq!(fs::read_to_string(source).unwrap(), "[[Note]]");
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }
