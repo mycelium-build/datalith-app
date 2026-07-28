@@ -169,25 +169,81 @@ impl CatalogDatabase {
             .iter()
             .filter_map(|path| TrackedDocument::read(&self.root, path, file_types))
             .collect::<Vec<_>>();
-        let synchronized = documents
-            .iter()
-            .map(|document| self.root.join(&document.path))
-            .collect::<Vec<_>>();
+
         let connection = self.connection().await?;
         connection.execute("BEGIN IMMEDIATE", ()).await?;
         let result = async {
-            for path in removed.iter().chain(changed) {
-                if let Ok(relative) = path.strip_prefix(&self.root) {
-                    connection
-                        .execute(
-                            "DELETE FROM documents WHERE path = ?",
-                            [relative.to_string_lossy().replace('\\', "/")],
-                        )
-                        .await?;
+            let document_paths = documents
+                .iter()
+                .map(|document| path_text(&document.path))
+                .collect::<BTreeSet<_>>();
+            let changed_paths = changed
+                .iter()
+                .filter_map(|path| path.strip_prefix(&self.root).ok())
+                .map(path_text)
+                .collect::<BTreeSet<_>>();
+            let removed_paths = removed
+                .iter()
+                .filter_map(|path| path.strip_prefix(&self.root).ok())
+                .map(path_text)
+                .collect::<BTreeSet<_>>();
+            let mut stored_affected_paths = BTreeSet::new();
+            for path in changed_paths.iter().chain(&removed_paths) {
+                let mut rows = connection
+                    .query(
+                        "SELECT 1 FROM documents WHERE path = ? LIMIT 1",
+                        [path.as_str()],
+                    )
+                    .await?;
+                if rows.next().await?.is_some() {
+                    stored_affected_paths.insert(path.clone());
                 }
             }
+
+            let removed_affected_paths = stored_affected_paths
+                .iter()
+                .filter(|path| removed_paths.contains(*path) || !document_paths.contains(*path))
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            let added_affected_paths = document_paths
+                .iter()
+                .filter(|path| !stored_affected_paths.contains(*path))
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            let mut affected_targets = documents
+                .iter()
+                .flat_map(|document| document.links.iter().cloned())
+                .collect::<BTreeSet<_>>();
+            for path in &removed_affected_paths {
+                let mut rows = connection
+                    .query(
+                        "SELECT DISTINCT target FROM wiki_links WHERE target_path = ?",
+                        [path.as_str()],
+                    )
+                    .await?;
+                while let Some(row) = rows.next().await? {
+                    affected_targets.insert(row.get::<String>(0)?);
+                }
+            }
+            for relative in &added_affected_paths {
+                collect_matching_targets(
+                    &connection,
+                    link_target_candidates(Path::new(relative)),
+                    &mut affected_targets,
+                )
+                .await?;
+            }
+
+            for relative in removed_paths
+                .iter()
+                .chain(changed_paths.difference(&document_paths))
+            {
+                connection
+                    .execute("DELETE FROM documents WHERE path = ?", [relative.as_str()])
+                    .await?;
+            }
             for document in &documents {
-                let relative = document.path.to_string_lossy().replace('\\', "/");
+                let relative = path_text(&document.path);
                 let metadata_json = document
                     .metadata
                     .as_ref()
@@ -215,6 +271,12 @@ impl CatalogDatabase {
                         ],
                     )
                     .await?;
+                connection
+                    .execute(
+                        "DELETE FROM wiki_links WHERE source_path = ?",
+                        [relative.clone()],
+                    )
+                    .await?;
                 for (ordinal, target) in document.links.iter().enumerate() {
                     connection
                         .execute(
@@ -224,13 +286,20 @@ impl CatalogDatabase {
                         .await?;
                 }
             }
-            resolve_all_links(&connection).await?;
+
+            resolve_links(&connection, affected_targets).await?;
+
             Ok::<_, anyhow::Error>(())
         }
         .await;
+
         match result {
             Ok(()) => {
                 connection.execute("COMMIT", ()).await?;
+                let synchronized = documents
+                    .iter()
+                    .map(|document| self.root.join(&document.path))
+                    .collect::<Vec<_>>();
                 Ok(synchronized)
             }
             Err(error) => {
@@ -307,7 +376,7 @@ impl CatalogDatabase {
                     target_path TEXT REFERENCES documents(path) ON DELETE SET NULL ON UPDATE CASCADE,
                     PRIMARY KEY (source_path, ordinal)
                 );
-                CREATE INDEX IF NOT EXISTS wiki_links_target_idx ON wiki_links(target);
+                CREATE INDEX IF NOT EXISTS wiki_links_target_nocase_idx ON wiki_links(target COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS wiki_links_target_path_idx ON wiki_links(target_path);
                 PRAGMA user_version = 3;
                 "#,
@@ -417,6 +486,42 @@ fn escape_like_pattern(value: &str) -> String {
         .replace('_', "\\_")
 }
 
+fn path_text(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn link_target_candidates(path: &Path) -> BTreeSet<String> {
+    let mut candidates = BTreeSet::new();
+    candidates.insert(path_text(path));
+    candidates.insert(path_text(&path.with_extension("")));
+    if let Some(file_name) = path.file_name() {
+        candidates.insert(file_name.to_string_lossy().into_owned());
+    }
+    if let Some(file_stem) = path.file_stem() {
+        candidates.insert(file_stem.to_string_lossy().into_owned());
+    }
+    candidates
+}
+
+async fn collect_matching_targets(
+    connection: &turso::Connection,
+    candidates: BTreeSet<String>,
+    targets: &mut BTreeSet<String>,
+) -> Result<()> {
+    for candidate in candidates {
+        let mut rows = connection
+            .query(
+                "SELECT DISTINCT target FROM wiki_links WHERE target = ? COLLATE NOCASE",
+                [candidate],
+            )
+            .await?;
+        while let Some(row) = rows.next().await? {
+            targets.insert(row.get::<String>(0)?);
+        }
+    }
+    Ok(())
+}
+
 async fn resolve_path_on(
     connection: &turso::Connection,
     authored: &str,
@@ -451,37 +556,20 @@ async fn resolve_path_on(
         .map_err(Into::into)
 }
 
-async fn resolve_all_links(connection: &turso::Connection) -> Result<()> {
-    let targets = {
-        let mut rows = connection
-            .query("SELECT DISTINCT target FROM wiki_links", ())
-            .await?;
-        let mut targets = Vec::new();
-        while let Some(row) = rows.next().await? {
-            targets.push(row.get::<String>(0)?);
-        }
-        targets
-    };
-    let mut resolutions = Vec::with_capacity(targets.len());
+async fn resolve_links(connection: &turso::Connection, targets: BTreeSet<String>) -> Result<()> {
     for target in targets {
         let resolved = resolve_path_on(connection, &target).await?;
-        resolutions.push((target, resolved));
-    }
-    connection
-        .execute("UPDATE wiki_links SET target_path = NULL", ())
-        .await?;
-    for (authored_target, resolved_path) in resolutions {
-        if let Some(resolved_path) = resolved_path {
-            connection
-                .execute(
-                    "UPDATE wiki_links SET target_path = ? WHERE target = ?",
-                    turso::params![
-                        resolved_path.to_string_lossy().replace('\\', "/"),
-                        authored_target
-                    ],
-                )
-                .await?;
-        }
+        let resolved = resolved
+            .as_deref()
+            .map(path_text)
+            .map(Value::Text)
+            .unwrap_or(Value::Null);
+        connection
+            .execute(
+                "UPDATE wiki_links SET target_path = ? WHERE target = ? COLLATE NOCASE",
+                turso::params![resolved, target],
+            )
+            .await?;
     }
     Ok(())
 }
@@ -698,6 +786,18 @@ fn json_path(parts: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::file_types::FileTypeCapabilities;
+
+    fn markdown_file_types() -> RegisteredFileTypes {
+        RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )])
+    }
 
     #[test]
     fn queries_and_filters_typed_document_properties() {
@@ -917,6 +1017,156 @@ mod tests {
             assert_eq!(backlinks.len(), 1);
             assert_eq!(backlinks[0].source, PathBuf::from("Source.md"));
             assert_eq!(backlinks[0].target_path, PathBuf::from("%_/Target.md"));
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn source_edit_does_not_update_unrelated_link_resolutions() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-incremental-link-resolution-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source_a = root.join("SourceA.md");
+        let source_b = root.join("SourceB.md");
+        let target_a = root.join("TargetA.md");
+        let target_b = root.join("TargetB.md");
+        fs::write(&source_a, "[[TargetA]]").unwrap();
+        fs::write(&source_b, "[[TargetB]]").unwrap();
+        fs::write(&target_a, "").unwrap();
+        fs::write(&target_b, "").unwrap();
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let file_types = markdown_file_types();
+            database
+                .synchronize(
+                    &[],
+                    &[
+                        source_a.clone(),
+                        source_b.clone(),
+                        target_a,
+                        target_b.clone(),
+                    ],
+                    &file_types,
+                )
+                .await
+                .unwrap();
+            let connection = database.connection().await.unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE resolution_updates(source_path TEXT NOT NULL);
+                     CREATE TRIGGER record_resolution_update
+                     AFTER UPDATE OF target_path ON wiki_links
+                     BEGIN
+                         INSERT INTO resolution_updates(source_path) VALUES (NEW.source_path);
+                     END;",
+                )
+                .await
+                .unwrap();
+
+            fs::write(&source_a, "edited [[TargetA]]").unwrap();
+            database
+                .synchronize(&[], std::slice::from_ref(&source_a), &file_types)
+                .await
+                .unwrap();
+
+            let unrelated_updates: i64 = connection
+                .query(
+                    "SELECT count(*) FROM resolution_updates WHERE source_path = 'SourceB.md'",
+                    (),
+                )
+                .await
+                .unwrap()
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .get(0)
+                .unwrap();
+            assert_eq!(unrelated_updates, 0);
+
+            let mut rows = connection
+                .query(
+                    "SELECT target_path FROM wiki_links WHERE source_path = 'SourceA.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                rows.next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap(),
+                "TargetA.md"
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn link_resolution_tracks_added_and_removed_candidates() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-incremental-link-candidates-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("Source.md");
+        let markdown_target = root.join("Target.md");
+        let text_target = root.join("Target.txt");
+        fs::write(&source, "[[Target]]").unwrap();
+        fs::write(&text_target, "").unwrap();
+        let capabilities = FileTypeCapabilities {
+            text_search: true,
+            wiki_links: true,
+            yaml_frontmatter: true,
+        };
+        let file_types =
+            RegisteredFileTypes::new([("md".into(), capabilities), ("txt".into(), capabilities)]);
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            database
+                .synchronize(&[], &[source.clone(), text_target.clone()], &file_types)
+                .await
+                .unwrap();
+            let connection = database.connection().await.unwrap();
+
+            let resolved_target = async || {
+                connection
+                    .query(
+                        "SELECT target_path FROM wiki_links WHERE source_path = 'Source.md'",
+                        (),
+                    )
+                    .await
+                    .unwrap()
+                    .next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap()
+            };
+            assert_eq!(resolved_target().await, "Target.txt");
+
+            fs::write(&markdown_target, "").unwrap();
+            database
+                .synchronize(&[], std::slice::from_ref(&markdown_target), &file_types)
+                .await
+                .unwrap();
+            assert_eq!(resolved_target().await, "Target.md");
+
+            fs::remove_file(&markdown_target).unwrap();
+            database
+                .synchronize(std::slice::from_ref(&markdown_target), &[], &file_types)
+                .await
+                .unwrap();
+            assert_eq!(resolved_target().await, "Target.txt");
         });
         let _ = fs::remove_dir_all(root);
     }
