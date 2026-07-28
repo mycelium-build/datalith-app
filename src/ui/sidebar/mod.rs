@@ -55,6 +55,9 @@ impl DatalithView {
         let Some(catalog) = self.vault_catalog.clone() else {
             return;
         };
+        if file_ops::rename(&catalog, old_path, new_path).is_err() {
+            return;
+        }
         self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {
             self.pending_open = Some(new_path.to_path_buf());
@@ -64,10 +67,6 @@ impl DatalithView {
                 .map_or_else(|_| path.clone(), |suffix| new_path.join(suffix))
         });
         self.refresh_tree_with_rename(old_path, new_path, cx);
-        if file_ops::rename(&catalog, old_path, new_path).is_err() {
-            self.tabs.rename_path(new_path, old_path);
-            self.refresh_tree(cx);
-        }
     }
 
     fn handle_file_move(&mut self, old_path: PathBuf, new_path: PathBuf, cx: &mut Context<Self>) {
