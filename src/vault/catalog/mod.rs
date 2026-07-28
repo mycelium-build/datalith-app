@@ -17,6 +17,7 @@ const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogEvent {
     pub(crate) paths: Vec<PathBuf>,
+    pub(crate) structure_changed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -333,21 +334,26 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
         .collect::<Vec<_>>();
     let mut removed_from_derived = removed.clone();
     removed_from_derived.extend(omitted);
+    let structure_changed = synchronized.iter().any(|path| !known.contains(path))
+        || removed_from_derived.iter().any(|path| known.contains(path));
     if let Ok(search) = inner.search.lock() {
         let _ = search.indexer.apply(&removed_from_derived, &synchronized);
     }
     let mut paths = removed_from_derived;
     paths.extend(synchronized);
-    publish_event(inner, paths);
+    publish_event(inner, paths, structure_changed);
 }
 
-fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>) {
+fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>, structure_changed: bool) {
     if paths.is_empty() {
         return;
     }
     paths.sort();
     paths.dedup();
-    let event = CatalogEvent { paths };
+    let event = CatalogEvent {
+        paths,
+        structure_changed,
+    };
     if let Ok(mut subscribers) = inner.subscribers.lock() {
         subscribers.retain(|subscriber| subscriber.send(event.clone()).is_ok());
     }
@@ -395,11 +401,16 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let events = catalog.events();
         let path = root.join("Observed.md");
 
         std::fs::write(&path, "distinctive watcher content").unwrap();
         reconcile_paths(&catalog.inner, vec![path.clone()]);
 
+        let event = events
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert!(event.structure_changed);
         assert!(catalog.paths().contains(&path));
         assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
         assert_eq!(catalog.search("distinctive watcher"), vec![path.clone()]);
@@ -439,6 +450,7 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(1))
             .unwrap();
         assert_eq!(event.paths, vec![hidden_tracked, tracked]);
+        assert!(!event.structure_changed);
         drop(catalog);
         let _ = std::fs::remove_dir_all(root);
     }

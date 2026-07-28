@@ -281,9 +281,11 @@ impl DatalithView {
                     .update(cx, |view, cx| {
                         let mut changed_paths = Vec::new();
                         let mut catalog_changed = false;
+                        let mut structure_changed = false;
                         if let Some(ref updates) = view.catalog_updates {
                             while let Ok(update) = updates.try_recv() {
                                 catalog_changed = true;
+                                structure_changed |= update.structure_changed;
                                 changed_paths.extend(update.paths.iter().cloned());
                             }
                         }
@@ -292,7 +294,9 @@ impl DatalithView {
                                 view.close_tabs_under(removed, cx);
                             }
                             view.pending_external_updates.extend(changed_paths);
-                            view.refresh_tree(cx);
+                            if structure_changed {
+                                view.refresh_tree(cx);
+                            }
                             cx.notify();
                         }
                         if catalog_changed && view.palette.open {
