@@ -512,11 +512,14 @@ impl FilterCompiler {
             CatalogFilter::MatchAll => "1".into(),
             CatalogFilter::And(filters) => self.join(filters, "AND", "1"),
             CatalogFilter::Or(filters) => self.join(filters, "OR", "0"),
-            CatalogFilter::Not(filter) => format!("({}) = 0", self.compile(filter)),
+            CatalogFilter::Not(filter) => {
+                format!("COALESCE(({}), 0) = 0", self.compile(filter))
+            }
             CatalogFilter::InFolder(folder) => {
                 self.parameters.push(Value::Text(folder.clone()));
-                self.parameters.push(Value::Text(format!("{folder}/%")));
-                "(folder = ? OR folder LIKE ?)".into()
+                self.parameters
+                    .push(Value::Text(format!("{}/%", escape_like_pattern(folder))));
+                "(folder = ? OR folder LIKE ? ESCAPE '\\')".into()
             }
             CatalogFilter::Contains { property, value } => {
                 let CatalogProperty::Metadata(parts) = property else {
@@ -730,6 +733,99 @@ mod tests {
             assert_eq!(
                 selection.documents[0].metadata.as_ref().unwrap()["priority"],
                 4
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn negated_comparison_includes_documents_with_missing_properties() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-negation-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection().await.unwrap();
+            connection
+                .execute(
+                    "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                     VALUES ('Done.md', 'md', '', 0, 0, jsonb('{\"status\":\"done\"}')), \
+                            ('Missing.md', 'md', '', 0, 0, jsonb('{}'))",
+                    (),
+                )
+                .await
+                .unwrap();
+
+            let selection = database
+                .query_documents(CatalogQuery {
+                    extension: Some("md".into()),
+                    filter: CatalogFilter::Not(Box::new(CatalogFilter::Compare {
+                        property: CatalogProperty::Metadata(vec!["status".into()]),
+                        comparison: CatalogComparison::Equal,
+                        value: CatalogScalar::String("done".into()),
+                    })),
+                    limit: 10,
+                })
+                .await
+                .unwrap();
+
+            assert_eq!(
+                selection
+                    .documents
+                    .iter()
+                    .map(|document| document.path.as_path())
+                    .collect::<Vec<_>>(),
+                vec![root.join("Missing.md").as_path()]
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn folder_filter_treats_like_wildcards_as_path_text() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-folder-like-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection().await.unwrap();
+            for (path, folder) in [
+                ("a_%/Direct.md", "a_%"),
+                ("a_%/child/Descendant.md", "a_%/child"),
+                ("axb/Other.md", "axb"),
+                ("axb/child/Other.md", "axb/child"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, 'md', ?, 0, 0, NULL)",
+                        turso::params![path, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            let selection = database
+                .query_documents(CatalogQuery {
+                    extension: Some("md".into()),
+                    filter: CatalogFilter::InFolder("a_%".into()),
+                    limit: 10,
+                })
+                .await
+                .unwrap();
+
+            assert_eq!(
+                selection
+                    .documents
+                    .iter()
+                    .map(|document| document.path.as_path())
+                    .collect::<Vec<_>>(),
+                vec![
+                    root.join("a_%/Direct.md").as_path(),
+                    root.join("a_%/child/Descendant.md").as_path(),
+                ]
             );
         });
         let _ = fs::remove_dir_all(root);
