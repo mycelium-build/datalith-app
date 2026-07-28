@@ -69,6 +69,8 @@ pub(crate) struct DatalithView {
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) vault_catalog: Option<VaultCatalog>,
     pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogEvent>>,
+    vault_load_generation: u64, // prevent bug when switching vault
+    catalog_load_task: Task<()>,
     catalog_poll_task: Task<()>,
     pub(crate) pending_external_updates: Vec<PathBuf>,
     pub(crate) palette: Palette,
@@ -103,6 +105,15 @@ fn build_vault_entries() -> Vec<VaultEntry> {
     let mut items = recent_vaults;
     items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
     items
+}
+
+fn is_current_vault_load(
+    current_generation: u64,
+    current_root: Option<&Path>,
+    load_generation: u64,
+    load_root: &Path,
+) -> bool {
+    current_generation == load_generation && current_root == Some(load_root)
 }
 
 impl DatalithView {
@@ -161,6 +172,8 @@ impl DatalithView {
             tabs: tabs::Tabs::new(),
             vault_catalog: None,
             catalog_updates: None,
+            vault_load_generation: 0,
+            catalog_load_task: Task::ready(()),
             catalog_poll_task: Task::ready(()),
             pending_external_updates: Vec::new(),
             palette,
@@ -187,27 +200,78 @@ impl DatalithView {
     }
 
     pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.vault_load_generation = self.vault_load_generation.wrapping_add(1);
+        let generation = self.vault_load_generation;
         self.root_name = display_name(&path).into();
         self.root_path = Some(path.clone());
         let _ = app_settings::record_opened_vault(&path);
 
         self.pending_vault_refresh = true;
-
         self.expanded_tree_ids.clear();
+        self.pending_external_updates.clear();
+        self.vault_catalog = None;
+        self.catalog_updates = None;
+        self.catalog_poll_task = Task::ready(());
+
         let items = build_file_items_with_expanded(&path, &self.expanded_tree_ids);
         self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
         });
+        if self.palette.open {
+            let open_files = self.tabs.open_paths();
+            self.palette.refresh(None, &open_files);
+        }
 
         let file_types = self.registry.registered_file_types();
-        self.vault_catalog = match VaultCatalog::open(path.clone(), file_types) {
-            Ok(catalog) => Some(catalog),
-            Err(e) => {
-                eprintln!("Failed to open Vault Catalog: {e}");
-                None
-            }
-        };
-        self.catalog_updates = self.vault_catalog.as_ref().map(VaultCatalog::events);
+        let catalog_root = path.clone();
+        let catalog_task =
+            cx.background_spawn(async move { VaultCatalog::open(catalog_root, file_types) });
+        self.catalog_load_task = cx.spawn(async move |this, cx| {
+            let result = catalog_task.await;
+            let _ = this.update(cx, |view, cx| {
+                if !is_current_vault_load(
+                    view.vault_load_generation,
+                    view.root_path.as_deref(),
+                    generation,
+                    &path,
+                ) {
+                    return;
+                }
+                match result {
+                    Ok(catalog) => {
+                        view.catalog_updates = Some(catalog.events());
+                        view.vault_catalog = Some(catalog.clone());
+                        view.start_catalog_polling(cx);
+                        let handlers = view
+                            .tabs
+                            .iter()
+                            .filter(|(_, tab_path, _)| tab_path.starts_with(&path))
+                            .map(|(_, _, handler)| handler.clone())
+                            .collect::<Vec<_>>();
+                        for handler in handlers {
+                            let catalog = catalog.clone();
+                            handler.update(cx, |handler, cx| {
+                                handler.set_vault_catalog(catalog, cx);
+                            });
+                        }
+                        if view.palette.open {
+                            let open_files = view.tabs.open_paths();
+                            view.palette
+                                .refresh(view.vault_catalog.as_ref(), &open_files);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Failed to open Vault Catalog: {error}");
+                    }
+                }
+                cx.notify();
+            });
+        });
+
+        cx.notify();
+    }
+
+    fn start_catalog_polling(&mut self, cx: &mut Context<Self>) {
         self.catalog_poll_task = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -243,8 +307,6 @@ impl DatalithView {
                 }
             }
         });
-
-        cx.notify();
     }
 
     pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -380,5 +442,25 @@ impl DatalithView {
                 ))
             })
             .unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_current_vault_load;
+    use std::path::Path;
+
+    #[test]
+    fn only_the_current_vault_load_can_publish_results() {
+        let current = Path::new("/vault/current");
+
+        assert!(is_current_vault_load(2, Some(current), 2, current));
+        assert!(!is_current_vault_load(2, Some(current), 1, current));
+        assert!(!is_current_vault_load(
+            2,
+            Some(current),
+            2,
+            Path::new("/vault/previous")
+        ));
     }
 }

@@ -189,6 +189,10 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 
 pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
+        if view.vault_catalog.is_none() {
+            cx.notify();
+            return;
+        }
         view.commit_rename(cx);
         let target = view
             .context_menu_target

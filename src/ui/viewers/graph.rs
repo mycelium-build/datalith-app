@@ -1418,6 +1418,13 @@ impl GraphViewer {
         self.state.update(cx, |state, cx| state.rebuild(cx));
     }
 
+    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
+        self.state.update(cx, |state, cx| {
+            state.catalog = Some(catalog);
+            state.rebuild(cx);
+        });
+    }
+
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).focus_handle.clone()
     }

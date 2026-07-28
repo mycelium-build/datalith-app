@@ -12,6 +12,8 @@ use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::search::SearchEngine;
 
+const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogEvent {
     pub(crate) paths: Vec<PathBuf>,
@@ -115,6 +117,16 @@ pub(crate) struct VaultCatalog {
 
 impl VaultCatalog {
     pub(crate) fn open(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
+        std::thread::Builder::new()
+            .name("vault-catalog-initialization".into())
+            .stack_size(CATALOG_INITIALIZATION_STACK_SIZE)
+            .spawn(move || Self::open_on_current_thread(root, file_types))
+            .context("Failed to start Vault Catalog initialization thread")?
+            .join()
+            .map_err(|_| anyhow!("Vault Catalog initialization thread panicked"))?
+    }
+
+    fn open_on_current_thread(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
         let database = pollster::block_on(CatalogDatabase::open(&root))?;
         let (notify_tx, notify_rx) = mpsc::channel();
         let observed_root = root.canonicalize().unwrap_or_else(|_| root.clone());
