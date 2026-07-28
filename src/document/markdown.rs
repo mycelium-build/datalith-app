@@ -322,16 +322,6 @@ fn frontmatter_values(value: Value) -> Vec<FrontmatterValue> {
     }
 }
 
-pub(crate) fn properties_from_markdown(source: &str) -> Value {
-    let (frontmatter, _) = extract_frontmatter(source);
-    frontmatter.map_or_else(
-        || Value::Mapping(Default::default()),
-        |content| {
-            yaml_serde::from_str(&content).unwrap_or_else(|_| Value::Mapping(Default::default()))
-        },
-    )
-}
-
 fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
     if let Some(link) = value.strip_prefix("[[").and_then(|v| v.strip_suffix("]]")) {
         return Some(link.split_once('|').unwrap_or((link, link)));

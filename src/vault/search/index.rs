@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
 
 use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::path::display_name;
 
 const INDEX_WRITER_BUDGET: usize = 50_000_000;
@@ -20,8 +21,37 @@ pub(crate) struct Indexer {
 }
 
 impl Indexer {
-    pub(crate) fn new(root: &Path, file_types: &RegisteredFileTypes) -> Result<Self> {
-        let index_path = root.join(".datalith").join("search_index");
+    pub(crate) fn apply(&self, removed: &[PathBuf], changed: &[PathBuf]) -> tantivy::Result<()> {
+        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
+        for path in removed.iter().chain(changed) {
+            writer.delete_term(Term::from_field_text(
+                self.path_field,
+                &path.to_string_lossy(),
+            ));
+        }
+        let files = changed
+            .iter()
+            .filter(|path| is_indexable(path, &self.file_types) && path.is_file())
+            .map(|path| (path.clone(), file_fingerprint(path)))
+            .collect();
+        add_files(
+            &mut writer,
+            &files,
+            self.path_field,
+            self.name_field,
+            self.content_field,
+            self.fingerprint_field,
+        )?;
+        writer.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn new(
+        root: &Path,
+        file_types: &RegisteredFileTypes,
+        catalogued_paths: &[PathBuf],
+    ) -> Result<Self> {
+        let index_path = root.join(DATALITH_DIR_NAME).join("search_index");
 
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
@@ -46,7 +76,11 @@ impl Indexer {
 
         if needs_build {
             let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
-            let files = walk_indexable_files(root, file_types);
+            let files = catalogued_paths
+                .iter()
+                .filter(|path| is_indexable(path, file_types) && path.is_file())
+                .cloned()
+                .collect::<Vec<_>>();
             index_files(
                 &mut writer,
                 &files,
@@ -59,7 +93,7 @@ impl Indexer {
         } else {
             incremental_update(
                 &index,
-                root,
+                catalogued_paths,
                 path_field,
                 name_field,
                 content_field,
@@ -76,37 +110,6 @@ impl Indexer {
             fingerprint_field,
             file_types: file_types.clone(),
         })
-    }
-
-    pub(crate) fn add_file(&self, path: &Path) -> tantivy::Result<()> {
-        if !is_indexable(path, &self.file_types) || !path.is_file() {
-            return Ok(());
-        }
-        let mut files = HashMap::new();
-        files.insert(path.to_path_buf(), file_fingerprint(path));
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
-        writer.delete_term(Term::from_field_text(
-            self.path_field,
-            &path.to_string_lossy(),
-        ));
-        add_files(
-            &mut writer,
-            &files,
-            self.path_field,
-            self.name_field,
-            self.content_field,
-            self.fingerprint_field,
-        )?;
-        writer.commit()?;
-        Ok(())
-    }
-
-    pub(crate) fn remove_file(&self, path: &Path) -> tantivy::Result<()> {
-        let path_str = path.to_string_lossy();
-        let mut writer: IndexWriter<TantivyDocument> = self.index.writer(INDEX_WRITER_BUDGET)?;
-        writer.delete_term(Term::from_field_text(self.path_field, &path_str));
-        writer.commit()?;
-        Ok(())
     }
 }
 
@@ -131,29 +134,6 @@ pub(crate) fn is_indexable(path: &Path, file_types: &RegisteredFileTypes) -> boo
     file_types
         .capabilities(path)
         .is_some_and(|capabilities| capabilities.text_search)
-}
-
-#[must_use]
-pub(crate) fn walk_indexable_files(root: &Path, file_types: &RegisteredFileTypes) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') {
-                    continue;
-                }
-                if path.is_dir() {
-                    stack.push(path);
-                } else if is_indexable(&path, file_types) {
-                    paths.push(path);
-                }
-            }
-        }
-    }
-    paths
 }
 
 pub(crate) fn index_files(
@@ -201,7 +181,7 @@ pub(crate) fn add_files(
 
 pub(crate) fn incremental_update(
     index: &Index,
-    root: &Path,
+    catalogued_paths: &[PathBuf],
     path_field: Field,
     name_field: Field,
     content_field: Field,
@@ -211,9 +191,10 @@ pub(crate) fn incremental_update(
     let reader = index.reader()?;
     let searcher = reader.searcher();
 
-    let current: HashMap<PathBuf, u64> = walk_indexable_files(root, file_types)
-        .into_iter()
-        .map(|p| (p.clone(), file_fingerprint(&p)))
+    let current: HashMap<PathBuf, u64> = catalogued_paths
+        .iter()
+        .filter(|path| is_indexable(path, file_types) && path.is_file())
+        .map(|path| (path.clone(), file_fingerprint(path)))
         .collect();
 
     let mut indexed_paths: HashMap<PathBuf, u64> = HashMap::new();
@@ -251,14 +232,14 @@ pub(crate) fn incremental_update(
         }
     }
 
-    let new_files: HashMap<PathBuf, u64> = current
+    let changed_files: HashMap<PathBuf, u64> = current
         .into_iter()
-        .filter(|(path, _)| !indexed_paths.contains_key(path))
+        .filter(|(path, fingerprint)| indexed_paths.get(path) != Some(fingerprint))
         .collect();
 
     add_files(
         &mut writer,
-        &new_files,
+        &changed_files,
         path_field,
         name_field,
         content_field,

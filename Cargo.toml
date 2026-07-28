@@ -27,3 +27,5 @@ txtodo = "1.0.2"
 time = "0.3.53"
 notify = "8.2.0"
 yaml_serde = "0.10.4"
+pollster = "1.0.1"
+turso = { version = "0.7.0", default-features = false }

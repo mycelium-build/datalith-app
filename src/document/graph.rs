@@ -5,6 +5,10 @@ use anyhow::{Result, anyhow, bail};
 use serde::{Deserialize, Deserializer, de::Error};
 use yaml_serde::Value;
 
+use crate::vault::{
+    CatalogComparison, CatalogFileField, CatalogFilter, CatalogProperty, CatalogScalar,
+};
+
 pub(crate) const DEFAULT_NODE_LIMIT: usize = 2_000;
 pub(crate) const HARD_NODE_LIMIT: usize = 10_000;
 pub(crate) const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
@@ -34,6 +38,12 @@ impl Default for GraphDefinition {
     }
 }
 
+impl GraphDefinition {
+    pub(crate) fn catalog_filter(&self) -> CatalogFilter {
+        self.filters.to_catalog_filter()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Filter {
     MatchAll,
@@ -46,6 +56,22 @@ pub(crate) enum Filter {
 impl Default for Filter {
     fn default() -> Self {
         Self::MatchAll
+    }
+}
+
+impl Filter {
+    fn to_catalog_filter(&self) -> CatalogFilter {
+        match self {
+            Self::MatchAll => CatalogFilter::MatchAll,
+            Self::Expression(expression) => expression.to_catalog_filter(),
+            Self::And(filters) => {
+                CatalogFilter::And(filters.iter().map(Self::to_catalog_filter).collect())
+            }
+            Self::Or(filters) => {
+                CatalogFilter::Or(filters.iter().map(Self::to_catalog_filter).collect())
+            }
+            Self::Not(filter) => CatalogFilter::Not(Box::new(filter.to_catalog_filter())),
+        }
     }
 }
 
@@ -447,6 +473,40 @@ fn parse_filter(value: &Value) -> Result<Filter> {
 }
 
 impl Expression {
+    fn to_catalog_filter(&self) -> CatalogFilter {
+        if let Operation::InFolder(folder) = &self.operation {
+            return CatalogFilter::InFolder(folder.clone());
+        }
+        let property = match &self.left {
+            PropertyPath::Note(parts) => CatalogProperty::Metadata(parts.clone()),
+            PropertyPath::File(field) => CatalogProperty::File(match field {
+                FileField::Name => CatalogFileField::Name,
+                FileField::Ext => CatalogFileField::Extension,
+                FileField::Path => CatalogFileField::Path,
+                FileField::Folder => CatalogFileField::Folder,
+            }),
+        };
+        match &self.operation {
+            Operation::Compare(comparison, value) => CatalogFilter::Compare {
+                property,
+                comparison: match comparison {
+                    Comparison::Equal => CatalogComparison::Equal,
+                    Comparison::NotEqual => CatalogComparison::NotEqual,
+                    Comparison::Greater => CatalogComparison::Greater,
+                    Comparison::GreaterEqual => CatalogComparison::GreaterEqual,
+                    Comparison::Less => CatalogComparison::Less,
+                    Comparison::LessEqual => CatalogComparison::LessEqual,
+                },
+                value: value.to_catalog_scalar(),
+            },
+            Operation::Contains(value) => CatalogFilter::Contains {
+                property,
+                value: value.to_catalog_scalar(),
+            },
+            Operation::InFolder(_) => unreachable!(),
+        }
+    }
+
     fn matches(&self, file: &GraphFile<'_>) -> bool {
         match &self.operation {
             Operation::InFolder(folder) => {
@@ -466,6 +526,17 @@ impl Expression {
             Operation::Compare(comparison, expected) => {
                 compare(value_at(&self.left, file), *comparison, expected)
             }
+        }
+    }
+}
+
+impl Scalar {
+    fn to_catalog_scalar(&self) -> CatalogScalar {
+        match self {
+            Self::Null => CatalogScalar::Null,
+            Self::Bool(value) => CatalogScalar::Bool(*value),
+            Self::Number(value) => CatalogScalar::Number(*value),
+            Self::String(value) => CatalogScalar::String(value.clone()),
         }
     }
 }

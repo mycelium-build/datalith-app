@@ -10,12 +10,9 @@ use gpui_component::input::InputState;
 use gpui_component::{ActiveTheme, ElementExt};
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::time::Duration;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Result, bail};
 
 use crate::document::graph::{
     BorderStyle as GraphBorderStyle, GraphColor, GraphDefinition, GraphEdge, GraphNode,
@@ -23,8 +20,7 @@ use crate::document::graph::{
     select_nodes,
 };
 use crate::document::handler::{FileHandler, FileHandlerEvent};
-use crate::document::markdown::properties_from_markdown;
-use crate::vault::VaultCatalog;
+use crate::vault::{CatalogQuery, VaultCatalog};
 
 const INITIAL_LAYOUT_RADIUS: f32 = 256.0;
 const INITIAL_LAYOUT_REFERENCE_NODES: f32 = 512.0;
@@ -743,39 +739,36 @@ impl QuadTree {
     }
 }
 
-fn load_snapshot(definition: GraphDefinition, catalog: VaultCatalog) -> Result<GraphSnapshot> {
+async fn load_snapshot(
+    definition: GraphDefinition,
+    catalog: VaultCatalog,
+) -> Result<GraphSnapshot> {
     let root = catalog.root();
-    let mut candidates = Vec::new();
-    for absolute_path in catalog.tracked_paths().into_iter().filter(|path| {
-        path.extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
-    }) {
-        let relative_path = absolute_path
-            .strip_prefix(&root)
-            .map(PathBuf::from)
-            .map_err(|_| {
-                anyhow!(
-                    "tracked file is outside the Vault: {}",
-                    absolute_path.display()
-                )
-            })?;
-        let source = match fs::read_to_string(&absolute_path) {
-            Ok(source) => source,
-            Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!("failed to read Markdown file {}", relative_path.display())
-                });
-            }
-        };
-        candidates.push(GraphNode {
-            path: relative_path,
-            properties: properties_from_markdown(&source),
-        });
+    let selection = catalog
+        .query_documents_with_links(CatalogQuery {
+            extension: Some("md".into()),
+            filter: definition.catalog_filter(),
+            limit: definition.limit,
+        })
+        .await?;
+    if selection.exceeded_limit {
+        bail!(
+            "graph matches more than {} nodes; narrow filters or raise limit",
+            definition.limit
+        );
     }
-
-    let edges = catalog.wiki_link_edges().into_iter().filter_map(|edge| {
+    let candidates = selection.documents.into_iter().filter_map(|document| {
+        let path = document.path.strip_prefix(&root).ok()?.to_path_buf();
+        let properties = document.metadata.map_or_else(
+            || yaml_serde::Value::Mapping(Default::default()),
+            |metadata| {
+                yaml_serde::from_str(&metadata.to_string())
+                    .unwrap_or_else(|_| yaml_serde::Value::Mapping(Default::default()))
+            },
+        );
+        Some(GraphNode { path, properties })
+    });
+    let edges = selection.links.into_iter().filter_map(|edge| {
         Some(GraphEdge {
             source: edge.source.strip_prefix(&root).ok()?.to_path_buf(),
             target: edge.target.strip_prefix(&root).ok()?.to_path_buf(),
@@ -868,13 +861,8 @@ impl GraphViewState {
         };
 
         self.build_task = cx.spawn(async move |this, cx| {
-            while !catalog.initialization_complete() {
-                cx.background_executor()
-                    .timer(Duration::from_millis(50))
-                    .await;
-            }
             let result = cx
-                .background_spawn(async move { load_snapshot(definition, catalog) })
+                .background_spawn(async move { load_snapshot(definition, catalog).await })
                 .await;
             let _ = this.update(cx, |state, cx| {
                 if state.generation != generation {
@@ -1430,6 +1418,13 @@ impl GraphViewer {
         self.state.update(cx, |state, cx| state.rebuild(cx));
     }
 
+    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
+        self.state.update(cx, |state, cx| {
+            state.catalog = Some(catalog);
+            state.rebuild(cx);
+        });
+    }
+
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).focus_handle.clone()
     }
@@ -1442,6 +1437,7 @@ impl GraphViewer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn graph_catalog(root: &std::path::Path) -> VaultCatalog {
         use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
@@ -1452,6 +1448,7 @@ mod tests {
                 FileTypeCapabilities {
                     text_search: true,
                     wiki_links: true,
+                    yaml_frontmatter: true,
                 },
             ),
             (
@@ -1459,6 +1456,7 @@ mod tests {
                 FileTypeCapabilities {
                     text_search: false,
                     wiki_links: false,
+                    yaml_frontmatter: false,
                 },
             ),
             (
@@ -1466,17 +1464,11 @@ mod tests {
                 FileTypeCapabilities {
                     text_search: true,
                     wiki_links: false,
+                    yaml_frontmatter: false,
                 },
             ),
         ]);
-        let catalog = VaultCatalog::open(root.to_path_buf(), types).unwrap();
-        for _ in 0..200 {
-            if catalog.initialization_complete() {
-                return catalog;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        panic!("Vault Catalog did not finish initialization");
+        VaultCatalog::open(root.to_path_buf(), types).unwrap()
     }
 
     fn graph_test_root(name: &str) -> PathBuf {
@@ -2066,7 +2058,7 @@ display:
         let definition =
             crate::document::graph::parse_definition("filters: 'status == \"done\"'").unwrap();
 
-        let snapshot = load_snapshot(definition, catalog.clone()).unwrap();
+        let snapshot = pollster::block_on(load_snapshot(definition, catalog.clone())).unwrap();
 
         assert_eq!(snapshot.nodes.len(), 1);
         assert_eq!(
@@ -2078,7 +2070,7 @@ display:
     }
 
     #[test]
-    fn catalog_snapshot_reports_an_existing_unreadable_markdown_file() {
+    fn catalog_snapshot_omits_a_new_unreadable_markdown_file() {
         let root = graph_test_root("unreadable");
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
@@ -2086,9 +2078,9 @@ display:
         let catalog = graph_catalog(&root);
         let definition = crate::document::graph::parse_definition("").unwrap();
 
-        let error = load_snapshot(definition, catalog.clone()).unwrap_err();
+        let snapshot = pollster::block_on(load_snapshot(definition, catalog.clone())).unwrap();
 
-        assert!(error.to_string().contains("binary.md"));
+        assert!(snapshot.nodes.is_empty());
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }

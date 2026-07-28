@@ -8,6 +8,7 @@ use super::Tab;
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
 use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
+use crate::vault::file_ops;
 
 enum OpenMode {
     Replace,
@@ -74,17 +75,13 @@ impl DatalithView {
         });
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
-            let catalog = self.vault_catalog.clone();
             cx.subscribe_in(&state, window, move |_view, state, event, _window, cx| {
                 if let InputEvent::Change = event {
                     let content = state.read(cx).value();
-                    if let Some(ref catalog) = catalog {
-                        let _ = catalog.save(&path, &content);
-                    }
+                    let _ = file_ops::update(&path, &content);
                 }
             })
         });
-        let link_source = path.clone();
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
@@ -92,8 +89,7 @@ impl DatalithView {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     let decoded_url = percent_decode_str(url).decode_utf8_lossy();
                     if let Some(ref catalog) = view.vault_catalog
-                        && let Some(resolved) =
-                            catalog.resolve_wiki_link_from(&link_source, &decoded_url)
+                        && let Some(resolved) = catalog.resolve(&decoded_url)
                     {
                         view.open_file(resolved, *new_tab, window, cx);
                         return;

@@ -9,6 +9,7 @@ use self::image::ImageViewer;
 use self::markdown::MarkdownViewer;
 
 use crate::document::handler::FileHandler;
+use crate::vault::VaultCatalog;
 
 pub(crate) enum ViewerKind {
     Graph(GraphViewer),
@@ -36,6 +37,12 @@ impl ViewerKind {
     pub(crate) fn refresh(&self, cx: &mut App) {
         if let ViewerKind::Graph(viewer) = self {
             viewer.refresh(cx);
+        }
+    }
+
+    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
+        if let ViewerKind::Graph(viewer) = self {
+            viewer.set_vault_catalog(catalog, cx);
         }
     }
 }

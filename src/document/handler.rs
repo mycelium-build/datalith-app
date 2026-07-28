@@ -3,6 +3,7 @@ use gpui_component::input::InputState;
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
+use crate::vault::VaultCatalog;
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +96,12 @@ impl FileHandler {
             ViewMode::View => ViewMode::Edit,
         };
         cx.notify();
+    }
+
+    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+        if let Some(viewer) = &self.viewer {
+            viewer.set_vault_catalog(catalog, cx);
+        }
     }
 
     pub(crate) fn input(&self) -> Option<&Entity<InputState>> {

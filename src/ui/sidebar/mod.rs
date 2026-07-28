@@ -52,19 +52,21 @@ impl DatalithView {
         if old_path == new_path {
             return;
         }
-        let Some(Ok(())) = self
-            .vault_catalog
-            .as_ref()
-            .map(|catalog| catalog.rename(old_path, new_path))
-        else {
+        let Some(catalog) = self.vault_catalog.clone() else {
             return;
         };
-        self.palette.rename_entry(old_path, new_path);
+        if file_ops::rename(&catalog, old_path, new_path).is_err() {
+            return;
+        }
         self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {
             self.pending_open = Some(new_path.to_path_buf());
         }
-        self.refresh_tree(cx);
+        self.last_sidebar_selection = self.last_sidebar_selection.as_ref().map(|path| {
+            path.strip_prefix(old_path)
+                .map_or_else(|_| path.clone(), |suffix| new_path.join(suffix))
+        });
+        self.refresh_tree_with_rename(old_path, new_path, cx);
     }
 
     fn handle_file_move(&mut self, old_path: PathBuf, new_path: PathBuf, cx: &mut Context<Self>) {
