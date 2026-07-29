@@ -2,117 +2,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use txtodo::{
-    Priority, SortDirection, Task, TaskFilter, TaskFilters, TaskPatch, TaskSorter, TaskSorts,
-    TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
+    Priority, Task, TaskPatch, TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
 };
 
-use super::handler::ReloadOutcome;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FilterKind {
-    All,
-    Incomplete,
-    Completed,
-    PriorityA,
-    PriorityB,
-    PriorityC,
-}
-
-impl FilterKind {
-    pub(crate) const ALL: &[Self] = &[
-        Self::All,
-        Self::Incomplete,
-        Self::Completed,
-        Self::PriorityA,
-        Self::PriorityB,
-        Self::PriorityC,
-    ];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::All => "All",
-            Self::Incomplete => "Incomplete",
-            Self::Completed => "Completed",
-            Self::PriorityA => "Priority A",
-            Self::PriorityB => "Priority B",
-            Self::PriorityC => "Priority C",
-        }
-    }
-
-    pub(crate) fn from_index(index: usize) -> Self {
-        Self::ALL.get(index).copied().unwrap_or(Self::All)
-    }
-
-    fn predicate(self) -> Option<TaskFilter> {
-        match self {
-            Self::All => None,
-            Self::Incomplete => Some(TaskFilters::incomplete()),
-            Self::Completed => Some(TaskFilters::completed()),
-            Self::PriorityA => Some(TaskFilters::by_priority(Priority('A'))),
-            Self::PriorityB => Some(TaskFilters::by_priority(Priority('B'))),
-            Self::PriorityC => Some(TaskFilters::by_priority(Priority('C'))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SortKind {
-    Priority,
-    DateCreated,
-    Description,
-    Project,
-    Context,
-}
-
-impl SortKind {
-    pub(crate) const ALL: &[Self] = &[
-        Self::Priority,
-        Self::DateCreated,
-        Self::Description,
-        Self::Project,
-        Self::Context,
-    ];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Priority => "Priority",
-            Self::DateCreated => "Date",
-            Self::Description => "Description",
-            Self::Project => "Project",
-            Self::Context => "Context",
-        }
-    }
-
-    pub(crate) fn from_index(index: usize) -> Option<Self> {
-        Self::ALL.get(index).copied()
-    }
-
-    fn sorter(self, descending: bool) -> TaskSorter {
-        let direction = if descending {
-            SortDirection::Desc
-        } else {
-            SortDirection::Asc
-        };
-        match self {
-            Self::Priority => TaskSorts::by_priority(direction),
-            Self::DateCreated => TaskSorts::by_date_created(direction),
-            Self::Description => TaskSorts::by_description(direction),
-            Self::Project => TaskSorts::by_project(direction),
-            Self::Context => TaskSorts::by_context(direction),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FocusTarget {
-    Task(usize),
-    Search,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MutationOutcome {
-    pub(crate) focus: Option<FocusTarget>,
-}
+use crate::document::handler::ReloadOutcome;
+use super::{FilterKind, FocusTarget, MutationOutcome, SortKind, matches_task, today_string};
 
 pub(crate) struct TodoTxtWorkspace {
     todo: TodoTxt,
@@ -333,7 +227,7 @@ impl TodoTxtWorkspace {
         self.update(
             index,
             TaskPatch {
-                creation_date: Some(parse_date(value)),
+                creation_date: Some(super::parse_date(value)),
                 ..Default::default()
             },
         );
@@ -435,46 +329,10 @@ impl TodoTxtWorkspace {
     }
 }
 
-pub(crate) fn parse_date(value: &str) -> Option<time::Date> {
-    let mut parts = value.split('-');
-    let year = parts.next()?.parse().ok()?;
-    let month = parts.next()?.parse::<u8>().ok()?;
-    let day = parts.next()?.parse().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    time::Date::from_calendar_date(year, time::Month::try_from(month).ok()?, day).ok()
-}
-
-fn today_string() -> String {
-    time::OffsetDateTime::now_utc().date().to_string()
-}
-
-fn matches_task(task: &Task, query: &str) -> bool {
-    task.description.to_lowercase().contains(query)
-        || task
-            .priority
-            .as_ref()
-            .is_some_and(|p| p.to_string().to_lowercase().contains(query))
-        || task
-            .creation_date
-            .is_some_and(|d| d.to_string().to_lowercase().contains(query))
-        || task
-            .projects
-            .iter()
-            .any(|p| p.to_lowercase().contains(query))
-        || task
-            .contexts
-            .iter()
-            .any(|c| c.to_lowercase().contains(query))
-        || task.extensions.iter().any(|(k, v)| {
-            k.to_lowercase().contains(query) || v.to_string().to_lowercase().contains(query)
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::todo_txt::FocusTarget;
 
     fn workspace(contents: &str) -> (TodoTxtWorkspace, PathBuf) {
         let path = std::env::temp_dir().join(format!(
