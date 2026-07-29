@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, Icon, IconName, h_flex,
+    ActiveTheme, Icon, IconName, StyledExt, h_flex,
     input::Input,
     list::ListItem,
     tree::{self, TreeItem},
@@ -106,12 +106,16 @@ impl DatalithView {
 
                     if is_renaming && let Some(rename_state) = this.rename_state.clone() {
                         return list_item.child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .overflow_hidden()
-                                .child(Icon::new(icon).size_4())
-                                .child(Input::new(&rename_state)),
+                            h_flex().gap_2().child(Icon::new(icon).size_4()).child(
+                                Input::new(&rename_state)
+                                    .appearance(false)
+                                    .flex_1()
+                                    .px_0()
+                                    .py_0()
+                                    .h_7()
+                                    .h_flex()
+                                    .text_base(),
+                            ),
                         );
                     }
 
@@ -128,10 +132,15 @@ impl DatalithView {
                             }),
                         )
                         .gap_2()
-                        .items_center()
-                        .overflow_hidden()
                         .child(Icon::new(icon).size_4())
-                        .child(div().flex_1().truncate().child(item_label.clone()))
+                        .child(
+                            div()
+                                .flex_1()
+                                .h_7() // better with h_6 but need
+                                //.h_flex() // which make truncate not work
+                                .truncate()
+                                .child(item_label.clone()),
+                        )
                         .on_drag(
                             DragFile { path: path.clone() },
                             |drag, _offset, _window, cx| {
