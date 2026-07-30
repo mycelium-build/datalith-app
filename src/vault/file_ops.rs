@@ -53,7 +53,16 @@ pub(crate) fn update(path: &Path, content: &str) -> Result<()> {
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
-pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<()> {
+pub(crate) struct RenameResult {
+    pub(crate) total_sources: usize,
+    pub(crate) updated_sources: usize,
+}
+
+pub(crate) fn rename(
+    catalog: &VaultCatalog,
+    old_path: &Path,
+    new_path: &Path,
+) -> Result<RenameResult> {
     let root = catalog.root();
     let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
     for backlink in catalog.backlinks_under(old_path)? {
@@ -69,6 +78,8 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
             .push((backlink.ordinal, replacement));
     }
 
+    let total_sources = by_source.len();
+
     fs::rename(old_path, new_path).with_context(|| {
         format!(
             "Failed to rename {} to {}",
@@ -77,18 +88,28 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
         )
     })?;
 
+    let mut updated_sources = 0usize;
     for (source_path, replacements) in by_source {
         let source_path = source_path
             .strip_prefix(old_path)
             .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
-        let content = fs::read_to_string(&source_path)
-            .with_context(|| format!("Failed to read backlink source {}", source_path.display()))?;
+        let content = match fs::read_to_string(&source_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
         let rewritten = links::rewrite(&content, &replacements);
         if rewritten != content {
-            update(&source_path, &rewritten)?;
+            if update(&source_path, &rewritten).is_ok() {
+                updated_sources += 1;
+            }
+        } else {
+            updated_sources += 1;
         }
     }
-    Ok(())
+    Ok(RenameResult {
+        total_sources,
+        updated_sources,
+    })
 }
 
 pub(crate) fn delete(target: &Path) -> Result<()> {
@@ -183,7 +204,7 @@ mod tests {
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
 
-        rename(&catalog, &note, &renamed).unwrap();
+        let result = rename(&catalog, &note, &renamed).unwrap();
 
         assert!(!note.exists());
         assert!(renamed.exists());
@@ -191,6 +212,8 @@ mod tests {
             fs::read_to_string(&source).unwrap(),
             "before [[Renamed#Heading|label]] after"
         );
+        assert_eq!(result.total_sources, 1);
+        assert_eq!(result.updated_sources, 1);
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }
@@ -217,13 +240,15 @@ mod tests {
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
 
-        rename(&catalog, &old_folder, &new_folder).unwrap();
+        let result = rename(&catalog, &old_folder, &new_folder).unwrap();
 
         assert!(!old_folder.exists());
         assert_eq!(
             fs::read_to_string(new_folder.join("Source.md")).unwrap(),
             "[[New/Target]]"
         );
+        assert_eq!(result.total_sources, 1);
+        assert_eq!(result.updated_sources, 1);
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }

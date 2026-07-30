@@ -13,6 +13,7 @@ use gpui_component::{
 };
 
 use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer};
+use crate::ui::notifications;
 use crate::vault::file_ops;
 use crate::vault::path::display_name;
 
@@ -55,8 +56,25 @@ impl DatalithView {
         let Some(catalog) = self.vault_catalog.clone() else {
             return;
         };
-        if file_ops::rename(&catalog, old_path, new_path).is_err() {
-            return;
+        match file_ops::rename(&catalog, old_path, new_path) {
+            Ok(result) => {
+                if result.updated_sources == result.total_sources {
+                    self.pending_notifications
+                        .push(notifications::rename_completed(result.updated_sources));
+                } else {
+                    self.pending_notifications.push(
+                        notifications::rename_completed_partial(
+                            result.updated_sources,
+                            result.total_sources,
+                        ),
+                    );
+                }
+            }
+            Err(_) => {
+                self.pending_notifications
+                    .push(notifications::rename_failed());
+                return;
+            }
         }
         self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {

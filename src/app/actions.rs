@@ -8,6 +8,7 @@ use crate::app::{
     system,
 };
 use crate::document::handler::FileHandlerEvent;
+use crate::ui::notifications;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
 use crate::vault::file_ops;
@@ -190,6 +191,8 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.vault_catalog.is_none() {
+            view.pending_notifications
+                .push(notifications::rename_while_loading());
             cx.notify();
             return;
         }

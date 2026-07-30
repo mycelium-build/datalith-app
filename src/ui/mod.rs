@@ -1,4 +1,5 @@
 pub(crate) mod editors;
+pub(crate) mod notifications;
 pub(crate) mod palette;
 pub(crate) mod render;
 pub(crate) mod settings;
@@ -18,6 +19,7 @@ use std::time::{Duration, Instant};
 use gpui::*;
 use gpui_component::{
     input::InputState,
+    notification::Notification,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
     tree::{TreeItem, TreeState},
@@ -89,6 +91,7 @@ pub(crate) struct DatalithView {
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
+    pub(crate) pending_notifications: Vec<Notification>,
     pub(crate) registry: FileRegistry,
 }
 
@@ -195,6 +198,7 @@ impl DatalithView {
             sidebar_focus_handle,
             last_sidebar_selection: None,
             pending_navigation: None,
+            pending_notifications: Vec::new(),
             registry: registry::default_registry(),
         }
     }
@@ -259,9 +263,11 @@ impl DatalithView {
                             view.palette
                                 .refresh(view.vault_catalog.as_ref(), &open_files);
                         }
+                        view.pending_notifications.push(notifications::vault_db_ready());
                     }
-                    Err(error) => {
-                        eprintln!("Failed to open Vault Catalog: {error}");
+                    Err(_) => {
+                        view.pending_notifications
+                            .push(notifications::vault_db_failed_to_load());
                     }
                 }
                 cx.notify();

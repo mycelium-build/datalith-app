@@ -1,7 +1,7 @@
 use super::DatalithView;
 use gpui::*;
 use gpui_component::{
-    h_flex,
+    Root, WindowExt, h_flex,
     resizable::{h_resizable, resizable_panel},
     v_flex,
 };
@@ -9,17 +9,21 @@ use gpui_component::{
 const SIDEBAR_WIDTH: f32 = 260.0;
 
 impl Render for DatalithView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
             let open_paths = self.tabs.open_paths();
             self.palette
-                .focus_input(_window, cx, self.vault_catalog.as_ref(), &open_paths);
+                .focus_input(window, cx, self.vault_catalog.as_ref(), &open_paths);
+        }
+
+        for notification in self.pending_notifications.drain(..) {
+            window.push_notification(notification, cx);
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
             if let Some(handler) = self.tabs.handler_for_path(&path) {
                 handler.update(cx, |handler, cx| {
-                    if let Err(error) = handler.reload_from_disk(&path, _window, cx) {
+                    if let Err(error) = handler.reload_from_disk(&path, window, cx) {
                         eprintln!("Failed to reload {}: {error}", path.display());
                     }
                 });
@@ -28,24 +32,24 @@ impl Render for DatalithView {
 
         if self.focus_sidebar_requested {
             self.focus_sidebar_requested = false;
-            self.focus_sidebar(_window, cx);
+            self.focus_sidebar(window, cx);
         }
 
         if self.focus_editor_requested {
             self.focus_editor_requested = false;
-            self.focus_active_tab(_window, cx);
+            self.focus_active_tab(window, cx);
         }
 
         if self.rename_target.is_none() {
             if let Some(path) = self.pending_open.take() {
-                self.open_file(path, true, _window, cx);
+                self.open_file(path, true, window, cx);
             }
         }
 
         if let Some(action) = self.pending_navigation.take() {
             match action {
-                super::tabs::NavigationAction::GoBack => self.go_back(_window, cx),
-                super::tabs::NavigationAction::GoForward => self.go_forward(_window, cx),
+                super::tabs::NavigationAction::GoBack => self.go_back(window, cx),
+                super::tabs::NavigationAction::GoForward => self.go_forward(window, cx),
             }
         }
 
@@ -59,7 +63,7 @@ impl Render for DatalithView {
                     resizable_panel()
                         .size(px(SIDEBAR_WIDTH))
                         .size_range(px(180.)..px(500.))
-                        .child(self.render_sidebar(_window, cx)),
+                        .child(self.render_sidebar(window, cx)),
                 )
                 .child(
                     resizable_panel().child(
@@ -88,7 +92,7 @@ impl Render for DatalithView {
             layout = layout.child(self.settings.render_overlay(cx));
         }
 
-        layout
+        layout.children(Root::render_notification_layer(window, cx))
     }
 }
 
