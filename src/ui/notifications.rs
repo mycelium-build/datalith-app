@@ -16,14 +16,14 @@ pub(crate) fn rename_completed(updated: usize) -> Notification {
     let msg = if updated == 0 {
         "Rename completed".to_string()
     } else {
-        format!("Rename completed, {updated} links updated")
+        format!("Rename completed, {updated} files updated")
     };
     Notification::success(&msg)
 }
 
 pub(crate) fn rename_completed_partial(updated: usize, total: usize) -> Notification {
     Notification::warning(format!(
-        "Rename completed partially, {updated}/{total} links updated",
+        "Rename completed partially, {updated}/{total} files updated",
     ))
     .autohide(false)
 }

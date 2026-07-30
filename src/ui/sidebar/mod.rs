@@ -58,14 +58,14 @@ impl DatalithView {
         };
         match file_ops::rename(&catalog, old_path, new_path) {
             Ok(result) => {
-                if result.updated_links == result.total_links {
+                if result.updated_sources == result.total_sources {
                     self.pending_notifications
-                        .push(notifications::rename_completed(result.updated_links));
+                        .push(notifications::rename_completed(result.updated_sources));
                 } else {
                     self.pending_notifications.push(
                         notifications::rename_completed_partial(
-                            result.updated_links,
-                            result.total_links,
+                            result.updated_sources,
+                            result.total_sources,
                         ),
                     );
                 }

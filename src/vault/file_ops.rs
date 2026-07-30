@@ -54,8 +54,8 @@ pub(crate) fn update(path: &Path, content: &str) -> Result<()> {
 }
 
 pub(crate) struct RenameResult {
-    pub(crate) total_links: usize,
-    pub(crate) updated_links: usize,
+    pub(crate) total_sources: usize,
+    pub(crate) updated_sources: usize,
 }
 
 pub(crate) fn rename(
@@ -78,7 +78,7 @@ pub(crate) fn rename(
             .push((backlink.ordinal, replacement));
     }
 
-    let total_links = by_source.len();
+    let total_sources = by_source.len();
 
     fs::rename(old_path, new_path).with_context(|| {
         format!(
@@ -88,7 +88,7 @@ pub(crate) fn rename(
         )
     })?;
 
-    let mut updated_links = 0usize;
+    let mut updated_sources = 0usize;
     for (source_path, replacements) in by_source {
         let source_path = source_path
             .strip_prefix(old_path)
@@ -100,15 +100,15 @@ pub(crate) fn rename(
         let rewritten = links::rewrite(&content, &replacements);
         if rewritten != content {
             if update(&source_path, &rewritten).is_ok() {
-                updated_links += 1;
+                updated_sources += 1;
             }
         } else {
-            updated_links += 1;
+            updated_sources += 1;
         }
     }
     Ok(RenameResult {
-        total_links,
-        updated_links,
+        total_sources,
+        updated_sources,
     })
 }
 
@@ -204,7 +204,7 @@ mod tests {
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
 
-        rename(&catalog, &note, &renamed).unwrap();
+        let result = rename(&catalog, &note, &renamed).unwrap();
 
         assert!(!note.exists());
         assert!(renamed.exists());
@@ -212,6 +212,8 @@ mod tests {
             fs::read_to_string(&source).unwrap(),
             "before [[Renamed#Heading|label]] after"
         );
+        assert_eq!(result.total_sources, 1);
+        assert_eq!(result.updated_sources, 1);
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }
@@ -238,13 +240,15 @@ mod tests {
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
 
-        rename(&catalog, &old_folder, &new_folder).unwrap();
+        let result = rename(&catalog, &old_folder, &new_folder).unwrap();
 
         assert!(!old_folder.exists());
         assert_eq!(
             fs::read_to_string(new_folder.join("Source.md")).unwrap(),
             "[[New/Target]]"
         );
+        assert_eq!(result.total_sources, 1);
+        assert_eq!(result.updated_sources, 1);
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }
