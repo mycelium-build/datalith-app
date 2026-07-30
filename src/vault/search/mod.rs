@@ -19,12 +19,8 @@ pub(crate) struct SearchEngine {
 }
 
 impl SearchEngine {
-    pub(crate) fn new(
-        root: &Path,
-        file_types: &RegisteredFileTypes,
-        catalogued_paths: &[PathBuf],
-    ) -> Result<Self> {
-        let indexer = Indexer::new(root, file_types, catalogued_paths)?;
+    pub(crate) fn open_existing(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
+        let indexer = Indexer::open_existing(root, file_types)?;
         Ok(Self { indexer })
     }
 

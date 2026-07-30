@@ -203,6 +203,7 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &note, &renamed).unwrap();
 
@@ -239,6 +240,7 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &old_folder, &new_folder).unwrap();
 
@@ -274,6 +276,7 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(
             &catalog,

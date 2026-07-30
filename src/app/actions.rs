@@ -12,6 +12,7 @@ use crate::ui::notifications;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
 use crate::vault::file_ops;
+use crate::vault::CatalogState;
 
 actions!(
     datalith,
@@ -190,7 +191,11 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 
 pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        if view.vault_catalog.is_none() {
+        let catalog_blocked = view
+            .vault_catalog
+            .as_ref()
+            .map_or(true, |c| c.state() != CatalogState::Ready);
+        if catalog_blocked {
             view.pending_notifications
                 .push(notifications::rename_while_loading());
             cx.notify();

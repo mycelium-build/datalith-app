@@ -29,7 +29,7 @@ use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;
-use crate::vault::{CatalogEvent, VaultCatalog};
+use crate::vault::{CatalogEvent, CatalogState, VaultCatalog};
 use palette::Palette;
 use settings::SettingsView;
 
@@ -246,24 +246,13 @@ impl DatalithView {
                         view.catalog_updates = Some(catalog.events());
                         view.vault_catalog = Some(catalog.clone());
                         view.start_catalog_polling(cx);
-                        let handlers = view
-                            .tabs
-                            .iter()
-                            .filter(|(_, tab_path, _)| tab_path.starts_with(&path))
-                            .map(|(_, _, handler)| handler.clone())
-                            .collect::<Vec<_>>();
-                        for handler in handlers {
-                            let catalog = catalog.clone();
-                            handler.update(cx, |handler, cx| {
-                                handler.set_vault_catalog(catalog, cx);
-                            });
-                        }
                         if view.palette.open {
                             let open_files = view.tabs.open_paths();
                             view.palette
                                 .refresh(view.vault_catalog.as_ref(), &open_files);
                         }
-                        view.pending_notifications.push(notifications::vault_db_ready());
+                        view.pending_notifications
+                            .push(notifications::catalog_loading());
                     }
                     Err(_) => {
                         view.pending_notifications
@@ -295,6 +284,43 @@ impl DatalithView {
                                 changed_paths.extend(update.paths.iter().cloned());
                             }
                         }
+
+                        if catalog_changed {
+                            let catalog_state = view
+                                .vault_catalog
+                                .as_ref()
+                                .map(|c| c.state());
+                            match catalog_state {
+                                Some(CatalogState::Ready) => {
+                                    if let (Some(catalog), Some(root)) =
+                                        (view.vault_catalog.clone(), view.root_path.clone())
+                                    {
+                                        let handlers = view
+                                            .tabs
+                                            .iter()
+                                            .filter(|(_, tab_path, _)| tab_path.starts_with(&root))
+                                            .map(|(_, _, handler)| handler.clone())
+                                            .collect::<Vec<_>>();
+                                        for handler in handlers {
+                                            let catalog = catalog.clone();
+                                            handler.update(cx, |handler, cx| {
+                                                handler.set_vault_catalog(catalog, cx);
+                                            });
+                                        }
+                                    }
+                                    view.pending_notifications
+                                        .push(notifications::vault_db_ready());
+                                    view.refresh_tree(cx);
+                                    structure_changed = false;
+                                }
+                                Some(CatalogState::Failed) => {
+                                    view.pending_notifications
+                                        .push(notifications::vault_db_failed_to_load());
+                                }
+                                _ => {}
+                            }
+                        }
+
                         if !changed_paths.is_empty() {
                             for removed in changed_paths.iter().filter(|path| !path.exists()) {
                                 view.close_tabs_under(removed, cx);

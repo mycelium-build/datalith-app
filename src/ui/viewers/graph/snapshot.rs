@@ -234,7 +234,9 @@ mod tests {
                 },
             ),
         ]);
-        VaultCatalog::open(root.to_path_buf(), types).unwrap()
+        let catalog = VaultCatalog::open(root.to_path_buf(), types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        catalog
     }
 
     fn graph_test_root(name: &str) -> PathBuf {

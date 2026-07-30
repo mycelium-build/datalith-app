@@ -46,11 +46,7 @@ impl Indexer {
         Ok(())
     }
 
-    pub(crate) fn new(
-        root: &Path,
-        file_types: &RegisteredFileTypes,
-        catalogued_paths: &[PathBuf],
-    ) -> Result<Self> {
+    pub(crate) fn open_existing(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
         let index_path = root.join(DATALITH_DIR_NAME).join("search_index");
 
         let mut schema_builder = Schema::builder();
@@ -60,47 +56,13 @@ impl Indexer {
         let fingerprint_field = schema_builder.add_text_field("fingerprint", STRING | STORED);
         let schema = schema_builder.build();
 
-        let (index, needs_build) = if index_path.exists() {
-            (
-                Index::open_in_dir(&index_path).context("Failed to open existing index")?,
-                false,
-            )
+        let index = if index_path.exists() {
+            Index::open_in_dir(&index_path).context("Failed to open existing index")?
         } else {
             fs::create_dir_all(&index_path)
                 .with_context(|| format!("Failed to create index dir: {}", index_path.display()))?;
-            (
-                Index::create_in_dir(&index_path, schema).context("Failed to create index")?,
-                true,
-            )
+            Index::create_in_dir(&index_path, schema).context("Failed to create index")?
         };
-
-        if needs_build {
-            let mut writer: IndexWriter<TantivyDocument> = index.writer(INDEX_WRITER_BUDGET)?;
-            let files = catalogued_paths
-                .iter()
-                .filter(|path| is_indexable(path, file_types) && path.is_file())
-                .cloned()
-                .collect::<Vec<_>>();
-            index_files(
-                &mut writer,
-                &files,
-                path_field,
-                name_field,
-                content_field,
-                fingerprint_field,
-            )?;
-            writer.commit()?;
-        } else {
-            incremental_update(
-                &index,
-                catalogued_paths,
-                path_field,
-                name_field,
-                content_field,
-                fingerprint_field,
-                file_types,
-            )?;
-        }
 
         Ok(Self {
             index,
@@ -108,8 +70,43 @@ impl Indexer {
             name_field,
             content_field,
             fingerprint_field,
-            file_types: file_types.clone(),
+            file_types,
         })
+    }
+
+    pub(crate) fn synchronize(&self, catalogued_paths: &[PathBuf]) -> Result<()> {
+        let reader = self.index.reader()?;
+        let num_docs = reader.searcher().num_docs();
+
+        if num_docs == 0 && !catalogued_paths.is_empty() {
+            let mut writer: IndexWriter<TantivyDocument> =
+                self.index.writer(INDEX_WRITER_BUDGET)?;
+            let files = catalogued_paths
+                .iter()
+                .filter(|path| is_indexable(path, &self.file_types) && path.is_file())
+                .cloned()
+                .collect::<Vec<_>>();
+            index_files(
+                &mut writer,
+                &files,
+                self.path_field,
+                self.name_field,
+                self.content_field,
+                self.fingerprint_field,
+            )?;
+            writer.commit()?;
+        } else {
+            incremental_update(
+                &self.index,
+                catalogued_paths,
+                self.path_field,
+                self.name_field,
+                self.content_field,
+                self.fingerprint_field,
+                &self.file_types,
+            )?;
+        }
+        Ok(())
     }
 }
 

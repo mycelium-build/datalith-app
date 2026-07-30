@@ -8,6 +8,10 @@ pub(crate) fn vault_db_failed_to_load() -> Notification {
     Notification::error("Vault DB failed to load").autohide(false)
 }
 
+pub(crate) fn catalog_loading() -> Notification {
+    Notification::info("Vault DB loading, some features degraded")
+}
+
 pub(crate) fn rename_while_loading() -> Notification {
     Notification::warning("Vault DB still loading, rename unavailable")
 }

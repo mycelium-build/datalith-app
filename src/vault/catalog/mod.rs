@@ -14,6 +14,13 @@ use crate::vault::search::SearchEngine;
 
 const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CatalogState {
+    Syncing,
+    Ready,
+    Failed,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogEvent {
     pub(crate) paths: Vec<PathBuf>,
@@ -108,7 +115,8 @@ struct CatalogInner {
     file_types: RegisteredFileTypes,
     search: Mutex<SearchEngine>,
     subscribers: Mutex<Vec<mpsc::Sender<CatalogEvent>>>,
-    _watcher: Mutex<RecommendedWatcher>,
+    _watcher: Mutex<Option<RecommendedWatcher>>,
+    state: Mutex<CatalogState>,
 }
 
 #[derive(Clone)]
@@ -118,54 +126,110 @@ pub(crate) struct VaultCatalog {
 
 impl VaultCatalog {
     pub(crate) fn open(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
-        std::thread::Builder::new()
-            .name("vault-catalog-initialization".into())
-            .stack_size(CATALOG_INITIALIZATION_STACK_SIZE)
-            .spawn(move || Self::open_on_current_thread(root, file_types))
-            .context("Failed to start Vault Catalog initialization thread")?
-            .join()
-            .map_err(|_| anyhow!("Vault Catalog initialization thread panicked"))?
-    }
-
-    fn open_on_current_thread(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
         let database = pollster::block_on(CatalogDatabase::open(&root))?;
-        let (notify_tx, notify_rx) = mpsc::channel();
-        let observed_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-        let logical_root = root.clone();
-        let mut watcher =
-            notify::recommended_watcher(move |mut event: notify::Result<notify::Event>| {
-                if let Ok(event) = &mut event {
-                    for path in &mut event.paths {
-                        if let Ok(relative) = path.strip_prefix(&observed_root) {
-                            *path = logical_root.join(relative);
-                        }
-                    }
-                }
-                let _ = notify_tx.send(event);
-            })?;
-        watcher.watch(&root, RecursiveMode::Recursive)?;
-
-        let initial = walk_tracked_files(&root, &file_types);
-        let stored = pollster::block_on(database.stored_paths())?;
-        let removed = stored
-            .into_iter()
-            .filter(|path| !initial.contains(path))
-            .collect::<Vec<_>>();
-        let initial = initial.into_iter().collect::<Vec<_>>();
-        let synchronized =
-            pollster::block_on(database.synchronize(&removed, &initial, &file_types))?;
-        let search = SearchEngine::new(&root, &file_types, &synchronized)?;
+        let search = SearchEngine::open_existing(&root, file_types.clone())?;
 
         let inner = Arc::new(CatalogInner {
             root,
             database,
-            file_types,
+            file_types: file_types.clone(),
             search: Mutex::new(search),
             subscribers: Mutex::new(Vec::new()),
-            _watcher: Mutex::new(watcher),
+            _watcher: Mutex::new(None),
+            state: Mutex::new(CatalogState::Syncing),
         });
-        spawn_reconciler(&inner, notify_rx)?;
-        Ok(Self { inner })
+        let catalog = Self {
+            inner: inner.clone(),
+        };
+
+        std::thread::Builder::new()
+            .name("vault-catalog-sync".into())
+            .stack_size(CATALOG_INITIALIZATION_STACK_SIZE)
+            .spawn(move || {
+                Self::sync_on_background_thread(&inner, &file_types);
+            })
+            .context("Failed to start Vault Catalog sync thread")?;
+
+        Ok(catalog)
+    }
+
+    fn sync_on_background_thread(inner: &Arc<CatalogInner>, file_types: &RegisteredFileTypes) {
+        let result = (|| -> Result<()> {
+            let initial = walk_tracked_files(&inner.root, file_types);
+            let stored = pollster::block_on(inner.database.stored_paths())?;
+            let removed = stored
+                .into_iter()
+                .filter(|path| !initial.contains(path))
+                .collect::<Vec<_>>();
+            let initial = initial.into_iter().collect::<Vec<_>>();
+            let synchronized =
+                pollster::block_on(inner.database.synchronize(&removed, &initial, file_types))?;
+
+            if let Ok(search) = inner.search.lock() {
+                let _ = search.indexer.synchronize(&synchronized);
+            }
+
+            let (notify_tx, notify_rx) = mpsc::channel();
+            let observed_root = inner.root.canonicalize().unwrap_or_else(|_| inner.root.clone());
+            let logical_root = inner.root.clone();
+            let mut watcher =
+                notify::recommended_watcher(move |mut event: notify::Result<notify::Event>| {
+                    if let Ok(event) = &mut event {
+                        for path in &mut event.paths {
+                            if let Ok(relative) = path.strip_prefix(&observed_root) {
+                                *path = logical_root.join(relative);
+                            }
+                        }
+                    }
+                    let _ = notify_tx.send(event);
+                })?;
+            watcher.watch(&inner.root, RecursiveMode::Recursive)?;
+
+            if let Ok(mut guard) = inner._watcher.lock() {
+                *guard = Some(watcher);
+            }
+
+            spawn_reconciler(inner, notify_rx)?;
+
+            publish_event(inner, synchronized, true);
+
+            if let Ok(mut state) = inner.state.lock() {
+                *state = CatalogState::Ready;
+            }
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            eprintln!("Catalog sync failed: {e}");
+            if let Ok(mut state) = inner.state.lock() {
+                *state = CatalogState::Failed;
+            }
+            publish_event(inner, Vec::new(), false);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_until_ready(&self, timeout: std::time::Duration) {
+        let start = std::time::Instant::now();
+        loop {
+            let state = self.inner.state.lock().ok().map(|s| *s);
+            if matches!(state, Some(CatalogState::Ready | CatalogState::Failed)) {
+                break;
+            }
+            if start.elapsed() > timeout {
+                panic!("VaultCatalog sync did not complete within {timeout:?}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn state(&self) -> CatalogState {
+        self.inner
+            .state
+            .lock()
+            .map(|s| *s)
+            .unwrap_or(CatalogState::Syncing)
     }
 
     #[must_use]
@@ -402,6 +466,8 @@ mod tests {
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
         let events = catalog.events();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        while events.try_recv().is_ok() {}
         let path = root.join("Observed.md");
 
         std::fs::write(&path, "distinctive watcher content").unwrap();
@@ -441,8 +507,10 @@ mod tests {
             },
         )]);
         let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
-        assert_eq!(catalog.search("hidden"), vec![hidden_tracked.clone()]);
         let events = catalog.events();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        while events.try_recv().is_ok() {}
+        assert_eq!(catalog.search("hidden"), vec![hidden_tracked.clone()]);
 
         reconcile_paths(&catalog.inner, vec![folder]);
 

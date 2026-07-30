@@ -8,5 +8,5 @@ pub(crate) const DATALITH_DIR_NAME: &str = ".datalith";
 
 pub(crate) use catalog::{
     CatalogComparison, CatalogEvent, CatalogFileField, CatalogFilter, CatalogProperty,
-    CatalogQuery, CatalogScalar, VaultCatalog,
+    CatalogQuery, CatalogScalar, CatalogState, VaultCatalog,
 };
