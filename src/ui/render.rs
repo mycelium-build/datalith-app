@@ -1,7 +1,7 @@
 use super::DatalithView;
 use gpui::*;
 use gpui_component::{
-    h_flex,
+    Root, WindowExt, h_flex,
     resizable::{h_resizable, resizable_panel},
     v_flex,
 };
@@ -9,11 +9,15 @@ use gpui_component::{
 const SIDEBAR_WIDTH: f32 = 260.0;
 
 impl Render for DatalithView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
             let open_paths = self.tabs.open_paths();
             self.palette
-                .focus_input(_window, cx, self.vault_catalog.as_ref(), &open_paths);
+                .focus_input(window, cx, self.vault_catalog.as_ref(), &open_paths);
+        }
+
+        for notification in self.pending_notifications.drain(..) {
+            window.push_notification(notification, cx);
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
@@ -88,7 +92,7 @@ impl Render for DatalithView {
             layout = layout.child(self.settings.render_overlay(cx));
         }
 
-        layout
+        layout.children(Root::render_notification_layer(window, cx))
     }
 }
 
