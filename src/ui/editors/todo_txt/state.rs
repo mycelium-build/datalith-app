@@ -16,6 +16,7 @@ pub(crate) struct TodoTxtState {
     pub(super) priority_picker_open: Option<usize>,
     pub(super) pending_focus_desc: Option<usize>,
     pub(super) pending_focus_search: bool,
+    pub(super) editor_focus: FocusHandle,
     pub(super) search_input: Entity<InputState>,
     pub(super) filter_select: Entity<SelectState<Vec<String>>>,
     pub(super) sort_select: Entity<SelectState<Vec<String>>>,

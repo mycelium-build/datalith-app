@@ -78,6 +78,7 @@ impl TodoTxtEditor {
         let total = workspace.task_count();
 
         cx.new(|cx| {
+            let editor_focus = cx.focus_handle();
             let search_input =
                 cx.new(|cx| InputState::new(window, cx).placeholder("Search tasks..."));
             let filter_select = cx.new(|cx| {
@@ -165,12 +166,15 @@ impl TodoTxtEditor {
             ));
 
             let entity = cx.entity();
+            let ef = editor_focus.clone();
             subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
                 if event.keystroke.key.as_str() == "f" && event.keystroke.modifiers.secondary() {
-                    entity.update(cx, |this, cx| {
-                        this.search_input.focus_handle(cx).focus(window, cx);
-                    });
-                    cx.stop_propagation();
+                    if ef.contains_focused(window, cx) {
+                        entity.update(cx, |this, cx| {
+                            this.search_input.focus_handle(cx).focus(window, cx);
+                        });
+                        cx.stop_propagation();
+                    }
                 }
             }));
 
@@ -179,6 +183,7 @@ impl TodoTxtEditor {
                 priority_picker_open: None,
                 pending_focus_desc: None,
                 pending_focus_search: false,
+                editor_focus,
                 search_input,
                 filter_select,
                 sort_select,

@@ -71,6 +71,7 @@ impl Render for TodoTxtState {
         v_flex()
             .size_full()
             .overflow_hidden()
+            .track_focus(&self.editor_focus)
             .child(header)
             .child(
                 div()
