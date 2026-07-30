@@ -53,7 +53,16 @@ pub(crate) fn update(path: &Path, content: &str) -> Result<()> {
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
-pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<()> {
+pub(crate) struct RenameResult {
+    pub(crate) total_links: usize,
+    pub(crate) updated_links: usize,
+}
+
+pub(crate) fn rename(
+    catalog: &VaultCatalog,
+    old_path: &Path,
+    new_path: &Path,
+) -> Result<RenameResult> {
     let root = catalog.root();
     let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
     for backlink in catalog.backlinks_under(old_path)? {
@@ -69,6 +78,8 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
             .push((backlink.ordinal, replacement));
     }
 
+    let total_links = by_source.len();
+
     fs::rename(old_path, new_path).with_context(|| {
         format!(
             "Failed to rename {} to {}",
@@ -77,18 +88,28 @@ pub(crate) fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -
         )
     })?;
 
+    let mut updated_links = 0usize;
     for (source_path, replacements) in by_source {
         let source_path = source_path
             .strip_prefix(old_path)
             .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
-        let content = fs::read_to_string(&source_path)
-            .with_context(|| format!("Failed to read backlink source {}", source_path.display()))?;
+        let content = match fs::read_to_string(&source_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
         let rewritten = links::rewrite(&content, &replacements);
         if rewritten != content {
-            update(&source_path, &rewritten)?;
+            if update(&source_path, &rewritten).is_ok() {
+                updated_links += 1;
+            }
+        } else {
+            updated_links += 1;
         }
     }
-    Ok(())
+    Ok(RenameResult {
+        total_links,
+        updated_links,
+    })
 }
 
 pub(crate) fn delete(target: &Path) -> Result<()> {
