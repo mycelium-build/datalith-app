@@ -170,7 +170,10 @@ impl VaultCatalog {
             }
 
             let (notify_tx, notify_rx) = mpsc::channel();
-            let observed_root = inner.root.canonicalize().unwrap_or_else(|_| inner.root.clone());
+            let observed_root = inner
+                .root
+                .canonicalize()
+                .unwrap_or_else(|_| inner.root.clone());
             let logical_root = inner.root.clone();
             let mut watcher =
                 notify::recommended_watcher(move |mut event: notify::Result<notify::Event>| {
