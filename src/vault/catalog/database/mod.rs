@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use turso::{Builder, Database};
 
 use crate::vault::DATALITH_DIR_NAME;
 
@@ -37,7 +36,7 @@ pub(crate) struct Backlink {
 #[derive(Clone)]
 pub(super) struct CatalogDatabase {
     pub(super) root: PathBuf,
-    pub(super) database: Database,
+    connection: turso::Connection,
 }
 
 impl CatalogDatabase {
@@ -53,34 +52,48 @@ impl CatalogDatabase {
         let database_path_text = database_path
             .to_str()
             .ok_or_else(|| anyhow!("Catalog database path is not UTF-8"))?;
-        let database = match Builder::new_local(database_path_text).build().await {
+        let database = match turso::Builder::new_local(database_path_text).build().await {
             Ok(database) => database,
             Err(_) => {
                 let _ = fs::remove_file(&database_path);
                 let _ = fs::remove_file(database_path.with_extension("db-wal"));
                 let _ = fs::remove_file(database_path.with_extension("db-shm"));
-                Builder::new_local(database_path_text)
+                turso::Builder::new_local(database_path_text)
                     .build()
                     .await
                     .context("Failed to rebuild embedded Turso catalog")?
             }
         };
+        let connection = database.connect()?;
+        connection.execute("PRAGMA foreign_keys = ON", ()).await?;
+        connection
+            .query("PRAGMA journal_mode = WAL", ())
+            .await?
+            .next()
+            .await?;
+        connection
+            .execute("PRAGMA synchronous = NORMAL", ())
+            .await?;
+        // connection.execute("PRAGMA cache_size = -2000", ()).await?; // Default 2MB
         let this = Self {
             root: root.to_path_buf(),
-            database,
+            connection,
         };
         this.initialize_schema().await?;
         Ok(this)
     }
 
-    pub(super) async fn connection(&self) -> Result<turso::Connection> {
-        let connection = self.database.connect()?;
-        connection.execute("PRAGMA foreign_keys = ON", ()).await?;
-        Ok(connection)
+    pub(super) fn connection(&self) -> turso::Connection {
+        self.connection.clone()
     }
 
     async fn initialize_schema(&self) -> Result<()> {
-        let connection = self.connection().await?;
+        let connection = self.connection();
+        connection
+            .query("PRAGMA journal_mode = WAL", ())
+            .await?
+            .next()
+            .await?;
         let mut rows = connection.query("PRAGMA user_version", ()).await?;
         let version = rows
             .next()
@@ -165,7 +178,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            database.connection().await.unwrap().execute(
+            database.connection().execute(
                 "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) VALUES ('Note.md', 'md', '', 0, 0, jsonb(?1))",
                 [r#"{"status":"done","priority":4,"tags":["rust","project"]}"#],
             ).await.unwrap();
@@ -204,7 +217,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
             connection
                 .execute(
                     "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
@@ -248,7 +261,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
             for (path, folder) in [
                 ("a_%/Direct.md", "a_%"),
                 ("a_%/child/Descendant.md", "a_%/child"),
@@ -297,7 +310,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
             for (path, extension, folder) in [
                 ("Note.txt", "txt", ""),
                 ("a/Note.md", "md", "a"),
@@ -344,7 +357,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
             for (path, folder) in [
                 ("Source.md", ""),
                 ("Other.md", ""),
@@ -412,7 +425,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
             connection
                 .execute_batch(
                     "CREATE TABLE resolution_updates(source_path TEXT NOT NULL);
@@ -493,7 +506,7 @@ mod tests {
                 .synchronize(&[], &[source.clone(), text_target.clone()], &file_types)
                 .await
                 .unwrap();
-            let connection = database.connection().await.unwrap();
+            let connection = database.connection();
 
             let resolved_target = async || {
                 connection
