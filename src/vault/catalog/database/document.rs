@@ -259,12 +259,23 @@ impl CatalogDatabase {
                 .await?;
             }
 
-            for relative in removed_paths
+            // batch delete removed/changed documents
+            let to_delete: Vec<&str> = removed_paths
                 .iter()
                 .chain(changed_paths.difference(&document_paths))
-            {
+                .map(|p| p.as_str())
+                .collect();
+            for chunk in to_delete.chunks(BATCH_SIZE) {
+                let placeholders: String = chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", i + 1))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let sql = format!("DELETE FROM documents WHERE path IN ({placeholders})");
+                let params: Vec<Value> = chunk.iter().map(|p| Value::Text(p.to_string())).collect();
                 connection
-                    .execute("DELETE FROM documents WHERE path = ?", [relative.as_str()])
+                    .execute(sql, turso::params_from_iter(params))
                     .await?;
             }
 
@@ -302,18 +313,23 @@ impl CatalogDatabase {
                 connection
                     .execute(sql, turso::params_from_iter(params))
                     .await?;
-                connection
-                    .execute(
-                        "DELETE FROM wiki_links WHERE source_path = ?",
-                        [relative.clone()],
-                    )
-                    .await?;
-                for (ordinal, target) in document.links.iter().enumerate() {
+
+                // batch delete old links for this chunk
+                let chunk_paths: Vec<String> = chunk
+                    .iter()
+                    .map(|d| path_text(&d.path))
+                    .collect();
+                for delete_chunk in chunk_paths.chunks(BATCH_SIZE) {
+                    let placeholders: String = delete_chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("?{}", i + 1))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let sql = format!("DELETE FROM wiki_links WHERE source_path IN ({placeholders})");
+                    let params: Vec<Value> = delete_chunk.iter().map(|p| Value::Text(p.clone())).collect();
                     connection
-                        .execute(
-                            "INSERT INTO wiki_links(source_path, ordinal, target, target_path) VALUES (?, ?, ?, NULL)",
-                            turso::params![relative.clone(), ordinal as i64, target.clone()],
-                        )
+                        .execute(sql, turso::params_from_iter(params))
                         .await?;
                 }
 
