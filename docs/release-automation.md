@@ -1,0 +1,16 @@
+# Release automation setup
+
+Configure the following under **Settings → Secrets and variables → Actions**.
+
+Repository secrets:
+
+- `AUTOMATION_APP_ID`: the GitHub App ID.
+- `AUTOMATION_APP_PRIVATE_KEY`: the GitHub App private key in PEM format.
+
+The GitHub App requires **Contents: read and write** and
+**Pull requests: read and write** repository permissions.
+
+Successful pushes to `main` create or update a release PR and tag its commit as
+an RC. Merge the release PR with a merge commit (not squash) to tag that release
+branch commit as the stable version. Both tag kinds publish Linux, macOS, and
+Windows artifacts.

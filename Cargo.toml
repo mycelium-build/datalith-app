@@ -2,6 +2,9 @@
 name = "datalith"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/mycelium-build/datalith"
+publish = false
 
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed" }

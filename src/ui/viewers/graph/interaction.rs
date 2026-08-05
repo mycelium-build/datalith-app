@@ -10,11 +10,9 @@ use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::vault::VaultCatalog;
 
 use super::camera::Camera;
-use super::model::{
-    GraphFocus, NODE_LABEL_WIDTH, hit_test_nodes, label_node_indices,
-};
-use super::snapshot::{ViewerStatus, load_snapshot};
+use super::model::{GraphFocus, NODE_LABEL_WIDTH, hit_test_nodes, label_node_indices};
 use super::physics::Simulation;
+use super::snapshot::{ViewerStatus, load_snapshot};
 
 use super::paint::HOVER_DIM_OPACITY;
 
@@ -313,7 +311,11 @@ impl GraphViewState {
             .into_any_element()
     }
 
-    pub(super) fn render_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_canvas(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pinned = self.interaction.and_then(|interaction| interaction.node);
         let hover_query = self
             .interaction

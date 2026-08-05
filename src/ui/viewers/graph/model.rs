@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use gpui::{Point, point};
 
 use crate::document::graph::{
-    BorderStyle as GraphBorderStyle, GraphColor, GraphPhysics,
-    GroupNodeStyle, NodeStyle as GraphNodeStyle,
+    BorderStyle as GraphBorderStyle, GraphColor, GraphPhysics, GroupNodeStyle,
+    NodeStyle as GraphNodeStyle,
 };
 
 pub(super) const INITIAL_LAYOUT_RADIUS: f32 = 256.0;

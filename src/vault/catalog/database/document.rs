@@ -174,6 +174,7 @@ impl CatalogDatabase {
                 .par_iter()
                 .filter_map(|path| TrackedDocument::read(root, path, file_types))
                 .collect();
+            let changed_document_count = documents.len();
 
             // for unchanged files, reconstruct TrackedDocument from stored metadata
             for path in &unchanged {
@@ -279,7 +280,7 @@ impl CatalogDatabase {
                     .await?;
             }
 
-            for chunk in documents.chunks(BATCH_SIZE) {
+            for chunk in documents[..changed_document_count].chunks(BATCH_SIZE) {
                 // batch document upserts
                 let mut value_groups = Vec::new();
                 let mut params: Vec<Value> = Vec::new();
@@ -425,12 +426,18 @@ impl CatalogDatabase {
                 .map(|(i, _)| format!("?{}", i + 1))
                 .collect::<Vec<_>>()
                 .join(",");
+            let target_placeholders: String = selected_paths
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", selected_paths.len() + i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
             let sql = format!(
                 "SELECT DISTINCT source_path, target_path \
                  FROM wiki_links \
                  WHERE target_path IS NOT NULL \
                    AND source_path IN ({placeholders}) \
-                   AND target_path IN ({placeholders}) \
+                   AND target_path IN ({target_placeholders}) \
                  ORDER BY source_path, target_path"
             );
             let mut params: Vec<Value> = Vec::with_capacity(selected_paths.len() * 2);

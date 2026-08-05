@@ -4,7 +4,10 @@ use pulldown_cmark::{Event, HeadingLevel, Tag, TagEnd};
 
 use super::{MarkdownBlock, MarkdownInline};
 
-pub(super) fn parse_blocks<'a, I>(events: &mut Peekable<I>, stop: Option<TagEnd>) -> Vec<MarkdownBlock>
+pub(super) fn parse_blocks<'a, I>(
+    events: &mut Peekable<I>,
+    stop: Option<TagEnd>,
+) -> Vec<MarkdownBlock>
 where
     I: Iterator<Item = Event<'a>>,
 {

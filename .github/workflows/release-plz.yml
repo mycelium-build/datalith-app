@@ -1,0 +1,76 @@
+name: Prepare release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  release-plz:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Create automation token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Release or prepare next release
+        id: release-plz
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          config: release-plz.toml
+          version: "0.3.160"
+
+      - name: Tag release candidate
+        if: steps.release-plz.outputs.prs_created == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_PR: ${{ steps.release-plz.outputs.pr }}
+          RC_NUMBER: ${{ github.run_number }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const pr = JSON.parse(process.env.RELEASE_PR)
+            const version = pr.releases[0].version
+            const tag = `v${version}-rc.${process.env.RC_NUMBER}`
+            const branch = await github.rest.git.getRef({
+              ...context.repo,
+              ref: `heads/${pr.head_branch}`,
+            })
+
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
+              core.info(`${tag} already exists`)
+            } catch (error) {
+              if (error.status !== 404) throw error
+              await github.rest.git.createRef({
+                ...context.repo,
+                ref: `refs/tags/${tag}`,
+                sha: branch.data.object.sha,
+              })
+            }

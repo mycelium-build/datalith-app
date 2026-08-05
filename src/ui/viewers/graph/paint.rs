@@ -1,6 +1,6 @@
 use gpui::{
-    Bounds, BorderStyle, Corners, Edges, Hsla, PathBuilder, Pixels, Point, Rgba, Window, point,
-    px, quad, size,
+    BorderStyle, Bounds, Corners, Edges, Hsla, PathBuilder, Pixels, Point, Rgba, Window, point, px,
+    quad, size,
 };
 use gpui_component::ActiveTheme;
 

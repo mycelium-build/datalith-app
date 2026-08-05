@@ -84,8 +84,7 @@ impl FilterCompiler {
                 match (comparison, value) {
                     (CatalogComparison::Equal, CatalogScalar::Null) => {
                         self.push_path(&path, 2);
-                        "(json_type(metadata, ?) IS NULL OR json_type(metadata, ?) = 'null')"
-                            .into()
+                        "(json_type(metadata, ?) IS NULL OR json_type(metadata, ?) = 'null')".into()
                     }
                     (CatalogComparison::NotEqual, CatalogScalar::Null) => {
                         self.push_path(&path, 2);
