@@ -422,8 +422,7 @@ impl CatalogDatabase {
             // Optimization: push document filter into SQL instead of fetching all links
             let placeholders: String = selected_paths
                 .iter()
-                .enumerate()
-                .map(|(i, _)| format!("?{}", i + 1))
+                .map(|_| "?")
                 .collect::<Vec<_>>()
                 .join(",");
             let target_placeholders: String = selected_paths

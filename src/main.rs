@@ -19,6 +19,24 @@ fn main() {
             app::keymap::register(cx);
             app::menus::install(cx);
 
-            ui::window::open_initial(cx, app::settings::snapshot().last_vault);
+            let docs_vault = match app::docs::ensure_docs_vault() {
+                Ok(outcome) => Some(outcome),
+                Err(error) => {
+                    eprintln!("Failed to seed docs Vault: {error:#}");
+                    None
+                }
+            };
+            let (initial_vault, initial_tabs) = match docs_vault {
+                Some(outcome) if outcome.first_run => {
+                    let tabs = ["Welcome.md", "Tour.todotxt", "Basics.md"]
+                        .into_iter()
+                        .map(|name| outcome.docs_vault.join(name))
+                        .collect();
+                    (Some(outcome.docs_vault), tabs)
+                }
+                _ => (app::settings::snapshot().last_vault, Vec::new()),
+            };
+
+            ui::window::open_initial(cx, initial_vault, initial_tabs);
         });
 }

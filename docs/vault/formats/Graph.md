@@ -1,3 +1,7 @@
+---
+category: format
+---
+
 # Graph Definitions
 
 A `.graph` file is a YAML **Graph Definition**. Opening it shows a derived **Graph View**; use the Edit/View toggle to edit its YAML source.
@@ -78,7 +82,7 @@ Omitting `filters`, using `filters: []`, or using an empty `and` selects every M
 
 Expressions support `==`, `!=`, `>`, `>=`, `<`, and `<=`. Values may be strings, numbers, booleans, or `null`. Lists support `.contains(...)`, and `file.inFolder(...)` includes descendant folders.
 
-Frontmatter properties use a shorthand such as `status`, an explicit path such as `note.project.status`, or bracket access such as `note["project status"]`. File properties are `file.name`, `file.ext`, `file.path`, and `file.folder`.
+Properties use a shorthand such as `status`, an explicit path such as `note.project.status`, or bracket access such as `note["project status"]`. File properties are `file.name`, `file.ext`, `file.path`, and `file.folder`.
 
 String comparisons are case-sensitive. Missing properties compare equal to `null`, unequal to non-null values, and false for ordering and containment operations.
 
