@@ -307,9 +307,9 @@ impl QuadTree {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::model::{INITIAL_LAYOUT_REFERENCE_NODES, INITIAL_LAYOUT_RADIUS};
+    use super::super::model::{INITIAL_LAYOUT_RADIUS, INITIAL_LAYOUT_REFERENCE_NODES};
     use super::super::snapshot::make_snapshot;
+    use super::*;
 
     #[test]
     fn simulation_limits_acceleration_and_velocity() {
@@ -329,8 +329,8 @@ mod tests {
 
     #[test]
     fn linked_nodes_converge_without_non_finite_motion() {
-        use std::path::PathBuf;
         use crate::document::graph::{GraphEdge, GraphNode, parse_definition};
+        use std::path::PathBuf;
 
         let definition = parse_definition("").unwrap();
         let nodes = ["one.md", "two.md"].into_iter().map(|path| GraphNode {

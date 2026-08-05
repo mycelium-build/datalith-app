@@ -105,8 +105,8 @@ fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::parse_markdown;
+    use super::*;
 
     #[test]
     fn parses_typed_frontmatter_properties() {
