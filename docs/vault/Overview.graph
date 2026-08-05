@@ -1,0 +1,42 @@
+filters: []
+
+groups:
+  - name: Welcome
+    filters: 'category == "welcome"'
+    node:
+      color: 'oklch(72% 0.15 55)'
+      size: 1.15
+  - name: Guides
+    filters: 'category == "guide"'
+    node:
+      color: 'oklch(70% 0.15 250)'
+  - name: References
+    filters: 'category == "reference"'
+    node:
+      color: 'oklch(70% 0.15 160)'
+  - name: Formats
+    filters: 'category == "format"'
+    node:
+      color: 'oklch(70% 0.15 320)'
+
+display:
+  node:
+    size: 1.0
+    border:
+      color: 'oklch(60% 0.05 250 / 40%)'
+      width: 1.0
+    hover:
+      color: 'oklch(78% 0.12 55)'
+      size: 1.25
+  edge:
+    color: 'oklch(70% 0.05 250 / 45%)'
+    width: 1.0
+  orphan:
+    show: true
+
+physics:
+  repulsion:
+    strength: 1024.0
+  link:
+    strength: 0.04
+    distance: 128.0
