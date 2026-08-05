@@ -15,7 +15,7 @@ use crate::document::todo_txt::parse_date;
 
 use super::TodoTxtState;
 use super::constants::*;
-use super::priority::{PriorityTrigger, PRIORITY_VALUES};
+use super::priority::{PRIORITY_VALUES, PriorityTrigger};
 
 impl TodoTxtState {
     pub(super) fn render_task_row(
@@ -262,7 +262,11 @@ impl TodoTxtState {
         row.into_any()
     }
 
-    pub(super) fn render_priority_picker(&self, flat_index: usize, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_priority_picker(
+        &self,
+        flat_index: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let entity = cx.entity();
 
         let trigger = PriorityTrigger {

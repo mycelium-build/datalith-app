@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::*;
+use gpui_component::VirtualListScrollHandle;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::select::SelectState;
-use gpui_component::VirtualListScrollHandle;
 
 use crate::document::handler::ReloadOutcome;
 use crate::document::todo_txt::{FocusTarget, TodoTxtWorkspace, parse_date};
@@ -39,7 +39,10 @@ impl Focusable for TodoTxtState {
 }
 
 impl TodoTxtState {
-    pub(super) fn reload_from_disk(&mut self, cx: &mut Context<Self>) -> anyhow::Result<ReloadOutcome> {
+    pub(super) fn reload_from_disk(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<ReloadOutcome> {
         let outcome = self.workspace.reload_from_disk()?;
         if outcome == ReloadOutcome::Reloaded {
             self.clear_row_inputs();

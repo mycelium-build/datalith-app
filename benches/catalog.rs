@@ -11,12 +11,12 @@ mod document {
 mod vault;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 use fixtures::generator::{VaultConfig, generate_vault};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 use vault::catalog::VaultCatalog;
-use document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
 fn md_file_types() -> RegisteredFileTypes {
     RegisteredFileTypes::new([(
