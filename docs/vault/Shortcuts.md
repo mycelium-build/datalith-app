@@ -32,7 +32,7 @@ category: reference
 | --- | --- |
 | `⌘T` | New tab |
 | `⌘W` | Close tab |
-| `⌘1`–`⌘9` | Select tab 1–9 |
+| `⌘1`-`⌘9` | Select tab 1-9 |
 | `⌘E` | Toggle edit / view mode |
 
 ## Appearance

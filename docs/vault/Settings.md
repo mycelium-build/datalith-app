@@ -4,7 +4,7 @@ category: reference
 
 # Settings
 
-Open settings from **Navigate → Settings**. There is one page today: **Appearance**.
+Open settings from **Navigate → Settings**.
 
 ## Theme
 

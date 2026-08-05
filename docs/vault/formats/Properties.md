@@ -32,4 +32,4 @@ A file that does not start with `---` simply has no properties. Malformed YAML i
 
 ## What properties are used for
 
-Properties are data, not decoration: they power data-driven views. Graph filters and groups reference them by name, e.g. `category == "guide"`, to select or color nodes. See [[Graph]] and [[Overview.graph]] in this Vault.
+Properties are data, they power all data-driven views, like [[Graph|graph]].
