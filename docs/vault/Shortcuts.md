@@ -16,6 +16,15 @@ category: reference
 | `⌘⇧E` | Open in Explorer / Finder |
 | `⌘L` | Copy path |
 
+## Sidebar
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘0` | Focus sidebar |
+| `↩` | Expand/collapse folder, or open file |
+| `⌘↩` | Open file in a new tab |
+| `↑` / `↓` | Move through the file tree |
+
 ## Navigate
 
 | Shortcut | Action |
