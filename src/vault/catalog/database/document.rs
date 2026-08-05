@@ -280,10 +280,6 @@ impl CatalogDatabase {
                     .await?;
             }
 
-            // Unchanged documents are kept in `documents` for path bookkeeping and
-            // synchronization notifications, but must not be rewritten. Their links
-            // are already catalogued; deleting and reinserting them with the empty
-            // metadata-only link list would erase those links.
             for chunk in documents[..changed_document_count].chunks(BATCH_SIZE) {
                 // batch document upserts
                 let mut value_groups = Vec::new();
