@@ -165,4 +165,4 @@ Strengths must be finite, non-negative numbers; setting a strength to zero disab
 
 ## Limits
 
-The default result limit is 2,000 nodes and the hard safety ceiling is 10,000. Datalith reports an error instead of silently truncating a graph.
+A Graph Definition has no default result limit; `limit` only applies when explicitly set, up to the hard safety ceiling of 50,000 nodes. Datalith reports an error instead of silently truncating a graph.

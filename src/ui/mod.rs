@@ -72,6 +72,7 @@ pub(crate) struct DatalithView {
     pub(crate) vault_catalog: Option<VaultCatalog>,
     pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogEvent>>,
     vault_load_generation: u64, // prevent bug when switching vault
+    vault_db_ready_notified: bool,
     catalog_load_task: Task<()>,
     catalog_poll_task: Task<()>,
     pub(crate) pending_external_updates: Vec<PathBuf>,
@@ -176,6 +177,7 @@ impl DatalithView {
             vault_catalog: None,
             catalog_updates: None,
             vault_load_generation: 0,
+            vault_db_ready_notified: false,
             catalog_load_task: Task::ready(()),
             catalog_poll_task: Task::ready(()),
             pending_external_updates: Vec::new(),
@@ -216,6 +218,7 @@ impl DatalithView {
         self.vault_catalog = None;
         self.catalog_updates = None;
         self.catalog_poll_task = Task::ready(());
+        self.vault_db_ready_notified = false;
 
         let items = build_file_items_with_expanded(&path, &self.expanded_tree_ids);
         self.tree_state.update(cx, |state, cx| {
@@ -305,8 +308,11 @@ impl DatalithView {
                                             });
                                         }
                                     }
-                                    view.pending_notifications
-                                        .push(notifications::vault_db_ready());
+                                    if !view.vault_db_ready_notified {
+                                        view.vault_db_ready_notified = true;
+                                        view.pending_notifications
+                                            .push(notifications::vault_db_ready());
+                                    }
                                     view.refresh_tree(cx);
                                     structure_changed = false;
                                 }

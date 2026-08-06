@@ -132,21 +132,21 @@ impl Focusable for FileHandler {
 }
 
 impl Render for FileHandler {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         let content = match self.mode {
             ViewMode::Edit => {
                 if let Some(ref editor) = self.editor {
                     editor.render(cx)
                 } else if let Some(ref viewer) = self.viewer {
-                    viewer.render(entity, cx)
+                    viewer.render(entity, window, cx)
                 } else {
                     div().flex_1().into_any_element()
                 }
             }
             ViewMode::View => {
                 if let Some(ref viewer) = self.viewer {
-                    viewer.render(entity, cx)
+                    viewer.render(entity, window, cx)
                 } else if let Some(ref editor) = self.editor {
                     editor.render(cx)
                 } else {

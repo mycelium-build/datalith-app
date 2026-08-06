@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use pulldown_cmark::{Event, HeadingLevel, Tag, TagEnd};
 
-use super::{MarkdownBlock, MarkdownInline};
+use super::{ListItem, MarkdownBlock, MarkdownInline};
 
 pub(super) fn parse_blocks<'a, I>(
     events: &mut Peekable<I>,
@@ -35,7 +35,17 @@ where
                 while let Some(next) = events.next() {
                     match next {
                         Event::Start(Tag::Item) => {
-                            items.push(parse_blocks(events, Some(TagEnd::Item)))
+                            let task = match events.peek() {
+                                Some(Event::TaskListMarker(checked)) => Some(*checked),
+                                _ => None,
+                            };
+                            if task.is_some() {
+                                events.next();
+                            }
+                            items.push(ListItem {
+                                task,
+                                blocks: parse_blocks(events, Some(TagEnd::Item)),
+                            });
                         }
                         Event::End(TagEnd::List(_)) => break,
                         _ => {}
@@ -64,6 +74,29 @@ where
                 blocks.push(MarkdownBlock::Code { language, content });
             }
             Event::Rule => blocks.push(MarkdownBlock::Rule),
+            Event::Start(Tag::Table(_)) => {
+                let mut headers = Vec::new();
+                let mut rows = Vec::new();
+                while let Some(event) = events.next() {
+                    match event {
+                        Event::Start(Tag::TableHead) => {
+                            while let Some(inner) = events.next() {
+                                match inner {
+                                    Event::Start(Tag::TableCell) => {
+                                        headers.push(parse_inlines(events, TagEnd::TableCell));
+                                    }
+                                    Event::End(TagEnd::TableHead) => break,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Event::Start(Tag::TableRow) => rows.push(parse_table_cells(events)),
+                        Event::End(TagEnd::Table) => break,
+                        _ => {}
+                    }
+                }
+                blocks.push(MarkdownBlock::Table { headers, rows });
+            }
             Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
                 append_inline(&mut blocks, MarkdownInline::Text(text.to_string()))
             }
@@ -118,6 +151,21 @@ fn append_inline(blocks: &mut Vec<MarkdownBlock>, inline: MarkdownInline) {
     } else {
         blocks.push(MarkdownBlock::Paragraph(vec![inline]));
     }
+}
+
+fn parse_table_cells<'a, I>(events: &mut Peekable<I>) -> Vec<Vec<MarkdownInline>>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    let mut cells = Vec::new();
+    while let Some(event) = events.next() {
+        match event {
+            Event::Start(Tag::TableCell) => cells.push(parse_inlines(events, TagEnd::TableCell)),
+            Event::End(TagEnd::TableRow) => break,
+            _ => {}
+        }
+    }
+    cells
 }
 
 fn parse_inlines<'a, I>(events: &mut Peekable<I>, stop: TagEnd) -> Vec<MarkdownInline>

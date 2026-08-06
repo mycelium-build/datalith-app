@@ -2,15 +2,96 @@ use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
+fn fence_at(line: &str) -> Option<(char, usize)> {
+    let trimmed = line.trim_start();
+    let c = trimmed.chars().next()?;
+    if c != '`' && c != '~' {
+        return None;
+    }
+    let len = trimmed.chars().take_while(|&ch| ch == c).count();
+    (len >= 3).then_some((c, len))
+}
+
 pub(super) fn convert_wiki_links(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
+    let mut fence: Option<(char, usize)> = None;
 
-    while let Some(c) = chars.next() {
-        if c == '!' && chars.peek() == Some(&'[') {
-            chars.next(); // consume first '['
-            if chars.peek() == Some(&'[') {
-                chars.next(); // consume second '['
+    for line in text.split_inclusive('\n') {
+        let (content, newline) = match line.strip_suffix('\n') {
+            Some(content) => (content, "\n"),
+            None => (line, ""),
+        };
+
+        if let Some((fence_char, fence_len)) = fence {
+            if let Some((c, len)) = fence_at(content)
+                && c == fence_char
+                && len >= fence_len
+            {
+                fence = None;
+            }
+            result.push_str(line);
+            continue;
+        } else if let Some((c, len)) = fence_at(content) {
+            fence = Some((c, len));
+            result.push_str(line);
+            continue;
+        }
+
+        let mut inline = false;
+        let mut chars = content.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '`' {
+                inline = !inline;
+                result.push(c);
+                continue;
+            }
+            if inline {
+                result.push(c);
+                continue;
+            }
+            if c == '!' && chars.peek() == Some(&'[') {
+                chars.next(); // consume first '['
+                if chars.peek() == Some(&'[') {
+                    chars.next(); // consume second '['
+                    let mut link_text = String::new();
+                    let mut found_end = false;
+                    loop {
+                        match chars.next() {
+                            Some(']') => {
+                                if chars.peek() == Some(&']') {
+                                    chars.next();
+                                    found_end = true;
+                                    break;
+                                } else {
+                                    link_text.push(']');
+                                }
+                            }
+                            Some(ch) => link_text.push(ch),
+                            None => break,
+                        }
+                    }
+                    if found_end {
+                        if let Some(pipe_pos) = link_text.find('|') {
+                            let target = &link_text[..pipe_pos];
+                            let display = &link_text[pipe_pos + 1..];
+                            let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
+                            result.push_str(&format!("![{}]({})", display, encoded));
+                        } else {
+                            let encoded = utf8_percent_encode(&link_text, ENCODE_IN_LINK);
+                            result.push_str(&format!("![{}]({})", link_text, encoded));
+                        }
+                    } else {
+                        result.push('!');
+                        result.push_str("[[");
+                        result.push_str(&link_text);
+                    }
+                } else {
+                    // ![ but not ![[  — regular markdown image syntax, put back
+                    result.push('!');
+                    result.push('[');
+                }
+            } else if c == '[' && chars.peek() == Some(&'[') {
+                chars.next();
                 let mut link_text = String::new();
                 let mut found_end = false;
                 loop {
@@ -30,62 +111,23 @@ pub(super) fn convert_wiki_links(text: &str) -> String {
                 }
                 if found_end {
                     if let Some(pipe_pos) = link_text.find('|') {
-                        let display = &link_text[..pipe_pos];
-                        let target = &link_text[pipe_pos + 1..];
+                        let target = &link_text[..pipe_pos];
+                        let display = &link_text[pipe_pos + 1..];
                         let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
-                        result.push_str(&format!("![{}]({})", display, encoded));
+                        result.push_str(&format!("[{}]({})", display, encoded));
                     } else {
                         let encoded = utf8_percent_encode(&link_text, ENCODE_IN_LINK);
-                        result.push_str(&format!("![{}]({})", link_text, encoded));
+                        result.push_str(&format!("[{}]({})", link_text, encoded));
                     }
                 } else {
-                    result.push('!');
                     result.push_str("[[");
                     result.push_str(&link_text);
                 }
             } else {
-                // ![ but not ![[  — regular markdown image syntax, put back
-                result.push('!');
-                result.push('[');
+                result.push(c);
             }
-        } else if c == '[' && chars.peek() == Some(&'[') {
-            chars.next();
-            let mut link_text = String::new();
-            let mut found_end = false;
-
-            loop {
-                match chars.next() {
-                    Some(']') => {
-                        if chars.peek() == Some(&']') {
-                            chars.next();
-                            found_end = true;
-                            break;
-                        } else {
-                            link_text.push(']');
-                        }
-                    }
-                    Some(ch) => link_text.push(ch),
-                    None => break,
-                }
-            }
-
-            if found_end {
-                if let Some(pipe_pos) = link_text.find('|') {
-                    let display = &link_text[..pipe_pos];
-                    let target = &link_text[pipe_pos + 1..];
-                    let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
-                    result.push_str(&format!("[{}]({})", display, encoded));
-                } else {
-                    let encoded = utf8_percent_encode(&link_text, ENCODE_IN_LINK);
-                    result.push_str(&format!("[{}]({})", link_text, encoded));
-                }
-            } else {
-                result.push_str("[[");
-                result.push_str(&link_text);
-            }
-        } else {
-            result.push(c);
         }
+        result.push_str(newline);
     }
 
     result
@@ -139,12 +181,8 @@ pub(crate) fn find_link_at_offset(text: &str, offset: usize) -> Option<String> {
                 let end = pos + 2 + end + 2;
                 if offset >= pos && offset < end {
                     let inner = &text[pos + 2..end - 2];
-                    let url = if let Some(pipe) = inner.find('|') {
-                        &inner[pipe + 1..]
-                    } else {
-                        inner
-                    };
-                    return Some(url.to_string());
+                    let url = inner.split(['|', '#']).next().unwrap_or(inner);
+                    return Some(url.trim().to_string());
                 }
                 pos = end;
                 continue;
@@ -177,4 +215,32 @@ fn find_matching_paren(text: &str, open_pos: usize) -> Option<usize> {
         pos += 1;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_wiki_link_alias_to_display_and_target() {
+        let converted = convert_wiki_links("See [[not this|but this]] and [[Page]]");
+        assert_eq!(converted, "See [but this](not%20this) and [Page](Page)");
+    }
+
+    #[test]
+    fn leaves_wiki_links_inside_code_blocks_untouched() {
+        let converted =
+            convert_wiki_links("Text [[Page]]\n```\n[[code]]\n```\n`[[inline]]` and [[Page]]");
+        assert_eq!(
+            converted,
+            "Text [Page](Page)\n```\n[[code]]\n```\n`[[inline]]` and [Page](Page)"
+        );
+    }
+
+    #[test]
+    fn finds_target_before_pipe_in_wiki_link() {
+        let text = "[[not this|but this]]";
+        let url = find_link_at_offset(text, 5).unwrap();
+        assert_eq!(url, "not this");
+    }
 }

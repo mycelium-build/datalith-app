@@ -207,7 +207,7 @@ display:
                 .to_string()
                 .contains("unknown field")
         );
-        assert!(parse_definition("limit: 10001").is_err());
+        assert!(parse_definition("limit: 50001").is_err());
         assert!(parse_definition("groups:\n  - name: Empty\n    filters: []").is_err());
         assert!(
             parse_definition("groups:\n  - name: Empty\n    filters: []\n    node: {}").is_err()

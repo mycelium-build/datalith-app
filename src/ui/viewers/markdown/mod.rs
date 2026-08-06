@@ -6,8 +6,11 @@ use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
+use gpui_component::ChildElement;
+use gpui_component::checkbox::Checkbox;
 use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
+use gpui_component::table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow};
 use percent_encoding::percent_decode_str;
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
@@ -74,7 +77,12 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    pub(crate) fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
+    pub(crate) fn render(
+        &self,
+        handler: Entity<FileHandler>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         let base_font_size = BASE_FONT_SIZE as f32;
         if content.is_empty() {
@@ -90,6 +98,7 @@ impl MarkdownViewer {
 
         let document = parse_markdown(&content);
         let mut elements = Vec::new();
+        let mut element_id = 0usize;
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
@@ -98,7 +107,14 @@ impl MarkdownViewer {
                 cx,
             ));
         }
-        elements.extend(self.render_blocks(&document.blocks, 0, handler, cx));
+        elements.extend(self.render_blocks(
+            &document.blocks,
+            0,
+            &mut element_id,
+            handler,
+            window,
+            cx,
+        ));
 
         div()
             .id("markdown-preview")
@@ -116,12 +132,29 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
+        element_id: &mut usize,
         handler: Entity<FileHandler>,
+        window: &mut Window,
         cx: &mut App,
     ) -> Vec<AnyElement> {
         blocks
             .iter()
-            .map(|block| self.render_block(block, list_depth, handler.clone(), cx))
+            .enumerate()
+            .map(|(index, block)| {
+                let is_last = index + 1 == blocks.len();
+                let next_is_paragraph =
+                    matches!(blocks.get(index + 1), Some(MarkdownBlock::Paragraph(_)));
+                self.render_block(
+                    block,
+                    list_depth,
+                    is_last,
+                    next_is_paragraph,
+                    element_id,
+                    handler.clone(),
+                    window,
+                    cx,
+                )
+            })
             .collect()
     }
 
@@ -129,7 +162,11 @@ impl MarkdownViewer {
         &self,
         block: &MarkdownBlock,
         list_depth: usize,
+        is_last: bool,
+        next_is_paragraph: bool,
+        element_id: &mut usize,
         handler: Entity<FileHandler>,
+        window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let base_font_size = BASE_FONT_SIZE as f32;
@@ -155,7 +192,13 @@ impl MarkdownViewer {
                 .min_w_0()
                 .flex()
                 .flex_wrap()
-                .mb_2()
+                .mb(px(if is_last {
+                    0.0
+                } else if list_depth > 0 && !next_is_paragraph {
+                    0.0
+                } else {
+                    MD_PARAGRAPH_MARGIN
+                }))
                 .children(self.render_inlines(content, InlineStyle::default(), handler, cx))
                 .into_any_element(),
             MarkdownBlock::BlockQuote(blocks) => div()
@@ -165,35 +208,106 @@ impl MarkdownViewer {
                 .border_l(px(MD_BLOCKQUOTE_BORDER))
                 .border_color(cx.theme().border)
                 .text_color(cx.theme().muted_foreground)
-                .children(self.render_blocks(blocks, list_depth, handler, cx))
+                .children(self.render_blocks(blocks, list_depth, element_id, handler, window, cx))
                 .into_any_element(),
             MarkdownBlock::List { start, items } => {
                 let ordered = start.is_some();
                 let first = start.unwrap_or(1);
-                let rows = items.iter().enumerate().map(|(index, blocks)| {
-                    let marker = if ordered {
-                        format!("{}. ", first + index as u64)
+                let rows = items.iter().enumerate().map(|(index, item)| {
+                    let marker = if let Some(checked) = item.task {
+                        let id = *element_id;
+                        *element_id += 1;
+                        div()
+                            .flex()
+                            .items_center()
+                            .flex_shrink_0()
+                            .h(px(base_font_size * MD_LINE_HEIGHT))
+                            .mr_1()
+                            .child(
+                                Checkbox::new(ElementId::NamedInteger(
+                                    "md-task-check".into(),
+                                    id as u64,
+                                ))
+                                .checked(checked),
+                            )
+                            .into_any_element()
+                    } else if ordered {
+                        div()
+                            .child(format!("{}. ", first + index as u64))
+                            .into_any_element()
                     } else {
-                        "\u{2022} ".to_string()
+                        div().child("\u{2022} ".to_string()).into_any_element()
                     };
                     div()
                         .flex()
                         .items_start()
                         .w_full()
                         .min_w_0()
-                        .child(div().flex_shrink_0().child(format!(
-                            "{}{}",
-                            MD_LIST_INDENT.repeat(list_depth),
-                            marker
-                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .flex_shrink_0()
+                                .child(MD_LIST_INDENT.repeat(list_depth))
+                                .child(marker),
+                        )
                         .child(div().flex_1().min_w_0().children(self.render_blocks(
-                            blocks,
+                            &item.blocks,
                             list_depth + 1,
+                            element_id,
                             handler.clone(),
+                            window,
                             cx,
                         )))
                 });
-                div().w_full().children(rows).mb_2().into_any_element()
+                div()
+                    .w_full()
+                    .children(rows)
+                    .mb(px(if list_depth > 0 {
+                        0.0
+                    } else {
+                        MD_PARAGRAPH_MARGIN
+                    }))
+                    .into_any_element()
+            }
+            MarkdownBlock::Table { headers, rows } => {
+                let header_style = InlineStyle {
+                    bold: true,
+                    ..InlineStyle::default()
+                };
+                let header_row = TableRow::new().children(headers.iter().map(|cell| {
+                    TableHead::new().children(self.render_inlines(
+                        cell,
+                        header_style,
+                        handler.clone(),
+                        cx,
+                    ))
+                }));
+                let body = TableBody::new().children(rows.iter().map(|row| {
+                    TableRow::new().children(row.iter().map(|cell| {
+                        TableCell::new().children(self.render_inlines(
+                            cell,
+                            InlineStyle::default(),
+                            handler.clone(),
+                            cx,
+                        ))
+                    }))
+                }));
+                let table_ix = *element_id;
+                *element_id += 1;
+                Table::new()
+                    .with_ix(table_ix)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(px(MD_CODE_BLOCK_RADIUS))
+                    .mb(px(if list_depth > 0 {
+                        0.0
+                    } else {
+                        MD_PARAGRAPH_MARGIN
+                    }))
+                    .child(TableHeader::new().child(header_row))
+                    .child(body)
+                    .into_any_element()
             }
             MarkdownBlock::Code { language, content } => {
                 let label = language.as_ref().map(|language| {
@@ -231,9 +345,26 @@ impl MarkdownViewer {
         cx: &mut App,
     ) -> Vec<AnyElement> {
         let mut elements = Vec::new();
+        let mut text = String::new();
+        let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
         let mut index = 0;
+
+        fn flush(
+            elements: &mut Vec<AnyElement>,
+            text: &mut String,
+            highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+        ) {
+            if text.is_empty() {
+                return;
+            }
+            let styled = StyledText::new(SharedString::from(std::mem::take(text)))
+                .with_highlights(std::mem::take(highlights));
+            elements.push(div().min_w_0().child(styled).into_any_element());
+        }
+
         while index < inlines.len() {
             if let Some(end) = adjacent_image_run_end(inlines, index) {
+                flush(&mut elements, &mut text, &mut highlights);
                 let images = inlines[index..end].iter().filter_map(|inline| {
                     let MarkdownInline::Image { url, alt } = inline else {
                         return None;
@@ -253,74 +384,106 @@ impl MarkdownViewer {
                 continue;
             }
 
-            let inline = &inlines[index];
-            elements.push(match inline {
-                MarkdownInline::Text(text) => render_styled_text(text, style, cx),
-                MarkdownInline::Code(code) => render_styled_text(
-                    code,
-                    InlineStyle {
-                        code: true,
-                        ..style
-                    },
-                    cx,
-                ),
-                MarkdownInline::Strong(children) => self.wrap_inlines(
+            match &inlines[index] {
+                MarkdownInline::Link { url, content } => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    let link_url = url.clone();
+                    let handler_clone = handler.clone();
+                    elements.push(
+                        div()
+                            .id(SharedString::from(format!("link-{url}")))
+                            .flex()
+                            .text_color(cx.theme().primary)
+                            .underline()
+                            .cursor_pointer()
+                            .on_click(move |event: &ClickEvent, _window, cx| {
+                                handler_clone.update(cx, |_, cx| {
+                                    cx.emit(FileHandlerEvent::LinkClicked(
+                                        link_url.clone(),
+                                        event.modifiers().platform,
+                                    ));
+                                });
+                            })
+                            .children(self.render_inlines(content, style, handler.clone(), cx))
+                            .into_any_element(),
+                    );
+                }
+                MarkdownInline::Image { url, alt } => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    elements.push(self.render_image(url, alt, false, cx));
+                }
+                MarkdownInline::Break => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    elements.push(div().w_full().into_any_element());
+                }
+                _ => {
+                    self.append_inline_text(
+                        std::slice::from_ref(&inlines[index]),
+                        style,
+                        cx,
+                        &mut text,
+                        &mut highlights,
+                    );
+                }
+            }
+            index += 1;
+        }
+        flush(&mut elements, &mut text, &mut highlights);
+        elements
+    }
+
+    fn append_inline_text(
+        &self,
+        inlines: &[MarkdownInline],
+        style: InlineStyle,
+        cx: &App,
+        text: &mut String,
+        highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+    ) {
+        for inline in inlines {
+            match inline {
+                MarkdownInline::Text(value) => {
+                    let start = text.len();
+                    text.push_str(value);
+                    highlights.push((start..text.len(), inline_highlight(style, cx)));
+                }
+                MarkdownInline::Code(value) => {
+                    let start = text.len();
+                    text.push_str(value);
+                    highlights.push((
+                        start..text.len(),
+                        inline_highlight(
+                            InlineStyle {
+                                code: true,
+                                ..style
+                            },
+                            cx,
+                        ),
+                    ));
+                }
+                MarkdownInline::Strong(children) => self.append_inline_text(
                     children,
                     InlineStyle {
                         bold: true,
                         ..style
                     },
-                    handler.clone(),
                     cx,
+                    text,
+                    highlights,
                 ),
-                MarkdownInline::Emphasis(children) => self.wrap_inlines(
+                MarkdownInline::Emphasis(children) => self.append_inline_text(
                     children,
                     InlineStyle {
                         italic: true,
                         ..style
                     },
-                    handler.clone(),
                     cx,
+                    text,
+                    highlights,
                 ),
-                MarkdownInline::Link { url, content } => {
-                    let link_url = url.clone();
-                    let handler_clone = handler.clone();
-                    div()
-                        .id(SharedString::from(format!("link-{url}")))
-                        .flex()
-                        .text_color(cx.theme().primary)
-                        .underline()
-                        .cursor_pointer()
-                        .on_click(move |event: &ClickEvent, _window, cx| {
-                            handler_clone.update(cx, |_, cx| {
-                                cx.emit(FileHandlerEvent::LinkClicked(
-                                    link_url.clone(),
-                                    event.modifiers().platform,
-                                ));
-                            });
-                        })
-                        .children(self.render_inlines(content, style, handler.clone(), cx))
-                        .into_any_element()
-                }
-                MarkdownInline::Image { url, alt } => self.render_image(url, alt, false, cx),
-                MarkdownInline::Break => div().w_full().into_any_element(),
-            });
-            index += 1;
+                _ => {}
+            }
         }
-        elements
-    }
-
-    fn wrap_inlines(
-        &self,
-        inlines: &[MarkdownInline],
-        style: InlineStyle,
-        handler: Entity<FileHandler>,
-        cx: &mut App,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .children(self.render_inlines(inlines, style, handler, cx))
-            .into_any_element()
     }
 }
 
@@ -345,7 +508,7 @@ fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -> Option<us
     (image_count > 1).then_some(index)
 }
 
-fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
+fn inline_highlight(style: InlineStyle, cx: &App) -> HighlightStyle {
     let mut highlight = HighlightStyle::default();
     if style.bold {
         highlight.font_weight = Some(FontWeight::BOLD);
@@ -356,14 +519,7 @@ fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
     if style.code {
         highlight.background_color = Some(cx.theme().muted);
     }
-    let styled = StyledText::new(SharedString::from(text.to_string())).with_highlights(vec![(
-        Range {
-            start: 0,
-            end: text.len(),
-        },
-        highlight,
-    )]);
-    div().min_w_0().child(styled).into_any_element()
+    highlight
 }
 
 #[cfg(test)]
