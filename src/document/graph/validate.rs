@@ -1,13 +1,13 @@
 use anyhow::{Result, anyhow, bail};
 
-use super::types::*;
+use super::types::{BorderStyle, GroupNodeStyle, HoverStyle, NodeStyle};
 use super::{GraphDefinition, HARD_NODE_LIMIT};
 
-pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
+pub fn parse_definition(source: &str) -> Result<GraphDefinition> {
     let definition: GraphDefinition = if source.trim().is_empty() {
         GraphDefinition::default()
     } else {
-        yaml_serde::from_str(source).map_err(|error| anyhow!(format_yaml_error(error)))?
+        yaml_serde::from_str(source).map_err(|error| anyhow!(format_yaml_error(&error)))?
     };
     if !(1..=HARD_NODE_LIMIT).contains(&definition.limit) {
         bail!("limit must be between 1 and {HARD_NODE_LIMIT}");
@@ -105,7 +105,7 @@ fn validate_positive(value: f32, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn format_yaml_error(error: yaml_serde::Error) -> String {
+fn format_yaml_error(error: &yaml_serde::Error) -> String {
     error.location().map_or_else(
         || error.to_string(),
         |location| {
@@ -132,6 +132,14 @@ fn validate_range(
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use super::super::color::parse_color;
     use super::super::matches_definition;
     use super::*;
@@ -141,7 +149,7 @@ mod tests {
     #[test]
     fn parses_approved_definition_and_filters_typed_properties() {
         let definition = parse_definition(
-            r##"
+            r#"
 limit: 2000
 filters:
   and:
@@ -168,7 +176,7 @@ display:
     show: false
   edge:
     arrow: true
-"##,
+"#,
         )
         .unwrap();
         let properties: Value =
@@ -182,7 +190,8 @@ display:
         assert!(definition.display.edge.arrow);
         assert!(definition.display.node.propertional);
         let group_node = &definition.groups[0].node;
-        assert_eq!(group_node.color.unwrap().alpha, 128.0 / 255.0);
+        let alpha = group_node.color.unwrap().alpha;
+        assert!((alpha - 128.0 / 255.0).abs() <= 1e-6);
         assert_eq!(group_node.size, Some(1.25));
         assert_eq!(group_node.border.width, Some(1.5));
         assert_eq!(group_node.hover.size, Some(1.5));
@@ -219,14 +228,15 @@ display:
                 .node
                 .propertional
         );
-        assert_eq!(parse_color("#00000000").unwrap().alpha, 0.0);
+        let alpha = parse_color("#00000000").unwrap().alpha;
+        assert!((alpha - 0.0).abs() <= 1e-6);
         assert!(parse_color("rgb(300 0 0)").is_err());
     }
 
     #[test]
     fn parses_node_interaction_styles_and_physics() {
         let definition = parse_definition(
-            r##"
+            "
 display:
   node:
     border:
@@ -252,7 +262,7 @@ physics:
   link:
     strength: 0.08
     distance: 96.0
-"##,
+",
         )
         .unwrap();
 
@@ -269,16 +279,16 @@ physics:
         assert_eq!(definition.display.node.hover.border.width, Some(2.5));
         assert_eq!(definition.display.orphan.node.border.width, Some(0.5));
         assert_eq!(definition.display.orphan.node.hover.size, Some(1.5));
-        assert_eq!(definition.physics.center.strength, 0.004);
-        assert_eq!(definition.physics.repulsion.strength, 2048.0);
-        assert_eq!(definition.physics.link.strength, 0.08);
-        assert_eq!(definition.physics.link.distance, 96.0);
+        assert!((definition.physics.center.strength - 0.004).abs() <= 1e-6);
+        assert!((definition.physics.repulsion.strength - 2048.0).abs() <= 1e-6);
+        assert!((definition.physics.link.strength - 0.08).abs() <= 1e-6);
+        assert!((definition.physics.link.distance - 96.0).abs() <= 1e-6);
     }
 
     #[test]
     fn parses_edge_hover_style() {
         let definition = parse_definition(
-            r##"
+            "
 display:
   edge:
     hover:
@@ -292,7 +302,7 @@ display:
         both:
           color: '#fedcba'
           width: 4.5
-"##,
+",
         )
         .unwrap();
 
@@ -369,21 +379,20 @@ display:
     fn graph_physics_defaults_match_the_tuned_values() {
         let definition = parse_definition("").unwrap();
 
-        assert_eq!(
-            definition.physics.center.strength,
-            super::super::DEFAULT_CENTER_STRENGTH
+        assert!(
+            (definition.physics.center.strength - super::super::DEFAULT_CENTER_STRENGTH).abs()
+                <= 1e-6
         );
-        assert_eq!(
-            definition.physics.repulsion.strength,
-            super::super::DEFAULT_REPULSION_STRENGTH
+        assert!(
+            (definition.physics.repulsion.strength - super::super::DEFAULT_REPULSION_STRENGTH)
+                .abs()
+                <= 1e-6
         );
-        assert_eq!(
-            definition.physics.link.strength,
-            super::super::DEFAULT_LINK_STRENGTH
+        assert!(
+            (definition.physics.link.strength - super::super::DEFAULT_LINK_STRENGTH).abs() <= 1e-6
         );
-        assert_eq!(
-            definition.physics.link.distance,
-            super::super::DEFAULT_LINK_DISTANCE
+        assert!(
+            (definition.physics.link.distance - super::super::DEFAULT_LINK_DISTANCE).abs() <= 1e-6
         );
     }
 

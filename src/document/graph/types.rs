@@ -4,7 +4,7 @@ use super::color::parse_color;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct GraphDisplay {
+pub struct GraphDisplay {
     pub(crate) node: NodeStyle,
     pub(crate) edge: EdgeStyle,
     pub(crate) orphan: OrphanStyle,
@@ -12,7 +12,7 @@ pub(crate) struct GraphDisplay {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct NodeStyle {
+pub struct NodeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
     pub(crate) propertional: bool,
@@ -34,14 +34,14 @@ impl Default for NodeStyle {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct BorderStyle {
+pub struct BorderStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct HoverStyle {
+pub struct HoverStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
     pub(crate) border: BorderStyle,
@@ -49,7 +49,7 @@ pub(crate) struct HoverStyle {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct EdgeStyle {
+pub struct EdgeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
     pub(crate) arrow: bool,
@@ -58,13 +58,13 @@ pub(crate) struct EdgeStyle {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct EdgeHoverStyle {
+pub struct EdgeHoverStyle {
     pub(crate) direction: EdgeHoverDirectionStyles,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct EdgeHoverDirectionStyles {
+pub struct EdgeHoverDirectionStyles {
     pub(crate) outgoing: DirectionalEdgeHoverStyle,
     pub(crate) incoming: DirectionalEdgeHoverStyle,
     pub(crate) both: DirectionalEdgeHoverStyle,
@@ -72,14 +72,14 @@ pub(crate) struct EdgeHoverDirectionStyles {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct DirectionalEdgeHoverStyle {
+pub struct DirectionalEdgeHoverStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) width: Option<f32>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct OrphanStyle {
+pub struct OrphanStyle {
     pub(crate) show: bool,
     pub(crate) node: NodeStyle,
 }
@@ -95,7 +95,7 @@ impl Default for OrphanStyle {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct GroupNodeStyle {
+pub struct GroupNodeStyle {
     pub(crate) color: Option<GraphColor>,
     pub(crate) size: Option<f32>,
     pub(crate) border: BorderStyle,
@@ -104,7 +104,7 @@ pub(crate) struct GroupNodeStyle {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct GraphPhysics {
+pub struct GraphPhysics {
     pub(crate) center: CenterForce,
     pub(crate) repulsion: RepulsionForce,
     pub(crate) link: LinkForce,
@@ -112,7 +112,7 @@ pub(crate) struct GraphPhysics {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct CenterForce {
+pub struct CenterForce {
     pub(crate) strength: f32,
 }
 
@@ -126,7 +126,7 @@ impl Default for CenterForce {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct RepulsionForce {
+pub struct RepulsionForce {
     pub(crate) strength: f32,
 }
 
@@ -140,7 +140,7 @@ impl Default for RepulsionForce {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct LinkForce {
+pub struct LinkForce {
     pub(crate) strength: f32,
     pub(crate) distance: f32,
 }
@@ -155,7 +155,7 @@ impl Default for LinkForce {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GraphColor {
+pub struct GraphColor {
     pub(crate) red: f32,
     pub(crate) green: f32,
     pub(crate) blue: f32,
