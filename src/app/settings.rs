@@ -202,6 +202,21 @@ pub(crate) fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
+pub(crate) fn register_recent_vault(path: &Path) -> Result<()> {
+    let path = path.to_path_buf();
+    SETTINGS
+        .lock()
+        .unwrap()
+        .update(|settings| push_recent_vault(settings, path))
+}
+
+fn push_recent_vault(settings: &mut ApplicationSettings, path: PathBuf) {
+    if !settings.recent_vaults.contains(&path) {
+        settings.recent_vaults.push(path);
+        settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+    }
+}
+
 pub(crate) fn set_color_mode(mode: ColorMode) -> Result<()> {
     SETTINGS
         .lock()
@@ -284,5 +299,58 @@ mod tests {
         assert_eq!(reloaded.color_mode, ColorMode::Dark);
         let _ = fs::remove_file(file);
         let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn registering_a_recent_vault_appends_without_reordering_or_touching_last_vault() {
+        let first = std::env::temp_dir().join(format!(
+            "datalith-recent-a-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let second = std::env::temp_dir().join(format!(
+            "datalith-recent-b-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let file = temp_settings_file("recent-only");
+        let mut store = SettingsStore::new(file.clone());
+
+        store
+            .update(|settings| {
+                settings.last_vault = Some(first.clone());
+                settings.recent_vaults = vec![first.clone()];
+            })
+            .unwrap();
+        store
+            .update(|settings| push_recent_vault(&mut *settings, second.clone()))
+            .unwrap();
+        let snapshot = store.snapshot();
+
+        assert_eq!(
+            snapshot.last_vault,
+            Some(first.clone()),
+            "last_vault untouched"
+        );
+        assert_eq!(
+            snapshot.recent_vaults,
+            vec![first.clone(), second.clone()],
+            "appended without reordering"
+        );
+
+        store
+            .update(|settings| push_recent_vault(&mut *settings, second.clone()))
+            .unwrap();
+        assert_eq!(
+            store.snapshot().recent_vaults,
+            vec![first.clone(), second.clone()],
+            "registering twice does not duplicate"
+        );
+
+        let _ = fs::remove_file(file);
+        let _ = fs::remove_dir(first);
+        let _ = fs::remove_dir(second);
     }
 }

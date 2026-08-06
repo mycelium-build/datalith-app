@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+      INTERNAL_PR: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.INTERNAL_PR == 'true' && github.event.pull_request.head.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        run: scripts/install-linux-build-dependencies.sh
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+
+      - name: Apply formatting
+        if: env.INTERNAL_PR == 'true'
+        run: cargo fmt --all
+
+      - name: Check formatting
+        if: env.INTERNAL_PR != 'true'
+        run: cargo fmt --all --check
+
+      - name: Run tests
+        run: cargo test --locked
+
+      # Mint the write token only after project code has finished running.
+      - name: Create formatter token
+        if: env.INTERNAL_PR == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Authenticate formatter push
+        if: env.INTERNAL_PR == 'true'
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+        run: git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git"
+
+      - name: Commit formatting
+        if: env.INTERNAL_PR == 'true'
+        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7
+        with:
+          branch: ${{ github.event.pull_request.head.ref }}
+          commit_message: "chore: apply rustfmt"
+          commit_user_name: "datalith-automation[bot]"
+          commit_user_email: "datalith-automation[bot]@users.noreply.github.com"
+          file_pattern: ":(glob)**/*.rs"
+          disable_globbing: true

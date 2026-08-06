@@ -11,8 +11,8 @@ use crate::document::handler::FileHandlerEvent;
 use crate::ui::notifications;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::vault::file_ops;
 use crate::vault::CatalogState;
+use crate::vault::file_ops;
 
 actions!(
     datalith,

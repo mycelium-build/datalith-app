@@ -10,8 +10,7 @@ use crate::vault::{CatalogQuery, VaultCatalog};
 
 use super::model::{
     BASE_NODE_RADIUS, GraphSnapshot, ViewEdge, ViewEdgeStyle, ViewNode, border_width,
-    deterministic_position, hover_border_width, incoming_link_scale,
-    resolve_group_node_style,
+    deterministic_position, hover_border_width, incoming_link_scale, resolve_group_node_style,
 };
 
 #[derive(Debug)]
@@ -196,12 +195,12 @@ pub(super) async fn load_snapshot(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::model::{
-        BASE_NODE_RADIUS, ALL_LABELS_MIN_ZOOM, GraphFocus, IncidentDirection,
-        label_node_indices, incoming_link_scale,
-    };
     use super::super::camera::Camera;
+    use super::super::model::{
+        ALL_LABELS_MIN_ZOOM, BASE_NODE_RADIUS, GraphFocus, IncidentDirection, incoming_link_scale,
+        label_node_indices,
+    };
+    use super::*;
     use std::fs;
     use std::path::PathBuf;
 

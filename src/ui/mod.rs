@@ -289,10 +289,7 @@ impl DatalithView {
                         }
 
                         if catalog_changed {
-                            let catalog_state = view
-                                .vault_catalog
-                                .as_ref()
-                                .map(|c| c.state());
+                            let catalog_state = view.vault_catalog.as_ref().map(|c| c.state());
                             match catalog_state {
                                 Some(CatalogState::Ready) => {
                                     if let (Some(catalog), Some(root)) =

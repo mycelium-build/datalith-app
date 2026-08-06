@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 use turso::Value;
 
 use super::{
-    Backlink, CatalogDatabase, escape_like_pattern, path_text,
-    FILE_BASENAME_SQL, FILE_NAME_SQL, PATH_WITHOUT_EXTENSION_SQL,
+    Backlink, CatalogDatabase, FILE_BASENAME_SQL, FILE_NAME_SQL, PATH_WITHOUT_EXTENSION_SQL,
+    escape_like_pattern, path_text,
 };
 use crate::vault::links;
 

@@ -1,12 +1,10 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use txtodo::{
-    Priority, Task, TaskPatch, TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer,
-};
+use txtodo::{Priority, Task, TaskPatch, TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer};
 
-use crate::document::handler::ReloadOutcome;
 use super::{FilterKind, FocusTarget, MutationOutcome, SortKind, matches_task, today_string};
+use crate::document::handler::ReloadOutcome;
 
 pub(crate) struct TodoTxtWorkspace {
     todo: TodoTxt,

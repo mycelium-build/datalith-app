@@ -62,12 +62,11 @@ impl DatalithView {
                     self.pending_notifications
                         .push(notifications::rename_completed(result.updated_sources));
                 } else {
-                    self.pending_notifications.push(
-                        notifications::rename_completed_partial(
+                    self.pending_notifications
+                        .push(notifications::rename_completed_partial(
                             result.updated_sources,
                             result.total_sources,
-                        ),
-                    );
+                        ));
                 }
             }
             Err(_) => {

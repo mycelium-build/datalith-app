@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 
 use super::types::*;
-use super::{HARD_NODE_LIMIT, GraphDefinition};
+use super::{GraphDefinition, HARD_NODE_LIMIT};
 
 pub(crate) fn parse_definition(source: &str) -> Result<GraphDefinition> {
     let definition: GraphDefinition = if source.trim().is_empty() {
@@ -132,9 +132,9 @@ fn validate_range(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::color::parse_color;
     use super::super::matches_definition;
+    use super::*;
     use std::path::Path;
     use yaml_serde::Value;
 
@@ -369,13 +369,22 @@ display:
     fn graph_physics_defaults_match_the_tuned_values() {
         let definition = parse_definition("").unwrap();
 
-        assert_eq!(definition.physics.center.strength, super::super::DEFAULT_CENTER_STRENGTH);
+        assert_eq!(
+            definition.physics.center.strength,
+            super::super::DEFAULT_CENTER_STRENGTH
+        );
         assert_eq!(
             definition.physics.repulsion.strength,
             super::super::DEFAULT_REPULSION_STRENGTH
         );
-        assert_eq!(definition.physics.link.strength, super::super::DEFAULT_LINK_STRENGTH);
-        assert_eq!(definition.physics.link.distance, super::super::DEFAULT_LINK_DISTANCE);
+        assert_eq!(
+            definition.physics.link.strength,
+            super::super::DEFAULT_LINK_STRENGTH
+        );
+        assert_eq!(
+            definition.physics.link.distance,
+            super::super::DEFAULT_LINK_DISTANCE
+        );
     }
 
     #[test]
