@@ -30,8 +30,8 @@ pub(super) fn convert_wiki_links(text: &str) -> String {
                 }
                 if found_end {
                     if let Some(pipe_pos) = link_text.find('|') {
-                        let display = &link_text[..pipe_pos];
-                        let target = &link_text[pipe_pos + 1..];
+                        let target = &link_text[..pipe_pos];
+                        let display = &link_text[pipe_pos + 1..];
                         let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
                         result.push_str(&format!("![{}]({})", display, encoded));
                     } else {
@@ -71,8 +71,8 @@ pub(super) fn convert_wiki_links(text: &str) -> String {
 
             if found_end {
                 if let Some(pipe_pos) = link_text.find('|') {
-                    let display = &link_text[..pipe_pos];
-                    let target = &link_text[pipe_pos + 1..];
+                    let target = &link_text[..pipe_pos];
+                    let display = &link_text[pipe_pos + 1..];
                     let encoded = utf8_percent_encode(target, ENCODE_IN_LINK);
                     result.push_str(&format!("[{}]({})", display, encoded));
                 } else {
@@ -139,12 +139,8 @@ pub(crate) fn find_link_at_offset(text: &str, offset: usize) -> Option<String> {
                 let end = pos + 2 + end + 2;
                 if offset >= pos && offset < end {
                     let inner = &text[pos + 2..end - 2];
-                    let url = if let Some(pipe) = inner.find('|') {
-                        &inner[pipe + 1..]
-                    } else {
-                        inner
-                    };
-                    return Some(url.to_string());
+                    let url = inner.split(['|', '#']).next().unwrap_or(inner);
+                    return Some(url.trim().to_string());
                 }
                 pos = end;
                 continue;
@@ -177,4 +173,22 @@ fn find_matching_paren(text: &str, open_pos: usize) -> Option<usize> {
         pos += 1;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_wiki_link_alias_to_display_and_target() {
+        let converted = convert_wiki_links("See [[not this|but this]] and [[Page]]");
+        assert_eq!(converted, "See [but this](not%20this) and [Page](Page)");
+    }
+
+    #[test]
+    fn finds_target_before_pipe_in_wiki_link() {
+        let text = "[[not this|but this]]";
+        let url = find_link_at_offset(text, 5).unwrap();
+        assert_eq!(url, "not this");
+    }
 }
