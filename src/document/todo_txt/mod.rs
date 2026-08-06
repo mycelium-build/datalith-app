@@ -2,22 +2,22 @@ mod filter;
 mod sort;
 mod workspace;
 
-pub(crate) use filter::FilterKind;
-pub(crate) use sort::SortKind;
-pub(crate) use workspace::TodoTxtWorkspace;
+pub use filter::FilterKind;
+pub use sort::SortKind;
+pub use workspace::TodoTxtWorkspace;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FocusTarget {
+pub enum FocusTarget {
     Task(usize),
     Search,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MutationOutcome {
+pub struct MutationOutcome {
     pub(crate) focus: Option<FocusTarget>,
 }
 
-pub(crate) fn parse_date(value: &str) -> Option<time::Date> {
+pub fn parse_date(value: &str) -> Option<time::Date> {
     let mut parts = value.split('-');
     let year = parts.next()?.parse().ok()?;
     let month = parts.next()?.parse::<u8>().ok()?;
@@ -56,6 +56,15 @@ fn matches_task(task: &txtodo::Task, query: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
+
     use super::*;
 
     #[test]

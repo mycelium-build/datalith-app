@@ -1,7 +1,7 @@
 use txtodo::{SortDirection, TaskSorter, TaskSorts};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SortKind {
+pub enum SortKind {
     Priority,
     DateCreated,
     Description,
@@ -18,7 +18,7 @@ impl SortKind {
         Self::Context,
     ];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Priority => "Priority",
             Self::DateCreated => "Date",
