@@ -121,7 +121,11 @@ impl MarkdownViewer {
     ) -> Vec<AnyElement> {
         blocks
             .iter()
-            .map(|block| self.render_block(block, list_depth, handler.clone(), cx))
+            .enumerate()
+            .map(|(index, block)| {
+                let is_last = index + 1 == blocks.len();
+                self.render_block(block, list_depth, is_last, handler.clone(), cx)
+            })
             .collect()
     }
 
@@ -129,6 +133,7 @@ impl MarkdownViewer {
         &self,
         block: &MarkdownBlock,
         list_depth: usize,
+        is_last: bool,
         handler: Entity<FileHandler>,
         cx: &mut App,
     ) -> AnyElement {
@@ -155,7 +160,7 @@ impl MarkdownViewer {
                 .min_w_0()
                 .flex()
                 .flex_wrap()
-                .mb_2()
+                .mb(px(if is_last { 0.0 } else { MD_PARAGRAPH_MARGIN }))
                 .children(self.render_inlines(content, InlineStyle::default(), handler, cx))
                 .into_any_element(),
             MarkdownBlock::BlockQuote(blocks) => div()
@@ -193,7 +198,7 @@ impl MarkdownViewer {
                             cx,
                         )))
                 });
-                div().w_full().children(rows).mb_2().into_any_element()
+                div().w_full().children(rows).mb(px(MD_PARAGRAPH_MARGIN)).into_any_element()
             }
             MarkdownBlock::Code { language, content } => {
                 let label = language.as_ref().map(|language| {
