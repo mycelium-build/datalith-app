@@ -6,7 +6,11 @@ use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
+use gpui_component::ChildElement;
 use gpui_component::checkbox::Checkbox;
+use gpui_component::table::{
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+};
 use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
@@ -96,7 +100,7 @@ impl MarkdownViewer {
 
         let document = parse_markdown(&content);
         let mut elements = Vec::new();
-        let mut checkbox_id = 0usize;
+        let mut element_id = 0usize;
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
@@ -108,7 +112,7 @@ impl MarkdownViewer {
         elements.extend(self.render_blocks(
             &document.blocks,
             0,
-            &mut checkbox_id,
+            &mut element_id,
             handler,
             window,
             cx,
@@ -130,7 +134,7 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
-        checkbox_id: &mut usize,
+        element_id: &mut usize,
         handler: Entity<FileHandler>,
         window: &mut Window,
         cx: &mut App,
@@ -149,7 +153,7 @@ impl MarkdownViewer {
                     list_depth,
                     is_last,
                     next_is_paragraph,
-                    checkbox_id,
+                    element_id,
                     handler.clone(),
                     window,
                     cx,
@@ -164,7 +168,7 @@ impl MarkdownViewer {
         list_depth: usize,
         is_last: bool,
         next_is_paragraph: bool,
-        checkbox_id: &mut usize,
+        element_id: &mut usize,
         handler: Entity<FileHandler>,
         window: &mut Window,
         cx: &mut App,
@@ -208,15 +212,15 @@ impl MarkdownViewer {
                 .border_l(px(MD_BLOCKQUOTE_BORDER))
                 .border_color(cx.theme().border)
                 .text_color(cx.theme().muted_foreground)
-                .children(self.render_blocks(blocks, list_depth, checkbox_id, handler, window, cx))
+                .children(self.render_blocks(blocks, list_depth, element_id, handler, window, cx))
                 .into_any_element(),
             MarkdownBlock::List { start, items } => {
                 let ordered = start.is_some();
                 let first = start.unwrap_or(1);
                 let rows = items.iter().enumerate().map(|(index, item)| {
                     let marker = if let Some(checked) = item.task {
-                        let id = *checkbox_id;
-                        *checkbox_id += 1;
+                        let id = *element_id;
+                        *element_id += 1;
                         div()
                             .flex()
                             .items_center()
@@ -254,7 +258,7 @@ impl MarkdownViewer {
                         .child(div().flex_1().min_w_0().children(self.render_blocks(
                             &item.blocks,
                             list_depth + 1,
-                            checkbox_id,
+                            element_id,
                             handler.clone(),
                             window,
                             cx,
@@ -264,6 +268,38 @@ impl MarkdownViewer {
                     .w_full()
                     .children(rows)
                     .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
+                    .into_any_element()
+            }
+            MarkdownBlock::Table { headers, rows } => {
+                let header_style = InlineStyle {
+                    bold: true,
+                    ..InlineStyle::default()
+                };
+                let header_row = TableRow::new().children(headers.iter().map(|cell| {
+                    TableHead::new().children(self.render_inlines(
+                        cell,
+                        header_style,
+                        handler.clone(),
+                        cx,
+                    ))
+                }));
+                let body = TableBody::new().children(rows.iter().map(|row| {
+                    TableRow::new().children(row.iter().map(|cell| {
+                        TableCell::new().children(self.render_inlines(
+                            cell,
+                            InlineStyle::default(),
+                            handler.clone(),
+                            cx,
+                        ))
+                    }))
+                }));
+                let table_ix = *element_id;
+                *element_id += 1;
+                Table::new()
+                    .with_ix(table_ix)
+                    .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
+                    .child(TableHeader::new().child(header_row))
+                    .child(body)
                     .into_any_element()
             }
             MarkdownBlock::Code { language, content } => {

@@ -24,6 +24,10 @@ pub(crate) enum MarkdownBlock {
         items: Vec<ListItem>,
     },
     BlockQuote(Vec<MarkdownBlock>),
+    Table {
+        headers: Vec<Vec<MarkdownInline>>,
+        rows: Vec<Vec<Vec<MarkdownInline>>>,
+    },
     Code {
         language: Option<String>,
         content: String,
@@ -124,5 +128,26 @@ mod tests {
                 "todo".into()
             )])]
         );
+    }
+
+    #[test]
+    fn parses_tables() {
+        let document = parse_markdown("| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |");
+        let MarkdownBlock::Table { headers, rows } = &document.blocks[0] else {
+            panic!("expected table, got {:#?}", document.blocks)
+        };
+        let plain = |cells: &[Vec<MarkdownInline>]| -> Vec<String> {
+            cells
+                .iter()
+                .map(|cell| match cell.as_slice() {
+                    [MarkdownInline::Text(text)] => text.clone(),
+                    _ => format!("{cell:?}"),
+                })
+                .collect()
+        };
+        assert_eq!(plain(headers), ["A", "B"]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(plain(&rows[0]), ["1", "2"]);
+        assert_eq!(plain(&rows[1]), ["3", "4"]);
     }
 }
