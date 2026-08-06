@@ -8,11 +8,9 @@ use gpui::*;
 use gpui_component::ActiveTheme;
 use gpui_component::ChildElement;
 use gpui_component::checkbox::Checkbox;
-use gpui_component::table::{
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-};
 use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
+use gpui_component::table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow};
 use percent_encoding::percent_decode_str;
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
@@ -144,10 +142,8 @@ impl MarkdownViewer {
             .enumerate()
             .map(|(index, block)| {
                 let is_last = index + 1 == blocks.len();
-                let next_is_paragraph = matches!(
-                    blocks.get(index + 1),
-                    Some(MarkdownBlock::Paragraph(_))
-                );
+                let next_is_paragraph =
+                    matches!(blocks.get(index + 1), Some(MarkdownBlock::Paragraph(_)));
                 self.render_block(
                     block,
                     list_depth,
@@ -267,7 +263,11 @@ impl MarkdownViewer {
                 div()
                     .w_full()
                     .children(rows)
-                    .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
+                    .mb(px(if list_depth > 0 {
+                        0.0
+                    } else {
+                        MD_PARAGRAPH_MARGIN
+                    }))
                     .into_any_element()
             }
             MarkdownBlock::Table { headers, rows } => {
@@ -300,7 +300,11 @@ impl MarkdownViewer {
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(px(MD_CODE_BLOCK_RADIUS))
-                    .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
+                    .mb(px(if list_depth > 0 {
+                        0.0
+                    } else {
+                        MD_PARAGRAPH_MARGIN
+                    }))
                     .child(TableHeader::new().child(header_row))
                     .child(body)
                     .into_any_element()
@@ -448,7 +452,13 @@ impl MarkdownViewer {
                     text.push_str(value);
                     highlights.push((
                         start..text.len(),
-                        inline_highlight(InlineStyle { code: true, ..style }, cx),
+                        inline_highlight(
+                            InlineStyle {
+                                code: true,
+                                ..style
+                            },
+                            cx,
+                        ),
                     ));
                 }
                 MarkdownInline::Strong(children) => self.append_inline_text(

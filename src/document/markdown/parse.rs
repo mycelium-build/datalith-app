@@ -83,8 +83,7 @@ where
                             while let Some(inner) = events.next() {
                                 match inner {
                                     Event::Start(Tag::TableCell) => {
-                                        headers
-                                            .push(parse_inlines(events, TagEnd::TableCell));
+                                        headers.push(parse_inlines(events, TagEnd::TableCell));
                                     }
                                     Event::End(TagEnd::TableHead) => break,
                                     _ => {}

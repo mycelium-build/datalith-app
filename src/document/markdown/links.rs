@@ -229,9 +229,8 @@ mod tests {
 
     #[test]
     fn leaves_wiki_links_inside_code_blocks_untouched() {
-        let converted = convert_wiki_links(
-            "Text [[Page]]\n```\n[[code]]\n```\n`[[inline]]` and [[Page]]",
-        );
+        let converted =
+            convert_wiki_links("Text [[Page]]\n```\n[[code]]\n```\n`[[inline]]` and [[Page]]");
         assert_eq!(
             converted,
             "Text [Page](Page)\n```\n[[code]]\n```\n`[[inline]]` and [Page](Page)"
