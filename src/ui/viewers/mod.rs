@@ -18,10 +18,15 @@ pub(crate) enum ViewerKind {
 }
 
 impl ViewerKind {
-    pub(crate) fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
+    pub(crate) fn render(
+        &self,
+        handler: Entity<FileHandler>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         match self {
             ViewerKind::Graph(viewer) => viewer.render(handler, cx),
-            ViewerKind::Markdown(viewer) => viewer.render(handler, cx),
+            ViewerKind::Markdown(viewer) => viewer.render(handler, window, cx),
             ViewerKind::Image(viewer) => viewer.render(cx),
         }
     }

@@ -2,9 +2,12 @@ use std::iter::Peekable;
 
 use pulldown_cmark::{Event, HeadingLevel, Tag, TagEnd};
 
-use super::{MarkdownBlock, MarkdownInline};
+use super::{ListItem, MarkdownBlock, MarkdownInline};
 
-pub(super) fn parse_blocks<'a, I>(events: &mut Peekable<I>, stop: Option<TagEnd>) -> Vec<MarkdownBlock>
+pub(super) fn parse_blocks<'a, I>(
+    events: &mut Peekable<I>,
+    stop: Option<TagEnd>,
+) -> Vec<MarkdownBlock>
 where
     I: Iterator<Item = Event<'a>>,
 {
@@ -32,7 +35,17 @@ where
                 while let Some(next) = events.next() {
                     match next {
                         Event::Start(Tag::Item) => {
-                            items.push(parse_blocks(events, Some(TagEnd::Item)))
+                            let task = match events.peek() {
+                                Some(Event::TaskListMarker(checked)) => Some(*checked),
+                                _ => None,
+                            };
+                            if task.is_some() {
+                                events.next();
+                            }
+                            items.push(ListItem {
+                                task,
+                                blocks: parse_blocks(events, Some(TagEnd::Item)),
+                            });
                         }
                         Event::End(TagEnd::List(_)) => break,
                         _ => {}

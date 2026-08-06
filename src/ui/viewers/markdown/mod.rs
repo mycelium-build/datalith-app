@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use gpui::*;
 use gpui_component::ActiveTheme;
+use gpui_component::checkbox::Checkbox;
 use gpui_component::input::InputState;
 use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
@@ -74,7 +75,12 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    pub(crate) fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
+    pub(crate) fn render(
+        &self,
+        handler: Entity<FileHandler>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         let base_font_size = BASE_FONT_SIZE as f32;
         if content.is_empty() {
@@ -90,6 +96,7 @@ impl MarkdownViewer {
 
         let document = parse_markdown(&content);
         let mut elements = Vec::new();
+        let mut checkbox_id = 0usize;
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
@@ -98,7 +105,14 @@ impl MarkdownViewer {
                 cx,
             ));
         }
-        elements.extend(self.render_blocks(&document.blocks, 0, handler, cx));
+        elements.extend(self.render_blocks(
+            &document.blocks,
+            0,
+            &mut checkbox_id,
+            handler,
+            window,
+            cx,
+        ));
 
         div()
             .id("markdown-preview")
@@ -116,7 +130,9 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
+        checkbox_id: &mut usize,
         handler: Entity<FileHandler>,
+        window: &mut Window,
         cx: &mut App,
     ) -> Vec<AnyElement> {
         blocks
@@ -124,7 +140,15 @@ impl MarkdownViewer {
             .enumerate()
             .map(|(index, block)| {
                 let is_last = index + 1 == blocks.len();
-                self.render_block(block, list_depth, is_last, handler.clone(), cx)
+                self.render_block(
+                    block,
+                    list_depth,
+                    is_last,
+                    checkbox_id,
+                    handler.clone(),
+                    window,
+                    cx,
+                )
             })
             .collect()
     }
@@ -134,7 +158,9 @@ impl MarkdownViewer {
         block: &MarkdownBlock,
         list_depth: usize,
         is_last: bool,
+        checkbox_id: &mut usize,
         handler: Entity<FileHandler>,
+        window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let base_font_size = BASE_FONT_SIZE as f32;
@@ -170,35 +196,63 @@ impl MarkdownViewer {
                 .border_l(px(MD_BLOCKQUOTE_BORDER))
                 .border_color(cx.theme().border)
                 .text_color(cx.theme().muted_foreground)
-                .children(self.render_blocks(blocks, list_depth, handler, cx))
+                .children(self.render_blocks(blocks, list_depth, checkbox_id, handler, window, cx))
                 .into_any_element(),
             MarkdownBlock::List { start, items } => {
                 let ordered = start.is_some();
                 let first = start.unwrap_or(1);
-                let rows = items.iter().enumerate().map(|(index, blocks)| {
-                    let marker = if ordered {
-                        format!("{}. ", first + index as u64)
+                let rows = items.iter().enumerate().map(|(index, item)| {
+                    let marker = if let Some(checked) = item.task {
+                        let id = *checkbox_id;
+                        *checkbox_id += 1;
+                        div()
+                            .flex()
+                            .items_center()
+                            .flex_shrink_0()
+                            .h(px(base_font_size * MD_LINE_HEIGHT))
+                            .mr_1()
+                            .child(
+                                Checkbox::new(ElementId::NamedInteger(
+                                    "md-task-check".into(),
+                                    id as u64,
+                                ))
+                                .checked(checked),
+                            )
+                            .into_any_element()
+                    } else if ordered {
+                        div()
+                            .child(format!("{}. ", first + index as u64))
+                            .into_any_element()
                     } else {
-                        "\u{2022} ".to_string()
+                        div().child("\u{2022} ".to_string()).into_any_element()
                     };
                     div()
                         .flex()
                         .items_start()
                         .w_full()
                         .min_w_0()
-                        .child(div().flex_shrink_0().child(format!(
-                            "{}{}",
-                            MD_LIST_INDENT.repeat(list_depth),
-                            marker
-                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .flex_shrink_0()
+                                .child(MD_LIST_INDENT.repeat(list_depth))
+                                .child(marker),
+                        )
                         .child(div().flex_1().min_w_0().children(self.render_blocks(
-                            blocks,
+                            &item.blocks,
                             list_depth + 1,
+                            checkbox_id,
                             handler.clone(),
+                            window,
                             cx,
                         )))
                 });
-                div().w_full().children(rows).mb(px(MD_PARAGRAPH_MARGIN)).into_any_element()
+                div()
+                    .w_full()
+                    .children(rows)
+                    .mb(px(MD_PARAGRAPH_MARGIN))
+                    .into_any_element()
             }
             MarkdownBlock::Code { language, content } => {
                 let label = language.as_ref().map(|language| {
