@@ -297,6 +297,9 @@ impl MarkdownViewer {
                 *element_id += 1;
                 Table::new()
                     .with_ix(table_ix)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(px(MD_CODE_BLOCK_RADIUS))
                     .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
                     .child(TableHeader::new().child(header_row))
                     .child(body)
