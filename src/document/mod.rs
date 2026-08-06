@@ -1,6 +1,6 @@
-pub(crate) mod file_types;
-pub(crate) mod graph;
-pub(crate) mod handler;
-pub(crate) mod markdown;
-pub(crate) mod registry;
-pub(crate) mod todo_txt;
+pub mod file_types;
+pub mod graph;
+pub mod handler;
+pub mod markdown;
+pub mod registry;
+pub mod todo_txt;

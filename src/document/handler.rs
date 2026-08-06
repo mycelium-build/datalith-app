@@ -1,36 +1,40 @@
-use gpui::*;
+use std::path::Path;
+
+use gpui::{
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
+    Styled, Window, div,
+};
 use gpui_component::input::InputState;
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
 use crate::vault::VaultCatalog;
-use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReloadOutcome {
+pub enum ReloadOutcome {
     Reloaded,
     Unchanged,
     Unsupported,
 }
 
-pub(crate) type ReloadAdapter = fn(
+pub type ReloadAdapter = fn(
     &Path,
     &mut FileHandler,
     &mut Window,
     &mut Context<FileHandler>,
 ) -> anyhow::Result<ReloadOutcome>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum ViewMode {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewMode {
     Edit,
     View,
 }
 
-pub(crate) enum FileHandlerEvent {
+pub enum FileHandlerEvent {
     LinkClicked(String, bool),
 }
 
-pub(crate) struct FileHandler {
+pub struct FileHandler {
     pub(crate) mode: ViewMode,
     pub(crate) editor: Option<EditorKind>,
     pub(crate) viewer: Option<ViewerKind>,
@@ -78,7 +82,7 @@ impl FileHandler {
         self.mode == ViewMode::Edit
     }
 
-    pub(crate) fn can_toggle_mode(&self) -> bool {
+    pub(crate) const fn can_toggle_mode(&self) -> bool {
         self.editor.is_some() && self.viewer.is_some()
     }
 
@@ -98,7 +102,7 @@ impl FileHandler {
         cx.notify();
     }
 
-    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<Self>) {
         if let Some(viewer) = &self.viewer {
             viewer.set_vault_catalog(catalog, cx);
         }
@@ -113,13 +117,11 @@ impl FileHandler {
             ViewMode::Edit => self
                 .editor
                 .as_ref()
-                .map(|e| e.focus_handle(cx))
-                .unwrap_or_else(|| cx.focus_handle()),
+                .map_or_else(|| cx.focus_handle(), |e| e.focus_handle(cx)),
             ViewMode::View => self
                 .viewer
                 .as_ref()
-                .map(|v| v.focus_handle(cx))
-                .unwrap_or_else(|| cx.focus_handle()),
+                .map_or_else(|| cx.focus_handle(), |v| v.focus_handle(cx)),
         }
     }
 }
