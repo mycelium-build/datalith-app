@@ -16,8 +16,7 @@ use yaml_serde::Value;
 
 use crate::vault::CatalogFilter;
 
-pub(crate) const DEFAULT_NODE_LIMIT: usize = 2_000;
-pub(crate) const HARD_NODE_LIMIT: usize = 10_000;
+pub(crate) const HARD_NODE_LIMIT: usize = 50_000;
 pub(crate) const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
 pub(crate) const DEFAULT_REPULSION_STRENGTH: f32 = 1_024.0;
 pub(crate) const DEFAULT_LINK_STRENGTH: f32 = 0.04;
@@ -36,7 +35,7 @@ pub(crate) struct GraphDefinition {
 impl Default for GraphDefinition {
     fn default() -> Self {
         Self {
-            limit: DEFAULT_NODE_LIMIT,
+            limit: HARD_NODE_LIMIT,
             filters: Filter::MatchAll,
             groups: Vec::new(),
             display: GraphDisplay::default(),
