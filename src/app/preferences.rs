@@ -6,8 +6,6 @@ use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 use crate::app::settings::{self, ColorMode};
 use crate::ui::settings::ThemeOptions;
 
-// Necessary for font size scaling
-#[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
 pub fn apply(cx: &mut App) {
     let settings = settings::snapshot();
     let saved_mode = match settings.color_mode {
@@ -50,6 +48,11 @@ pub fn apply(cx: &mut App) {
     Theme::change(saved_mode, None, cx);
     Theme::global_mut(cx).mode = saved_mode;
 
-    Theme::global_mut(cx).font_size = px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale as f32));
+    // Necessary for font size scaling
+    #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+    {
+        Theme::global_mut(cx).font_size =
+            px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale as f32));
+    }
     cx.refresh_windows();
 }
