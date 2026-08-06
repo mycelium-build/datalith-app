@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 
 use super::settings;
 
-pub(crate) const DOCS_VAULT_NAME: &str = "Datalith Docs";
+pub const DOCS_VAULT_NAME: &str = "Datalith Docs";
 
 const SHIPPED_DOCS: &[(&str, &str)] = &[
     ("Welcome.md", include_str!("../../docs/vault/Welcome.md")),
@@ -47,12 +47,12 @@ const SHIPPED_DOCS: &[(&str, &str)] = &[
 ];
 
 #[derive(Clone, Debug)]
-pub(crate) struct DocsVaultOutcome {
-    pub(crate) docs_vault: PathBuf,
-    pub(crate) first_run: bool,
+pub struct DocsVaultOutcome {
+    pub docs_vault: PathBuf,
+    pub first_run: bool,
 }
 
-pub(crate) fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
+pub fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
     let first_run = settings::snapshot().last_vault.is_none();
     let docs_vault = docs_vault_path();
     fs::create_dir_all(&docs_vault)
@@ -92,6 +92,14 @@ fn datalith_data_dir() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use std::fs;
 
     use super::*;

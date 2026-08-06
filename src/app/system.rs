@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub(crate) fn reveal_in_file_manager(target: &Path) -> anyhow::Result<()> {
+pub fn reveal_in_file_manager(target: &Path) -> anyhow::Result<()> {
     let path = if target.is_dir() {
         target
     } else {
@@ -13,7 +13,7 @@ pub(crate) fn reveal_in_file_manager(target: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn copy_path(target: &Path) -> anyhow::Result<()> {
+pub fn copy_path(target: &Path) -> anyhow::Result<()> {
     let mut clipboard = arboard::Clipboard::new()?;
     clipboard.set_text(target.to_string_lossy())?;
     Ok(())
