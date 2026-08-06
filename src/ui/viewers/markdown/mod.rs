@@ -302,9 +302,26 @@ impl MarkdownViewer {
         cx: &mut App,
     ) -> Vec<AnyElement> {
         let mut elements = Vec::new();
+        let mut text = String::new();
+        let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
         let mut index = 0;
+
+        fn flush(
+            elements: &mut Vec<AnyElement>,
+            text: &mut String,
+            highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+        ) {
+            if text.is_empty() {
+                return;
+            }
+            let styled = StyledText::new(SharedString::from(std::mem::take(text)))
+                .with_highlights(std::mem::take(highlights));
+            elements.push(div().min_w_0().child(styled).into_any_element());
+        }
+
         while index < inlines.len() {
             if let Some(end) = adjacent_image_run_end(inlines, index) {
+                flush(&mut elements, &mut text, &mut highlights);
                 let images = inlines[index..end].iter().filter_map(|inline| {
                     let MarkdownInline::Image { url, alt } = inline else {
                         return None;
@@ -324,74 +341,100 @@ impl MarkdownViewer {
                 continue;
             }
 
-            let inline = &inlines[index];
-            elements.push(match inline {
-                MarkdownInline::Text(text) => render_styled_text(text, style, cx),
-                MarkdownInline::Code(code) => render_styled_text(
-                    code,
-                    InlineStyle {
-                        code: true,
-                        ..style
-                    },
-                    cx,
-                ),
-                MarkdownInline::Strong(children) => self.wrap_inlines(
+            match &inlines[index] {
+                MarkdownInline::Link { url, content } => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    let link_url = url.clone();
+                    let handler_clone = handler.clone();
+                    elements.push(
+                        div()
+                            .id(SharedString::from(format!("link-{url}")))
+                            .flex()
+                            .text_color(cx.theme().primary)
+                            .underline()
+                            .cursor_pointer()
+                            .on_click(move |event: &ClickEvent, _window, cx| {
+                                handler_clone.update(cx, |_, cx| {
+                                    cx.emit(FileHandlerEvent::LinkClicked(
+                                        link_url.clone(),
+                                        event.modifiers().platform,
+                                    ));
+                                });
+                            })
+                            .children(self.render_inlines(content, style, handler.clone(), cx))
+                            .into_any_element(),
+                    );
+                }
+                MarkdownInline::Image { url, alt } => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    elements.push(self.render_image(url, alt, false, cx));
+                }
+                MarkdownInline::Break => {
+                    flush(&mut elements, &mut text, &mut highlights);
+                    elements.push(div().w_full().into_any_element());
+                }
+                _ => {
+                    self.append_inline_text(
+                        std::slice::from_ref(&inlines[index]),
+                        style,
+                        cx,
+                        &mut text,
+                        &mut highlights,
+                    );
+                }
+            }
+            index += 1;
+        }
+        flush(&mut elements, &mut text, &mut highlights);
+        elements
+    }
+
+    fn append_inline_text(
+        &self,
+        inlines: &[MarkdownInline],
+        style: InlineStyle,
+        cx: &App,
+        text: &mut String,
+        highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+    ) {
+        for inline in inlines {
+            match inline {
+                MarkdownInline::Text(value) => {
+                    let start = text.len();
+                    text.push_str(value);
+                    highlights.push((start..text.len(), inline_highlight(style, cx)));
+                }
+                MarkdownInline::Code(value) => {
+                    let start = text.len();
+                    text.push_str(value);
+                    highlights.push((
+                        start..text.len(),
+                        inline_highlight(InlineStyle { code: true, ..style }, cx),
+                    ));
+                }
+                MarkdownInline::Strong(children) => self.append_inline_text(
                     children,
                     InlineStyle {
                         bold: true,
                         ..style
                     },
-                    handler.clone(),
                     cx,
+                    text,
+                    highlights,
                 ),
-                MarkdownInline::Emphasis(children) => self.wrap_inlines(
+                MarkdownInline::Emphasis(children) => self.append_inline_text(
                     children,
                     InlineStyle {
                         italic: true,
                         ..style
                     },
-                    handler.clone(),
                     cx,
+                    text,
+                    highlights,
                 ),
-                MarkdownInline::Link { url, content } => {
-                    let link_url = url.clone();
-                    let handler_clone = handler.clone();
-                    div()
-                        .id(SharedString::from(format!("link-{url}")))
-                        .flex()
-                        .text_color(cx.theme().primary)
-                        .underline()
-                        .cursor_pointer()
-                        .on_click(move |event: &ClickEvent, _window, cx| {
-                            handler_clone.update(cx, |_, cx| {
-                                cx.emit(FileHandlerEvent::LinkClicked(
-                                    link_url.clone(),
-                                    event.modifiers().platform,
-                                ));
-                            });
-                        })
-                        .children(self.render_inlines(content, style, handler.clone(), cx))
-                        .into_any_element()
-                }
-                MarkdownInline::Image { url, alt } => self.render_image(url, alt, false, cx),
-                MarkdownInline::Break => div().w_full().into_any_element(),
-            });
-            index += 1;
+                _ => {}
+            }
         }
-        elements
-    }
-
-    fn wrap_inlines(
-        &self,
-        inlines: &[MarkdownInline],
-        style: InlineStyle,
-        handler: Entity<FileHandler>,
-        cx: &mut App,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .children(self.render_inlines(inlines, style, handler, cx))
-            .into_any_element()
     }
 }
 
@@ -416,7 +459,7 @@ fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -> Option<us
     (image_count > 1).then_some(index)
 }
 
-fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
+fn inline_highlight(style: InlineStyle, cx: &App) -> HighlightStyle {
     let mut highlight = HighlightStyle::default();
     if style.bold {
         highlight.font_weight = Some(FontWeight::BOLD);
@@ -427,14 +470,7 @@ fn render_styled_text(text: &str, style: InlineStyle, cx: &App) -> AnyElement {
     if style.code {
         highlight.background_color = Some(cx.theme().muted);
     }
-    let styled = StyledText::new(SharedString::from(text.to_string())).with_highlights(vec![(
-        Range {
-            start: 0,
-            end: text.len(),
-        },
-        highlight,
-    )]);
-    div().min_w_0().child(styled).into_any_element()
+    highlight
 }
 
 #[cfg(test)]
