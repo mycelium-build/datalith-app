@@ -1,5 +1,6 @@
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -83,44 +84,59 @@ pub fn generate_vault(root: &Path, config: &VaultConfig) -> Vec<PathBuf> {
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut all_paths: Vec<PathBuf> = Vec::new();
 
-    for i in 0..config.projects {
-        all_paths.push(
-            root.join("projects")
-                .join(format!("{}.md", FOLDER_NAMES[i % FOLDER_NAMES.len()])),
-        );
+    for folder in FOLDER_NAMES.iter().cycle().take(config.projects) {
+        all_paths.push(root.join("projects").join(format!("{folder}.md")));
     }
     for i in 0..config.daily_notes {
-        let month = (i % 12) + 1;
-        let day = (i % 28) + 1;
+        let month = i.rem_euclid(12).saturating_add(1);
+        let day = i.rem_euclid(28).saturating_add(1);
         all_paths.push(
             root.join("daily")
-                .join(format!("2026-{:02}-{:02}.md", month, day)),
+                .join(format!("2026-{month:02}-{day:02}.md")),
         );
     }
     for i in 0..config.notes {
-        all_paths.push(root.join("notes").join(format!("note-{:04}.md", i)));
+        all_paths.push(root.join("notes").join(format!("note-{i:04}.md")));
     }
     for i in 0..config.references {
-        all_paths.push(root.join("references").join(format!("ref-{:04}.md", i)));
+        all_paths.push(root.join("references").join(format!("ref-{i:04}.md")));
     }
 
     let contents: Vec<(PathBuf, String)> = all_paths
         .iter()
         .map(|path| {
-            let stem = path.file_stem().unwrap().to_str().unwrap();
+            let stem = file_stem(path);
             let content = generate_file(stem, &all_paths, &mut rng);
             (path.clone(), content)
         })
         .collect();
 
-    for (path, content) in &contents {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, content).unwrap();
-    }
+    write_fixture_files(&contents);
 
     all_paths
+}
+
+fn write_fixture_files(contents: &[(PathBuf, String)]) {
+    for (path, content) in contents {
+        if let Some(parent) = path.parent() {
+            // The temp vault root is recreated fresh per bench run and is writable.
+            #[allow(clippy::expect_used)]
+            fs::create_dir_all(parent).expect("failed to create fixture directory");
+        }
+        // Writing into the freshly created temp vault root cannot fail.
+        #[allow(clippy::expect_used)]
+        fs::write(path, content).expect("failed to write fixture file");
+    }
+}
+
+fn file_stem(path: &Path) -> &str {
+    // Every fixture path ends in a UTF-8 ".md" file name.
+    #[allow(clippy::expect_used)]
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .expect("fixture paths always end in a UTF-8 file stem");
+    stem
 }
 
 fn generate_file(name: &str, all_paths: &[PathBuf], rng: &mut StdRng) -> String {
@@ -130,36 +146,35 @@ fn generate_file(name: &str, all_paths: &[PathBuf], rng: &mut StdRng) -> String 
     let frontmatter = generate_frontmatter(name, rng);
     let body = generate_body(rng, word_count, &links);
 
-    format!("{}\n{}", frontmatter, body)
+    format!("{frontmatter}\n{body}")
 }
 
 fn generate_frontmatter(name: &str, rng: &mut StdRng) -> String {
-    let year = 2024 + rng.random_range(0..2);
+    let year = rng.random_range(2024..=2025);
     let month = rng.random_range(1..=12);
     let day = rng.random_range(1..=28);
 
     let tag_count = rng.random_range(1..=4);
     let tags: Vec<&str> = (0..tag_count)
-        .map(|_| TAGS[rng.random_range(0..TAGS.len())])
+        .map(|_| TAGS.choose(rng).copied().unwrap_or("draft"))
         .collect();
     let tags_str = tags.join(", ");
 
-    let status = STATUSES[rng.random_range(0..STATUSES.len())];
+    let status = STATUSES.choose(rng).copied().unwrap_or("active");
     let priority = rng.random_range(1..=5);
 
     let mut fm = format!(
-        "---\ntitle: \"{}\"\ncreated: {}-{:02}-{:02}\ntags: [{}]\nstatus: {}\npriority: {}",
-        name, year, month, day, tags_str, status, priority
+        "---\ntitle: \"{name}\"\ncreated: {year}-{month:02}-{day:02}\ntags: [{tags_str}]\nstatus: {status}\npriority: {priority}"
     );
 
     if rng.random_bool(0.4) {
-        fm.push_str(&format!("\naliases: [\"{}-v2\", \"{}-draft\"]", name, name));
+        let _ = write!(fm, "\naliases: [\"{name}-v2\", \"{name}-draft\"]");
     }
     if rng.random_bool(0.3) {
-        fm.push_str(&format!("\nsource: \"https://example.com/{}\"", name));
+        let _ = write!(fm, "\nsource: \"https://example.com/{name}\"");
     }
     if rng.random_bool(0.3) {
-        fm.push_str(&format!("\nreviewed: {}", rng.random_bool(0.5)));
+        let _ = write!(fm, "\nreviewed: {}", rng.random_bool(0.5));
     }
 
     fm.push_str("\n---");
@@ -167,16 +182,18 @@ fn generate_frontmatter(name: &str, rng: &mut StdRng) -> String {
 }
 
 fn generate_links(all_paths: &[PathBuf], rng: &mut StdRng, count: usize) -> Vec<String> {
-    let valid_count = (count as f64 * 0.7).ceil() as usize;
-    let dangling_count = (count as f64 * 0.2).floor() as usize;
-    let alias_count = count - valid_count - dangling_count;
+    let valid_count = count.saturating_mul(7).div_ceil(10);
+    let dangling_count = count.saturating_div(5);
+    let alias_count = count
+        .saturating_sub(valid_count)
+        .saturating_sub(dangling_count);
 
     let mut links = Vec::with_capacity(count);
 
     for _ in 0..valid_count {
-        let target = all_paths.choose(rng).unwrap();
-        let stem = target.file_stem().unwrap().to_str().unwrap();
-        links.push(format!("[[{}]]", stem));
+        let target = pick_target(all_paths, rng);
+        let stem = file_stem(target);
+        links.push(format!("[[{stem}]]"));
     }
 
     for _ in 0..dangling_count {
@@ -184,12 +201,12 @@ fn generate_links(all_paths: &[PathBuf], rng: &mut StdRng, count: usize) -> Vec<
     }
 
     for _ in 0..alias_count {
-        let target = all_paths.choose(rng).unwrap();
-        let stem = target.file_stem().unwrap().to_str().unwrap();
+        let target = pick_target(all_paths, rng);
+        let stem = file_stem(target);
         if rng.random_bool(0.5) {
-            links.push(format!("[[{}|see here]]", stem));
+            links.push(format!("[[{stem}|see here]]"));
         } else {
-            links.push(format!("[[{}#Section]]", stem));
+            links.push(format!("[[{stem}#Section]]"));
         }
     }
 
@@ -197,13 +214,25 @@ fn generate_links(all_paths: &[PathBuf], rng: &mut StdRng, count: usize) -> Vec<
     links
 }
 
+fn pick_target<'a>(all_paths: &'a [PathBuf], rng: &mut StdRng) -> &'a Path {
+    // Bench fixtures always generate at least one file, so `choose` never returns `None`.
+    #[allow(clippy::expect_used)]
+    let target = all_paths
+        .choose(rng)
+        .map(PathBuf::as_path)
+        .expect("fixture vault always contains at least one file");
+    target
+}
+
 fn generate_body(rng: &mut StdRng, word_count: usize, links: &[String]) -> String {
-    let mut body = String::with_capacity(word_count * 6);
+    let mut body = String::with_capacity(word_count.saturating_mul(6));
     let mut link_idx = 0;
     let link_interval = if links.is_empty() {
         usize::MAX
     } else {
-        word_count / (links.len() + 1)
+        word_count
+            .checked_div(links.len().saturating_add(1))
+            .unwrap_or(0)
     };
 
     let has_code_fence = rng.random_bool(0.3);
@@ -212,13 +241,15 @@ fn generate_body(rng: &mut StdRng, word_count: usize, links: &[String]) -> Strin
     } else {
         None
     };
-    let code_fence_end = code_fence_start.map(|s| s + rng.random_range(20..60));
+    let code_fence_end = code_fence_start.map(|s| s.saturating_add(rng.random_range(20..60)));
 
     for i in 0..word_count {
-        if i > 0 && i % link_interval == 0 && link_idx < links.len() {
-            body.push_str(&links[link_idx]);
+        if i > 0 && i.rem_euclid(link_interval) == 0 && link_idx < links.len() {
+            if let Some(link) = links.get(link_idx) {
+                body.push_str(link);
+            }
             body.push(' ');
-            link_idx += 1;
+            link_idx = link_idx.saturating_add(1);
             continue;
         }
 
@@ -226,7 +257,7 @@ fn generate_body(rng: &mut StdRng, word_count: usize, links: &[String]) -> Strin
             body.push_str("```\n");
         }
 
-        body.push_str(WORDS[rng.random_range(0..WORDS.len())]);
+        body.push_str(WORDS.choose(rng).copied().unwrap_or("the"));
         body.push(' ');
 
         if code_fence_end == Some(i) {
@@ -238,10 +269,10 @@ fn generate_body(rng: &mut StdRng, word_count: usize, links: &[String]) -> Strin
         }
     }
 
-    if let Some(end) = code_fence_end {
-        if end >= word_count {
-            body.push_str("\n```\n");
-        }
+    if let Some(end) = code_fence_end
+        && end >= word_count
+    {
+        body.push_str("\n```\n");
     }
 
     body
