@@ -1,19 +1,19 @@
 use yaml_serde::Value;
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Frontmatter {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Frontmatter {
     pub(crate) properties: Vec<FrontmatterProperty>,
     pub(crate) error: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FrontmatterProperty {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FrontmatterProperty {
     pub(crate) key: String,
     pub(crate) values: Vec<FrontmatterValue>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum FrontmatterValue {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FrontmatterValue {
     Boolean(bool),
     Link { label: String, target: String },
     Text(String),
@@ -24,18 +24,15 @@ pub(super) fn extract_frontmatter(text: &str) -> (Option<String>, String) {
         return (None, text.to_string());
     }
 
-    let rest = &text[3..];
-    if let Some(end) = rest.find("\n---") {
-        let fm_content = &rest[..end];
-        let body = if end + 4 < rest.len() {
-            &rest[end + 4..]
-        } else {
-            ""
-        };
-        (Some(fm_content.trim().to_string()), body.to_string())
-    } else {
-        (None, text.to_string())
-    }
+    let Some(rest) = text.get(3..) else {
+        return (None, text.to_string());
+    };
+    let Some(end) = rest.find("\n---") else {
+        return (None, text.to_string());
+    };
+    let fm_content = rest.get(..end).unwrap_or_default();
+    let body = rest.get(end.saturating_add(4)..).unwrap_or_default();
+    (Some(fm_content.trim().to_string()), body.to_string())
 }
 
 pub(super) fn parse_frontmatter(content: &str) -> Frontmatter {
@@ -105,6 +102,15 @@ fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
+
     use super::super::parse_markdown;
     use super::*;
 

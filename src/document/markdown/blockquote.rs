@@ -1,6 +1,6 @@
 /// Make an explicit decrease in `>` markers close nested blockquotes.
 ///
-/// CommonMark otherwise treats a line such as `> c` after `> > b` as a lazy
+/// `CommonMark` otherwise treats a line such as `> c` after `> > b` as a lazy
 /// continuation of the inner quote. In a preview editor, following the visible
 /// marker depth is less surprising.
 pub(super) fn normalize_blockquote_depth(text: &str) -> String {
@@ -35,6 +35,8 @@ pub(super) fn normalize_blockquote_depth(text: &str) -> String {
 fn blockquote_depth(line: &str) -> usize {
     let mut rest = line.trim_start();
     let mut depth = 0;
+    // The depth is bounded by the number of characters on the line, so it cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     while let Some(after_marker) = rest.strip_prefix('>') {
         depth += 1;
         rest = after_marker.strip_prefix(' ').unwrap_or(after_marker);
@@ -44,6 +46,15 @@ fn blockquote_depth(line: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
+
     use super::*;
 
     #[test]

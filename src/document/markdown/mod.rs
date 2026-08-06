@@ -3,17 +3,17 @@ mod frontmatter;
 mod links;
 mod parse;
 
-pub(crate) use self::frontmatter::{Frontmatter, FrontmatterValue};
-pub(crate) use links::find_link_at_offset;
+pub use self::frontmatter::{Frontmatter, FrontmatterValue};
+pub use links::find_link_at_offset;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct MarkdownDocument {
+pub struct MarkdownDocument {
     pub(crate) frontmatter: Option<Frontmatter>,
     pub(crate) blocks: Vec<MarkdownBlock>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MarkdownBlock {
+pub enum MarkdownBlock {
     Heading {
         level: u32,
         content: Vec<MarkdownInline>,
@@ -23,7 +23,7 @@ pub(crate) enum MarkdownBlock {
         start: Option<u64>,
         items: Vec<ListItem>,
     },
-    BlockQuote(Vec<MarkdownBlock>),
+    BlockQuote(Vec<Self>),
     Table {
         headers: Vec<Vec<MarkdownInline>>,
         rows: Vec<Vec<Vec<MarkdownInline>>>,
@@ -36,29 +36,23 @@ pub(crate) enum MarkdownBlock {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ListItem {
+pub struct ListItem {
     pub(crate) task: Option<bool>,
     pub(crate) blocks: Vec<MarkdownBlock>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MarkdownInline {
+pub enum MarkdownInline {
     Text(String),
-    Strong(Vec<MarkdownInline>),
-    Emphasis(Vec<MarkdownInline>),
+    Strong(Vec<Self>),
+    Emphasis(Vec<Self>),
     Code(String),
-    Link {
-        url: String,
-        content: Vec<MarkdownInline>,
-    },
-    Image {
-        url: String,
-        alt: String,
-    },
+    Link { url: String, content: Vec<Self> },
+    Image { url: String, alt: String },
     Break,
 }
 
-pub(crate) fn parse_markdown(text: &str) -> MarkdownDocument {
+pub fn parse_markdown(text: &str) -> MarkdownDocument {
     let (frontmatter, body) = frontmatter::extract_frontmatter(text);
     let body = blockquote::normalize_blockquote_depth(&body);
     let body = links::convert_wiki_links(&body);
@@ -77,6 +71,15 @@ pub(crate) fn parse_markdown(text: &str) -> MarkdownDocument {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
+
     use super::*;
 
     #[test]
