@@ -140,10 +140,15 @@ impl MarkdownViewer {
             .enumerate()
             .map(|(index, block)| {
                 let is_last = index + 1 == blocks.len();
+                let next_is_paragraph = matches!(
+                    blocks.get(index + 1),
+                    Some(MarkdownBlock::Paragraph(_))
+                );
                 self.render_block(
                     block,
                     list_depth,
                     is_last,
+                    next_is_paragraph,
                     checkbox_id,
                     handler.clone(),
                     window,
@@ -158,6 +163,7 @@ impl MarkdownViewer {
         block: &MarkdownBlock,
         list_depth: usize,
         is_last: bool,
+        next_is_paragraph: bool,
         checkbox_id: &mut usize,
         handler: Entity<FileHandler>,
         window: &mut Window,
@@ -186,7 +192,13 @@ impl MarkdownViewer {
                 .min_w_0()
                 .flex()
                 .flex_wrap()
-                .mb(px(if is_last { 0.0 } else { MD_PARAGRAPH_MARGIN }))
+                .mb(px(if is_last {
+                    0.0
+                } else if list_depth > 0 && !next_is_paragraph {
+                    0.0
+                } else {
+                    MD_PARAGRAPH_MARGIN
+                }))
                 .children(self.render_inlines(content, InlineStyle::default(), handler, cx))
                 .into_any_element(),
             MarkdownBlock::BlockQuote(blocks) => div()
@@ -251,7 +263,7 @@ impl MarkdownViewer {
                 div()
                     .w_full()
                     .children(rows)
-                    .mb(px(MD_PARAGRAPH_MARGIN))
+                    .mb(px(if list_depth > 0 { 0.0 } else { MD_PARAGRAPH_MARGIN }))
                     .into_any_element()
             }
             MarkdownBlock::Code { language, content } => {

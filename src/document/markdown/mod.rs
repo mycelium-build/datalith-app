@@ -103,8 +103,8 @@ mod tests {
                 MarkdownInline::Strong(vec![MarkdownInline::Text("bold".into())]),
                 MarkdownInline::Text(" and ".into()),
                 MarkdownInline::Link {
-                    url: "alias".into(),
-                    content: vec![MarkdownInline::Text("Page".into())],
+                    url: "Page".into(),
+                    content: vec![MarkdownInline::Text("alias".into())],
                 },
             ])
         );
