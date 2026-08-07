@@ -3,7 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use tantivy::{DocAddress, Index, IndexWriter, TantivyDocument, Term, doc, schema::*};
+use conv::{ConvUtil, UnwrapOrSaturate};
+use tantivy::{
+    DocAddress, Index, IndexWriter, TantivyDocument, Term, doc,
+    schema::{Field, STORED, STRING, Schema, TEXT, Value},
+};
 
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::DATALITH_DIR_NAME;
@@ -11,7 +15,7 @@ use crate::vault::path::display_name;
 
 const INDEX_WRITER_BUDGET: usize = 50_000_000;
 
-pub(crate) struct Indexer {
+pub struct Indexer {
     pub(crate) index: Index,
     pub(crate) path_field: Field,
     pub(crate) name_field: Field,
@@ -35,7 +39,7 @@ impl Indexer {
             .map(|path| (path.clone(), file_fingerprint(path)))
             .collect();
         add_files(
-            &mut writer,
+            &writer,
             &files,
             self.path_field,
             self.name_field,
@@ -87,7 +91,7 @@ impl Indexer {
                 .cloned()
                 .collect::<Vec<_>>();
             index_files(
-                &mut writer,
+                &writer,
                 &files,
                 self.path_field,
                 self.name_field,
@@ -111,7 +115,7 @@ impl Indexer {
 }
 
 #[must_use]
-pub(crate) fn file_fingerprint(path: &Path) -> u64 {
+pub fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
@@ -127,14 +131,14 @@ pub(crate) fn file_fingerprint(path: &Path) -> u64 {
 }
 
 #[must_use]
-pub(crate) fn is_indexable(path: &Path, file_types: &RegisteredFileTypes) -> bool {
+pub fn is_indexable(path: &Path, file_types: &RegisteredFileTypes) -> bool {
     file_types
         .capabilities(path)
         .is_some_and(|capabilities| capabilities.text_search)
 }
 
-pub(crate) fn index_files(
-    writer: &mut IndexWriter,
+pub fn index_files(
+    writer: &IndexWriter,
     paths: &[PathBuf],
     path_field: Field,
     name_field: Field,
@@ -155,8 +159,8 @@ pub(crate) fn index_files(
     Ok(())
 }
 
-pub(crate) fn add_files(
-    writer: &mut IndexWriter,
+pub fn add_files(
+    writer: &IndexWriter,
     files: &HashMap<PathBuf, u64>,
     path_field: Field,
     name_field: Field,
@@ -176,7 +180,7 @@ pub(crate) fn add_files(
     Ok(())
 }
 
-pub(crate) fn incremental_update(
+pub fn incremental_update(
     index: &Index,
     catalogued_paths: &[PathBuf],
     path_field: Field,
@@ -196,7 +200,7 @@ pub(crate) fn incremental_update(
 
     let mut indexed_paths: HashMap<PathBuf, u64> = HashMap::new();
     for (segment_ord, seg_reader) in searcher.segment_readers().iter().enumerate() {
-        let segment_ord = segment_ord as u32;
+        let segment_ord = segment_ord.approx_as::<u32>().unwrap_or_saturate();
         for doc_id in 0..seg_reader.max_doc() {
             if seg_reader.is_deleted(doc_id) {
                 continue;
@@ -235,7 +239,7 @@ pub(crate) fn incremental_update(
         .collect();
 
     add_files(
-        &mut writer,
+        &writer,
         &changed_files,
         path_field,
         name_field,

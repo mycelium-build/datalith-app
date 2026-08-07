@@ -1,8 +1,8 @@
-pub(crate) mod index;
-pub(crate) mod picker;
+pub mod index;
+pub mod picker;
 mod query;
 
-pub(crate) use index::Indexer;
+pub use index::Indexer;
 use query::build_query;
 
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use crate::document::file_types::RegisteredFileTypes;
 
 const MAX_SEARCH_RESULTS: usize = 25;
 
-pub(crate) struct SearchEngine {
+pub struct SearchEngine {
     pub(crate) indexer: Indexer,
 }
 
@@ -26,9 +26,8 @@ impl SearchEngine {
 
     #[must_use]
     pub(crate) fn search(&self, query_str: &str) -> Vec<PathBuf> {
-        let reader = match self.indexer.index.reader() {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
+        let Ok(reader) = self.indexer.index.reader() else {
+            return Vec::new();
         };
         let searcher = reader.searcher();
         let query = build_query(
@@ -36,24 +35,22 @@ impl SearchEngine {
             self.indexer.name_field,
             self.indexer.content_field,
         );
-        let top_docs = match searcher.search(
+        let Ok(top_docs) = searcher.search(
             &query,
             &TopDocs::with_limit(MAX_SEARCH_RESULTS).order_by_score(),
-        ) {
-            Ok(docs) => docs,
-            Err(_) => return Vec::new(),
+        ) else {
+            return Vec::new();
         };
 
         let mut results = Vec::new();
         for (_score, doc_address) in top_docs {
-            if let Ok(doc) = searcher.doc::<TantivyDocument>(doc_address) {
-                if let Some(path) = doc
+            if let Ok(doc) = searcher.doc::<TantivyDocument>(doc_address)
+                && let Some(path) = doc
                     .get_first(self.indexer.path_field)
                     .and_then(|v| v.as_str())
                     .map(PathBuf::from)
-                {
-                    results.push(path);
-                }
+            {
+                results.push(path);
             }
         }
         results
