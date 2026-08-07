@@ -1,9 +1,10 @@
-pub(crate) mod graph;
-pub(crate) mod markdown;
-pub(crate) mod plain_text;
-pub(crate) mod todo_txt;
+pub mod graph;
+pub mod markdown;
+pub mod plain_text;
+pub mod todo_txt;
 
-use gpui::*;
+use gpui::{AnyElement, App, Entity, FocusHandle};
+
 use gpui_component::input::InputState;
 
 use self::graph::GraphEditor;
@@ -11,7 +12,7 @@ use self::markdown::MarkdownEditor;
 use self::plain_text::PlainTextEditor;
 use self::todo_txt::TodoTxtEditor;
 
-pub(crate) enum EditorKind {
+pub enum EditorKind {
     Graph(GraphEditor),
     Markdown(MarkdownEditor),
     PlainText(PlainTextEditor),
@@ -19,36 +20,36 @@ pub(crate) enum EditorKind {
 }
 
 impl EditorKind {
-    pub(crate) fn render(&self, cx: &mut App) -> AnyElement {
+    pub fn render(&self, cx: &mut App) -> AnyElement {
         match self {
-            EditorKind::Graph(editor) => editor.render(cx),
-            EditorKind::Markdown(editor) => editor.render(cx),
-            EditorKind::PlainText(editor) => editor.render(cx),
-            EditorKind::TodoTxt(editor) => editor.render(cx),
+            Self::Graph(editor) => editor.render(cx),
+            Self::Markdown(editor) => editor.render(cx),
+            Self::PlainText(editor) => editor.render(cx),
+            Self::TodoTxt(editor) => editor.render(cx),
         }
     }
 
-    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
-            EditorKind::Graph(editor) => editor.focus_handle(cx),
-            EditorKind::Markdown(editor) => editor.focus_handle(cx),
-            EditorKind::PlainText(editor) => editor.focus_handle(cx),
-            EditorKind::TodoTxt(editor) => editor.focus_handle(cx),
+            Self::Graph(editor) => editor.focus_handle(cx),
+            Self::Markdown(editor) => editor.focus_handle(cx),
+            Self::PlainText(editor) => editor.focus_handle(cx),
+            Self::TodoTxt(editor) => editor.focus_handle(cx),
         }
     }
 
-    pub(crate) fn input(&self) -> Option<&Entity<InputState>> {
+    pub const fn input(&self) -> Option<&Entity<InputState>> {
         match self {
-            EditorKind::Graph(editor) => Some(editor.input()),
-            EditorKind::Markdown(editor) => Some(editor.input()),
-            EditorKind::PlainText(editor) => Some(editor.input()),
-            EditorKind::TodoTxt(_) => None,
+            Self::Graph(editor) => Some(editor.input()),
+            Self::Markdown(editor) => Some(editor.input()),
+            Self::PlainText(editor) => Some(editor.input()),
+            Self::TodoTxt(_) => None,
         }
     }
 
-    pub(crate) fn as_markdown(&self) -> Option<&MarkdownEditor> {
+    pub const fn as_markdown(&self) -> Option<&MarkdownEditor> {
         match self {
-            EditorKind::Markdown(editor) => Some(editor),
+            Self::Markdown(editor) => Some(editor),
             _ => None,
         }
     }
