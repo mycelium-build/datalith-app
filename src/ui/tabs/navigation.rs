@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use gpui::*;
+use gpui::{AppContext, Context, Window};
 use gpui_component::input::InputEvent;
 use percent_encoding::percent_decode_str;
 
@@ -10,6 +10,7 @@ use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
 use crate::vault::file_ops;
 
+#[derive(Clone, Copy)]
 enum OpenMode {
     Replace,
     NewTab,
@@ -62,8 +63,7 @@ impl DatalithView {
                 let history = self
                     .tabs
                     .active()
-                    .map(|tab| tab.history.clone())
-                    .unwrap_or_else(|| vec![path.clone()]);
+                    .map_or_else(|| vec![path.clone()], |tab| tab.history.clone());
                 (history, position)
             }
         };
@@ -76,7 +76,7 @@ impl DatalithView {
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
             cx.subscribe_in(&state, window, move |_view, state, event, _window, cx| {
-                if let InputEvent::Change = event {
+                if matches!(event, InputEvent::Change) {
                     let content = state.read(cx).value();
                     let _ = file_ops::update(&path, &content);
                 }
@@ -161,7 +161,9 @@ impl DatalithView {
         let Some(position) = tab.history_position.checked_sub(1) else {
             return;
         };
-        let path = tab.history[position].clone();
+        let Some(path) = tab.history.get(position).cloned() else {
+            return;
+        };
         self.open_file_with_mode(path, OpenMode::History { position }, window, cx);
     }
 
@@ -169,7 +171,7 @@ impl DatalithView {
         let Some(tab) = self.tabs.active() else {
             return;
         };
-        let position = tab.history_position + 1;
+        let position = tab.history_position.saturating_add(1);
         let Some(path) = tab.history.get(position).cloned() else {
             return;
         };
@@ -185,7 +187,7 @@ impl DatalithView {
     pub(crate) fn can_go_forward(&self) -> bool {
         self.tabs
             .active()
-            .is_some_and(|tab| tab.history_position + 1 < tab.history.len())
+            .is_some_and(|tab| tab.history_position.saturating_add(1) < tab.history.len())
     }
 
     pub(crate) fn focus_active_tab(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -202,12 +204,20 @@ fn next_history(history: &[PathBuf], position: usize, path: &Path) -> (Vec<PathB
     }
     history.truncate(position.saturating_add(1));
     history.push(path.to_path_buf());
-    let position = history.len() - 1;
+    let position = history.len().saturating_sub(1);
     (history, position)
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use super::next_history;
     use std::path::PathBuf;
 

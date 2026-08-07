@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled};
 use gpui_component::{
     Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -8,19 +8,15 @@ use gpui_component::{
 
 use super::NavigationAction;
 use crate::app::assets::PEN_ICON;
+use crate::document::handler::FileHandler;
 use crate::ui::DatalithView;
 use crate::vault::path::display_name;
 
 impl DatalithView {
-    pub(crate) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_tab_bar(&self, cx: &Context<Self>) -> impl IntoElement {
         let active_index = self.tabs.active_index().unwrap_or(0);
         let can_go_back = self.can_go_back();
         let can_go_forward = self.can_go_forward();
-        let tab_data: Vec<_> = self
-            .tabs
-            .iter()
-            .map(|(index, path, _)| (index, SharedString::from(display_name(path))))
-            .collect();
 
         TabBar::new("editor-tabs")
             .prefix(
@@ -74,7 +70,7 @@ impl DatalithView {
                             .xsmall()
                             .icon(icon)
                             .on_click(cx.listener(move |_, _, _, cx| {
-                                handler.update(cx, |handler, cx| handler.toggle_editing(cx));
+                                handler.update(cx, FileHandler::toggle_editing);
                             })),
                     );
                 }
@@ -95,7 +91,8 @@ impl DatalithView {
                     cx.notify();
                 })
             })
-            .children(tab_data.into_iter().map(|(index, name)| {
+            .children(self.tabs.iter().map(|(index, path, _)| {
+                let name = SharedString::from(display_name(path));
                 Tab::new().label(name).suffix(
                     Button::new(format!("close-tab-{index}"))
                         .icon(IconName::Close)
