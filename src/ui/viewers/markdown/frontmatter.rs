@@ -1,6 +1,11 @@
-use gpui::*;
+use gpui::{
+    AnyElement, App, ClickEvent, ElementId, Entity, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, StatefulInteractiveElement, Styled, div, px,
+};
 use gpui_component::checkbox::Checkbox;
 use gpui_component::{ActiveTheme, Disableable};
+
+use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{Frontmatter, FrontmatterValue};
@@ -13,9 +18,10 @@ use super::constants::{
 pub(super) fn render_frontmatter(
     frontmatter: &Frontmatter,
     base_font_size: f32,
-    handler: Entity<FileHandler>,
+    handler: &Entity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
+    let handler = handler.clone();
     let max_key_len = frontmatter
         .properties
         .iter()
@@ -24,7 +30,7 @@ pub(super) fn render_frontmatter(
         .unwrap_or(0);
     let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
     let line_h = px(font_size * MD_LINE_HEIGHT);
-    let key_width = px(font_size * max_key_len as f32 * 0.6);
+    let key_width = px(font_size * max_key_len.approx_as::<f32>().unwrap_or_inf() * 0.6);
     let mut rows: Vec<AnyElement> = Vec::new();
 
     if let Some(error) = &frontmatter.error {
@@ -45,7 +51,10 @@ pub(super) fn render_frontmatter(
     for (property_index, property) in frontmatter.properties.iter().enumerate() {
         let mut values: Vec<AnyElement> = Vec::new();
         for (value_index, value) in property.values.iter().enumerate() {
-            let id = (property_index * 1000 + value_index) as u64;
+            let id = u64::try_from(property_index)
+                .unwrap_or_default()
+                .saturating_mul(1000)
+                .saturating_add(u64::try_from(value_index).unwrap_or_default());
             let element = match value {
                 FrontmatterValue::Boolean(value) => {
                     Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
