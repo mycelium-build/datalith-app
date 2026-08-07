@@ -1,20 +1,17 @@
+use std::ops::{Add, Mul};
+
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, AppContext, Context, Element, ElementId, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window, div, px,
 };
+use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::checkbox::Checkbox;
 use gpui_component::input::Input;
 use gpui_component::popover::{Popover, PopoverState};
-use gpui_component::{
-    ActiveTheme, Icon, IconName, Sizable,
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
-};
+use gpui_component::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
 
-use std::ops::{Add, Mul};
-
-use conv::{UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
+use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
 use txtodo::{Priority, Task};
 
 use crate::document::todo_txt::parse_date;
@@ -41,7 +38,7 @@ impl TodoTxtState {
         is_selected: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let indent = (f32::value_from(depth).unwrap_or_inf()).mul(TODO_INDENT_PX);
+        let indent = (depth.approx_as::<f32>().unwrap_or_inf()).mul(TODO_INDENT_PX);
         let has_subtasks = !task.subtasks.is_empty();
         let is_expanded = self.workspace.is_expanded(flat_index);
 

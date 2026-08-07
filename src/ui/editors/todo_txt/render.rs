@@ -1,17 +1,15 @@
 use std::ops::Div;
 
-use conv::ConvAsUtil;
 use gpui::{
     AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, SharedString, Styled, Window, div, px, relative,
 };
+use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::input::Input;
 use gpui_component::select::Select;
-use gpui_component::{
-    ActiveTheme, Icon, IconName,
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, v_virtual_list,
-};
+use gpui_component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
+
+use conv::ConvAsUtil;
 
 use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 

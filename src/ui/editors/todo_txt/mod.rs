@@ -12,16 +12,14 @@ use gpui::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, IntoElement,
     ParentElement, Size, Styled, Subscription, Window, div, px, rgb,
 };
-use gpui_component::IndexPath;
-use gpui_component::VirtualListScrollHandle;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::select::{SelectEvent, SelectState};
+use gpui_component::{IndexPath, VirtualListScrollHandle};
 
+use crate::document::handler::{FileHandler, ReloadOutcome};
 use crate::document::todo_txt::{FilterKind, SortKind, TodoTxtWorkspace};
 
 use constants::TODO_ROW_HEIGHT;
-
-use crate::document::handler::{FileHandler, ReloadOutcome};
 
 pub use state::TodoTxtState;
 

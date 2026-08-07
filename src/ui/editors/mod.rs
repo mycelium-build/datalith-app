@@ -4,7 +4,6 @@ pub mod plain_text;
 pub mod todo_txt;
 
 use gpui::{AnyElement, App, Entity, FocusHandle};
-
 use gpui_component::input::InputState;
 
 use self::graph::GraphEditor;
