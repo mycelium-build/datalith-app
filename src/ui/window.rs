@@ -24,7 +24,7 @@ pub fn open_initial(cx: &App, initial_vault: Option<PathBuf>, initial_tabs: Vec<
             }
             cx.new(|cx| Root::new(view, window, cx))
         }) {
-            eprintln!("Failed to open window: {error}"); // TODO: need to be displayed as notification
+            eprintln!("Failed to open window: {error}");
         }
     })
     .detach();

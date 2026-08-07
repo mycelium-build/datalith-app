@@ -15,7 +15,7 @@ use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::app::settings::{self, ThemeKind};
 
-use super::DatalithView;
+use super::{DatalithView, notifications};
 
 #[derive(Clone)]
 pub struct ThemeOptions {
@@ -207,7 +207,12 @@ impl SettingsView {
                             let current_mode = gpui_component::Theme::global(cx).mode;
                             gpui_component::Theme::change(current_mode, None, cx);
                             gpui_component::Theme::global_mut(cx).mode = current_mode;
-                            let _ = settings::select_theme(ThemeKind::Light, &val);
+                            if let Err(error) = settings::select_theme(ThemeKind::Light, &val) {
+                                notifications::push_window_notification(
+                                    cx,
+                                    notifications::settings_save_failed("theme", &error),
+                                );
+                            }
                         }
                         cx.refresh_windows();
                     },
@@ -231,7 +236,12 @@ impl SettingsView {
                             let current_mode = gpui_component::Theme::global(cx).mode;
                             gpui_component::Theme::change(current_mode, None, cx);
                             gpui_component::Theme::global_mut(cx).mode = current_mode;
-                            let _ = settings::select_theme(ThemeKind::Dark, &val);
+                            if let Err(error) = settings::select_theme(ThemeKind::Dark, &val) {
+                                notifications::push_window_notification(
+                                    cx,
+                                    notifications::settings_save_failed("theme", &error),
+                                );
+                            }
                         }
                         cx.refresh_windows();
                     },

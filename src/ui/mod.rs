@@ -157,7 +157,7 @@ impl DatalithView {
         let settings = SettingsView::new(cx);
         let font_size_slider_sub = cx.subscribe(
             &settings.font_size_slider_state,
-            |_view, _, event: &SliderEvent, cx| {
+            |view, _, event: &SliderEvent, cx| {
                 let SliderEvent::Change(value) = event else {
                     return;
                 };
@@ -167,7 +167,10 @@ impl DatalithView {
                     .font_size_multiplier = val;
                 gpui_component::Theme::global_mut(cx).font_size = new_size;
                 cx.refresh_windows();
-                let _ = app_settings::set_font_scale(val);
+                if let Err(error) = app_settings::set_font_scale(val) {
+                    view.pending_notifications
+                        .push(notifications::settings_save_failed("font scale", &error));
+                }
             },
         );
 
@@ -213,7 +216,10 @@ impl DatalithView {
         let generation = self.vault_load_generation;
         self.root_name = display_name(&path).into();
         self.root_path = Some(path.clone());
-        let _ = app_settings::record_opened_vault(&path);
+        if let Err(error) = app_settings::record_opened_vault(&path) {
+            self.pending_notifications
+                .push(notifications::settings_save_failed("opened vault", &error));
+        }
 
         self.pending_vault_refresh = true;
         self.expanded_tree_ids.clear();

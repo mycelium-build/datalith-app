@@ -1,4 +1,14 @@
+use gpui::App;
+use gpui_component::WindowExt;
 use gpui_component::notification::Notification;
+
+pub fn push_window_notification(cx: &mut App, notification: Notification) {
+    if let Some(window) = cx.windows().first().copied() {
+        let _ = window.update(cx, |_, window, cx| {
+            window.push_notification(notification, cx);
+        });
+    }
+}
 
 pub fn vault_db_ready() -> Notification {
     Notification::info("Vault DB ready")
@@ -34,4 +44,8 @@ pub fn rename_completed_partial(updated: usize, total: usize) -> Notification {
 
 pub fn rename_failed() -> Notification {
     Notification::error("Rename failed").autohide(false)
+}
+
+pub fn settings_save_failed(action: &str, error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to save {action}: {error}")).autohide(false)
 }

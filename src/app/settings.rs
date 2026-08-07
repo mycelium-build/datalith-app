@@ -228,7 +228,7 @@ pub fn set_color_mode(mode: ColorMode) -> Result<()> {
 pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
     let name = name.trim();
     if name.is_empty() {
-        bail!("Theme name cannot be empty"); // TODO: need to displayed as notification
+        bail!("Theme name cannot be empty");
     }
     settings_lock().update(|settings| match kind {
         ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
@@ -238,7 +238,7 @@ pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
 
 pub fn set_font_scale(scale: f64) -> Result<()> {
     if !scale.is_finite() || !(MIN_FONT_SCALE..=MAX_FONT_SCALE).contains(&scale) {
-        bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}"); // TODO: need to displayed as notification
+        bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
     settings_lock().update(|settings| settings.font_scale = scale)
 }
