@@ -1,5 +1,6 @@
 use std::ops::Mul;
 
+use conv::ConvAsUtil;
 use gpui::{App, px};
 use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 
@@ -47,12 +48,8 @@ pub fn apply(cx: &mut App) {
 
     Theme::change(saved_mode, None, cx);
     Theme::global_mut(cx).mode = saved_mode;
+    Theme::global_mut(cx).font_size =
+        px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale.approx().unwrap_or(1.0)));
 
-    // Necessary for font size scaling
-    #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-    {
-        Theme::global_mut(cx).font_size =
-            px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale as f32));
-    }
     cx.refresh_windows();
 }

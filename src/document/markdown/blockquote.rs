@@ -34,11 +34,12 @@ pub(super) fn normalize_blockquote_depth(text: &str) -> String {
 
 fn blockquote_depth(line: &str) -> usize {
     let mut rest = line.trim_start();
-    let mut depth = 0;
-    // The depth is bounded by the number of characters on the line, so it cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
+    let mut depth: usize = 0;
     while let Some(after_marker) = rest.strip_prefix('>') {
-        depth += 1;
+        let Some(next_depth) = depth.checked_add(1) else {
+            break;
+        };
+        depth = next_depth;
         rest = after_marker.strip_prefix(' ').unwrap_or(after_marker);
     }
     depth

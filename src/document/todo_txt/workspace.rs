@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use conv::{UnwrapOrSaturate, ValueFrom};
 use txtodo::{Priority, Task, TaskPatch, TodoOptions, TodoTxt, TodoTxtParser, TodoTxtSerializer};
 
 use super::{FilterKind, FocusTarget, MutationOutcome, SortKind, matches_task, today_string};
@@ -157,29 +158,25 @@ impl TodoTxtWorkspace {
         let Some(parent) = self.task(parent_index) else {
             return MutationOutcome::default();
         };
-        // Indices and indent levels are bounded by the task list size,
-        // so the additions below cannot overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            let insert_at = parent_index + 1;
-            let raw = format!(
-                "{}{} New subtask",
-                " ".repeat(parent.indent_level + 1),
-                today_string()
-            );
-            if let Err(error) = self.todo.insert(index_as_i64(insert_at), raw) {
-                self.parse_errors
-                    .push(format!("Add subtask failed: {error}"));
-                return MutationOutcome::default();
-            }
-            self.shift_expanded_after_insert(insert_at);
-            self.expanded.insert(parent_index);
-            if self.selected.is_some_and(|selected| selected >= insert_at) {
-                self.selected = self.selected.map(|selected| selected + 1);
-            }
-            MutationOutcome {
-                focus: Some(FocusTarget::Task(insert_at)),
-            }
+        // Unlikely user will have more than usize::MAX
+        let insert_at = parent_index.saturating_add(1);
+        let raw = format!(
+            "{}{} New subtask",
+            " ".repeat(parent.indent_level.saturating_add(1)),
+            today_string()
+        );
+        if let Err(error) = self.todo.insert(index_as_i64(insert_at), raw) {
+            self.parse_errors
+                .push(format!("Add subtask failed: {error}"));
+            return MutationOutcome::default();
+        }
+        self.shift_expanded_after_insert(insert_at);
+        self.expanded.insert(parent_index);
+        if self.selected.is_some_and(|selected| selected >= insert_at) {
+            self.selected = self.selected.map(|selected| selected.saturating_add(1));
+        }
+        MutationOutcome {
+            focus: Some(FocusTarget::Task(insert_at)),
         }
     }
 
@@ -187,35 +184,33 @@ impl TodoTxtWorkspace {
         let old_len = self.task_count();
         let _ = self.todo.remove([index_as_i64(index)]);
         let new_len = self.task_count();
-        // Index arithmetic below is bounded by the task list size,
-        // and every subtraction is guarded by a preceding range check.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            let removed = old_len.saturating_sub(new_len);
-            let old_expanded = std::mem::take(&mut self.expanded);
-            for expanded in old_expanded {
-                if expanded < index {
-                    self.expanded.insert(expanded);
-                } else if expanded >= index + removed {
-                    self.expanded.insert(expanded - removed);
-                }
+        let removed = old_len.saturating_sub(new_len);
+
+        let old_expanded = std::mem::take(&mut self.expanded);
+        for expanded in old_expanded {
+            if expanded < index {
+                self.expanded.insert(expanded);
+            } else if expanded >= index.saturating_add(removed) {
+                self.expanded.insert(expanded.saturating_sub(removed));
             }
-            if let Some(selected) = self.selected {
-                if selected >= new_len && new_len > 0 {
-                    self.selected = Some(new_len - 1);
-                } else if selected >= index + removed {
-                    self.selected = Some(selected - removed);
-                }
-            }
-            let focus = if new_len == 0 {
-                Some(FocusTarget::Search)
-            } else if index > 0 {
-                Some(FocusTarget::Task(index - 1))
-            } else {
-                Some(FocusTarget::Task(0))
-            };
-            MutationOutcome { focus }
         }
+
+        if let Some(selected) = self.selected {
+            if selected >= new_len && new_len > 0 {
+                self.selected = Some(new_len.saturating_sub(1));
+            } else if selected >= index.saturating_add(removed) {
+                self.selected = Some(selected.saturating_sub(removed));
+            }
+        }
+
+        let focus = if new_len == 0 {
+            Some(FocusTarget::Search)
+        } else if index > 0 {
+            Some(FocusTarget::Task(index.saturating_sub(1)))
+        } else {
+            Some(FocusTarget::Task(0))
+        };
+        MutationOutcome { focus }
     }
 
     pub fn update_description(&mut self, index: usize, value: &str) {
@@ -272,16 +267,13 @@ impl TodoTxtWorkspace {
         let query = self.search_query.to_lowercase();
         let filter = self.filter.predicate();
         let mut subtree_match = vec![false; flat.len()];
-        // Indices are bounded by `flat.len()`,
-        // so the arithmetic below cannot overflow.
-        #[allow(clippy::arithmetic_side_effects)]
         for index in (0..flat.len()).rev() {
             let Some(task) = flat.get(index) else {
                 continue;
             };
             let own_match = filter.as_ref().is_none_or(|predicate| predicate(task))
                 && (query.is_empty() || matches_task(task, &query));
-            let child_match = ((index + 1)..flat.len())
+            let child_match = ((index.saturating_add(1))..flat.len())
                 .take_while(|&child| {
                     flat.get(child)
                         .is_some_and(|child_task| child_task.indent_level > task.indent_level)
@@ -346,23 +338,21 @@ impl TodoTxtWorkspace {
     }
 
     fn shift_expanded_after_insert(&mut self, at: usize) {
-        // `at` is a task index bounded by the task list size.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            self.expanded = std::mem::take(&mut self.expanded)
-                .into_iter()
-                .map(|index| if index >= at { index + 1 } else { index })
-                .collect();
-        }
+        self.expanded = std::mem::take(&mut self.expanded)
+            .into_iter()
+            .map(|index| {
+                if index >= at {
+                    index.saturating_add(1)
+                } else {
+                    index
+                }
+            })
+            .collect();
     }
 }
 
-const fn index_as_i64(index: usize) -> i64 {
-    // Task indices are positions within an in-memory task list, which never exceed the range of an i64 in practice.
-    #[allow(clippy::cast_possible_wrap, clippy::as_conversions)]
-    {
-        index as i64
-    }
+fn index_as_i64(index: usize) -> i64 {
+    i64::value_from(index).unwrap_or_saturate()
 }
 
 #[cfg(test)]
