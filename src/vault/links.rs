@@ -1,12 +1,12 @@
 use std::ops::Range;
 
 #[derive(Clone, Debug)]
-pub(crate) struct LinkOccurrence {
+pub struct LinkOccurrence {
     pub(crate) target: String,
     pub(crate) range: Range<usize>,
 }
 
-pub(crate) fn normalized_target(authored: &str) -> String {
+pub fn normalized_target(authored: &str) -> String {
     authored
         .split(['|', '#'])
         .next()
@@ -16,7 +16,9 @@ pub(crate) fn normalized_target(authored: &str) -> String {
         .replace('\\', "/")
 }
 
-pub(crate) fn occurrences(source: &str) -> Vec<LinkOccurrence> {
+// Byte-cursor arithmetic below is bounded by the length of each line and cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
+pub fn occurrences(source: &str) -> Vec<LinkOccurrence> {
     let mut result = Vec::new();
     let mut fenced = false;
     let mut line_start = 0;
@@ -37,20 +39,22 @@ pub(crate) fn occurrences(source: &str) -> Vec<LinkOccurrence> {
         let mut cursor = 0;
         let mut inline = false;
         while cursor < bytes.len() {
-            if bytes[cursor] == b'`' {
+            if bytes.get(cursor) == Some(&b'`') {
                 inline = !inline;
                 cursor += 1;
                 continue;
             }
             if !inline
-                && bytes[cursor..].starts_with(b"[[")
-                && let Some(length) = line[cursor + 2..].find("]]")
+                && bytes
+                    .get(cursor..)
+                    .is_some_and(|suffix| suffix.starts_with(b"[["))
+                && let Some(length) = line.get(cursor + 2..).and_then(|suffix| suffix.find("]]"))
             {
                 let content_start = cursor + 2;
                 let content_end = content_start + length;
-                let authored = &line[content_start..content_end];
+                let authored = line.get(content_start..content_end).unwrap_or("");
                 let target_length = authored.find(['|', '#']).unwrap_or(authored.len());
-                let raw = &authored[..target_length];
+                let raw = authored.get(..target_length).unwrap_or(authored);
                 let target = normalized_target(raw);
                 if !target.is_empty() {
                     let leading = raw.len() - raw.trim_start().len();
@@ -71,7 +75,7 @@ pub(crate) fn occurrences(source: &str) -> Vec<LinkOccurrence> {
     result
 }
 
-pub(crate) fn rewrite(source: &str, replacements: &[(usize, String)]) -> String {
+pub fn rewrite(source: &str, replacements: &[(usize, String)]) -> String {
     let occurrences = occurrences(source);
     let mut edits = replacements
         .iter()
@@ -91,6 +95,14 @@ pub(crate) fn rewrite(source: &str, replacements: &[(usize, String)]) -> String 
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use super::*;
 
     #[test]

@@ -1,12 +1,12 @@
-pub(crate) mod catalog;
-pub(crate) mod file_ops;
-pub(crate) mod links;
-pub(crate) mod path;
-pub(crate) mod search;
+pub mod catalog;
+pub mod file_ops;
+pub mod links;
+pub mod path;
+pub mod search;
 
-pub(crate) const DATALITH_DIR_NAME: &str = ".datalith";
+pub const DATALITH_DIR_NAME: &str = ".datalith";
 
-pub(crate) use catalog::{
+pub use catalog::{
     CatalogComparison, CatalogEvent, CatalogFileField, CatalogFilter, CatalogProperty,
     CatalogQuery, CatalogScalar, CatalogState, VaultCatalog,
 };
