@@ -1,5 +1,8 @@
 use super::DatalithView;
-use gpui::*;
+use gpui::{
+    Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render, Styled,
+    Window, div, px,
+};
 use gpui_component::{
     Root, WindowExt, h_flex,
     resizable::{h_resizable, resizable_panel},
@@ -40,10 +43,10 @@ impl Render for DatalithView {
             self.focus_active_tab(window, cx);
         }
 
-        if self.rename_target.is_none() {
-            if let Some(path) = self.pending_open.take() {
-                self.open_file(path, true, window, cx);
-            }
+        if self.rename_target.is_none()
+            && let Some(path) = self.pending_open.take()
+        {
+            self.open_file(path, true, window, cx);
         }
 
         if let Some(action) = self.pending_navigation.take() {
@@ -97,7 +100,7 @@ impl Render for DatalithView {
 }
 
 impl DatalithView {
-    fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_editor(&self, cx: &Context<Self>) -> impl IntoElement {
         if self.tabs.is_empty() {
             return div()
                 .size_full()
@@ -111,10 +114,9 @@ impl DatalithView {
                 .into_any_element();
         }
 
-        let active_tab = self
-            .tabs
-            .active()
-            .expect("non-empty tabs have an active tab");
+        let Some(active_tab) = self.tabs.active() else {
+            return div().size_full().into_any_element();
+        };
         let is_empty = active_tab.path().as_os_str().is_empty();
 
         v_flex()

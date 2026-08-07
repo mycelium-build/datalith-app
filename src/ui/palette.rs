@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
-use gpui::*;
+use gpui::{
+    AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Pixels, ScrollStrategy, SharedString, Size,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, px, size,
+};
 use gpui_component::{
     ActiveTheme, Icon, IconName, VirtualListScrollHandle, h_flex,
     input::{Input, InputEvent, InputState},
@@ -19,13 +23,13 @@ const ITEM_HEIGHT: f32 = 28.0;
 const PALETTE_MAX_HEIGHT: f32 = 400.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PaletteKind {
+pub enum PaletteKind {
     Search,
     QuickSwitcher,
 }
 
 #[derive(Clone)]
-pub(crate) struct Palette {
+pub struct Palette {
     pub(crate) kind: PaletteKind,
     switching_from: Option<PaletteKind>,
     pub(crate) open: bool,
@@ -72,11 +76,11 @@ impl Palette {
         self.item_sizes.clear();
     }
 
-    pub(crate) fn close(&mut self) {
+    pub(crate) const fn close(&mut self) {
         self.open = false;
     }
 
-    pub(crate) fn search(&mut self, catalog: Option<&VaultCatalog>, query: SharedString) {
+    pub(crate) fn search(&mut self, catalog: Option<&VaultCatalog>, query: &SharedString) {
         let query = query.trim().to_string();
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
@@ -92,32 +96,36 @@ impl Palette {
         &mut self,
         catalog: Option<&VaultCatalog>,
         open_files: &[PathBuf],
-        query: SharedString,
+        query: &SharedString,
     ) {
         let all_files = catalog
             .map(|catalog| picker::collect_from_paths(catalog.paths()))
             .unwrap_or_default();
-        self.quick_switcher_entries = picker::filter(&all_files, open_files, &query);
+        self.quick_switcher_entries = picker::filter(&all_files, open_files, query);
         self.item_sizes =
             vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
     }
 
     pub(crate) fn refresh(&mut self, catalog: Option<&VaultCatalog>, open_files: &[PathBuf]) {
         match self.kind {
-            PaletteKind::Search => self.search(catalog, self.search_query.clone()),
+            PaletteKind::Search => {
+                let query = self.search_query.clone();
+                self.search(catalog, &query);
+            }
             PaletteKind::QuickSwitcher => {
-                self.refresh_quick_switcher(catalog, open_files, self.qs_query.clone());
+                let query = self.qs_query.clone();
+                self.refresh_quick_switcher(catalog, open_files, &query);
             }
         }
     }
 
-    pub(crate) fn scroll_to(&mut self, index: usize) {
+    pub(crate) fn scroll_to(&self, index: usize) {
         self.scroll_handle
             .scroll_to_item(index, ScrollStrategy::Nearest);
     }
 
-    fn render_results(&self, cx: &mut Context<DatalithView>) -> impl IntoElement + use<> {
-        let entity = cx.entity().clone();
+    fn render_results(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
+        let entity = cx.entity();
         let kind = self.kind;
         let item_sizes = self.item_sizes.clone();
 
@@ -130,7 +138,9 @@ impl Palette {
                 visible_range
                     .map(move |i| match kind {
                         PaletteKind::Search => {
-                            let r = &view.palette.search_results[i];
+                            let Some(r) = view.palette.search_results.get(i) else {
+                                return div().into_any_element();
+                            };
                             let file_name = display_name(r).to_string();
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
@@ -156,9 +166,12 @@ impl Palette {
                                         .child(Icon::new(IconName::File).size_3())
                                         .child(file_name),
                                 )
+                                .into_any_element()
                         }
                         PaletteKind::QuickSwitcher => {
-                            let entry = &view.palette.quick_switcher_entries[i];
+                            let Some(entry) = view.palette.quick_switcher_entries.get(i) else {
+                                return div().into_any_element();
+                            };
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
@@ -196,6 +209,7 @@ impl Palette {
                                         .child(div().flex_1())
                                         .children(open_label),
                                 )
+                                .into_any_element()
                         }
                     })
                     .collect()
@@ -205,10 +219,7 @@ impl Palette {
         .h(px(PALETTE_MAX_HEIGHT))
     }
 
-    pub(crate) fn render_overlay(
-        &self,
-        cx: &mut Context<DatalithView>,
-    ) -> impl IntoElement + use<> {
+    pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
         let input = self.input.clone();
         let results = self.render_results(cx);
 
@@ -257,15 +268,15 @@ impl Palette {
                                                 view.palette.quick_switcher_entries.len()
                                             }
                                         };
-                                        if count > 0 {
-                                            if let Some(next) = picker::nav_idx(
+                                        if count > 0
+                                            && let Some(next) = picker::nav_idx(
                                                 key == "down",
                                                 view.palette.selected,
                                                 count,
-                                            ) {
-                                                view.palette.selected = Some(next);
-                                                view.palette.scroll_to(next);
-                                            }
+                                            )
+                                        {
+                                            view.palette.selected = Some(next);
+                                            view.palette.scroll_to(next);
                                         }
                                         cx.notify();
                                     }
@@ -283,12 +294,12 @@ impl Palette {
     }
 
     pub(crate) fn input_subscription(
-        input: Entity<InputState>,
-        window: &mut Window,
+        input: &Entity<InputState>,
+        window: &Window,
         cx: &mut Context<DatalithView>,
     ) -> Subscription {
         cx.subscribe_in(
-            &input,
+            input,
             window,
             |view: &mut DatalithView,
              input: &Entity<InputState>,
@@ -302,7 +313,7 @@ impl Palette {
                         match view.palette.kind {
                             PaletteKind::Search => {
                                 view.palette.search_query = value.clone();
-                                view.palette.search(view.vault_catalog.as_ref(), value);
+                                view.palette.search(view.vault_catalog.as_ref(), &value);
                             }
                             PaletteKind::QuickSwitcher => {
                                 view.palette.qs_query = value.clone();
@@ -310,7 +321,7 @@ impl Palette {
                                 view.palette.refresh_quick_switcher(
                                     view.vault_catalog.as_ref(),
                                     &open_paths,
-                                    value,
+                                    &value,
                                 );
                             }
                         }
@@ -381,15 +392,17 @@ impl Palette {
         });
         match self.kind {
             PaletteKind::Search => {
-                self.search(vault_catalog, self.search_query.clone());
-                if !self.search_query.trim().is_empty() {
-                    self.selected = None;
-                } else {
+                let query = self.search_query.clone();
+                self.search(vault_catalog, &query);
+                if self.search_query.trim().is_empty() {
                     self.selected = Some(0);
+                } else {
+                    self.selected = None;
                 }
             }
             PaletteKind::QuickSwitcher => {
-                self.refresh_quick_switcher(vault_catalog, open_files, self.qs_query.clone());
+                let query = self.qs_query.clone();
+                self.refresh_quick_switcher(vault_catalog, open_files, &query);
                 self.selected = if self.quick_switcher_entries.is_empty() {
                     None
                 } else {
