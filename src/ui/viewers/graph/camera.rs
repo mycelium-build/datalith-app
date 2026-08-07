@@ -23,8 +23,8 @@ impl Default for Camera {
 impl Camera {
     pub(super) fn world_to_screen(&self, world: Point<f32>, viewport: Point<f32>) -> Point<f32> {
         point(
-            viewport.x / 2.0 + self.pan.x + world.x * self.zoom,
-            viewport.y / 2.0 + self.pan.y + world.y * self.zoom,
+            world.x.mul_add(self.zoom, viewport.x / 2.0 + self.pan.x),
+            world.y.mul_add(self.zoom, viewport.y / 2.0 + self.pan.y),
         )
     }
 
@@ -39,8 +39,8 @@ impl Camera {
         let world = self.screen_to_world(pointer, viewport);
         self.zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         self.pan = point(
-            pointer.x - viewport.x / 2.0 - world.x * self.zoom,
-            pointer.y - viewport.y / 2.0 - world.y * self.zoom,
+            world.x.mul_add(-self.zoom, pointer.x - viewport.x / 2.0),
+            world.y.mul_add(-self.zoom, pointer.y - viewport.y / 2.0),
         );
     }
 
@@ -57,7 +57,7 @@ impl Camera {
             first.position.y - first.radius,
             first.position.y + first.radius,
         );
-        for node in &nodes[1..] {
+        for node in nodes.iter().skip(1) {
             min_x = min_x.min(node.position.x - node.radius);
             max_x = max_x.max(node.position.x + node.radius);
             min_y = min_y.min(node.position.y - node.radius);
@@ -79,6 +79,14 @@ impl Camera {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use super::*;
 
     #[test]

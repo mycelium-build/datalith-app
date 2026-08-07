@@ -46,7 +46,7 @@ impl GraphViewState {
         input: Entity<InputState>,
         catalog: Option<VaultCatalog>,
         handler: WeakEntity<FileHandler>,
-        cx: &mut Context<Self>,
+        cx: &Context<Self>,
     ) -> Self {
         Self {
             input,
@@ -121,8 +121,8 @@ impl GraphViewState {
         let bounds = self.canvas_bounds?;
         bounds.contains(&position).then(|| {
             point(
-                f32::from(position.x - bounds.origin.x),
-                f32::from(position.y - bounds.origin.y),
+                f32::from(position.x) - f32::from(bounds.origin.x),
+                f32::from(position.y) - f32::from(bounds.origin.y),
             )
         })
     }
@@ -162,8 +162,10 @@ impl GraphViewState {
         let node = match &mut self.status {
             ViewerStatus::Ready(snapshot) => {
                 let node = hit_test_nodes(&snapshot.nodes, world);
-                if let Some(index) = node {
-                    snapshot.nodes[index].velocity = std::default::Default::default();
+                if let Some(index) = node
+                    && let Some(node) = snapshot.nodes.get_mut(index)
+                {
+                    node.velocity = Point::default();
                 }
                 node
             }
@@ -196,12 +198,13 @@ impl GraphViewState {
         };
         self.pointer_position = Some(local);
         if let Some(mut interaction) = self.interaction {
-            let dx = local.x - interaction.last.x;
-            let dy = local.y - interaction.last.y;
-            let total_dx = local.x - interaction.start.x;
-            let total_dy = local.y - interaction.start.y;
+            let drag = point(local.x - interaction.last.x, local.y - interaction.last.y);
+            let total_drag = point(local.x - interaction.start.x, local.y - interaction.start.y);
             let was_moved = interaction.moved;
-            interaction.moved |= total_dx * total_dx + total_dy * total_dy > 16.0;
+            interaction.moved |= total_drag
+                .y
+                .mul_add(total_drag.y, total_drag.x * total_drag.x)
+                > 16.0;
             if interaction.moved {
                 if let Some(index) = interaction.node {
                     let world = self.camera.screen_to_world(local, viewport);
@@ -209,15 +212,15 @@ impl GraphViewState {
                         && let Some(node) = snapshot.nodes.get_mut(index)
                     {
                         node.position = world;
-                        node.velocity = std::default::Default::default();
+                        node.velocity = Point::default();
                         self.simulation.reheat();
                     }
                 } else if was_moved {
-                    self.camera.pan.x += dx;
-                    self.camera.pan.y += dy;
+                    self.camera.pan.x += drag.x;
+                    self.camera.pan.y += drag.y;
                 } else {
-                    self.camera.pan.x += total_dx;
-                    self.camera.pan.y += total_dy;
+                    self.camera.pan.x += total_drag.x;
+                    self.camera.pan.y += total_drag.y;
                 }
             }
             interaction.last = local;
@@ -254,7 +257,7 @@ impl GraphViewState {
             }
             match &mut self.status {
                 ViewerStatus::Ready(snapshot) => snapshot.nodes.get_mut(index).map(|node| {
-                    node.velocity = std::default::Default::default();
+                    node.velocity = Point::default();
                     node.relative_path.to_string_lossy().replace('\\', "/")
                 }),
                 _ => None,
@@ -295,6 +298,7 @@ impl GraphViewState {
         cx.notify();
     }
 
+    #[allow(clippy::unused_self)]
     pub(super) fn render_centered(
         &self,
         message: impl Into<gpui::SharedString>,
@@ -311,11 +315,7 @@ impl GraphViewState {
             .into_any_element()
     }
 
-    pub(super) fn render_canvas(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub(super) fn render_canvas(&mut self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let pinned = self.interaction.and_then(|interaction| interaction.node);
         let hover_query = self
             .interaction
@@ -323,7 +323,7 @@ impl GraphViewState {
             .then(|| self.pointer_position.zip(self.viewport()))
             .flatten();
         let ViewerStatus::Ready(snapshot) = &mut self.status else {
-            unreachable!();
+            return div().into_any_element();
         };
         self.simulation.step(snapshot, pinned);
         if let Some((pointer, viewport)) = hover_query {
@@ -379,7 +379,9 @@ impl GraphViewState {
             let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
             let focus = active_hover.map(|source| GraphFocus::new(snapshot, source));
             for index in label_node_indices(&snapshot.nodes, self.camera, viewport, active_hover) {
-                let node = &snapshot.nodes[index];
+                let Some(node) = snapshot.nodes.get(index) else {
+                    continue;
+                };
                 let hovered = active_hover == Some(index);
                 let screen = self.camera.world_to_screen(node.position, viewport);
                 let radius =

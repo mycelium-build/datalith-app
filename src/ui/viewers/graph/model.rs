@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use gpui::{Point, point};
 
+use conv::{ConvAsUtil, UnwrapOrInf};
+
 use crate::document::graph::{
     BorderStyle as GraphBorderStyle, GraphColor, GraphPhysics, GroupNodeStyle,
     NodeStyle as GraphNodeStyle,
@@ -10,13 +12,20 @@ use crate::document::graph::{
 pub(super) const INITIAL_LAYOUT_RADIUS: f32 = 256.0;
 pub(super) const INITIAL_LAYOUT_REFERENCE_NODES: f32 = 512.0;
 
+// Layout placement is a pseudo-random visual projection;
+// the lossy float casts below are deliberate and bounded by the hash's width.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::as_conversions
+)]
 pub(super) fn deterministic_position(path: &str, node_count: usize) -> Point<f32> {
     // FNV-1a is stable across processes, unlike Rust's randomized default hasher.
     let hash = path
         .as_bytes()
         .iter()
-        .fold(0xcbf29ce484222325_u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
         });
     let angle = (hash as u32) as f32 / u32::MAX as f32 * std::f32::consts::TAU;
     let population_scale = ((node_count as f32).max(INITIAL_LAYOUT_REFERENCE_NODES)
@@ -32,7 +41,11 @@ const LINK_SIZE_LOG_STRENGTH: f32 = 0.8;
 const MAX_LINK_SIZE_SCALE: f32 = 4.0;
 
 pub(super) fn incoming_link_scale(incoming: usize) -> f32 {
-    (1.0 + (incoming as f32).ln_1p() * LINK_SIZE_LOG_STRENGTH).min(MAX_LINK_SIZE_SCALE)
+    let degree: f32 = incoming.approx().unwrap_or_inf();
+    degree
+        .ln_1p()
+        .mul_add(LINK_SIZE_LOG_STRENGTH, 1.0)
+        .min(MAX_LINK_SIZE_SCALE)
 }
 
 #[derive(Clone, Debug)]
@@ -103,7 +116,9 @@ impl GraphFocus {
                 (_, true) => edge.source,
                 _ => continue,
             };
-            included_nodes[sibling] = true;
+            if let Some(included) = included_nodes.get_mut(sibling) {
+                *included = true;
+            }
         }
         Self {
             source,
@@ -115,15 +130,18 @@ impl GraphFocus {
         self.included_nodes.get(node).copied().unwrap_or(false)
     }
 
-    pub(super) fn direction_of(&self, edge: &ViewEdge) -> Option<IncidentDirection> {
-        if edge.source != self.source && edge.target != self.source {
-            None
-        } else if edge.reciprocal {
-            Some(IncidentDirection::Both)
-        } else if edge.source == self.source {
-            Some(IncidentDirection::Outgoing)
-        } else {
-            Some(IncidentDirection::Incoming)
+    pub(super) const fn direction_of(&self, edge: &ViewEdge) -> Option<IncidentDirection> {
+        match (
+            edge.reciprocal,
+            edge.source == self.source,
+            edge.target == self.source,
+        ) {
+            (true, source_adjacent, target_adjacent) if source_adjacent || target_adjacent => {
+                Some(IncidentDirection::Both)
+            }
+            (false, true, _) => Some(IncidentDirection::Outgoing),
+            (false, false, true) => Some(IncidentDirection::Incoming),
+            _ => None,
         }
     }
 }
@@ -171,7 +189,7 @@ pub(super) fn hit_test_nodes(nodes: &[ViewNode], world: Point<f32>) -> Option<us
     nodes.iter().enumerate().rev().find_map(|(index, node)| {
         let dx = world.x - node.position.x;
         let dy = world.y - node.position.y;
-        (dx * dx + dy * dy <= node.radius * node.radius).then_some(index)
+        (dx.mul_add(dx, dy * dy) <= node.radius * node.radius).then_some(index)
     })
 }
 
@@ -214,11 +232,20 @@ pub(super) fn label_node_indices(
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
+
     use super::*;
 
     #[test]
     fn node_paths_produce_deterministic_distinct_starting_positions() {
-        let node_count = INITIAL_LAYOUT_REFERENCE_NODES as usize;
+        let node_count = INITIAL_LAYOUT_REFERENCE_NODES.approx_as::<usize>().unwrap();
         let first = deterministic_position("Inbox/day.md", node_count);
         let again = deterministic_position("Inbox/day.md", node_count);
         let other = deterministic_position("Projects/day.md", node_count);
@@ -230,11 +257,11 @@ mod tests {
 
     #[test]
     fn initial_layout_area_grows_with_node_count() {
-        let reference_node_count = INITIAL_LAYOUT_REFERENCE_NODES as usize;
+        let reference_node_count = INITIAL_LAYOUT_REFERENCE_NODES.approx_as::<usize>().unwrap();
         let small = deterministic_position("Inbox/day.md", reference_node_count);
         let large = deterministic_position("Inbox/day.md", reference_node_count * 4);
-        let small_radius = (small.x * small.x + small.y * small.y).sqrt();
-        let large_radius = (large.x * large.x + large.y * large.y).sqrt();
+        let small_radius = small.x.hypot(small.y);
+        let large_radius = large.x.hypot(large.y);
 
         assert!((large_radius / small_radius - 2.0).abs() < 0.001);
     }
@@ -256,7 +283,7 @@ mod tests {
                 radius: 10.0,
                 center_weight: 1.0,
                 position: gpui::point(0.0, 0.0),
-                velocity: std::default::Default::default(),
+                velocity: Point::default(),
             },
             ViewNode {
                 relative_path: "top.md".into(),
@@ -272,7 +299,7 @@ mod tests {
                 radius: 10.0,
                 center_weight: 1.0,
                 position: gpui::point(2.0, 0.0),
-                velocity: std::default::Default::default(),
+                velocity: Point::default(),
             },
         ];
 
@@ -282,9 +309,9 @@ mod tests {
 
     #[test]
     fn proportional_node_growth_is_logarithmic_and_capped() {
-        assert_eq!(incoming_link_scale(0), 1.0);
+        assert!((incoming_link_scale(0) - 1.0).abs() < 1e-6);
         assert!(incoming_link_scale(10) > incoming_link_scale(1));
         assert!(incoming_link_scale(100) > incoming_link_scale(10));
-        assert_eq!(incoming_link_scale(usize::MAX), 4.0);
+        assert!((incoming_link_scale(usize::MAX) - 4.0).abs() < 1e-6);
     }
 }
