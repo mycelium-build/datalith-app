@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
+use gpui::{
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, IntoElement,
+    ParentElement, Size, Styled, Subscription, Window, div, px, rgb,
+};
 use gpui_component::IndexPath;
 use gpui_component::VirtualListScrollHandle;
 use gpui_component::input::{InputEvent, InputState};
@@ -17,20 +21,18 @@ use crate::document::todo_txt::{FilterKind, SortKind, TodoTxtWorkspace};
 
 use constants::TODO_ROW_HEIGHT;
 
-use gpui::*;
-
 use crate::document::handler::{FileHandler, ReloadOutcome};
 
-pub(crate) use state::TodoTxtState;
+pub use state::TodoTxtState;
 
 fn priority_color(c: char) -> Hsla {
     match c {
-        'A' => rgb(0xEF4444).into(),
-        'B' => rgb(0xF97316).into(),
-        'C' => rgb(0xEAB308).into(),
-        'D' => rgb(0x22C55E).into(),
-        'E' => rgb(0x3B82F6).into(),
-        _ => rgb(0x9CA3AF).into(),
+        'A' => rgb(0x00EF_4444).into(),
+        'B' => rgb(0x00F9_7316).into(),
+        'C' => rgb(0x00EA_B308).into(),
+        'D' => rgb(0x0022_C55E).into(),
+        'E' => rgb(0x003B_82F6).into(),
+        _ => rgb(0x009C_A3AF).into(),
     }
 }
 
@@ -48,7 +50,7 @@ fn render_pill(label: &str, color: Hsla) -> AnyElement {
         .into_any_element()
 }
 
-pub(crate) fn reload_todo_txt(
+pub fn reload_todo_txt(
     _path: &Path,
     handler: &mut FileHandler,
     _window: &mut Window,
@@ -60,20 +62,16 @@ pub(crate) fn reload_todo_txt(
     editor.reload_from_disk(cx)
 }
 
-pub(crate) struct TodoTxtEditor {
+pub struct TodoTxtEditor {
     state: Entity<TodoTxtState>,
 }
 
 impl TodoTxtEditor {
-    pub(crate) fn new(state: Entity<TodoTxtState>) -> Self {
+    pub const fn new(state: Entity<TodoTxtState>) -> Self {
         Self { state }
     }
 
-    pub(crate) fn new_state(
-        path: &Path,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<TodoTxtState> {
+    pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<TodoTxtState> {
         let workspace = TodoTxtWorkspace::open(path);
         let total = workspace.task_count();
 
@@ -114,69 +112,15 @@ impl TodoTxtEditor {
                 total
             ]);
 
-            let mut subscriptions = Vec::new();
-
-            subscriptions.push(cx.subscribe_in(
+            let subscriptions = Self::create_subscriptions(
                 &search_input,
-                window,
-                |this: &mut TodoTxtState, _input, event, _window, cx| {
-                    if let InputEvent::Change = event {
-                        this.workspace
-                            .set_search_query(this.search_input.read(cx).value().to_string());
-                        this.refresh_item_sizes();
-                        cx.notify();
-                    }
-                },
-            ));
-
-            subscriptions.push(cx.subscribe_in(
                 &filter_select,
-                window,
-                |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
-                    if let Some(index_path) = state.read(cx).selected_index(cx) {
-                        this.workspace
-                            .set_filter(FilterKind::from_index(index_path.row));
-                        this.refresh_item_sizes();
-                        cx.notify();
-                    }
-                },
-            ));
-
-            subscriptions.push(cx.subscribe_in(
                 &sort_select,
-                window,
-                |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
-                    if let Some(index_path) = state.read(cx).selected_index(cx) {
-                        this.workspace
-                            .set_sort(SortKind::from_index(index_path.row));
-                        this.refresh_item_sizes();
-                        cx.notify();
-                    }
-                },
-            ));
-
-            subscriptions.push(cx.subscribe_in(
                 &new_task_input,
+                &editor_focus,
                 window,
-                |this: &mut TodoTxtState, _input, event, window, cx| {
-                    if let InputEvent::PressEnter { .. } = event {
-                        this.add_task(window, cx);
-                    }
-                },
-            ));
-
-            let entity = cx.entity();
-            let ef = editor_focus.clone();
-            subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
-                if event.keystroke.key.as_str() == "f" && event.keystroke.modifiers.secondary() {
-                    if ef.contains_focused(window, cx) {
-                        entity.update(cx, |this, cx| {
-                            this.search_input.focus_handle(cx).focus(window, cx);
-                        });
-                        cx.stop_propagation();
-                    }
-                }
-            }));
+                cx,
+            );
 
             TodoTxtState {
                 workspace,
@@ -199,19 +143,95 @@ impl TodoTxtEditor {
         })
     }
 
-    pub(crate) fn render(&self, _cx: &mut App) -> AnyElement {
+    fn create_subscriptions(
+        search_input: &Entity<InputState>,
+        filter_select: &Entity<SelectState<Vec<String>>>,
+        sort_select: &Entity<SelectState<Vec<String>>>,
+        new_task_input: &Entity<InputState>,
+        editor_focus: &FocusHandle,
+        window: &Window,
+        cx: &mut Context<TodoTxtState>,
+    ) -> Vec<Subscription> {
+        let mut subscriptions = Vec::new();
+
+        subscriptions.push(cx.subscribe_in(
+            search_input,
+            window,
+            |this: &mut TodoTxtState, _input, event, _window, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.workspace
+                        .set_search_query(this.search_input.read(cx).value().to_string());
+                    this.refresh_item_sizes();
+                    cx.notify();
+                }
+            },
+        ));
+
+        subscriptions.push(cx.subscribe_in(
+            filter_select,
+            window,
+            |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
+                if let Some(index_path) = state.read(cx).selected_index(cx) {
+                    this.workspace
+                        .set_filter(FilterKind::from_index(index_path.row));
+                    this.refresh_item_sizes();
+                    cx.notify();
+                }
+            },
+        ));
+
+        subscriptions.push(cx.subscribe_in(
+            sort_select,
+            window,
+            |this: &mut TodoTxtState, state, _event: &SelectEvent<Vec<String>>, _window, cx| {
+                if let Some(index_path) = state.read(cx).selected_index(cx) {
+                    this.workspace
+                        .set_sort(SortKind::from_index(index_path.row));
+                    this.refresh_item_sizes();
+                    cx.notify();
+                }
+            },
+        ));
+
+        subscriptions.push(cx.subscribe_in(
+            new_task_input,
+            window,
+            |this: &mut TodoTxtState, _input, event, window, cx| {
+                if let InputEvent::PressEnter { .. } = event {
+                    this.add_task(window, cx);
+                }
+            },
+        ));
+
+        let entity = cx.entity();
+        let ef = editor_focus.clone();
+        subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
+            if event.keystroke.key.as_str() == "f"
+                && event.keystroke.modifiers.secondary()
+                && ef.contains_focused(window, cx)
+            {
+                entity.update(cx, |this, cx| {
+                    this.search_input.focus_handle(cx).focus(window, cx);
+                });
+                cx.stop_propagation();
+            }
+        }));
+
+        subscriptions
+    }
+
+    pub fn render(&self, _cx: &mut App) -> AnyElement {
         div()
             .size_full()
             .child(self.state.clone())
             .into_any_element()
     }
 
-    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).search_input.focus_handle(cx)
     }
 
-    pub(crate) fn reload_from_disk(&self, cx: &mut App) -> anyhow::Result<ReloadOutcome> {
-        self.state
-            .update(cx, |state, cx| state.reload_from_disk(cx))
+    pub fn reload_from_disk(&self, cx: &mut App) -> anyhow::Result<ReloadOutcome> {
+        self.state.update(cx, TodoTxtState::reload_from_disk)
     }
 }

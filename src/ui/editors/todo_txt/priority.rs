@@ -1,11 +1,14 @@
 use gpui::prelude::FluentBuilder;
-use gpui::*;
+use gpui::{
+    App, AppContext, ElementId, Entity, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, RenderOnce, Styled, Window, div, px,
+};
 use gpui_component::{ActiveTheme, Icon, IconName, Selectable};
 
 use txtodo::Priority;
 
 use super::TodoTxtState;
-use super::constants::*;
+use super::constants::{TODO_COL_CHECK, TODO_COL_PRIORITY, TODO_PILL_RADIUS};
 
 pub(super) const PRIORITY_VALUES: [Option<char>; 6] =
     [None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E')];
@@ -71,14 +74,19 @@ impl RenderOnce for PriorityTrigger {
                                 .position(|&item| item == Some(p.as_char()))
                         })
                         .unwrap_or(0);
+                    let max_idx = PRIORITY_VALUES.len().saturating_sub(1);
                     let new_idx = if key == "up" {
-                        current_idx
-                            .checked_sub(1)
-                            .unwrap_or(PRIORITY_VALUES.len() - 1)
+                        current_idx.checked_sub(1).unwrap_or(max_idx)
                     } else {
-                        (current_idx + 1) % PRIORITY_VALUES.len()
+                        current_idx
+                            .checked_add(1)
+                            .filter(|&n| n < PRIORITY_VALUES.len())
+                            .unwrap_or(0)
                     };
-                    let value = PRIORITY_VALUES[new_idx]
+                    let value = PRIORITY_VALUES
+                        .get(new_idx)
+                        .copied()
+                        .unwrap_or_default()
                         .map(|priority| format!("({priority})"))
                         .unwrap_or_default();
                     this.commit_priority(task_index, &value, cx);
