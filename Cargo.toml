@@ -33,6 +33,7 @@ yaml_serde = "0.10.4"
 pollster = "1.0.1"
 turso = { version = "0.7.0", default-features = false }
 rayon = "1.12.0"
+conv = "0.3.3"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
