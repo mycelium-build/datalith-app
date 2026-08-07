@@ -1,23 +1,28 @@
 use std::path::PathBuf;
 
-use gpui::*;
+use gpui::{
+    AnyElement, App, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, div, img, px,
+};
 
-pub(crate) const IMAGE_MAX_WIDTH: f32 = 800.0;
+pub const IMAGE_MAX_WIDTH: f32 = 800.0;
 
-pub(crate) struct ImageViewer {
+pub struct ImageViewer {
     file_path: PathBuf,
 }
 
 impl ImageViewer {
-    pub(crate) fn new(file_path: PathBuf) -> Self {
+    pub const fn new(file_path: PathBuf) -> Self {
         Self { file_path }
     }
 
-    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+    // Kept as a method so every viewer exposes the same focus_handle(&self, cx) signature.
+    #[allow(clippy::unused_self)]
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         cx.focus_handle()
     }
 
-    pub(crate) fn render(&self, _cx: &mut App) -> AnyElement {
+    pub fn render(&self, _cx: &mut App) -> AnyElement {
         div()
             .id("image-viewer")
             .flex_1()

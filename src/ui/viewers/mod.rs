@@ -1,8 +1,8 @@
-pub(crate) mod graph;
-pub(crate) mod image;
-pub(crate) mod markdown;
+pub mod graph;
+pub mod image;
+pub mod markdown;
 
-use gpui::*;
+use gpui::{AnyElement, App, Context, Entity, FocusHandle, Window};
 
 use self::graph::GraphViewer;
 use self::image::ImageViewer;
@@ -11,42 +11,42 @@ use self::markdown::MarkdownViewer;
 use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
 
-pub(crate) enum ViewerKind {
+pub enum ViewerKind {
     Graph(GraphViewer),
     Markdown(MarkdownViewer),
     Image(ImageViewer),
 }
 
 impl ViewerKind {
-    pub(crate) fn render(
+    pub fn render(
         &self,
         handler: Entity<FileHandler>,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         match self {
-            ViewerKind::Graph(viewer) => viewer.render(handler, cx),
-            ViewerKind::Markdown(viewer) => viewer.render(handler, window, cx),
-            ViewerKind::Image(viewer) => viewer.render(cx),
+            Self::Graph(viewer) => viewer.render(handler, cx),
+            Self::Markdown(viewer) => viewer.render(handler, window, cx),
+            Self::Image(viewer) => viewer.render(cx),
         }
     }
 
-    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
-            ViewerKind::Graph(viewer) => viewer.focus_handle(cx),
-            ViewerKind::Markdown(viewer) => viewer.focus_handle(cx),
-            ViewerKind::Image(viewer) => viewer.focus_handle(cx),
+            Self::Graph(viewer) => viewer.focus_handle(cx),
+            Self::Markdown(viewer) => viewer.focus_handle(cx),
+            Self::Image(viewer) => viewer.focus_handle(cx),
         }
     }
 
-    pub(crate) fn refresh(&self, cx: &mut App) {
-        if let ViewerKind::Graph(viewer) = self {
+    pub fn refresh(&self, cx: &mut App) {
+        if let Self::Graph(viewer) = self {
             viewer.refresh(cx);
         }
     }
 
-    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
-        if let ViewerKind::Graph(viewer) = self {
+    pub fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
+        if let Self::Graph(viewer) = self {
             viewer.set_vault_catalog(catalog, cx);
         }
     }
