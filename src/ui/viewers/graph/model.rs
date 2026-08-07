@@ -241,6 +241,8 @@ mod tests {
         clippy::string_slice
     )]
 
+    use conv::ConvUtil;
+
     use super::*;
 
     #[test]
