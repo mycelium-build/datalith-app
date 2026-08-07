@@ -175,7 +175,7 @@ impl FilterCompiler {
     }
 }
 
-fn json_type_clause(value: &CatalogScalar) -> Option<&'static str> {
+const fn json_type_clause(value: &CatalogScalar) -> Option<&'static str> {
     match value {
         CatalogScalar::Null => None,
         CatalogScalar::Bool(true) => Some("json_type(metadata, ?) = 'true'"),
@@ -185,7 +185,7 @@ fn json_type_clause(value: &CatalogScalar) -> Option<&'static str> {
     }
 }
 
-fn comparison_sql(comparison: CatalogComparison) -> &'static str {
+const fn comparison_sql(comparison: CatalogComparison) -> &'static str {
     match comparison {
         CatalogComparison::Equal => "=",
         CatalogComparison::NotEqual => "!=",

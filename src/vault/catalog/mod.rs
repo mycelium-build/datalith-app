@@ -15,52 +15,52 @@ use crate::vault::search::SearchEngine;
 const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CatalogState {
+pub enum CatalogState {
     Syncing,
     Ready,
     Failed,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CatalogEvent {
+pub struct CatalogEvent {
     pub(crate) paths: Vec<PathBuf>,
     pub(crate) structure_changed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct WikiLinkEdge {
+pub struct WikiLinkEdge {
     pub(crate) source: PathBuf,
     pub(crate) target: PathBuf,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CatalogDocument {
+pub struct CatalogDocument {
     pub(crate) path: PathBuf,
     pub(crate) metadata: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct DocumentSelection {
+pub struct DocumentSelection {
     pub(crate) documents: Vec<CatalogDocument>,
     pub(crate) exceeded_limit: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct LinkedDocumentSelection {
+pub struct LinkedDocumentSelection {
     pub(crate) documents: Vec<CatalogDocument>,
     pub(crate) links: Vec<WikiLinkEdge>,
     pub(crate) exceeded_limit: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CatalogQuery {
+pub struct CatalogQuery {
     pub(crate) extension: Option<String>,
     pub(crate) filter: CatalogFilter,
     pub(crate) limit: usize,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum CatalogFilter {
+pub enum CatalogFilter {
     MatchAll,
     Compare {
         property: CatalogProperty,
@@ -72,19 +72,19 @@ pub(crate) enum CatalogFilter {
         value: CatalogScalar,
     },
     InFolder(String),
-    And(Vec<CatalogFilter>),
-    Or(Vec<CatalogFilter>),
-    Not(Box<CatalogFilter>),
+    And(Vec<Self>),
+    Or(Vec<Self>),
+    Not(Box<Self>),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum CatalogProperty {
+pub enum CatalogProperty {
     Metadata(Vec<String>),
     File(CatalogFileField),
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CatalogFileField {
+pub enum CatalogFileField {
     Name,
     Extension,
     Path,
@@ -92,7 +92,7 @@ pub(crate) enum CatalogFileField {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CatalogComparison {
+pub enum CatalogComparison {
     Equal,
     NotEqual,
     Greater,
@@ -102,7 +102,7 @@ pub(crate) enum CatalogComparison {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum CatalogScalar {
+pub enum CatalogScalar {
     Null,
     Bool(bool),
     Number(f64),
@@ -115,12 +115,12 @@ struct CatalogInner {
     file_types: RegisteredFileTypes,
     search: Mutex<SearchEngine>,
     subscribers: Mutex<Vec<mpsc::Sender<CatalogEvent>>>,
-    _watcher: Mutex<Option<RecommendedWatcher>>,
+    watcher: Mutex<Option<RecommendedWatcher>>,
     state: Mutex<CatalogState>,
 }
 
 #[derive(Clone)]
-pub(crate) struct VaultCatalog {
+pub struct VaultCatalog {
     inner: Arc<CatalogInner>,
 }
 
@@ -135,7 +135,7 @@ impl VaultCatalog {
             file_types: file_types.clone(),
             search: Mutex::new(search),
             subscribers: Mutex::new(Vec::new()),
-            _watcher: Mutex::new(None),
+            watcher: Mutex::new(None),
             state: Mutex::new(CatalogState::Syncing),
         });
         let catalog = Self {
@@ -188,7 +188,7 @@ impl VaultCatalog {
                 })?;
             watcher.watch(&inner.root, RecursiveMode::Recursive)?;
 
-            if let Ok(mut guard) = inner._watcher.lock() {
+            if let Ok(mut guard) = inner.watcher.lock() {
                 *guard = Some(watcher);
             }
 
@@ -219,9 +219,10 @@ impl VaultCatalog {
             if matches!(state, Some(CatalogState::Ready | CatalogState::Failed)) {
                 break;
             }
-            if start.elapsed() > timeout {
-                panic!("VaultCatalog sync did not complete within {timeout:?}");
-            }
+            assert!(
+                start.elapsed() <= timeout,
+                "VaultCatalog sync did not complete within {timeout:?}"
+            );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
@@ -231,8 +232,7 @@ impl VaultCatalog {
         self.inner
             .state
             .lock()
-            .map(|s| *s)
-            .unwrap_or(CatalogState::Syncing)
+            .map_or(CatalogState::Syncing, |s| *s)
     }
 
     #[must_use]
@@ -283,6 +283,9 @@ impl VaultCatalog {
     }
 
     #[allow(dead_code)]
+    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
+    // keep the async signature for that call site.
+    #[allow(clippy::unused_async)]
     pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
         let database = self.inner.database.clone();
         std::thread::Builder::new()
@@ -294,6 +297,9 @@ impl VaultCatalog {
             .map_err(|_| anyhow!("Catalog query thread panicked"))?
     }
 
+    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
+    // keep the async signature for that call site.
+    #[allow(clippy::unused_async)]
     pub(crate) async fn query_documents_with_links(
         &self,
         query: CatalogQuery,
@@ -399,7 +405,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
         .filter(|path| !synchronized_set.contains(path))
         .cloned()
         .collect::<Vec<_>>();
-    let mut removed_from_derived = removed.clone();
+    let mut removed_from_derived = removed;
     removed_from_derived.extend(omitted);
     let structure_changed = synchronized.iter().any(|path| !known.contains(path))
         || removed_from_derived.iter().any(|path| known.contains(path));
@@ -450,6 +456,14 @@ fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> BTreeSet
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )]
     use super::*;
     use crate::document::file_types::FileTypeCapabilities;
 
@@ -482,7 +496,7 @@ mod tests {
         assert!(event.structure_changed);
         assert!(catalog.paths().contains(&path));
         assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
-        assert_eq!(catalog.search("distinctive watcher"), vec![path.clone()]);
+        assert_eq!(catalog.search("distinctive watcher"), vec![path]);
         drop(catalog);
         let _ = std::fs::remove_dir_all(root);
     }
