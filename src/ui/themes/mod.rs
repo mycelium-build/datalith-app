@@ -1,6 +1,6 @@
 use gpui_component::ThemeRegistry;
 
-pub(crate) fn load_embedded_themes(cx: &mut gpui::App) {
+pub fn load_embedded_themes(cx: &mut gpui::App) {
     let registry = ThemeRegistry::global_mut(cx);
 
     // From https://github.com/longbridge/gpui-component/tree/main/themes
