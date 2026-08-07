@@ -1,6 +1,6 @@
 use gpui::{Point, point};
 
-use conv::{ConvAsUtil, UnwrapOrInf};
+use conv::{ConvAsUtil, ConvUtil, UnwrapOrInf};
 
 use super::model::{GraphSnapshot, deterministic_position};
 
@@ -314,8 +314,10 @@ impl QuadTree {
             position.y - node.mass_center.y,
         );
         if delta.y.mul_add(delta.y, delta.x * delta.x) < 0.000_001 {
-            let angle = (body as f32)
-                .mul_add(2.399_963_1, node_index.approx().unwrap_or_inf())
+            let angle = body
+                .approx_as::<f32>()
+                .unwrap_or_inf()
+                .mul_add(2.399_963_1, node_index.approx_as::<f32>().unwrap_or_inf())
                 .rem_euclid(std::f32::consts::TAU);
             delta = point(angle.cos() * 0.01, angle.sin() * 0.01);
         }
