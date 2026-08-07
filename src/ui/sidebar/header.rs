@@ -1,4 +1,7 @@
-use gpui::*;
+use gpui::{
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
+    div, px,
+};
 use gpui_component::{ActiveTheme, IconName, h_flex};
 
 use super::super::palette::PaletteKind;
@@ -8,7 +11,7 @@ const BORDER_WIDTH: f32 = 2.0;
 const ICON_PADDING: f32 = 4.0;
 
 impl DatalithView {
-    pub(crate) fn render_sidebar_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_sidebar_header(cx: &Context<Self>) -> impl IntoElement {
         div()
             .p(px(TREE_PADDING_PX - ICON_PADDING))
             .border_b(px(BORDER_WIDTH))
@@ -16,7 +19,7 @@ impl DatalithView {
             .child(
                 h_flex()
                     .w_full()
-                    .gap(px(TREE_PADDING_PX - ICON_PADDING * 2.0))
+                    .gap(px(ICON_PADDING.mul_add(-2.0, TREE_PADDING_PX)))
                     .child(
                         div()
                             .id("search-trigger")

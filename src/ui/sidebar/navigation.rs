@@ -1,4 +1,6 @@
-use gpui::*;
+use std::path::Path;
+
+use gpui::{Context, KeyDownEvent, SharedString, Window};
 
 use crate::vault::path::display_name;
 
@@ -75,7 +77,7 @@ impl DatalithView {
                 .tabs
                 .active_path()
                 .filter(|path| !path.as_os_str().is_empty())
-                .map(|path| path.to_path_buf());
+                .map(Path::to_path_buf);
 
             if let Some(ref path) = active_path {
                 let id = path.to_string_lossy().to_string();
@@ -97,7 +99,7 @@ impl DatalithView {
         self.update_last_selection(cx);
     }
 
-    fn update_last_selection(&mut self, cx: &mut Context<Self>) {
+    fn update_last_selection(&mut self, cx: &Context<Self>) {
         if let Some(entry) = self.tree_state.read(cx).selected_entry() {
             self.last_sidebar_selection = Some(Self::path_from_id(&entry.item().id));
         }
@@ -107,11 +109,7 @@ impl DatalithView {
         let count = self.visible_tree_entry_count();
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
-                let new_ix = if ix > 0 {
-                    ix - 1
-                } else {
-                    count.saturating_sub(1)
-                };
+                let new_ix = ix.checked_sub(1).unwrap_or_else(|| count.saturating_sub(1));
                 state.set_selected_index(Some(new_ix), cx);
                 state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
             }
@@ -122,7 +120,7 @@ impl DatalithView {
     fn navigate_tree_down(&mut self, cx: &mut Context<Self>) {
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
-                state.set_selected_index(Some(ix + 1), cx);
+                state.set_selected_index(Some(ix.saturating_add(1)), cx);
                 if state.selected_entry().is_none() {
                     state.set_selected_index(Some(0), cx);
                 }
@@ -136,10 +134,10 @@ impl DatalithView {
 
     fn navigate_tree_left(&mut self, cx: &mut Context<Self>) {
         let entry = self.tree_state.read(cx).selected_entry();
-        let (is_folder, is_expanded, id) = entry
-            .filter(|e| e.is_folder())
-            .map(|e| (true, e.is_expanded(), e.item().id.clone()))
-            .unwrap_or((false, false, SharedString::default()));
+        let (is_folder, is_expanded, id) = entry.filter(|e| e.is_folder()).map_or_else(
+            || (false, false, SharedString::default()),
+            |e| (true, e.is_expanded(), e.item().id.clone()),
+        );
         if is_folder && is_expanded {
             self.collapse_tree_item(&id, cx);
         }
@@ -147,10 +145,10 @@ impl DatalithView {
 
     fn navigate_tree_right(&mut self, cx: &mut Context<Self>) {
         let entry = self.tree_state.read(cx).selected_entry();
-        let (is_folder, is_expanded, id) = entry
-            .filter(|e| e.is_folder())
-            .map(|e| (true, e.is_expanded(), e.item().id.clone()))
-            .unwrap_or((false, false, SharedString::default()));
+        let (is_folder, is_expanded, id) = entry.filter(|e| e.is_folder()).map_or_else(
+            || (false, false, SharedString::default()),
+            |e| (true, e.is_expanded(), e.item().id.clone()),
+        );
         if is_folder && !is_expanded {
             self.expand_tree_item(&id, cx);
         }
