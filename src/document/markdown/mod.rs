@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn parses_task_list_markers() {
-        let document = parse_markdown("- [ ] todo\n- [x] done\n- plain");
+        let document = parse_markdown("- [ ] todo\n- [x] **done**\n- plain");
         let MarkdownBlock::List { items, .. } = &document.blocks[0] else {
             panic!("expected list, got {:#?}", document.blocks)
         };
@@ -123,6 +123,13 @@ mod tests {
                 "todo".into()
             )])]
         );
+        assert_eq!(
+            items[1].blocks,
+            vec![MarkdownBlock::Paragraph(vec![MarkdownInline::Strong(
+                vec![MarkdownInline::Text("done".into())]
+            )])]
+        );
+        assert_eq!(items[2].task, None);
     }
 
     #[test]
