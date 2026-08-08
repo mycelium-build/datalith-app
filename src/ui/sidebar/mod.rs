@@ -1,10 +1,13 @@
-pub(crate) mod file_tree;
+pub mod file_tree;
 mod header;
 mod navigation;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use gpui::*;
+use gpui::{
+    AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
+    ParentElement, Render, SharedString, Styled, Window, div, px,
+};
 use gpui_component::{
     ActiveTheme,
     input::{InputEvent, InputState},
@@ -23,8 +26,8 @@ const BORDER_WIDTH: f32 = 2.0;
 pub(super) const TREE_PADDING_PX: f32 = 12.0;
 
 #[derive(Clone)]
-pub(crate) struct DragFile {
-    pub(crate) path: PathBuf,
+pub struct DragFile {
+    pub path: PathBuf,
 }
 
 impl Render for DragFile {
@@ -44,7 +47,7 @@ impl Render for DragFile {
 }
 
 impl DatalithView {
-    pub(crate) fn rename_file(
+    pub fn rename_file(
         &mut self,
         old_path: &std::path::Path,
         new_path: &std::path::Path,
@@ -56,24 +59,21 @@ impl DatalithView {
         let Some(catalog) = self.vault_catalog.clone() else {
             return;
         };
-        match file_ops::rename(&catalog, old_path, new_path) {
-            Ok(result) => {
-                if result.updated_sources == result.total_sources {
-                    self.pending_notifications
-                        .push(notifications::rename_completed(result.updated_sources));
-                } else {
-                    self.pending_notifications
-                        .push(notifications::rename_completed_partial(
-                            result.updated_sources,
-                            result.total_sources,
-                        ));
-                }
-            }
-            Err(_) => {
+        if let Ok(result) = file_ops::rename(&catalog, old_path, new_path) {
+            if result.updated_sources == result.total_sources {
                 self.pending_notifications
-                    .push(notifications::rename_failed());
-                return;
+                    .push(notifications::rename_completed(result.updated_sources));
+            } else {
+                self.pending_notifications
+                    .push(notifications::rename_completed_partial(
+                        result.updated_sources,
+                        result.total_sources,
+                    ));
             }
+        } else {
+            self.pending_notifications
+                .push(notifications::rename_failed());
+            return;
         }
         self.tabs.rename_path(old_path, new_path);
         if self.pending_open.as_deref() == Some(old_path) {
@@ -86,8 +86,8 @@ impl DatalithView {
         self.refresh_tree_with_rename(old_path, new_path, cx);
     }
 
-    fn handle_file_move(&mut self, old_path: PathBuf, new_path: PathBuf, cx: &mut Context<Self>) {
-        self.rename_file(&old_path, &new_path, cx);
+    fn handle_file_move(&mut self, old_path: &Path, new_path: &Path, cx: &mut Context<Self>) {
+        self.rename_file(old_path, new_path, cx);
     }
 
     pub(crate) fn commit_rename(&mut self, cx: &mut Context<Self>) {
@@ -96,17 +96,18 @@ impl DatalithView {
         {
             let new_name = rename_state.read(cx).value().to_string();
             if !new_name.is_empty() {
-                let old_ext = if !target.is_dir() {
+                let old_ext = if target.is_dir() {
+                    None
+                } else {
                     target
                         .file_name()
                         .and_then(|n| n.to_str())
                         .and_then(|name| {
                             name.rfind('.')
-                                .and_then(|dot| if dot > 0 { Some(&name[dot..]) } else { None })
-                                .map(|e| e.to_string())
+                                .filter(|&dot| dot > 0)
+                                .and_then(|dot| name.get(dot..))
+                                .map(ToString::to_string)
                         })
-                } else {
-                    None
                 };
                 let mut name = new_name;
                 if let Some(ref ext) = old_ext
@@ -129,7 +130,7 @@ impl DatalithView {
     fn clear_rename_state(&mut self) {
         self.rename_target = None;
         self.rename_state = None;
-        self._rename_sub = None;
+        self.rename_sub = None;
     }
 
     fn cancel_rename(&mut self, cx: &mut Context<Self>) {
@@ -149,7 +150,7 @@ impl DatalithView {
         let current = display_name(target).to_string();
         let state = cx.new(|cx| InputState::new(window, cx).default_value(current.as_str()));
 
-        self._rename_sub = Some(cx.subscribe_in(
+        self.rename_sub = Some(cx.subscribe_in(
             &state,
             window,
             move |this, _input, event, _window, cx| match event {
@@ -169,12 +170,12 @@ impl DatalithView {
         PathBuf::from(id.to_string())
     }
 
-    pub(crate) fn render_sidebar(
+    pub fn render_sidebar(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
 
         self.ensure_rename_state(window, cx);
 
@@ -211,14 +212,14 @@ impl DatalithView {
             .on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
                 if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
                     let new_path = root.join(name);
-                    this.handle_file_move(drag.path.clone(), new_path, cx);
+                    this.handle_file_move(&drag.path, &new_path, cx);
                 }
             }))
-            .child(self.render_sidebar_header(cx))
+            .child(Self::render_sidebar_header(cx))
             .child(
                 div()
                     .flex_1()
-                    .child(self.render_file_tree(cx, &self.tree_state)),
+                    .child(Self::render_file_tree(cx, &self.tree_state)),
             )
             .child(
                 div()
@@ -227,26 +228,23 @@ impl DatalithView {
                     .p_2()
                     .child(Select::new(&self.vault_select_state)),
             )
-            .context_menu({
-                let view = view.clone();
-                move |menu, _window, cx| {
-                    let suppressed = view.update(cx, |v, _| {
-                        let suppressed = v.suppress_sidebar_context_menu;
-                        v.suppress_sidebar_context_menu = false;
-                        suppressed
-                    });
+            .context_menu(move |menu, _window, cx| {
+                let suppressed = view.update(cx, |v, _| {
+                    let suppressed = v.suppress_sidebar_context_menu;
+                    v.suppress_sidebar_context_menu = false;
+                    suppressed
+                });
 
-                    if suppressed {
-                        return menu;
-                    }
-
-                    view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
-                    menu.menu("New File", Box::new(NewFile))
-                        .menu("New Folder", Box::new(NewFolder))
-                        .separator()
-                        .menu("Open in Explorer", Box::new(OpenInExplorer))
-                        .menu("Copy Path", Box::new(CopyPath))
+                if suppressed {
+                    return menu;
                 }
+
+                view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
+                menu.menu("New File", Box::new(NewFile))
+                    .menu("New Folder", Box::new(NewFolder))
+                    .separator()
+                    .menu("Open in Explorer", Box::new(OpenInExplorer))
+                    .menu("Copy Path", Box::new(CopyPath))
             })
     }
 }

@@ -1,11 +1,14 @@
 use std::path::Path;
 
-use gpui::*;
+use gpui::{
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement,
+    ParentElement, Styled, Window, div,
+};
 use gpui_component::input::{Input, InputState};
 
 use crate::document::handler::{FileHandler, ReloadOutcome};
 
-pub(crate) fn reload_text(
+pub fn reload_text(
     path: &Path,
     handler: &mut FileHandler,
     window: &mut Window,
@@ -22,16 +25,16 @@ pub(crate) fn reload_text(
     Ok(ReloadOutcome::Reloaded)
 }
 
-pub(crate) struct PlainTextEditor {
+pub struct PlainTextEditor {
     input: Entity<InputState>,
 }
 
 impl PlainTextEditor {
-    pub(crate) fn new(input: Entity<InputState>) -> Self {
+    pub const fn new(input: Entity<InputState>) -> Self {
         Self { input }
     }
 
-    pub(crate) fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<InputState> {
+    pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<InputState> {
         let content = std::fs::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             InputState::new(window, cx)
@@ -41,7 +44,7 @@ impl PlainTextEditor {
         })
     }
 
-    pub(crate) fn input(&self) -> &Entity<InputState> {
+    pub const fn input(&self) -> &Entity<InputState> {
         &self.input
     }
 

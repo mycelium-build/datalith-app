@@ -1,5 +1,7 @@
 use gpui::{Point, point};
 
+use conv::{ConvAsUtil, ConvUtil, UnwrapOrInf};
+
 use super::model::{GraphSnapshot, deterministic_position};
 
 const VELOCITY_DAMPING: f32 = 0.64;
@@ -10,7 +12,7 @@ const MAX_ACCELERATION: f32 = 4.0;
 pub(super) const MAX_VELOCITY: f32 = 16.0;
 
 pub(super) fn vector_length(vector: Point<f32>) -> f32 {
-    (vector.x * vector.x + vector.y * vector.y).sqrt()
+    vector.x.hypot(vector.y)
 }
 
 pub(super) fn clamp_magnitude(vector: Point<f32>, maximum: f32) -> Point<f32> {
@@ -26,7 +28,8 @@ pub(super) fn clamp_magnitude(vector: Point<f32>, maximum: f32) -> Point<f32> {
 }
 
 pub(super) fn link_force_scale(degree: usize) -> f32 {
-    1.0 / degree.max(1) as f32
+    let degree: f32 = degree.max(1).approx().unwrap_or_inf();
+    1.0 / degree
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -52,34 +55,55 @@ impl Simulation {
         let mut forces: Vec<Point<f32>> = vec![Point::default(); snapshot.nodes.len()];
         let mut link_degrees = vec![0_usize; snapshot.nodes.len()];
         for edge in &snapshot.edges {
-            link_degrees[edge.source] += 1;
-            link_degrees[edge.target] += 1;
+            if let Some(degree) = link_degrees.get_mut(edge.source) {
+                *degree = degree.saturating_add(1);
+            }
+            if let Some(degree) = link_degrees.get_mut(edge.target) {
+                *degree = degree.saturating_add(1);
+            }
         }
 
         for (index, node) in snapshot.nodes.iter().enumerate() {
             let repel = tree.repulsion(index, node.position, physics.repulsion.strength);
-            forces[index].x += repel.x;
-            forces[index].y += repel.y;
-            forces[index].x -= node.position.x * physics.center.strength * node.center_weight;
-            forces[index].y -= node.position.y * physics.center.strength * node.center_weight;
+            let Some(force) = forces.get_mut(index) else {
+                continue;
+            };
+            force.x += repel.x;
+            force.y += repel.y;
+            force.x =
+                (node.position.x * physics.center.strength).mul_add(-node.center_weight, force.x);
+            force.y =
+                (node.position.y * physics.center.strength).mul_add(-node.center_weight, force.y);
         }
 
         for edge in &snapshot.edges {
-            let source = snapshot.nodes[edge.source].position;
-            let target = snapshot.nodes[edge.target].position;
+            let Some(source) = snapshot.nodes.get(edge.source).map(|node| node.position) else {
+                continue;
+            };
+            let Some(target) = snapshot.nodes.get(edge.target).map(|node| node.position) else {
+                continue;
+            };
             let delta = point(target.x - source.x, target.y - source.y);
-            let distance = (delta.x * delta.x + delta.y * delta.y).sqrt().max(0.001);
+            let distance = delta.x.hypot(delta.y).max(0.001);
             let magnitude = (distance - physics.link.distance) * physics.link.strength;
             let force = point(
                 delta.x / distance * magnitude,
                 delta.y / distance * magnitude,
             );
-            let source_scale = link_force_scale(link_degrees[edge.source]);
-            let target_scale = link_force_scale(link_degrees[edge.target]);
-            forces[edge.source].x += force.x * source_scale;
-            forces[edge.source].y += force.y * source_scale;
-            forces[edge.target].x -= force.x * target_scale;
-            forces[edge.target].y -= force.y * target_scale;
+            let source_scale =
+                link_force_scale(link_degrees.get(edge.source).copied().unwrap_or_default());
+            let target_scale =
+                link_force_scale(link_degrees.get(edge.target).copied().unwrap_or_default());
+            let Some(source_force) = forces.get_mut(edge.source) else {
+                continue;
+            };
+            source_force.x = force.x.mul_add(source_scale, source_force.x);
+            source_force.y = force.y.mul_add(source_scale, source_force.y);
+            let Some(target_force) = forces.get_mut(edge.target) else {
+                continue;
+            };
+            target_force.x = force.x.mul_add(-target_scale, target_force.x);
+            target_force.y = force.y.mul_add(-target_scale, target_force.y);
         }
 
         let node_count = snapshot.nodes.len();
@@ -111,11 +135,11 @@ impl Simulation {
         self.alpha *= COOLING;
     }
 
-    pub(super) fn reheat(&mut self) {
+    pub(super) const fn reheat(&mut self) {
         self.alpha = 1.0;
     }
 
-    pub(super) fn is_sleeping(&self) -> bool {
+    pub(super) const fn is_sleeping(self) -> bool {
         self.alpha <= SLEEP_ALPHA
     }
 }
@@ -158,25 +182,20 @@ struct QuadTree {
 
 impl QuadTree {
     fn new(positions: &[Point<f32>]) -> Self {
-        if positions.is_empty() {
+        let Some(first) = positions.first() else {
             return Self {
                 nodes: Vec::new(),
                 positions: Vec::new(),
             };
-        }
-        let (mut min_x, mut max_x, mut min_y, mut max_y) = (
-            positions[0].x,
-            positions[0].x,
-            positions[0].y,
-            positions[0].y,
-        );
-        for position in &positions[1..] {
+        };
+        let (mut min_x, mut max_x, mut min_y, mut max_y) = (first.x, first.x, first.y, first.y);
+        for position in positions.iter().skip(1) {
             min_x = min_x.min(position.x);
             max_x = max_x.max(position.x);
             min_y = min_y.min(position.y);
             max_y = max_y.max(position.y);
         }
-        let center = point((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+        let center = point(min_x.midpoint(max_x), min_y.midpoint(max_y));
         let half_size = ((max_x - min_x).max(max_y - min_y) / 2.0 + 1.0).max(1.0);
         let mut tree = Self {
             nodes: Vec::with_capacity(positions.len().saturating_mul(2).max(1)),
@@ -190,38 +209,44 @@ impl QuadTree {
     }
 
     fn insert(&mut self, node_index: usize, body: usize, depth: usize) {
-        let position = self.positions[body];
-        let (existing, has_children, center, half_size) = {
-            let node = &mut self.nodes[node_index];
+        let Some(position) = self.positions.get(body).copied() else {
+            return;
+        };
+        let (has_children, existing, center, half_size) = {
+            let Some(node) = self.nodes.get_mut(node_index) else {
+                return;
+            };
             let new_mass = node.mass + 1.0;
             node.mass_center = point(
-                (node.mass_center.x * node.mass + position.x) / new_mass,
-                (node.mass_center.y * node.mass + position.y) / new_mass,
+                node.mass_center.x.mul_add(node.mass, position.x) / new_mass,
+                node.mass_center.y.mul_add(node.mass, position.y) / new_mass,
             );
             node.mass = new_mass;
-            (
-                node.body,
-                node.children.iter().any(Option::is_some),
-                node.center,
-                node.half_size,
-            )
-        };
-
-        if !has_children && existing.is_none() {
-            self.nodes[node_index].body = Some(body);
-            return;
-        }
-        if depth >= 20 || half_size <= 0.001 {
-            self.nodes[node_index].body = None;
-            return;
-        }
-        if !has_children {
-            self.nodes[node_index].body = None;
-            if let Some(existing) = existing {
-                self.insert_into_child(node_index, existing, depth + 1, center, half_size);
+            if !node.children.iter().any(Option::is_some) && node.body.is_none() {
+                node.body = Some(body);
+                return;
             }
+            if depth >= 20 || node.half_size <= 0.001 {
+                node.body = None;
+                return;
+            }
+            let has_children = node.children.iter().any(Option::is_some);
+            let existing = node.body;
+            let center = node.center;
+            let half_size = node.half_size;
+            node.body = None;
+            (has_children, existing, center, half_size)
+        };
+        if !has_children && let Some(existing) = existing {
+            self.insert_into_child(
+                node_index,
+                existing,
+                depth.saturating_add(1),
+                center,
+                half_size,
+            );
         }
-        self.insert_into_child(node_index, body, depth + 1, center, half_size);
+        self.insert_into_child(node_index, body, depth.saturating_add(1), center, half_size);
     }
 
     fn insert_into_child(
@@ -232,11 +257,18 @@ impl QuadTree {
         center: Point<f32>,
         half_size: f32,
     ) {
-        let position = self.positions[body];
+        let Some(position) = self.positions.get(body).copied() else {
+            return;
+        };
         let right = usize::from(position.x >= center.x);
         let bottom = usize::from(position.y >= center.y);
-        let quadrant = bottom * 2 + right;
-        let child = if let Some(child) = self.nodes[parent].children[quadrant] {
+        let quadrant = (bottom << 1) | right;
+        let existing = self
+            .nodes
+            .get(parent)
+            .and_then(|node| node.children.get(quadrant).copied())
+            .flatten();
+        let child = if let Some(child) = existing {
             child
         } else {
             let child_half = half_size / 2.0;
@@ -246,7 +278,11 @@ impl QuadTree {
             );
             let child = self.nodes.len();
             self.nodes.push(QuadNode::new(child_center, child_half));
-            self.nodes[parent].children[quadrant] = Some(child);
+            if let Some(node) = self.nodes.get_mut(parent)
+                && let Some(slot) = node.children.get_mut(quadrant)
+            {
+                *slot = Some(child);
+            }
             child
         };
         self.insert(child, body, depth);
@@ -267,7 +303,9 @@ impl QuadTree {
         position: Point<f32>,
         strength: f32,
     ) -> Point<f32> {
-        let node = &self.nodes[node_index];
+        let Some(node) = self.nodes.get(node_index) else {
+            return Point::default();
+        };
         if node.mass == 0.0 || node.body == Some(body) {
             return Point::default();
         }
@@ -275,12 +313,15 @@ impl QuadTree {
             position.x - node.mass_center.x,
             position.y - node.mass_center.y,
         );
-        if delta.x * delta.x + delta.y * delta.y < 0.000_001 {
-            let angle =
-                (body as f32 * 2.399_963_1 + node_index as f32).rem_euclid(std::f32::consts::TAU);
+        if delta.y.mul_add(delta.y, delta.x * delta.x) < 0.000_001 {
+            let angle = body
+                .approx_as::<f32>()
+                .unwrap_or_inf()
+                .mul_add(2.399_963_1, node_index.approx_as::<f32>().unwrap_or_inf())
+                .rem_euclid(std::f32::consts::TAU);
             delta = point(angle.cos() * 0.01, angle.sin() * 0.01);
         }
-        let distance_squared = delta.x * delta.x + delta.y * delta.y + 16.0;
+        let distance_squared = delta.y.mul_add(delta.y, delta.x * delta.x) + 16.0;
         let distance = distance_squared.sqrt();
         let is_leaf = node.children.iter().all(Option::is_none);
         if is_leaf
@@ -307,6 +348,8 @@ impl QuadTree {
 
 #[cfg(test)]
 mod tests {
+    use conv::ConvUtil;
+
     use super::super::model::{INITIAL_LAYOUT_RADIUS, INITIAL_LAYOUT_REFERENCE_NODES};
     use super::super::snapshot::make_snapshot;
     use super::*;
@@ -322,9 +365,9 @@ mod tests {
 
     #[test]
     fn link_force_is_normalized_for_each_endpoint_degree() {
-        assert_eq!(link_force_scale(0), 1.0);
-        assert_eq!(link_force_scale(1), 1.0);
-        assert_eq!(link_force_scale(100), 0.01);
+        assert!((link_force_scale(0) - 1.0).abs() < 1e-6);
+        assert!((link_force_scale(1) - 1.0).abs() < 1e-6);
+        assert!((link_force_scale(100) - 0.01).abs() < 1e-6);
     }
 
     #[test]
@@ -335,7 +378,7 @@ mod tests {
         let definition = parse_definition("").unwrap();
         let nodes = ["one.md", "two.md"].into_iter().map(|path| GraphNode {
             path: PathBuf::from(path),
-            properties: yaml_serde::Value::Mapping(Default::default()),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         });
         let edges = [GraphEdge {
             source: PathBuf::from("one.md"),
@@ -364,14 +407,14 @@ mod tests {
     fn large_hub_graph_remains_stable_without_catapulting_nodes() {
         use crate::document::graph::{GraphEdge, GraphNode, parse_definition};
 
-        const NODE_COUNT: usize = INITIAL_LAYOUT_REFERENCE_NODES as usize * 4;
+        let node_count = INITIAL_LAYOUT_REFERENCE_NODES.approx_as::<usize>().unwrap() * 4;
 
-        let definition = parse_definition(&format!("limit: {NODE_COUNT}")).unwrap();
-        let nodes = (0..NODE_COUNT).map(|index| GraphNode {
+        let definition = parse_definition(&format!("limit: {node_count}")).unwrap();
+        let nodes = (0..node_count).map(|index| GraphNode {
             path: format!("node-{index}.md").into(),
-            properties: yaml_serde::Value::Mapping(Default::default()),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         });
-        let edges = (1..NODE_COUNT).map(|index| GraphEdge {
+        let edges = (1..node_count).map(|index| GraphEdge {
             source: format!("node-{index}.md").into(),
             target: "node-0.md".into(),
         });
@@ -387,7 +430,8 @@ mod tests {
             }));
         }
 
-        let layout_scale = (NODE_COUNT as f32 / INITIAL_LAYOUT_REFERENCE_NODES).sqrt();
+        let layout_scale =
+            (node_count.approx_as::<f32>().unwrap_or_inf() / INITIAL_LAYOUT_REFERENCE_NODES).sqrt();
         let maximum_radius = snapshot
             .nodes
             .iter()
@@ -406,7 +450,7 @@ mod tests {
         .unwrap();
         let nodes = [GraphNode {
             path: "still.md".into(),
-            properties: yaml_serde::Value::Mapping(Default::default()),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         }];
         let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);
@@ -414,7 +458,7 @@ mod tests {
         Simulation::default().step(&mut snapshot, None);
 
         assert_eq!(snapshot.nodes[0].position, gpui::point(120.0, 0.0));
-        assert_eq!(snapshot.nodes[0].velocity, std::default::Default::default());
+        assert_eq!(snapshot.nodes[0].velocity, Point::default());
     }
 
     #[test]
@@ -424,7 +468,7 @@ mod tests {
         let definition = parse_definition("").unwrap();
         let nodes = [GraphNode {
             path: "moving.md".into(),
-            properties: yaml_serde::Value::Mapping(Default::default()),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         }];
         let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);

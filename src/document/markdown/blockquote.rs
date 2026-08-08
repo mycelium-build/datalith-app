@@ -1,6 +1,6 @@
 /// Make an explicit decrease in `>` markers close nested blockquotes.
 ///
-/// CommonMark otherwise treats a line such as `> c` after `> > b` as a lazy
+/// `CommonMark` otherwise treats a line such as `> c` after `> > b` as a lazy
 /// continuation of the inner quote. In a preview editor, following the visible
 /// marker depth is less surprising.
 pub(super) fn normalize_blockquote_depth(text: &str) -> String {
@@ -34,9 +34,12 @@ pub(super) fn normalize_blockquote_depth(text: &str) -> String {
 
 fn blockquote_depth(line: &str) -> usize {
     let mut rest = line.trim_start();
-    let mut depth = 0;
+    let mut depth: usize = 0;
     while let Some(after_marker) = rest.strip_prefix('>') {
-        depth += 1;
+        let Some(next_depth) = depth.checked_add(1) else {
+            break;
+        };
+        depth = next_depth;
         rest = after_marker.strip_prefix(' ').unwrap_or(after_marker);
     }
     depth
@@ -44,6 +47,7 @@ fn blockquote_depth(line: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]

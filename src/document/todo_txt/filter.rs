@@ -1,7 +1,7 @@
 use txtodo::{Priority, TaskFilter, TaskFilters};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FilterKind {
+pub enum FilterKind {
     All,
     Incomplete,
     Completed,
@@ -20,7 +20,7 @@ impl FilterKind {
         Self::PriorityC,
     ];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::All => "All",
             Self::Incomplete => "Incomplete",

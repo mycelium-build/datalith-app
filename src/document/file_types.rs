@@ -3,14 +3,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FileTypeCapabilities {
+pub struct FileTypeCapabilities {
     pub(crate) text_search: bool,
     pub(crate) wiki_links: bool,
     pub(crate) yaml_frontmatter: bool,
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct RegisteredFileTypes {
+pub struct RegisteredFileTypes {
     by_extension: Arc<HashMap<String, FileTypeCapabilities>>,
 }
 

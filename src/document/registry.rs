@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use gpui::*;
+use gpui::{Context, Window};
 
 use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
@@ -17,7 +17,7 @@ use crate::ui::viewers::image::ImageViewer;
 use crate::ui::viewers::markdown::MarkdownViewer;
 use crate::vault::VaultCatalog;
 
-pub(crate) struct FileTypeConfig {
+pub struct FileTypeConfig {
     pub(crate) capabilities: FileTypeCapabilities,
     pub(crate) editor_factory: Option<EditorFactory>,
     pub(crate) viewer_factory: Option<ViewerFactory>,
@@ -25,26 +25,26 @@ pub(crate) struct FileTypeConfig {
     pub(crate) default_mode: ViewMode,
 }
 
-pub(crate) type EditorFactory = fn(&Path, &mut Window, &mut Context<FileHandler>) -> EditorKind;
+pub type EditorFactory = fn(&Path, &mut Window, &mut Context<FileHandler>) -> EditorKind;
 
-pub(crate) struct ViewerDependencies {
+pub struct ViewerDependencies {
     vault_catalog: Option<VaultCatalog>,
 }
 
 impl ViewerDependencies {
-    pub(crate) fn new(vault_catalog: Option<VaultCatalog>) -> Self {
+    pub(crate) const fn new(vault_catalog: Option<VaultCatalog>) -> Self {
         Self { vault_catalog }
     }
 }
 
-pub(crate) type ViewerFactory = fn(
+pub type ViewerFactory = fn(
     &Path,
     Option<&EditorKind>,
     &ViewerDependencies,
     &mut Context<FileHandler>,
 ) -> Option<ViewerKind>;
 
-pub(crate) struct FileRegistry {
+pub struct FileRegistry {
     configs: HashMap<String, FileTypeConfig>,
     fallback: FileTypeConfig,
 }
@@ -85,8 +85,7 @@ impl FileRegistry {
     pub(crate) fn is_supported(&self, path: &Path) -> bool {
         path.extension()
             .and_then(|e| e.to_str())
-            .map(|ext| self.configs.contains_key(&ext.to_lowercase()))
-            .unwrap_or(false)
+            .is_some_and(|ext| self.configs.contains_key(&ext.to_lowercase()))
     }
 
     #[must_use]
@@ -117,7 +116,7 @@ impl FileRegistry {
     }
 }
 
-pub(crate) fn default_registry() -> FileRegistry {
+pub fn default_registry() -> FileRegistry {
     let mut registry = FileRegistry::new();
 
     // Graph Definition: YAML editor + derived Graph View

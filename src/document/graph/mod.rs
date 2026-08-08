@@ -3,9 +3,9 @@ mod filter;
 mod types;
 mod validate;
 
-pub(crate) use filter::{Expression, Filter};
-pub(crate) use types::*;
-pub(crate) use validate::parse_definition;
+pub use filter::{Expression, Filter};
+pub use types::*;
+pub use validate::parse_definition;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -16,15 +16,15 @@ use yaml_serde::Value;
 
 use crate::vault::CatalogFilter;
 
-pub(crate) const HARD_NODE_LIMIT: usize = 50_000;
-pub(crate) const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
-pub(crate) const DEFAULT_REPULSION_STRENGTH: f32 = 1_024.0;
-pub(crate) const DEFAULT_LINK_STRENGTH: f32 = 0.04;
-pub(crate) const DEFAULT_LINK_DISTANCE: f32 = 128.0;
+pub const HARD_NODE_LIMIT: usize = 50_000;
+pub const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
+pub const DEFAULT_REPULSION_STRENGTH: f32 = 1_024.0;
+pub const DEFAULT_LINK_STRENGTH: f32 = 0.04;
+pub const DEFAULT_LINK_DISTANCE: f32 = 128.0;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct GraphDefinition {
+pub struct GraphDefinition {
     pub(crate) limit: usize,
     pub(crate) filters: Filter,
     pub(crate) groups: Vec<GraphGroup>,
@@ -52,34 +52,30 @@ impl GraphDefinition {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct GraphGroup {
+pub struct GraphGroup {
     pub(crate) name: String,
     pub(crate) filters: Filter,
     pub(crate) node: GroupNodeStyle,
 }
 
-pub(crate) struct GraphFile<'a> {
+pub struct GraphFile<'a> {
     pub(crate) path: &'a Path,
     pub(crate) properties: &'a Value,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct GraphNode {
+pub struct GraphNode {
     pub(crate) path: PathBuf,
     pub(crate) properties: Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct GraphEdge {
+pub struct GraphEdge {
     pub(crate) source: PathBuf,
     pub(crate) target: PathBuf,
 }
 
-pub(crate) fn matches_definition(
-    definition: &GraphDefinition,
-    path: &Path,
-    properties: &Value,
-) -> bool {
+pub fn matches_definition(definition: &GraphDefinition, path: &Path, properties: &Value) -> bool {
     let file = GraphFile { path, properties };
     match &definition.filters {
         Filter::Expression(expression)
@@ -129,7 +125,7 @@ fn expression_matches_with_file(expression: &Expression, file: &GraphFile<'_>) -
     expression.matches(file)
 }
 
-pub(crate) fn matching_group<'a>(
+pub fn matching_group<'a>(
     definition: &'a GraphDefinition,
     path: &Path,
     properties: &Value,
@@ -141,7 +137,7 @@ pub(crate) fn matching_group<'a>(
         .find(|group| filter_matches_with_file(&group.filters, &file))
 }
 
-pub(crate) fn select_nodes(
+pub fn select_nodes(
     definition: &GraphDefinition,
     candidates: impl IntoIterator<Item = GraphNode>,
 ) -> Result<Vec<GraphNode>> {
@@ -159,7 +155,7 @@ pub(crate) fn select_nodes(
     Ok(nodes)
 }
 
-pub(crate) fn deduplicate_edges(
+pub fn deduplicate_edges(
     edges: impl IntoIterator<Item = GraphEdge>,
     selected: &HashSet<PathBuf>,
 ) -> Vec<GraphEdge> {
@@ -181,7 +177,7 @@ mod tests {
 
     #[test]
     fn empty_boolean_filters_have_defined_identities() {
-        let properties = Value::Mapping(Default::default());
+        let properties = Value::Mapping(yaml_serde::Mapping::default());
         assert!(matches_definition(
             &parse_definition("filters: []").unwrap(),
             Path::new("A.md"),
@@ -202,7 +198,7 @@ mod tests {
     #[test]
     fn selects_with_limit_uses_first_group_and_deduplicates_visible_edges() {
         let definition = parse_definition(
-            r##"
+            r#"
 limit: 1
 groups:
   - name: First
@@ -213,7 +209,7 @@ groups:
     filters: 'status == "done"'
     node:
       color: '#00ff00'
-"##,
+"#,
         )
         .unwrap();
         let properties: Value = yaml_serde::from_str("status: done").unwrap();

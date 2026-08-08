@@ -8,19 +8,14 @@ use crate::vault::{
 
 use super::GraphFile;
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Filter {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Filter {
+    #[default]
     MatchAll,
     Expression(Expression),
-    And(Vec<Filter>),
-    Or(Vec<Filter>),
-    Not(Box<Filter>),
-}
-
-impl Default for Filter {
-    fn default() -> Self {
-        Self::MatchAll
-    }
+    And(Vec<Self>),
+    Or(Vec<Self>),
+    Not(Box<Self>),
 }
 
 impl Filter {
@@ -50,7 +45,7 @@ impl<'de> Deserialize<'de> for Filter {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Expression {
+pub struct Expression {
     pub(super) left: PropertyPath,
     pub(super) operation: Operation,
 }
@@ -96,9 +91,6 @@ pub(super) enum Scalar {
 
 impl Expression {
     fn to_catalog_filter(&self) -> CatalogFilter {
-        if let Operation::InFolder(folder) = &self.operation {
-            return CatalogFilter::InFolder(folder.clone());
-        }
         let property = match &self.left {
             PropertyPath::Note(parts) => CatalogProperty::Metadata(parts.clone()),
             PropertyPath::File(field) => CatalogProperty::File(match field {
@@ -109,6 +101,7 @@ impl Expression {
             }),
         };
         match &self.operation {
+            Operation::InFolder(folder) => CatalogFilter::InFolder(folder.clone()),
             Operation::Compare(comparison, value) => CatalogFilter::Compare {
                 property,
                 comparison: match comparison {
@@ -125,7 +118,6 @@ impl Expression {
                 property,
                 value: value.to_catalog_scalar(),
             },
-            Operation::InFolder(_) => unreachable!(),
         }
     }
 
@@ -191,15 +183,12 @@ pub(super) fn file_scalar(path: &PropertyPath, file: &GraphFile<'_>) -> Option<S
 }
 
 fn compare(actual: Option<&Value>, comparison: Comparison, expected: &Scalar) -> bool {
-    if actual.is_none() {
-        return match (comparison, expected) {
-            (Comparison::Equal, Scalar::Null) => true,
-            (Comparison::NotEqual, Scalar::Null) => false,
-            (Comparison::NotEqual, _) => true,
-            _ => false,
-        };
-    }
-    let actual = actual.unwrap();
+    let Some(actual) = actual else {
+        if matches!(expected, Scalar::Null) {
+            return matches!(comparison, Comparison::Equal);
+        }
+        return matches!(comparison, Comparison::NotEqual);
+    };
     if matches!(expected, Scalar::Null) {
         return matches!(comparison, Comparison::NotEqual) && !actual.is_null()
             || matches!(comparison, Comparison::Equal) && actual.is_null();
@@ -243,7 +232,9 @@ pub(super) fn parse_filter(value: &Value) -> Result<Filter> {
         Value::String(expression) => Ok(Filter::Expression(parse_expression(expression)?)),
         Value::Sequence(filters) if filters.is_empty() => Ok(Filter::MatchAll),
         Value::Mapping(map) if map.len() == 1 => {
-            let (key, value) = map.iter().next().unwrap();
+            let Some((key, value)) = map.iter().next() else {
+                bail!("filter operator must be a string");
+            };
             let key = key
                 .as_str()
                 .ok_or_else(|| anyhow!("filter operator must be a string"))?;
@@ -327,19 +318,24 @@ fn parse_property(source: &str) -> Result<PropertyPath> {
             .strip_prefix("note[")
             .or_else(|| rest.strip_prefix('['))
         {
-            let end = bracket
-                .find(']')
-                .ok_or_else(|| anyhow!("unterminated property bracket"))?;
-            parts.push(parse_string(&bracket[..end])?);
-            rest = bracket[end + 1..].trim_start_matches('.');
+            let Some((content, after)) = bracket.split_once(']') else {
+                bail!("unterminated property bracket");
+            };
+            parts.push(parse_string(content)?);
+            rest = after.trim_start_matches('.');
         } else {
             let end = rest.find(['.', '[']).unwrap_or(rest.len());
-            let part = &rest[..end];
+            let Some(part) = rest.get(..end) else {
+                bail!("invalid property name");
+            };
             if part.is_empty() {
                 bail!("empty property name");
             }
             parts.push(part.to_string());
-            rest = rest[end..].trim_start_matches('.');
+            let Some(after) = rest.get(end..) else {
+                bail!("invalid property name");
+            };
+            rest = after.trim_start_matches('.');
         }
     }
     if parts.is_empty() {
@@ -362,14 +358,19 @@ fn parse_scalar(source: &str) -> Result<Scalar> {
 }
 
 fn parse_string(source: &str) -> Result<String> {
-    if source.len() < 2 {
+    let bytes = source.as_bytes();
+    if bytes.len() < 2 {
         bail!("expected quoted string");
     }
-    let quote = source.as_bytes()[0];
-    if !matches!(quote, b'\'' | b'"') || source.as_bytes()[source.len() - 1] != quote {
+    let first = bytes.first().copied();
+    let last = bytes.last().copied();
+    if !matches!(first, Some(b'\'' | b'"')) || first != last {
         bail!("expected quoted string");
     }
-    Ok(source[1..source.len() - 1].to_string())
+    let content = source
+        .get(1..bytes.len().saturating_sub(1))
+        .ok_or_else(|| anyhow!("expected quoted string"))?;
+    Ok(content.to_string())
 }
 
 #[cfg(test)]

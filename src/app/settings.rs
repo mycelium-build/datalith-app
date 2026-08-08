@@ -7,31 +7,31 @@ use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
 const MAX_RECENT_VAULTS: usize = 10;
-pub(crate) const DEFAULT_FONT_SCALE: f64 = 1.0;
-pub(crate) const MIN_FONT_SCALE: f64 = 0.5;
-pub(crate) const MAX_FONT_SCALE: f64 = 3.0;
+pub const DEFAULT_FONT_SCALE: f64 = 1.0;
+pub const MIN_FONT_SCALE: f64 = 0.5;
+pub const MAX_FONT_SCALE: f64 = 3.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum ColorMode {
+pub enum ColorMode {
     #[default]
     Light,
     Dark,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ThemeKind {
+pub enum ThemeKind {
     Light,
     Dark,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ApplicationSettings {
-    pub(crate) last_vault: Option<PathBuf>,
-    pub(crate) recent_vaults: Vec<PathBuf>,
-    pub(crate) color_mode: ColorMode,
-    pub(crate) light_theme_name: Option<String>,
-    pub(crate) dark_theme_name: Option<String>,
-    pub(crate) font_scale: f64,
+pub struct ApplicationSettings {
+    pub last_vault: Option<PathBuf>,
+    pub recent_vaults: Vec<PathBuf>,
+    pub color_mode: ColorMode,
+    pub light_theme_name: Option<String>,
+    pub dark_theme_name: Option<String>,
+    pub font_scale: f64,
 }
 
 impl Default for ApplicationSettings {
@@ -142,7 +142,7 @@ struct SettingsStore {
 }
 
 impl SettingsStore {
-    fn new(file: PathBuf) -> Self {
+    const fn new(file: PathBuf) -> Self {
         Self { file, cached: None }
     }
 
@@ -187,14 +187,21 @@ fn settings_file() -> PathBuf {
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
     LazyLock::new(|| Mutex::new(SettingsStore::new(settings_file())));
 
-#[must_use]
-pub(crate) fn snapshot() -> ApplicationSettings {
-    SETTINGS.lock().unwrap().snapshot()
+fn settings_lock() -> std::sync::MutexGuard<'static, SettingsStore> {
+    // Return the value anyway even if maybe poisoned (mid updating)
+    SETTINGS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-pub(crate) fn record_opened_vault(path: &Path) -> Result<()> {
+#[must_use]
+pub fn snapshot() -> ApplicationSettings {
+    settings_lock().snapshot()
+}
+
+pub fn record_opened_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
-    SETTINGS.lock().unwrap().update(|settings| {
+    settings_lock().update(|settings| {
         settings.last_vault = Some(path.clone());
         settings.recent_vaults.retain(|recent| recent != &path);
         settings.recent_vaults.insert(0, path);
@@ -202,12 +209,9 @@ pub(crate) fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
-pub(crate) fn register_recent_vault(path: &Path) -> Result<()> {
+pub fn register_recent_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
-    SETTINGS
-        .lock()
-        .unwrap()
-        .update(|settings| push_recent_vault(settings, path))
+    settings_lock().update(|settings| push_recent_vault(settings, path))
 }
 
 fn push_recent_vault(settings: &mut ApplicationSettings, path: PathBuf) {
@@ -217,32 +221,26 @@ fn push_recent_vault(settings: &mut ApplicationSettings, path: PathBuf) {
     }
 }
 
-pub(crate) fn set_color_mode(mode: ColorMode) -> Result<()> {
-    SETTINGS
-        .lock()
-        .unwrap()
-        .update(|settings| settings.color_mode = mode)
+pub fn set_color_mode(mode: ColorMode) -> Result<()> {
+    settings_lock().update(|settings| settings.color_mode = mode)
 }
 
-pub(crate) fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
+pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
     let name = name.trim();
     if name.is_empty() {
         bail!("Theme name cannot be empty");
     }
-    SETTINGS.lock().unwrap().update(|settings| match kind {
+    settings_lock().update(|settings| match kind {
         ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
         ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
     })
 }
 
-pub(crate) fn set_font_scale(scale: f64) -> Result<()> {
+pub fn set_font_scale(scale: f64) -> Result<()> {
     if !scale.is_finite() || !(MIN_FONT_SCALE..=MAX_FONT_SCALE).contains(&scale) {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
-    SETTINGS
-        .lock()
-        .unwrap()
-        .update(|settings| settings.font_scale = scale)
+    settings_lock().update(|settings| settings.font_scale = scale)
 }
 
 #[cfg(test)]
@@ -270,7 +268,10 @@ mod tests {
 
         assert_eq!(settings.color_mode, ColorMode::Light);
         assert_eq!(settings.light_theme_name, None);
-        assert_eq!(settings.font_scale, DEFAULT_FONT_SCALE);
+        assert!(
+            (settings.font_scale - DEFAULT_FONT_SCALE).abs() <= f64::EPSILON,
+            "font_scale should normalize to DEFAULT_FONT_SCALE"
+        );
         let _ = fs::remove_file(file);
     }
 

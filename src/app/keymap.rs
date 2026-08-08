@@ -1,8 +1,13 @@
-use gpui::*;
+use gpui::{App, KeyBinding};
 
-use super::actions::*;
+use super::actions::{
+    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
+    NewTab, OpenInExplorer, OpenLink, Rename, SelectTab1, SelectTab2, SelectTab3, SelectTab4,
+    SelectTab5, SelectTab6, SelectTab7, SelectTab8, SelectTab9, ToggleEditorMode,
+    ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
+};
 
-pub(crate) fn register(cx: &mut App) {
+pub fn register(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-n", NewFile, None),
         KeyBinding::new("cmd-shift-n", NewFolder, None),

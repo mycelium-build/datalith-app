@@ -8,12 +8,12 @@ use gpui::{Entity, Subscription};
 use crate::document::handler::FileHandler;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum NavigationAction {
+pub enum NavigationAction {
     GoBack,
     GoForward,
 }
 
-pub(crate) struct Tab {
+pub struct Tab {
     path: PathBuf,
     handler: Entity<FileHandler>,
     _input_subscription: Option<Subscription>,
@@ -22,7 +22,7 @@ pub(crate) struct Tab {
     history_position: usize,
 }
 
-pub(crate) struct Tabs {
+pub struct Tabs {
     entries: Vec<Tab>,
     active: Option<usize>,
 }
@@ -35,7 +35,7 @@ impl Tabs {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
@@ -74,7 +74,7 @@ impl Tabs {
             .map(|(index, tab)| (index, tab.path.as_path(), &tab.handler))
     }
 
-    pub(crate) fn select(&mut self, index: usize) -> bool {
+    pub(crate) const fn select(&mut self, index: usize) -> bool {
         if index >= self.entries.len() {
             return false;
         }
@@ -82,7 +82,7 @@ impl Tabs {
         true
     }
 
-    pub(crate) fn select_last(&mut self) -> bool {
+    pub(crate) const fn select_last(&mut self) -> bool {
         let Some(index) = self.entries.len().checked_sub(1) else {
             return false;
         };
@@ -96,10 +96,13 @@ impl Tabs {
 
     fn insert(&mut self, tab: Tab, new_tab: bool) {
         if new_tab || self.entries.is_empty() {
+            let index = self.entries.len();
             self.entries.push(tab);
-            self.active = Some(self.entries.len() - 1);
-        } else if let Some(active) = self.active_index() {
-            self.entries[active] = tab;
+            self.active = Some(index);
+        } else if let Some(active) = self.active_index()
+            && let Some(entry) = self.entries.get_mut(active)
+        {
+            *entry = tab;
         }
     }
 
@@ -132,8 +135,8 @@ fn active_after_removal(active: Option<usize>, removed: usize, remaining: usize)
         return None;
     }
     match active {
-        Some(active) if active > removed => Some(active - 1),
-        Some(active) => Some(active.min(remaining - 1)),
+        Some(active) if active > removed => Some(active.saturating_sub(1)),
+        Some(active) => Some(active.min(remaining.saturating_sub(1))),
         None => Some(0),
     }
 }
@@ -143,7 +146,7 @@ impl Tab {
         &self.path
     }
 
-    pub(crate) fn handler(&self) -> &Entity<FileHandler> {
+    pub(crate) const fn handler(&self) -> &Entity<FileHandler> {
         &self.handler
     }
 }

@@ -14,7 +14,7 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 use fixtures::generator::{VaultConfig, generate_vault};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use vault::catalog::VaultCatalog;
 
@@ -33,11 +33,17 @@ fn vault_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("datalith-bench-{}-{}", name, std::process::id()))
 }
 
-fn delete_catalog_db(root: &PathBuf) {
+fn delete_catalog_db(root: &Path) {
     let db = root.join(".datalith/catalog.db");
     let _ = fs::remove_file(&db);
     let _ = fs::remove_file(db.with_extension("db-wal"));
     let _ = fs::remove_file(db.with_extension("db-shm"));
+}
+
+fn open_catalog(root: PathBuf) -> VaultCatalog {
+    // A benchmark cannot proceed if the catalog fails to open, so abort loudly.
+    #[allow(clippy::expect_used)]
+    VaultCatalog::open(root, md_file_types()).expect("failed to open vault catalog for benchmark")
 }
 
 fn bench_cold_start(c: &mut Criterion) {
@@ -59,9 +65,9 @@ fn bench_cold_start(c: &mut Criterion) {
         group.bench_function(format!("{n}_files"), |b| {
             b.iter_batched(
                 || delete_catalog_db(&root),
-                |_| {
-                    let catalog = VaultCatalog::open(root.clone(), md_file_types()).unwrap();
-                    catalog.wait_until_ready(Duration::from_secs(120));
+                |()| {
+                    let catalog = open_catalog(root.clone());
+                    catalog.wait_until_ready(Duration::from_mins(2));
                     std::hint::black_box(&catalog);
                 },
                 BatchSize::SmallInput,
@@ -88,14 +94,14 @@ fn bench_warm_start(c: &mut Criterion) {
         generate_vault(&root, &config);
 
         {
-            let catalog = VaultCatalog::open(root.clone(), md_file_types()).unwrap();
-            catalog.wait_until_ready(Duration::from_secs(120));
+            let catalog = open_catalog(root.clone());
+            catalog.wait_until_ready(Duration::from_mins(2));
         }
 
         group.bench_function(format!("{n}_files"), |b| {
             b.iter(|| {
-                let catalog = VaultCatalog::open(root.clone(), md_file_types()).unwrap();
-                catalog.wait_until_ready(Duration::from_secs(120));
+                let catalog = open_catalog(root.clone());
+                catalog.wait_until_ready(Duration::from_mins(2));
                 std::hint::black_box(&catalog);
             });
         });

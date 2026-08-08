@@ -4,7 +4,11 @@ mod frontmatter;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use gpui::*;
+use gpui::{
+    AnyElement, App, ClickEvent, ElementId, Entity, FocusHandle, Focusable, FontStyle, FontWeight,
+    HighlightStyle, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, StyledText, Window, div, img, px, relative,
+};
 use gpui_component::ActiveTheme;
 use gpui_component::ChildElement;
 use gpui_component::checkbox::Checkbox;
@@ -14,13 +18,17 @@ use gpui_component::table::{Table, TableBody, TableCell, TableHead, TableHeader,
 use percent_encoding::percent_decode_str;
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
-use crate::document::markdown::{MarkdownBlock, MarkdownInline, parse_markdown};
+use crate::document::markdown::{ListItem, MarkdownBlock, MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
 
-use constants::*;
+use constants::{
+    MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING, MD_CODE_BLOCK_RADIUS,
+    MD_CODE_FONT_SCALE, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
+    MD_PARAGRAPH_MARGIN,
+};
 use frontmatter::render_frontmatter;
 
-pub(crate) struct MarkdownViewer {
+pub struct MarkdownViewer {
     input: Entity<InputState>,
     file_path: PathBuf,
 }
@@ -32,17 +40,22 @@ struct InlineStyle {
     code: bool,
 }
 
+struct BlockContext<'a> {
+    element_id: &'a mut usize,
+    handler: Entity<FileHandler>,
+    cx: &'a mut App,
+}
+
 impl MarkdownViewer {
-    pub(crate) fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
+    pub const fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
         Self { input, file_path }
     }
 
-    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.input.focus_handle(cx)
     }
 
-    fn render_image(&self, url: &str, alt: &str, grouped: bool, cx: &mut App) -> AnyElement {
-        let base_font_size = BASE_FONT_SIZE as f32;
+    fn render_image(&self, url: &str, alt: &str, grouped: bool, cx: &App) -> AnyElement {
         let container = if grouped {
             div().min_w_0().flex_shrink_1().my_2()
         } else {
@@ -53,8 +66,7 @@ impl MarkdownViewer {
             let path = self
                 .file_path
                 .parent()
-                .map(|parent| parent.join(&decoded))
-                .unwrap_or_else(|| PathBuf::from(&decoded));
+                .map_or_else(|| PathBuf::from(&decoded), |parent| parent.join(&decoded));
             if path.exists() {
                 return container
                     .child(img(path).max_w(relative(1.)))
@@ -68,23 +80,22 @@ impl MarkdownViewer {
             .border_1()
             .border_color(cx.theme().border)
             .text_color(cx.theme().muted_foreground)
-            .text_size(px(base_font_size * 0.9))
+            .text_size(px(BASE_FONT_SIZE * 0.9))
             .child(if alt.is_empty() {
-                format!("[image: {}]", url)
+                format!("[image: {url}]")
             } else {
-                format!("[{}]", alt)
+                format!("[{alt}]")
             })
             .into_any_element()
     }
 
-    pub(crate) fn render(
+    pub fn render(
         &self,
         handler: Entity<FileHandler>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
-        let base_font_size = BASE_FONT_SIZE as f32;
         if content.is_empty() {
             return div()
                 .size_full()
@@ -102,19 +113,17 @@ impl MarkdownViewer {
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
-                base_font_size,
-                handler.clone(),
+                BASE_FONT_SIZE,
+                &handler,
                 cx,
             ));
         }
-        elements.extend(self.render_blocks(
-            &document.blocks,
-            0,
-            &mut element_id,
+        let mut ctx = BlockContext {
+            element_id: &mut element_id,
             handler,
-            window,
             cx,
-        ));
+        };
+        elements.extend(self.render_blocks(&document.blocks, 0, &mut ctx));
 
         div()
             .id("markdown-preview")
@@ -123,7 +132,7 @@ impl MarkdownViewer {
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()
-            .line_height(px(base_font_size * MD_LINE_HEIGHT))
+            .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements))
             .into_any_element()
     }
@@ -132,28 +141,17 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
-        element_id: &mut usize,
-        handler: Entity<FileHandler>,
-        window: &mut Window,
-        cx: &mut App,
+        ctx: &mut BlockContext,
     ) -> Vec<AnyElement> {
         blocks
             .iter()
             .enumerate()
             .map(|(index, block)| {
-                let is_last = index + 1 == blocks.len();
+                let next_index = index.saturating_add(1);
+                let is_last = next_index == blocks.len();
                 let next_is_paragraph =
-                    matches!(blocks.get(index + 1), Some(MarkdownBlock::Paragraph(_)));
-                self.render_block(
-                    block,
-                    list_depth,
-                    is_last,
-                    next_is_paragraph,
-                    element_id,
-                    handler.clone(),
-                    window,
-                    cx,
-                )
+                    matches!(blocks.get(next_index), Some(MarkdownBlock::Paragraph(_)));
+                self.render_block(block, list_depth, is_last, next_is_paragraph, ctx)
             })
             .collect()
     }
@@ -164,236 +162,277 @@ impl MarkdownViewer {
         list_depth: usize,
         is_last: bool,
         next_is_paragraph: bool,
-        element_id: &mut usize,
-        handler: Entity<FileHandler>,
-        window: &mut Window,
-        cx: &mut App,
+        ctx: &mut BlockContext,
     ) -> AnyElement {
-        let base_font_size = BASE_FONT_SIZE as f32;
         match block {
-            MarkdownBlock::Heading { level, content } => {
-                let idx = (*level as usize).saturating_sub(1).min(5);
-                let size = MD_HEADING_SIZES[idx];
-                div()
-                    .w_full()
-                    .min_w_0()
-                    .flex()
-                    .flex_wrap()
-                    .text_size(px(base_font_size * size))
-                    .font_weight(FontWeight::BOLD)
-                    .mt(px(MD_HEADING_MARGIN * size))
-                    .mb(px(MD_HEADING_MARGIN * size))
-                    .line_height(px(base_font_size * size * MD_LINE_HEIGHT))
-                    .children(self.render_inlines(content, InlineStyle::default(), handler, cx))
-                    .into_any_element()
+            MarkdownBlock::Heading { level, content } => self.render_heading(*level, content, ctx),
+            MarkdownBlock::Paragraph(content) => {
+                self.render_paragraph(content, list_depth, is_last, next_is_paragraph, ctx)
             }
-            MarkdownBlock::Paragraph(content) => div()
-                .w_full()
-                .min_w_0()
-                .flex()
-                .flex_wrap()
-                .mb(px(if is_last {
-                    0.0
-                } else if list_depth > 0 && !next_is_paragraph {
-                    0.0
-                } else {
-                    MD_PARAGRAPH_MARGIN
-                }))
-                .children(self.render_inlines(content, InlineStyle::default(), handler, cx))
-                .into_any_element(),
-            MarkdownBlock::BlockQuote(blocks) => div()
-                .w_full()
-                .min_w_0()
-                .pl(px(MD_BLOCKQUOTE_PADDING))
-                .border_l(px(MD_BLOCKQUOTE_BORDER))
-                .border_color(cx.theme().border)
-                .text_color(cx.theme().muted_foreground)
-                .children(self.render_blocks(blocks, list_depth, element_id, handler, window, cx))
-                .into_any_element(),
+            MarkdownBlock::BlockQuote(blocks) => self.render_blockquote(blocks, list_depth, ctx),
             MarkdownBlock::List { start, items } => {
-                let ordered = start.is_some();
-                let first = start.unwrap_or(1);
-                let rows = items.iter().enumerate().map(|(index, item)| {
-                    let marker = if let Some(checked) = item.task {
-                        let id = *element_id;
-                        *element_id += 1;
-                        div()
-                            .flex()
-                            .items_center()
-                            .flex_shrink_0()
-                            .h(px(base_font_size * MD_LINE_HEIGHT))
-                            .mr_1()
-                            .child(
-                                Checkbox::new(ElementId::NamedInteger(
-                                    "md-task-check".into(),
-                                    id as u64,
-                                ))
-                                .checked(checked),
-                            )
-                            .into_any_element()
-                    } else if ordered {
-                        div()
-                            .child(format!("{}. ", first + index as u64))
-                            .into_any_element()
-                    } else {
-                        div().child("\u{2022} ".to_string()).into_any_element()
-                    };
-                    div()
-                        .flex()
-                        .items_start()
-                        .w_full()
-                        .min_w_0()
-                        .child(
-                            div()
-                                .flex()
-                                .items_start()
-                                .flex_shrink_0()
-                                .child(MD_LIST_INDENT.repeat(list_depth))
-                                .child(marker),
-                        )
-                        .child(div().flex_1().min_w_0().children(self.render_blocks(
-                            &item.blocks,
-                            list_depth + 1,
-                            element_id,
-                            handler.clone(),
-                            window,
-                            cx,
-                        )))
-                });
-                div()
-                    .w_full()
-                    .children(rows)
-                    .mb(px(if list_depth > 0 {
-                        0.0
-                    } else {
-                        MD_PARAGRAPH_MARGIN
-                    }))
-                    .into_any_element()
+                self.render_list(*start, items, list_depth, ctx)
             }
             MarkdownBlock::Table { headers, rows } => {
-                let header_style = InlineStyle {
-                    bold: true,
-                    ..InlineStyle::default()
-                };
-                let header_row = TableRow::new().children(headers.iter().map(|cell| {
-                    TableHead::new().children(self.render_inlines(
-                        cell,
-                        header_style,
-                        handler.clone(),
-                        cx,
-                    ))
-                }));
-                let body = TableBody::new().children(rows.iter().map(|row| {
-                    TableRow::new().children(row.iter().map(|cell| {
-                        TableCell::new().children(self.render_inlines(
-                            cell,
-                            InlineStyle::default(),
-                            handler.clone(),
-                            cx,
-                        ))
-                    }))
-                }));
-                let table_ix = *element_id;
-                *element_id += 1;
-                Table::new()
-                    .with_ix(table_ix)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(px(MD_CODE_BLOCK_RADIUS))
-                    .mb(px(if list_depth > 0 {
-                        0.0
-                    } else {
-                        MD_PARAGRAPH_MARGIN
-                    }))
-                    .child(TableHeader::new().child(header_row))
-                    .child(body)
-                    .into_any_element()
+                self.render_table(headers, rows, list_depth, ctx)
             }
             MarkdownBlock::Code { language, content } => {
-                let label = language.as_ref().map(|language| {
-                    div()
-                        .text_size(px(base_font_size * MD_CODE_FONT_SCALE * 0.8))
-                        .text_color(cx.theme().muted_foreground)
-                        .child(language.clone())
-                });
-                div()
-                    .bg(cx.theme().muted)
-                    .font_family("monospace")
-                    .text_size(px(base_font_size * MD_CODE_FONT_SCALE))
-                    .rounded(px(MD_CODE_BLOCK_RADIUS))
-                    .p(px(MD_CODE_BLOCK_PADDING))
-                    .mb_2()
-                    .overflow_x_scrollbar()
-                    .children(label)
-                    .child(content.clone())
-                    .into_any_element()
+                Self::render_code(language.as_ref(), content, ctx)
             }
             MarkdownBlock::Rule => div()
                 .w_full()
                 .my_2()
                 .border_t_1()
-                .border_color(cx.theme().border)
+                .border_color(ctx.cx.theme().border)
                 .into_any_element(),
         }
+    }
+
+    fn render_heading(
+        &self,
+        level: u32,
+        content: &[MarkdownInline],
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        let size = MD_HEADING_SIZES
+            .get(
+                usize::try_from(level)
+                    .unwrap_or_default()
+                    .saturating_sub(1)
+                    .min(5),
+            )
+            .copied()
+            .unwrap_or_else(|| MD_HEADING_SIZES.last().copied().unwrap_or(1.0));
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .flex_wrap()
+            .text_size(px(BASE_FONT_SIZE * size))
+            .font_weight(FontWeight::BOLD)
+            .mt(px(MD_HEADING_MARGIN * size))
+            .mb(px(MD_HEADING_MARGIN * size))
+            .line_height(px(BASE_FONT_SIZE * size * MD_LINE_HEIGHT))
+            .children(self.render_inlines(content, InlineStyle::default(), ctx))
+            .into_any_element()
+    }
+
+    fn render_paragraph(
+        &self,
+        content: &[MarkdownInline],
+        list_depth: usize,
+        is_last: bool,
+        next_is_paragraph: bool,
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .flex_wrap()
+            .mb(px(if is_last || (list_depth > 0 && !next_is_paragraph) {
+                0.0
+            } else {
+                MD_PARAGRAPH_MARGIN
+            }))
+            .children(self.render_inlines(content, InlineStyle::default(), ctx))
+            .into_any_element()
+    }
+
+    fn render_blockquote(
+        &self,
+        blocks: &[MarkdownBlock],
+        list_depth: usize,
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        div()
+            .w_full()
+            .min_w_0()
+            .pl(px(MD_BLOCKQUOTE_PADDING))
+            .border_l(px(MD_BLOCKQUOTE_BORDER))
+            .border_color(ctx.cx.theme().border)
+            .text_color(ctx.cx.theme().muted_foreground)
+            .children(self.render_blocks(blocks, list_depth, ctx))
+            .into_any_element()
+    }
+
+    fn render_list(
+        &self,
+        start: Option<u64>,
+        items: &[ListItem],
+        list_depth: usize,
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        let ordered = start.is_some();
+        let first = start.unwrap_or(1);
+        let rows = items.iter().enumerate().map(|(index, item)| {
+            let marker = item.task.map_or_else(
+                || {
+                    if ordered {
+                        div()
+                            .child(format!(
+                                "{}. ",
+                                first.saturating_add(u64::try_from(index).unwrap_or_default())
+                            ))
+                            .into_any_element()
+                    } else {
+                        div().child("\u{2022} ".to_string()).into_any_element()
+                    }
+                },
+                |checked| {
+                    let id = *ctx.element_id;
+                    *ctx.element_id = id.saturating_add(1);
+                    div()
+                        .flex()
+                        .items_center()
+                        .flex_shrink_0()
+                        .h(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
+                        .mr_1()
+                        .child(
+                            Checkbox::new(ElementId::NamedInteger(
+                                "md-task-check".into(),
+                                u64::try_from(id).unwrap_or_default(),
+                            ))
+                            .checked(checked),
+                        )
+                        .into_any_element()
+                },
+            );
+            div()
+                .flex()
+                .items_start()
+                .w_full()
+                .min_w_0()
+                .child(
+                    div()
+                        .flex()
+                        .items_start()
+                        .flex_shrink_0()
+                        .child(MD_LIST_INDENT.repeat(list_depth))
+                        .child(marker),
+                )
+                .child(div().flex_1().min_w_0().children(self.render_blocks(
+                    &item.blocks,
+                    list_depth.saturating_add(1),
+                    ctx,
+                )))
+        });
+        div()
+            .w_full()
+            .children(rows)
+            .mb(px(if list_depth > 0 {
+                0.0
+            } else {
+                MD_PARAGRAPH_MARGIN
+            }))
+            .into_any_element()
+    }
+
+    fn render_table(
+        &self,
+        headers: &[Vec<MarkdownInline>],
+        rows: &[Vec<Vec<MarkdownInline>>],
+        list_depth: usize,
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        let header_style = InlineStyle {
+            bold: true,
+            ..InlineStyle::default()
+        };
+        let header_row =
+            TableRow::new().children(headers.iter().map(|cell| {
+                TableHead::new().children(self.render_inlines(cell, header_style, ctx))
+            }));
+        let body = TableBody::new().children(rows.iter().map(|row| {
+            TableRow::new().children(row.iter().map(|cell| {
+                TableCell::new().children(self.render_inlines(cell, InlineStyle::default(), ctx))
+            }))
+        }));
+        let table_ix = *ctx.element_id;
+        *ctx.element_id = table_ix.saturating_add(1);
+        Table::new()
+            .with_ix(table_ix)
+            .border_1()
+            .border_color(ctx.cx.theme().border)
+            .rounded(px(MD_CODE_BLOCK_RADIUS))
+            .mb(px(if list_depth > 0 {
+                0.0
+            } else {
+                MD_PARAGRAPH_MARGIN
+            }))
+            .child(TableHeader::new().child(header_row))
+            .child(body)
+            .into_any_element()
+    }
+
+    fn render_code(language: Option<&String>, content: &str, ctx: &mut BlockContext) -> AnyElement {
+        let label = language.map(|language| {
+            div()
+                .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE * 0.8))
+                .text_color(ctx.cx.theme().muted_foreground)
+                .child(language.clone())
+        });
+        div()
+            .bg(ctx.cx.theme().muted)
+            .font_family("monospace")
+            .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE))
+            .rounded(px(MD_CODE_BLOCK_RADIUS))
+            .p(px(MD_CODE_BLOCK_PADDING))
+            .mb_2()
+            .overflow_x_scrollbar()
+            .children(label)
+            .child(content.to_owned())
+            .into_any_element()
     }
 
     fn render_inlines(
         &self,
         inlines: &[MarkdownInline],
         style: InlineStyle,
-        handler: Entity<FileHandler>,
-        cx: &mut App,
+        ctx: &mut BlockContext,
     ) -> Vec<AnyElement> {
         let mut elements = Vec::new();
         let mut text = String::new();
         let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
         let mut index = 0;
 
-        fn flush(
-            elements: &mut Vec<AnyElement>,
-            text: &mut String,
-            highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
-        ) {
-            if text.is_empty() {
-                return;
-            }
-            let styled = StyledText::new(SharedString::from(std::mem::take(text)))
-                .with_highlights(std::mem::take(highlights));
-            elements.push(div().min_w_0().child(styled).into_any_element());
-        }
-
         while index < inlines.len() {
             if let Some(end) = adjacent_image_run_end(inlines, index) {
-                flush(&mut elements, &mut text, &mut highlights);
-                let images = inlines[index..end].iter().filter_map(|inline| {
-                    let MarkdownInline::Image { url, alt } = inline else {
-                        return None;
-                    };
-                    Some(self.render_image(url, alt, true, cx))
-                });
-                elements.push(
-                    div()
-                        .w_full()
-                        .min_w_0()
-                        .flex()
-                        .gap_2()
-                        .children(images)
-                        .into_any_element(),
-                );
+                flush_inline_text(&mut elements, &mut text, &mut highlights);
+                if let Some(run) = inlines.get(index..end) {
+                    let images = run.iter().filter_map(|inline| {
+                        let MarkdownInline::Image { url, alt } = inline else {
+                            return None;
+                        };
+                        Some(self.render_image(url, alt, true, ctx.cx))
+                    });
+                    elements.push(
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .flex()
+                            .gap_2()
+                            .children(images)
+                            .into_any_element(),
+                    );
+                }
                 index = end;
                 continue;
             }
 
-            match &inlines[index] {
+            let Some(inline) = inlines.get(index) else {
+                break;
+            };
+            match inline {
                 MarkdownInline::Link { url, content } => {
-                    flush(&mut elements, &mut text, &mut highlights);
+                    flush_inline_text(&mut elements, &mut text, &mut highlights);
                     let link_url = url.clone();
-                    let handler_clone = handler.clone();
+                    let handler_clone = ctx.handler.clone();
                     elements.push(
                         div()
                             .id(SharedString::from(format!("link-{url}")))
                             .flex()
-                            .text_color(cx.theme().primary)
+                            .text_color(ctx.cx.theme().primary)
                             .underline()
                             .cursor_pointer()
                             .on_click(move |event: &ClickEvent, _window, cx| {
@@ -404,36 +443,35 @@ impl MarkdownViewer {
                                     ));
                                 });
                             })
-                            .children(self.render_inlines(content, style, handler.clone(), cx))
+                            .children(self.render_inlines(content, style, ctx))
                             .into_any_element(),
                     );
                 }
                 MarkdownInline::Image { url, alt } => {
-                    flush(&mut elements, &mut text, &mut highlights);
-                    elements.push(self.render_image(url, alt, false, cx));
+                    flush_inline_text(&mut elements, &mut text, &mut highlights);
+                    elements.push(self.render_image(url, alt, false, ctx.cx));
                 }
                 MarkdownInline::Break => {
-                    flush(&mut elements, &mut text, &mut highlights);
+                    flush_inline_text(&mut elements, &mut text, &mut highlights);
                     elements.push(div().w_full().into_any_element());
                 }
                 _ => {
-                    self.append_inline_text(
-                        std::slice::from_ref(&inlines[index]),
+                    Self::append_inline_text(
+                        std::slice::from_ref(inline),
                         style,
-                        cx,
+                        ctx.cx,
                         &mut text,
                         &mut highlights,
                     );
                 }
             }
-            index += 1;
+            index = index.saturating_add(1);
         }
-        flush(&mut elements, &mut text, &mut highlights);
+        flush_inline_text(&mut elements, &mut text, &mut highlights);
         elements
     }
 
     fn append_inline_text(
-        &self,
         inlines: &[MarkdownInline],
         style: InlineStyle,
         cx: &App,
@@ -461,7 +499,7 @@ impl MarkdownViewer {
                         ),
                     ));
                 }
-                MarkdownInline::Strong(children) => self.append_inline_text(
+                MarkdownInline::Strong(children) => Self::append_inline_text(
                     children,
                     InlineStyle {
                         bold: true,
@@ -471,7 +509,7 @@ impl MarkdownViewer {
                     text,
                     highlights,
                 ),
-                MarkdownInline::Emphasis(children) => self.append_inline_text(
+                MarkdownInline::Emphasis(children) => Self::append_inline_text(
                     children,
                     InlineStyle {
                         italic: true,
@@ -487,20 +525,35 @@ impl MarkdownViewer {
     }
 }
 
+fn flush_inline_text(
+    elements: &mut Vec<AnyElement>,
+    text: &mut String,
+    highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let styled = StyledText::new(SharedString::from(std::mem::take(text)))
+        .with_highlights(std::mem::take(highlights));
+    elements.push(div().min_w_0().child(styled).into_any_element());
+}
+
 fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -> Option<usize> {
     if !matches!(inlines.get(start), Some(MarkdownInline::Image { .. })) {
         return None;
     }
 
-    let mut index = start + 1;
-    let mut image_count = 1;
+    let mut index = start.saturating_add(1);
+    let mut image_count = 1usize;
     while index < inlines.len() {
-        match &inlines[index] {
-            MarkdownInline::Image { .. } => {
-                image_count += 1;
-                index += 1;
+        match inlines.get(index) {
+            Some(MarkdownInline::Image { .. }) => {
+                image_count = image_count.saturating_add(1);
+                index = index.saturating_add(1);
             }
-            MarkdownInline::Text(text) if text.chars().all(char::is_whitespace) => index += 1,
+            Some(MarkdownInline::Text(text)) if text.chars().all(char::is_whitespace) => {
+                index = index.saturating_add(1);
+            }
             _ => break,
         }
     }

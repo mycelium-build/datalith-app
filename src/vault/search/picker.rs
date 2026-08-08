@@ -3,16 +3,14 @@ use std::path::PathBuf;
 use crate::vault::path::display_name;
 
 #[derive(Clone)]
-pub(crate) struct QuickSwitcherEntry {
+pub struct QuickSwitcherEntry {
     pub(crate) path: PathBuf,
     pub(crate) name: String,
     pub(crate) open: bool,
 }
 
 #[must_use]
-pub(crate) fn collect_from_paths(
-    paths: impl IntoIterator<Item = PathBuf>,
-) -> Vec<QuickSwitcherEntry> {
+pub fn collect_from_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<QuickSwitcherEntry> {
     let mut entries: Vec<QuickSwitcherEntry> = paths
         .into_iter()
         .map(|path| {
@@ -31,7 +29,7 @@ pub(crate) fn collect_from_paths(
 }
 
 #[must_use]
-pub(crate) fn filter(
+pub fn filter(
     all_files: &[QuickSwitcherEntry],
     open_files: &[PathBuf],
     query: &str,
@@ -56,14 +54,14 @@ pub(crate) fn filter(
 }
 
 #[must_use]
-pub(crate) fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
+pub const fn nav_idx(down: bool, selected: Option<usize>, count: usize) -> Option<usize> {
     if count == 0 {
         return None;
     }
     match (down, selected) {
-        (true, Some(i)) if i + 1 < count => Some(i + 1),
+        (true, Some(i)) if i.saturating_add(1) < count => Some(i.saturating_add(1)),
         (true, _) => Some(0),
-        (false, Some(i)) if i > 0 => Some(i - 1),
-        (false, _) => Some(count - 1),
+        (false, Some(i)) if i > 0 => Some(i.saturating_sub(1)),
+        (false, _) => Some(count.saturating_sub(1)),
     }
 }

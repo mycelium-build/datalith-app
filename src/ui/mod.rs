@@ -1,22 +1,24 @@
-pub(crate) mod editors;
-pub(crate) mod notifications;
-pub(crate) mod palette;
-pub(crate) mod render;
-pub(crate) mod settings;
-pub(crate) mod sidebar;
-pub(crate) mod tabs;
-pub(crate) mod themes;
-pub(crate) mod viewers;
-pub(crate) mod window;
+pub mod editors;
+pub mod notifications;
+pub mod palette;
+pub mod render;
+pub mod settings;
+pub mod sidebar;
+pub mod tabs;
+pub mod themes;
+pub mod viewers;
+pub mod window;
 
-pub(crate) const BASE_FONT_SIZE: f64 = 16.0;
+pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
 const VAULT_SELECT_MARKER: &str = "__open_new__";
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gpui::*;
+use gpui::{
+    AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, Window, px,
+};
 use gpui_component::{
     input::InputState,
     notification::Notification,
@@ -34,7 +36,7 @@ use palette::Palette;
 use settings::SettingsView;
 
 #[derive(Clone, Debug)]
-pub(crate) enum VaultEntry {
+pub enum VaultEntry {
     Vault {
         path: SharedString,
         name: SharedString,
@@ -47,20 +49,23 @@ impl SelectItem for VaultEntry {
 
     fn title(&self) -> SharedString {
         match self {
-            VaultEntry::Vault { name, .. } => name.clone(),
-            VaultEntry::OpenNew(_) => SharedString::from("Open new vault..."),
+            Self::Vault { name, .. } => name.clone(),
+            Self::OpenNew(_) => SharedString::from("Open new vault..."),
         }
     }
 
     fn value(&self) -> &Self::Value {
         match self {
-            VaultEntry::Vault { path, .. } => path,
-            VaultEntry::OpenNew(marker) => marker,
+            Self::Vault { path, .. } => path,
+            Self::OpenNew(marker) => marker,
         }
     }
 }
 
-pub(crate) struct DatalithView {
+// The view tracks several independent one-shot UI flags (focus requests, refresh notifications) that are read and cleared during rendering;
+// grouping them would obscure the render loop's intent.
+#[allow(clippy::struct_excessive_bools)]
+pub struct DatalithView {
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
@@ -84,7 +89,7 @@ pub(crate) struct DatalithView {
     pub(crate) suppress_sidebar_context_menu: bool,
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
-    _rename_sub: Option<Subscription>,
+    rename_sub: Option<Subscription>,
     pub(crate) drag_hover: Option<(PathBuf, Instant)>,
     pub(crate) expanded_tree_ids: Vec<SharedString>,
     pub(crate) focus_sidebar_requested: bool,
@@ -124,7 +129,7 @@ impl DatalithView {
     #[must_use]
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(window, cx);
-        let palette_sub = Palette::input_subscription(palette.input.clone(), window, cx);
+        let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
@@ -134,17 +139,15 @@ impl DatalithView {
         let vault_select_sub = cx.subscribe_in(
             &vault_select_state,
             window,
-            |view: &mut DatalithView, _state, event: &SelectEvent<Vec<VaultEntry>>, window, cx| {
-                match event {
-                    SelectEvent::Confirm(value) => {
-                        if let Some(value) = value {
-                            if value == VAULT_SELECT_MARKER {
-                                window
-                                    .dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
-                            } else {
-                                let path = PathBuf::from(value.to_string());
-                                view.set_root_path(path, cx);
-                            }
+            |view: &mut Self, _state, event: &SelectEvent<Vec<VaultEntry>>, window, cx| match event
+            {
+                SelectEvent::Confirm(value) => {
+                    if let Some(value) = value {
+                        if value == VAULT_SELECT_MARKER {
+                            window.dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
+                        } else {
+                            let path = PathBuf::from(value.to_string());
+                            view.set_root_path(path, cx);
                         }
                     }
                 }
@@ -154,17 +157,20 @@ impl DatalithView {
         let settings = SettingsView::new(cx);
         let font_size_slider_sub = cx.subscribe(
             &settings.font_size_slider_state,
-            |_view, _, event: &SliderEvent, cx| {
+            |view, _, event: &SliderEvent, cx| {
                 let SliderEvent::Change(value) = event else {
                     return;
                 };
-                let val = value.start() as f64;
-                let new_size = px(BASE_FONT_SIZE as f32 * value.start());
+                let val = f64::from(value.start());
+                let new_size = px(BASE_FONT_SIZE * value.start());
                 cx.global_mut::<settings::ThemeOptions>()
                     .font_size_multiplier = val;
                 gpui_component::Theme::global_mut(cx).font_size = new_size;
                 cx.refresh_windows();
-                let _ = app_settings::set_font_scale(val);
+                if let Err(error) = app_settings::set_font_scale(val) {
+                    view.pending_notifications
+                        .push(notifications::settings_save_failed("font scale", &error));
+                }
             },
         );
 
@@ -185,7 +191,7 @@ impl DatalithView {
             _palette_sub: palette_sub,
             settings,
             _font_size_slider_sub: font_size_slider_sub,
-            _rename_sub: None,
+            rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,
             suppress_sidebar_context_menu: false,
@@ -210,7 +216,10 @@ impl DatalithView {
         let generation = self.vault_load_generation;
         self.root_name = display_name(&path).into();
         self.root_path = Some(path.clone());
-        let _ = app_settings::record_opened_vault(&path);
+        if let Err(error) = app_settings::record_opened_vault(&path) {
+            self.pending_notifications
+                .push(notifications::settings_save_failed("opened vault", &error));
+        }
 
         self.pending_vault_refresh = true;
         self.expanded_tree_ids.clear();
@@ -247,7 +256,7 @@ impl DatalithView {
                 match result {
                     Ok(catalog) => {
                         view.catalog_updates = Some(catalog.events());
-                        view.vault_catalog = Some(catalog.clone());
+                        view.vault_catalog = Some(catalog);
                         view.start_catalog_polling(cx);
                         if view.palette.open {
                             let open_files = view.tabs.open_paths();
@@ -269,7 +278,7 @@ impl DatalithView {
         cx.notify();
     }
 
-    fn start_catalog_polling(&mut self, cx: &mut Context<Self>) {
+    fn start_catalog_polling(&mut self, cx: &Context<Self>) {
         self.catalog_poll_task = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -289,7 +298,8 @@ impl DatalithView {
                         }
 
                         if catalog_changed {
-                            let catalog_state = view.vault_catalog.as_ref().map(|c| c.state());
+                            let catalog_state =
+                                view.vault_catalog.as_ref().map(VaultCatalog::state);
                             match catalog_state {
                                 Some(CatalogState::Ready) => {
                                     if let (Some(catalog), Some(root)) =
@@ -350,7 +360,7 @@ impl DatalithView {
 
     pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.vault_select_state.update(cx, |state, cx| {
-            state.set_items(build_vault_entries(), window, cx)
+            state.set_items(build_vault_entries(), window, cx);
         });
         self.pending_vault_refresh = false;
     }
@@ -365,7 +375,7 @@ impl DatalithView {
             .or_else(|| self.last_sidebar_selection.clone())
     }
 
-    pub(crate) fn refresh_tree(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_tree(&self, cx: &mut Context<Self>) {
         if let Some(ref root) = self.root_path {
             let selected = self
                 .tree_state
@@ -459,6 +469,8 @@ impl DatalithView {
     }
 
     pub(crate) fn visible_tree_entry_count(&self) -> usize {
+        // Counting tree nodes cannot plausibly overflow for real vault sizes.
+        #[allow(clippy::arithmetic_side_effects)]
         fn count_items(items: &[TreeItem]) -> usize {
             items
                 .iter()
@@ -472,15 +484,12 @@ impl DatalithView {
                 .sum()
         }
 
-        self.root_path
-            .as_ref()
-            .map(|root| {
-                count_items(&build_file_items_with_expanded(
-                    root,
-                    &self.expanded_tree_ids,
-                ))
-            })
-            .unwrap_or(0)
+        self.root_path.as_ref().map_or(0, |root| {
+            count_items(&build_file_items_with_expanded(
+                root,
+                &self.expanded_tree_ids,
+            ))
+        })
     }
 }
 

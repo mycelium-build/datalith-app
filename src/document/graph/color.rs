@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 use super::types::GraphColor;
 
@@ -28,27 +28,36 @@ fn function_args<'a>(source: &'a str, name: &str) -> Option<&'a str> {
 
 fn parse_hex(hex: &str) -> Result<GraphColor> {
     let expanded = match hex.len() {
-        3 => format!(
-            "{}{}{}{}{}{}ff",
-            &hex[0..1],
-            &hex[0..1],
-            &hex[1..2],
-            &hex[1..2],
-            &hex[2..3],
-            &hex[2..3]
-        ),
+        3 => {
+            let mut expanded = String::with_capacity(8);
+            for byte in hex.as_bytes() {
+                expanded.push(char::from(*byte));
+                expanded.push(char::from(*byte));
+            }
+            expanded.push_str("ff");
+            expanded
+        }
         6 => format!("{hex}ff"),
         8 => hex.to_string(),
         _ => bail!("hex colors must use #RGB, #RRGGBB, or #RRGGBBAA"),
     };
-    let bytes = (0..4)
-        .map(|i| u8::from_str_radix(&expanded[i * 2..i * 2 + 2], 16))
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let bytes = expanded
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| -> Result<u8> {
+            let pair = std::str::from_utf8(pair)?;
+            Ok(u8::from_str_radix(pair, 16)?)
+        })
+        .collect::<Result<Vec<_>>>()
+        .with_context(|| format!("invalid hex color #{hex}"))?;
+    let [red, green, blue, alpha] = bytes.as_slice() else {
+        bail!("hex color must expand to four channels");
+    };
     Ok(GraphColor {
-        red: bytes[0] as f32 / 255.0,
-        green: bytes[1] as f32 / 255.0,
-        blue: bytes[2] as f32 / 255.0,
-        alpha: bytes[3] as f32 / 255.0,
+        red: f32::from(*red) / 255.0,
+        green: f32::from(*green) / 255.0,
+        blue: f32::from(*blue) / 255.0,
+        alpha: f32::from(*alpha) / 255.0,
     })
 }
 
@@ -72,10 +81,13 @@ fn parse_rgb(args: &str) -> Result<GraphColor> {
             Ok(part.parse::<f32>()? / 255.0)
         }
     };
+    let [red, green, blue] = parts.as_slice() else {
+        bail!("rgb requires three channels");
+    };
     make_color(
-        channel(&parts[0])?,
-        channel(&parts[1])?,
-        channel(&parts[2])?,
+        channel(red)?,
+        channel(green)?,
+        channel(blue)?,
         parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
     )
 }
@@ -85,78 +97,82 @@ fn parse_hsl(args: &str) -> Result<GraphColor> {
     if !(3..=4).contains(&parts.len()) {
         bail!("hsl requires hue, saturation, lightness, and optional alpha");
     }
-    let h = parts[0]
+    let [hue, saturation, lightness] = parts.as_slice() else {
+        bail!("hsl requires hue, saturation, and lightness channels");
+    };
+    let h = hue
         .trim_end_matches("deg")
         .parse::<f32>()?
         .rem_euclid(360.0)
         / 360.0;
-    let s = percentage(&parts[1])?;
-    let l = percentage(&parts[2])?;
-    let q = if l < 0.5 {
-        l * (1.0 + s)
+    let sat = percentage(saturation)?;
+    let light = percentage(lightness)?;
+    let q = if light < 0.5 {
+        light * (1.0 + sat)
     } else {
-        l + s - l * s
+        light.mul_add(-sat, light + sat)
     };
-    let p = 2.0 * l - q;
-    let hue = |mut t: f32| {
+    let p = 2.0f32.mul_add(light, -q);
+    let hue_fn = |mut t: f32| {
         if t < 0.0 {
-            t += 1.0
+            t += 1.0;
         }
         if t > 1.0 {
-            t -= 1.0
+            t -= 1.0;
         }
         if t < 1.0 / 6.0 {
-            p + (q - p) * 6.0 * t
+            ((q - p) * 6.0).mul_add(t, p)
         } else if t < 0.5 {
             q
         } else if t < 2.0 / 3.0 {
-            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+            ((q - p) * (2.0 / 3.0 - t)).mul_add(6.0, p)
         } else {
             p
         }
     };
     make_color(
-        hue(h + 1.0 / 3.0),
-        hue(h),
-        hue(h - 1.0 / 3.0),
+        hue_fn(h + 1.0 / 3.0),
+        hue_fn(h),
+        hue_fn(h - 1.0 / 3.0),
         parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
     )
 }
 
-#[allow(clippy::excessive_precision)] // Published OKLab conversion coefficients.
+#[allow(clippy::excessive_precision, clippy::suboptimal_flops)]
+// Published OKLab conversion coefficients; nested mul_add forms would obscure the reference.
 fn parse_oklch(args: &str) -> Result<GraphColor> {
     let parts = color_parts(args);
     if !(3..=4).contains(&parts.len()) {
         bail!("oklch requires lightness, chroma, hue, and optional alpha");
     }
-    let l = if parts[0].ends_with('%') {
-        percentage(&parts[0])?
-    } else {
-        parts[0].parse()?
+    let [lightness, chroma, hue] = parts.as_slice() else {
+        bail!("oklch requires lightness, chroma, and hue channels");
     };
-    let c: f32 = parts[1].parse()?;
-    let h = parts[2]
-        .trim_end_matches("deg")
-        .parse::<f32>()?
-        .to_radians();
-    if !(0.0..=1.0).contains(&l) || c < 0.0 || !c.is_finite() {
+    let light = if lightness.ends_with('%') {
+        percentage(lightness)?
+    } else {
+        lightness.parse::<f32>()?
+    };
+    let chroma: f32 = chroma.parse()?;
+    let hue: f32 = hue.trim_end_matches("deg").parse::<f32>()?.to_radians();
+    if !(0.0..=1.0).contains(&light) || chroma < 0.0 || !chroma.is_finite() {
         bail!("oklch lightness or chroma is outside its valid range");
     }
-    let a = c * h.cos();
-    let b = c * h.sin();
-    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
-    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
-    let s_ = l - 0.0894841775 * a - 1.291485548 * b;
+    let a = chroma * hue.cos();
+    let b = chroma * hue.sin();
+    let l_ = light + 0.396_337_777_4 * a + 0.215_803_757_3 * b;
+    let m_ = light - 0.105_561_345_8 * a - 0.063_854_172_8 * b;
+    let s_ = light - 0.089_484_177_5 * a - 1.291_485_548 * b;
     let l3 = l_ * l_ * l_;
     let m3 = m_ * m_ * m_;
     let s3 = s_ * s_ * s_;
-    let linear = [
-        4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
-        -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
-        -0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3,
+    let [red_linear, green_linear, blue_linear] = [
+        4.076_741_662_1 * l3 - 3.307_711_591_3 * m3 + 0.230_969_929_2 * s3,
+        -1.268_438_004_6 * l3 + 2.609_757_401_1 * m3 - 0.341_319_396_5 * s3,
+        -0.004_196_086_3 * l3 - 0.703_418_614_7 * m3 + 1.707_614_701 * s3,
     ];
     let gamma = |v: f32| {
-        if v <= 0.0031308 {
+        if v <= 0.003_130_8 {
             12.92 * v
         } else {
             1.055 * v.powf(1.0 / 2.4) - 0.055
@@ -165,9 +181,9 @@ fn parse_oklch(args: &str) -> Result<GraphColor> {
     // CSS maps out-of-gamut OKLCH colors into the output gamut. A channel
     // clamp is deterministic and adequate for the native sRGB renderer.
     make_color(
-        gamma(linear[0]).clamp(0.0, 1.0),
-        gamma(linear[1]).clamp(0.0, 1.0),
-        gamma(linear[2]).clamp(0.0, 1.0),
+        gamma(red_linear).clamp(0.0, 1.0),
+        gamma(green_linear).clamp(0.0, 1.0),
+        gamma(blue_linear).clamp(0.0, 1.0),
         parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
     )
 }
@@ -209,7 +225,8 @@ mod tests {
 
     #[test]
     fn hex_color_variants() {
-        assert_eq!(parse_color("#00000000").unwrap().alpha, 0.0);
+        let color = parse_color("#00000000").unwrap();
+        assert!((color.alpha - 0.0).abs() <= 1e-6);
         assert!(parse_color("rgb(300 0 0)").is_err());
     }
 }

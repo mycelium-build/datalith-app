@@ -1,16 +1,20 @@
-use gpui::*;
+use std::ops::Div;
+
+use gpui::{
+    AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Render, SharedString, Styled, Window, div, px, relative,
+};
+use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::input::Input;
 use gpui_component::select::Select;
-use gpui_component::{
-    ActiveTheme, Icon, IconName,
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, v_virtual_list,
-};
+use gpui_component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
+
+use conv::ConvAsUtil;
 
 use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
 
 use super::TodoTxtState;
-use super::constants::*;
+use super::constants::{TODO_HEADER_HEIGHT, TODO_INDENT_PX, TODO_NEW_ROW_HEIGHT, TODO_ROW_HEIGHT};
 
 impl Render for TodoTxtState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -38,8 +42,7 @@ impl Render for TodoTxtState {
 
         // Ensure Input entities exist for all visible rows
         for &(flat_index, _) in &visible {
-            if flat_index < task_data.len() {
-                let (ref desc, ref date_str, _) = task_data[flat_index];
+            if let Some((desc, date_str, _)) = task_data.get(flat_index) {
                 let ds = date_str.clone().unwrap_or_default();
                 self.ensure_row_inputs(flat_index, desc, &ds, window, cx);
             }
@@ -62,8 +65,11 @@ impl Render for TodoTxtState {
 
         let total = self.workspace.task_count();
         let completed = self.workspace.completed_count();
-        let progress = if total > 0 {
-            completed as f32 / total as f32
+        let progress: f32 = if total > 0 {
+            completed
+                .approx()
+                .unwrap_or(0.0)
+                .div(total.approx().unwrap_or(f32::INFINITY))
         } else {
             0.0
         };
@@ -87,7 +93,7 @@ impl Render for TodoTxtState {
 }
 
 impl TodoTxtState {
-    fn render_header(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_header(&self, cx: &Context<Self>) -> AnyElement {
         let search = Input::new(&self.search_input).cleanable(true);
         let filter_select = Select::new(&self.filter_select);
         let sort_select = Select::new(&self.sort_select);
@@ -165,7 +171,7 @@ impl TodoTxtState {
             .into_any_element()
     }
 
-    fn render_error_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_error_banner(&self, cx: &Context<Self>) -> Option<AnyElement> {
         if self.workspace.parse_error_count() == 0 {
             return None;
         }
@@ -183,11 +189,7 @@ impl TodoTxtState {
         )
     }
 
-    fn render_task_list(
-        &mut self,
-        visible: &[(usize, bool)],
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn render_task_list(&self, visible: &[(usize, bool)], cx: &Context<Self>) -> AnyElement {
         if visible.is_empty() {
             return v_flex()
                 .flex_1()
@@ -204,7 +206,7 @@ impl TodoTxtState {
                 .into_any_element();
         }
 
-        let entity = cx.entity().clone();
+        let entity = cx.entity();
         let sizes = self.item_sizes.clone();
         let selected = self.workspace.selected();
         let visible_owned = visible.to_vec();
@@ -216,10 +218,11 @@ impl TodoTxtState {
             move |state, range, _window, cx| {
                 range
                     .map(|i| {
-                        let (flat_index, _) = visible_owned[i];
-                        let task = match state.workspace.task(flat_index) {
-                            Some(t) => t,
-                            None => return div().h(px(TODO_ROW_HEIGHT)).into_any(),
+                        let Some(&(flat_index, _)) = visible_owned.get(i) else {
+                            return div().h(px(TODO_ROW_HEIGHT)).into_any();
+                        };
+                        let Some(task) = state.workspace.task(flat_index) else {
+                            return div().h(px(TODO_ROW_HEIGHT)).into_any();
                         };
                         let depth = task.indent_level;
                         let is_selected = selected == Some(i);
@@ -233,7 +236,7 @@ impl TodoTxtState {
         .into_any_element()
     }
 
-    fn render_new_task_row(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_new_task_row(&self, cx: &Context<Self>) -> AnyElement {
         h_flex()
             .h(px(TODO_NEW_ROW_HEIGHT))
             .w_full()

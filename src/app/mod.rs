@@ -1,11 +1,11 @@
-pub(crate) mod actions;
-pub(crate) mod assets;
-pub(crate) mod docs;
-pub(crate) mod keymap;
-pub(crate) mod menus;
-pub(crate) mod preferences;
-pub(crate) mod settings;
+pub mod actions;
+pub mod assets;
+pub mod docs;
+pub mod keymap;
+pub mod menus;
+pub mod preferences;
+pub mod settings;
 mod state;
-pub(crate) mod system;
+pub mod system;
 
-pub(crate) use state::AppState;
+pub use state::AppState;

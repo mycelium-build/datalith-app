@@ -14,7 +14,7 @@ use crate::vault::VaultCatalog;
 
 use self::interaction::GraphViewState;
 
-pub(crate) struct GraphViewer {
+pub struct GraphViewer {
     state: Entity<GraphViewState>,
 }
 
@@ -26,12 +26,12 @@ impl GraphViewer {
     ) -> Self {
         let handler = cx.entity().downgrade();
         let state = cx.new(|cx| GraphViewState::new(input, catalog, handler, cx));
-        state.update(cx, |state, cx| state.rebuild(cx));
+        state.update(cx, GraphViewState::rebuild);
         Self { state }
     }
 
     pub(crate) fn refresh(&self, cx: &mut App) {
-        self.state.update(cx, |state, cx| state.rebuild(cx));
+        self.state.update(cx, GraphViewState::rebuild);
     }
 
     pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {

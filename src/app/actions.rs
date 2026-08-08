@@ -1,6 +1,10 @@
-use gpui::*;
+// The gpui `actions!` macro generates unit structs deriving `PartialEq` without `Eq`;
+// that lint can only be suppressed here, not in the macro itself.
+#![allow(clippy::derive_partial_eq_without_eq)]
+
+use gpui::{App, AppContext, PathPromptOptions, SharedString, actions};
 use gpui_component::{Theme, ThemeMode};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::app::{
     AppState,
@@ -57,7 +61,7 @@ macro_rules! with_view {
     };
 }
 
-pub(crate) fn register(cx: &mut App) {
+pub fn register(cx: &mut App) {
     cx.on_action(open_vault);
     cx.on_action(toggle_search);
     cx.on_action(toggle_quick_switcher);
@@ -89,7 +93,7 @@ pub(crate) fn register(cx: &mut App) {
     cx.on_action(handle_open_link);
 }
 
-pub(crate) fn open_vault(_: &OpenVault, cx: &mut App) {
+pub fn open_vault(_: &OpenVault, cx: &mut App) {
     let rx = cx.prompt_for_paths(PathPromptOptions {
         files: false,
         directories: true,
@@ -111,7 +115,7 @@ pub(crate) fn open_vault(_: &OpenVault, cx: &mut App) {
     .detach();
 }
 
-pub(crate) fn toggle_search(_: &ToggleSearch, cx: &mut App) {
+pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.palette.open {
             view.palette.close();
@@ -119,14 +123,14 @@ pub(crate) fn toggle_search(_: &ToggleSearch, cx: &mut App) {
             view.palette.open_as(PaletteKind::Search);
             let query = view.palette.search_query.clone();
             if !query.trim().is_empty() {
-                view.palette.search(view.vault_catalog.as_ref(), query);
+                view.palette.search(view.vault_catalog.as_ref(), &query);
             }
         }
         cx.notify();
     });
 }
 
-pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
+pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.palette.open {
             view.palette.close();
@@ -135,20 +139,20 @@ pub(crate) fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
             let open = view.tabs.open_paths();
             let query = view.palette.qs_query.clone();
             view.palette
-                .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, query);
+                .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, &query);
         }
         cx.notify();
     });
 }
 
-pub(crate) fn close_palette(_: &ClosePalette, cx: &mut App) {
+pub fn close_palette(_: &ClosePalette, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.palette.close();
         cx.notify();
     });
 }
 
-pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
+pub fn handle_new_file(_: &NewFile, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
@@ -156,22 +160,22 @@ pub(crate) fn handle_new_file(_: &NewFile, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
-        if let Some(target) = target {
-            if let Ok(created) = file_ops::create(&target) {
-                if target.is_dir() {
-                    let id: SharedString = target.to_string_lossy().to_string().into();
-                    view.mark_tree_item_expanded(&id, true);
-                }
-                view.refresh_tree(cx);
-                view.rename_target = Some(created.clone());
-                view.pending_open = Some(created);
+        if let Some(target) = target
+            && let Ok(created) = file_ops::create(&target)
+        {
+            if target.is_dir() {
+                let id: SharedString = target.to_string_lossy().to_string().into();
+                view.mark_tree_item_expanded(&id, true);
             }
+            view.refresh_tree(cx);
+            view.rename_target = Some(created.clone());
+            view.pending_open = Some(created);
         }
         cx.notify();
     });
 }
 
-pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
+pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
@@ -179,22 +183,22 @@ pub(crate) fn handle_new_folder(_: &NewFolder, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
-        if let Some(target) = target {
-            if let Ok(created) = file_ops::create_folder(&target) {
-                view.refresh_tree(cx);
-                view.rename_target = Some(created);
-            }
+        if let Some(target) = target
+            && let Ok(created) = file_ops::create_folder(&target)
+        {
+            view.refresh_tree(cx);
+            view.rename_target = Some(created);
         }
         cx.notify();
     });
 }
 
-pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
+pub fn handle_rename(_: &Rename, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let catalog_blocked = view
             .vault_catalog
             .as_ref()
-            .map_or(true, |c| c.state() != CatalogState::Ready);
+            .is_none_or(|c| c.state() != CatalogState::Ready);
         if catalog_blocked {
             view.pending_notifications
                 .push(notifications::rename_while_loading());
@@ -213,7 +217,7 @@ pub(crate) fn handle_rename(_: &Rename, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
+pub fn handle_delete(_: &Delete, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target_index = view.tree_state.read(cx).selected_index();
         let tree_entry = view
@@ -222,7 +226,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
             .selected_entry()
             .map(|e| PathBuf::from(e.item().id.to_string()));
         let target = tree_entry
-            .or_else(|| view.tabs.active_path().map(|path| path.to_path_buf()))
+            .or_else(|| view.tabs.active_path().map(Path::to_path_buf))
             .or_else(|| view.last_sidebar_selection.clone());
         view.commit_rename(cx);
         if let Some(target) = target {
@@ -249,7 +253,7 @@ pub(crate) fn handle_delete(_: &Delete, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
+pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
@@ -257,10 +261,10 @@ pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
-            if let Ok(duplicated) = file_ops::duplicate(&target) {
-                if duplicated.is_file() {
-                    view.pending_open = Some(duplicated);
-                }
+            if let Ok(duplicated) = file_ops::duplicate(&target)
+                && duplicated.is_file()
+            {
+                view.pending_open = Some(duplicated);
             }
             view.refresh_tree(cx);
         }
@@ -268,7 +272,7 @@ pub(crate) fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
+pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -281,7 +285,7 @@ pub(crate) fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_copy_path(_: &CopyPath, cx: &mut App) {
+pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
@@ -294,21 +298,21 @@ pub(crate) fn handle_copy_path(_: &CopyPath, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_close_tab(_: &CloseTab, cx: &mut App) {
+pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.close_active_tab(cx);
         cx.notify();
     });
 }
 
-pub(crate) fn handle_new_tab(_: &NewTab, cx: &mut App) {
+pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.new_empty_tab(cx);
         cx.notify();
     });
 }
 
-pub(crate) fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
+pub fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if let Some(handler) = view.tabs.active_handler().cloned() {
             handler.update(cx, |handler, cx| {
@@ -320,7 +324,7 @@ pub(crate) fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     });
 }
 
-pub(crate) fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
+pub fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.ensure_sidebar_selection(cx);
         view.focus_sidebar_requested = true;
@@ -328,7 +332,7 @@ pub(crate) fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
     });
 }
 
-pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
+pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
     let current_mode = Theme::global(cx).mode;
     let new_mode = match current_mode {
         ThemeMode::Light => ThemeMode::Dark,
@@ -344,7 +348,7 @@ pub(crate) fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
     cx.refresh_windows();
 }
 
-pub(crate) fn open_settings(_: &OpenSettings, cx: &mut App) {
+pub fn open_settings(_: &OpenSettings, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.settings.open();
         cx.notify();
@@ -363,7 +367,7 @@ fn select_tab_index(index: usize, cx: &mut App) {
 macro_rules! define_tab_handlers {
     ($($handler:ident => $action:ty => $index:expr),* $(,)?) => {
         $(
-            pub(crate) fn $handler(_: &$action, cx: &mut App) {
+            pub fn $handler(_: &$action, cx: &mut App) {
                 select_tab_index($index, cx);
             }
         )*
@@ -381,7 +385,7 @@ define_tab_handlers!(
     handle_select_tab_8 => SelectTab8 => 7,
 );
 
-pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
+pub fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.tabs.select_last() {
             view.focus_editor_requested = true;
@@ -390,21 +394,21 @@ pub(crate) fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
     });
 }
 
-pub(crate) fn go_back(_: &GoBack, cx: &mut App) {
+pub fn go_back(_: &GoBack, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.pending_navigation = Some(NavigationAction::GoBack);
         cx.notify();
     });
 }
 
-pub(crate) fn go_forward(_: &GoForward, cx: &mut App) {
+pub fn go_forward(_: &GoForward, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.pending_navigation = Some(NavigationAction::GoForward);
         cx.notify();
     });
 }
 
-pub(crate) fn handle_open_link(_: &OpenLink, cx: &mut App) {
+pub fn handle_open_link(_: &OpenLink, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if let Some(file_handler) = view.tabs.active_handler().cloned() {
             let handler = file_handler.read(cx);

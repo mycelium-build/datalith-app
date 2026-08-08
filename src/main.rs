@@ -1,4 +1,15 @@
 #![recursion_limit = "256"]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )
+)]
 
 mod app;
 mod document;

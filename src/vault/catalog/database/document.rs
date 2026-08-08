@@ -67,13 +67,13 @@ impl TrackedDocument {
             .modified()
             .ok()
             .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
             .unwrap_or_default();
         Some(Self {
             path: relative,
             extension,
             folder,
-            size_bytes: metadata.len().min(i64::MAX as u64) as i64,
+            size_bytes: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
             modified_ns,
             metadata: document_metadata,
             links: document_links,
@@ -93,9 +93,9 @@ impl TrackedDocument {
             .modified()
             .ok()
             .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
             .unwrap_or_default();
-        let size_bytes = metadata.len().min(i64::MAX as u64) as i64;
+        let size_bytes = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
         Some((relative, size_bytes, modified_ns))
     }
 }
@@ -104,7 +104,7 @@ fn frontmatter_metadata(content: &str) -> Option<serde_json::Value> {
     let normalized = content.replace("\r\n", "\n");
     let rest = normalized.strip_prefix("---\n")?;
     let closing = rest.find("\n---")?;
-    let yaml = &rest[..closing];
+    let yaml = rest.get(..closing)?;
     yaml_serde::from_str::<serde_json::Value>(yaml)
         .ok()
         .filter(serde_json::Value::is_object)
@@ -134,40 +134,11 @@ impl CatalogDatabase {
         connection.execute("BEGIN IMMEDIATE", ()).await?;
         let result = async {
             // load stored meta data
-            let mut stored_rows = connection
-                .query("SELECT path, size_bytes, modified_ns FROM documents", ())
-                .await?;
-            let stored_meta: HashMap<String, StoredMeta> = {
-                let mut map = HashMap::new();
-                while let Some(row) = stored_rows.next().await? {
-                    map.insert(
-                        row.get::<String>(0)?,
-                        StoredMeta {
-                            size_bytes: row.get::<i64>(1)?,
-                            modified_ns: row.get::<i64>(2)?,
-                        },
-                    );
-                }
-                map
-            };
+            let stored_meta = load_stored_meta(&connection).await?;
 
             // compare stored metadata with actual file metadata
-            let (truly_changed, unchanged): (Vec<PathBuf>, Vec<PathBuf>) = changed
-                .par_iter()
-                .filter(|path| path.strip_prefix(root).is_ok())
-                .cloned()
-                .partition(|path| {
-                    let relative = path.strip_prefix(root).unwrap();
-                    let relative_str = relative.to_string_lossy().replace('\\', "/");
-                    if let Some(stored) = stored_meta.get(relative_str.as_str()) {
-                        if let Some((_, size, mtime)) =
-                            TrackedDocument::read_meta_only(root, path, file_types)
-                        {
-                            return size != stored.size_bytes || mtime != stored.modified_ns;
-                        }
-                    }
-                    true // new file or metadata read failed
-                });
+            let (truly_changed, unchanged) =
+                partition_changed(changed, root, &stored_meta, file_types);
 
             // read full content for truly changed files
             let mut documents: Vec<TrackedDocument> = truly_changed
@@ -177,31 +148,7 @@ impl CatalogDatabase {
             let changed_document_count = documents.len();
 
             // for unchanged files, reconstruct TrackedDocument from stored metadata
-            for path in &unchanged {
-                let relative = path.strip_prefix(root).unwrap();
-                let relative_str = relative.to_string_lossy().replace('\\', "/");
-                if let Some(stored) = stored_meta.get(relative_str.as_str()) {
-                    let extension = relative
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    let folder = relative
-                        .parent()
-                        .filter(|p| !p.as_os_str().is_empty())
-                        .map(|p| p.to_string_lossy().replace('\\', "/"))
-                        .unwrap_or_default();
-                    documents.push(TrackedDocument {
-                        path: relative.to_path_buf(),
-                        extension,
-                        folder,
-                        size_bytes: stored.size_bytes,
-                        modified_ns: stored.modified_ns,
-                        metadata: None, // will be overwritten by existing DB row
-                        links: Vec::new(),
-                    });
-                }
-            }
+            documents.extend(reconstruct_unchanged(root, &unchanged, &stored_meta));
 
             let document_paths = documents
                 .iter()
@@ -264,108 +211,12 @@ impl CatalogDatabase {
             let to_delete: Vec<&str> = removed_paths
                 .iter()
                 .chain(changed_paths.difference(&document_paths))
-                .map(|p| p.as_str())
+                .map(String::as_str)
                 .collect();
-            for chunk in to_delete.chunks(BATCH_SIZE) {
-                let placeholders: String = chunk
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| format!("?{}", i + 1))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                let sql = format!("DELETE FROM documents WHERE path IN ({placeholders})");
-                let params: Vec<Value> = chunk.iter().map(|p| Value::Text(p.to_string())).collect();
-                connection
-                    .execute(sql, turso::params_from_iter(params))
-                    .await?;
-            }
+            batch_delete_documents(&connection, &to_delete).await?;
 
-            for chunk in documents[..changed_document_count].chunks(BATCH_SIZE) {
-                // batch document upserts
-                let mut value_groups = Vec::new();
-                let mut params: Vec<Value> = Vec::new();
-                for document in chunk {
-                    let relative = path_text(&document.path);
-                    let metadata_json = document
-                        .metadata
-                        .as_ref()
-                        .map(serde_json::to_string)
-                        .transpose()?;
-                    value_groups.push("(?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
-                    params.push(Value::Text(relative));
-                    params.push(Value::Text(document.extension.clone()));
-                    params.push(Value::Text(document.folder.clone()));
-                    params.push(Value::Integer(document.size_bytes));
-                    params.push(Value::Integer(document.modified_ns));
-                    params.push(metadata_json.clone().map(Value::Text).unwrap_or(Value::Null));
-                    params.push(metadata_json.map(Value::Text).unwrap_or(Value::Null));
-                }
-                let sql = format!(
-                    "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
-                     VALUES {} \
-                     ON CONFLICT(path) DO UPDATE SET \
-                        extension=excluded.extension, \
-                        folder=excluded.folder, \
-                        size_bytes=excluded.size_bytes, \
-                        modified_ns=excluded.modified_ns, \
-                        metadata=excluded.metadata",
-                    value_groups.join(", ")
-                );
-                connection
-                    .execute(sql, turso::params_from_iter(params))
-                    .await?;
-
-                // batch delete old links for this chunk
-                let chunk_paths: Vec<String> = chunk
-                    .iter()
-                    .map(|d| path_text(&d.path))
-                    .collect();
-                for delete_chunk in chunk_paths.chunks(BATCH_SIZE) {
-                    let placeholders: String = delete_chunk
-                        .iter()
-                        .enumerate()
-                        .map(|(i, _)| format!("?{}", i + 1))
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let sql = format!("DELETE FROM wiki_links WHERE source_path IN ({placeholders})");
-                    let params: Vec<Value> = delete_chunk.iter().map(|p| Value::Text(p.clone())).collect();
-                    connection
-                        .execute(sql, turso::params_from_iter(params))
-                        .await?;
-                }
-
-                // batch wiki link inserts
-                let all_links: Vec<(String, i64, String)> = chunk
-                    .iter()
-                    .flat_map(|document| {
-                        let relative = path_text(&document.path);
-                        document
-                            .links
-                            .iter()
-                            .enumerate()
-                            .map(move |(ordinal, target)| {
-                                (relative.clone(), ordinal as i64, target.clone())
-                            })
-                    })
-                    .collect();
-                for link_chunk in all_links.chunks(BATCH_SIZE) {
-                    let mut link_values = Vec::new();
-                    let mut link_params: Vec<Value> = Vec::new();
-                    for (source, ordinal, target) in link_chunk {
-                        link_values.push("(?, ?, ?, NULL)");
-                        link_params.push(Value::Text(source.clone()));
-                        link_params.push(Value::Integer(*ordinal));
-                        link_params.push(Value::Text(target.clone()));
-                    }
-                    let link_sql = format!(
-                        "INSERT INTO wiki_links(source_path, ordinal, target, target_path) VALUES {}",
-                        link_values.join(", ")
-                    );
-                    connection
-                        .execute(link_sql, turso::params_from_iter(link_params))
-                        .await?;
-                }
-            }
+            let (changed_documents, _) = documents.split_at(changed_document_count);
+            upsert_documents_and_links(&connection, changed_documents).await?;
 
             resolve_links(&connection, affected_targets).await?;
 
@@ -425,6 +276,8 @@ impl CatalogDatabase {
                 .map(|_| "?")
                 .collect::<Vec<_>>()
                 .join(",");
+            #[allow(clippy::arithmetic_side_effects)]
+            // bounded by selected_paths.len(), far below usize::MAX
             let target_placeholders: String = selected_paths
                 .iter()
                 .enumerate()
@@ -439,7 +292,7 @@ impl CatalogDatabase {
                    AND target_path IN ({target_placeholders}) \
                  ORDER BY source_path, target_path"
             );
-            let mut params: Vec<Value> = Vec::with_capacity(selected_paths.len() * 2);
+            let mut params: Vec<Value> = Vec::with_capacity(selected_paths.len().saturating_mul(2));
             for path in &selected_paths {
                 params.push(Value::Text(path.clone()));
             }
@@ -486,9 +339,9 @@ impl CatalogDatabase {
         let sql = format!(
             "SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path LIMIT ?"
         );
-        compiler
-            .parameters
-            .push(Value::Integer(query.limit.saturating_add(1) as i64));
+        compiler.parameters.push(Value::Integer(
+            i64::try_from(query.limit.saturating_add(1)).unwrap_or(i64::MAX),
+        ));
         let mut rows = connection
             .query(sql, turso::params_from_iter(compiler.parameters))
             .await?;
@@ -513,4 +366,190 @@ impl CatalogDatabase {
             exceeded_limit,
         })
     }
+}
+
+async fn load_stored_meta(connection: &turso::Connection) -> Result<HashMap<String, StoredMeta>> {
+    let mut stored_rows = connection
+        .query("SELECT path, size_bytes, modified_ns FROM documents", ())
+        .await?;
+    let mut map = HashMap::new();
+    while let Some(row) = stored_rows.next().await? {
+        map.insert(
+            row.get::<String>(0)?,
+            StoredMeta {
+                size_bytes: row.get::<i64>(1)?,
+                modified_ns: row.get::<i64>(2)?,
+            },
+        );
+    }
+    Ok(map)
+}
+
+fn partition_changed(
+    changed: &[PathBuf],
+    root: &Path,
+    stored_meta: &HashMap<String, StoredMeta>,
+    file_types: &RegisteredFileTypes,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    changed
+        .par_iter()
+        .filter(|path| path.strip_prefix(root).is_ok())
+        .cloned()
+        .partition(|path| {
+            let relative = path.strip_prefix(root).unwrap_or(path);
+            let relative_str = relative.to_string_lossy().replace('\\', "/");
+            stored_meta.get(relative_str.as_str()).is_none_or(|stored| {
+                TrackedDocument::read_meta_only(root, path, file_types).is_none_or(
+                    |(_, size, mtime)| size != stored.size_bytes || mtime != stored.modified_ns,
+                )
+            })
+        })
+}
+
+fn reconstruct_unchanged(
+    root: &Path,
+    unchanged: &[PathBuf],
+    stored_meta: &HashMap<String, StoredMeta>,
+) -> Vec<TrackedDocument> {
+    let mut documents = Vec::new();
+    for path in unchanged {
+        let Some(relative) = path.strip_prefix(root).ok() else {
+            continue;
+        };
+        let relative_str = relative.to_string_lossy().replace('\\', "/");
+        let Some(stored) = stored_meta.get(relative_str.as_str()) else {
+            continue;
+        };
+        let extension = relative
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let folder = relative
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        documents.push(TrackedDocument {
+            path: relative.to_path_buf(),
+            extension,
+            folder,
+            size_bytes: stored.size_bytes,
+            modified_ns: stored.modified_ns,
+            metadata: None, // will be overwritten by existing DB row
+            links: Vec::new(),
+        });
+    }
+    documents
+}
+
+fn placeholders(count: usize) -> String {
+    (1..=count)
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+async fn batch_delete_documents(connection: &turso::Connection, to_delete: &[&str]) -> Result<()> {
+    for chunk in to_delete.chunks(BATCH_SIZE) {
+        let placeholders = placeholders(chunk.len());
+        let sql = format!("DELETE FROM documents WHERE path IN ({placeholders})");
+        let params: Vec<Value> = chunk.iter().map(|p| Value::Text(p.to_string())).collect();
+        connection
+            .execute(sql, turso::params_from_iter(params))
+            .await?;
+    }
+    Ok(())
+}
+
+async fn upsert_documents_and_links(
+    connection: &turso::Connection,
+    documents: &[TrackedDocument],
+) -> Result<()> {
+    for chunk in documents.chunks(BATCH_SIZE) {
+        // batch document upserts
+        let mut value_groups = Vec::new();
+        let mut params: Vec<Value> = Vec::new();
+        for document in chunk {
+            let relative = path_text(&document.path);
+            let metadata_json = document
+                .metadata
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?;
+            value_groups.push("(?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
+            params.push(Value::Text(relative));
+            params.push(Value::Text(document.extension.clone()));
+            params.push(Value::Text(document.folder.clone()));
+            params.push(Value::Integer(document.size_bytes));
+            params.push(Value::Integer(document.modified_ns));
+            params.push(metadata_json.clone().map_or(Value::Null, Value::Text));
+            params.push(metadata_json.map_or(Value::Null, Value::Text));
+        }
+        let sql = format!(
+            "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+             VALUES {} \
+             ON CONFLICT(path) DO UPDATE SET \
+                extension=excluded.extension, \
+                folder=excluded.folder, \
+                size_bytes=excluded.size_bytes, \
+                modified_ns=excluded.modified_ns, \
+                metadata=excluded.metadata",
+            value_groups.join(", ")
+        );
+        connection
+            .execute(sql, turso::params_from_iter(params))
+            .await?;
+
+        // batch delete old links for this chunk
+        let chunk_paths: Vec<String> = chunk.iter().map(|d| path_text(&d.path)).collect();
+        for delete_chunk in chunk_paths.chunks(BATCH_SIZE) {
+            let placeholders = placeholders(delete_chunk.len());
+            let sql = format!("DELETE FROM wiki_links WHERE source_path IN ({placeholders})");
+            let params: Vec<Value> = delete_chunk
+                .iter()
+                .map(|p| Value::Text(p.clone()))
+                .collect();
+            connection
+                .execute(sql, turso::params_from_iter(params))
+                .await?;
+        }
+
+        // batch wiki link inserts
+        let all_links: Vec<(String, i64, String)> = chunk
+            .iter()
+            .flat_map(|document| {
+                let relative = path_text(&document.path);
+                document
+                    .links
+                    .iter()
+                    .enumerate()
+                    .map(move |(ordinal, target)| {
+                        (
+                            relative.clone(),
+                            i64::try_from(ordinal).unwrap_or(i64::MAX),
+                            target.clone(),
+                        )
+                    })
+            })
+            .collect();
+        for link_chunk in all_links.chunks(BATCH_SIZE) {
+            let mut link_values = Vec::new();
+            let mut link_params: Vec<Value> = Vec::new();
+            for (source, ordinal, target) in link_chunk {
+                link_values.push("(?, ?, ?, NULL)");
+                link_params.push(Value::Text(source.clone()));
+                link_params.push(Value::Integer(*ordinal));
+                link_params.push(Value::Text(target.clone()));
+            }
+            let link_sql = format!(
+                "INSERT INTO wiki_links(source_path, ordinal, target, target_path) VALUES {}",
+                link_values.join(", ")
+            );
+            connection
+                .execute(link_sql, turso::params_from_iter(link_params))
+                .await?;
+        }
+    }
+    Ok(())
 }

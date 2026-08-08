@@ -1,8 +1,12 @@
-use gpui::*;
+use gpui::{App, Menu, MenuItem};
 
-use super::actions::*;
+use super::actions::{
+    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
+    NewTab, OpenInExplorer, OpenSettings, OpenVault, Rename, ToggleQuickSwitcher, ToggleSearch,
+    ToggleTheme,
+};
 
-pub(crate) fn install(cx: &mut App) {
+pub fn install(cx: &App) {
     cx.set_menus([file_menu(), navigate_menu()]);
 }
 

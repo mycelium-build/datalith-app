@@ -26,11 +26,11 @@ pub(super) struct StoredLink {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Backlink {
-    pub(crate) source: PathBuf,
-    pub(crate) ordinal: usize,
-    pub(crate) authored_target: String,
-    pub(crate) target_path: PathBuf,
+pub struct Backlink {
+    pub source: PathBuf,
+    pub ordinal: usize,
+    pub authored_target: String,
+    pub target_path: PathBuf,
 }
 
 #[derive(Clone)]
@@ -52,9 +52,10 @@ impl CatalogDatabase {
         let database_path_text = database_path
             .to_str()
             .ok_or_else(|| anyhow!("Catalog database path is not UTF-8"))?;
-        let database = match turso::Builder::new_local(database_path_text).build().await {
-            Ok(database) => database,
-            Err(_) => {
+        let database =
+            if let Ok(database) = turso::Builder::new_local(database_path_text).build().await {
+                database
+            } else {
                 let _ = fs::remove_file(&database_path);
                 let _ = fs::remove_file(database_path.with_extension("db-wal"));
                 let _ = fs::remove_file(database_path.with_extension("db-shm"));
@@ -62,9 +63,9 @@ impl CatalogDatabase {
                     .build()
                     .await
                     .context("Failed to rebuild embedded Turso catalog")?
-            }
-        };
+            };
         let connection = database.connect()?;
+        drop(database);
         connection.execute("PRAGMA foreign_keys = ON", ()).await?;
         connection
             .query("PRAGMA journal_mode = WAL", ())
@@ -111,7 +112,7 @@ impl CatalogDatabase {
         }
         connection
             .execute_batch(
-                r#"
+                r"
                 CREATE TABLE IF NOT EXISTS documents (
                     path        TEXT PRIMARY KEY,
                     extension   TEXT NOT NULL,
@@ -133,7 +134,7 @@ impl CatalogDatabase {
                 CREATE INDEX IF NOT EXISTS wiki_links_target_nocase_idx ON wiki_links(target COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS wiki_links_target_path_idx ON wiki_links(target_path);
                 PRAGMA user_version = 3;
-                "#,
+                ",
             )
             .await?;
         Ok(())

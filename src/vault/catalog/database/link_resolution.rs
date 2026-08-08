@@ -39,7 +39,7 @@ impl CatalogDatabase {
         while let Some(row) = rows.next().await? {
             backlinks.push(Backlink {
                 source: PathBuf::from(row.get::<String>(0)?),
-                ordinal: row.get::<i64>(1)? as usize,
+                ordinal: usize::try_from(row.get::<i64>(1)?)?,
                 authored_target: row.get::<String>(2)?,
                 target_path: PathBuf::from(row.get::<String>(3)?),
             });
@@ -90,9 +90,7 @@ pub(super) async fn resolve_links(
         let resolved = resolve_path_on(connection, &target).await?;
         let resolved = resolved
             .as_deref()
-            .map(path_text)
-            .map(Value::Text)
-            .unwrap_or(Value::Null);
+            .map_or(Value::Null, |resolved| Value::Text(path_text(resolved)));
         connection
             .execute(
                 "UPDATE wiki_links SET target_path = ? WHERE target = ? COLLATE NOCASE",

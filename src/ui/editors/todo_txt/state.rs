@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::*;
+use gpui::{
+    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Size,
+    Subscription, Window, px,
+};
 use gpui_component::VirtualListScrollHandle;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::select::SelectState;
@@ -9,9 +12,9 @@ use gpui_component::select::SelectState;
 use crate::document::handler::ReloadOutcome;
 use crate::document::todo_txt::{FocusTarget, TodoTxtWorkspace, parse_date};
 
-use super::constants::*;
+use super::constants::TODO_ROW_HEIGHT;
 
-pub(crate) struct TodoTxtState {
+pub struct TodoTxtState {
     pub(super) workspace: TodoTxtWorkspace,
     pub(super) priority_picker_open: Option<usize>,
     pub(super) pending_focus_desc: Option<usize>,
@@ -155,7 +158,7 @@ impl TodoTxtState {
                 &entity,
                 window,
                 move |this, input, event: &InputEvent, _window, cx| {
-                    if let InputEvent::Change = event {
+                    if matches!(event, InputEvent::Change) {
                         let value = input.read(cx).value().to_string();
                         this.commit_description(idx, &value, cx);
                     }
@@ -176,7 +179,7 @@ impl TodoTxtState {
                 &entity,
                 window,
                 move |this, input, event: &InputEvent, _window, cx| {
-                    if let InputEvent::Change = event {
+                    if matches!(event, InputEvent::Change) {
                         let value = input.read(cx).value().to_string();
                         if value.is_empty() || parse_date(&value).is_some() {
                             this.commit_date(idx, &value, cx);

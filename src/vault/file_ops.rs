@@ -8,61 +8,58 @@ use crate::vault::VaultCatalog;
 use crate::vault::links;
 
 #[must_use]
-pub(crate) fn parent_dir(target: &Path) -> PathBuf {
+pub fn parent_dir(target: &Path) -> PathBuf {
     if target.is_dir() {
         target.to_path_buf()
     } else {
         target
             .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("/"))
+            .map_or_else(|| PathBuf::from("/"), Path::to_path_buf)
     }
 }
 
 #[must_use]
-pub(crate) fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
-    let (stem, ext) = if let Some(dot) = name.rfind('.') {
-        (&name[..dot], &name[dot..])
-    } else {
-        (name, "")
-    };
+pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
+    let (stem, ext) = name.rfind('.').map_or((name, ""), |dot| {
+        (
+            name.get(..dot).unwrap_or(name),
+            name.get(dot..).unwrap_or(""),
+        )
+    });
     let mut candidate = base_dir.join(name);
-    let mut counter = 1;
-    while candidate.exists() {
+    for counter in 1usize.. {
+        if !candidate.exists() {
+            break;
+        }
         candidate = base_dir.join(format!("{stem} {counter}{ext}"));
-        counter += 1;
     }
     candidate
 }
 
-pub(crate) fn create(target: &Path) -> Result<PathBuf> {
+pub fn create(target: &Path) -> Result<PathBuf> {
     let directory = parent_dir(target);
     let path = unique_name(&directory, "New Note.md");
     fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
 
-pub(crate) fn create_folder(target: &Path) -> Result<PathBuf> {
+pub fn create_folder(target: &Path) -> Result<PathBuf> {
     let directory = parent_dir(target);
     let path = unique_name(&directory, "New Folder");
     fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
     Ok(path)
 }
 
-pub(crate) fn update(path: &Path, content: &str) -> Result<()> {
+pub fn update(path: &Path, content: &str) -> Result<()> {
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
-pub(crate) struct RenameResult {
-    pub(crate) total_sources: usize,
-    pub(crate) updated_sources: usize,
+pub struct RenameResult {
+    pub total_sources: usize,
+    pub updated_sources: usize,
 }
 
-pub(crate) fn rename(
-    catalog: &VaultCatalog,
-    old_path: &Path,
-    new_path: &Path,
-) -> Result<RenameResult> {
+pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<RenameResult> {
     let root = catalog.root();
     let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
     for backlink in catalog.backlinks_under(old_path)? {
@@ -88,41 +85,37 @@ pub(crate) fn rename(
         )
     })?;
 
-    let mut updated_sources = 0usize;
-    for (source_path, replacements) in by_source {
-        let source_path = source_path
-            .strip_prefix(old_path)
-            .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
-        let content = match fs::read_to_string(&source_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let rewritten = links::rewrite(&content, &replacements);
-        if rewritten != content {
-            if update(&source_path, &rewritten).is_ok() {
-                updated_sources += 1;
-            }
-        } else {
-            updated_sources += 1;
-        }
-    }
+    let updated_sources = by_source
+        .into_iter()
+        .filter_map(|(source_path, replacements)| {
+            let source_path = source_path
+                .strip_prefix(old_path)
+                .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
+            let Ok(content) = fs::read_to_string(&source_path) else {
+                return None;
+            };
+            let rewritten = links::rewrite(&content, &replacements);
+            (rewritten == content || update(&source_path, &rewritten).is_ok()).then_some(())
+        })
+        .count();
     Ok(RenameResult {
         total_sources,
         updated_sources,
     })
 }
 
-pub(crate) fn delete(target: &Path) -> Result<()> {
+pub fn delete(target: &Path) -> Result<()> {
     if target.is_dir() {
         fs::remove_dir_all(target)
-            .with_context(|| format!("Failed to delete directory {:?}", target))?;
+            .with_context(|| format!("Failed to delete directory {}", target.display()))?;
     } else {
-        fs::remove_file(target).with_context(|| format!("Failed to delete file {:?}", target))?;
+        fs::remove_file(target)
+            .with_context(|| format!("Failed to delete file {}", target.display()))?;
     }
     Ok(())
 }
 
-pub(crate) fn duplicate(target: &Path) -> Result<PathBuf> {
+pub fn duplicate(target: &Path) -> Result<PathBuf> {
     if target.is_dir() {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
         let name = target
@@ -131,7 +124,7 @@ pub(crate) fn duplicate(target: &Path) -> Result<PathBuf> {
             .unwrap_or("copy");
         let new_path = unique_name(parent, name);
         copy_dir(target, &new_path)
-            .with_context(|| format!("Failed to duplicate dir {:?}", target))?;
+            .with_context(|| format!("Failed to duplicate dir {}", target.display()))?;
         Ok(new_path)
     } else {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
@@ -141,7 +134,7 @@ pub(crate) fn duplicate(target: &Path) -> Result<PathBuf> {
             .unwrap_or("copy");
         let new_path = unique_name(parent, name);
         fs::copy(target, &new_path)
-            .with_context(|| format!("Failed to duplicate file {:?}", target))?;
+            .with_context(|| format!("Failed to duplicate file {}", target.display()))?;
         Ok(new_path)
     }
 }
@@ -168,11 +161,11 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
-        let dest = dst.join(entry.file_name());
+        let destination = dst.join(entry.file_name());
         if path.is_dir() {
-            copy_dir(&path, &dest)?;
+            copy_dir(&path, &destination)?;
         } else {
-            fs::copy(&path, &dest)?;
+            fs::copy(&path, &destination)?;
         }
     }
     Ok(())
