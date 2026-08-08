@@ -375,14 +375,6 @@ fn parse_string(source: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::super::matches_definition;
     use super::super::parse_definition;
     use super::*;

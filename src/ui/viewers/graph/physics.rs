@@ -348,14 +348,6 @@ impl QuadTree {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use conv::ConvUtil;
 
     use super::super::model::{INITIAL_LAYOUT_RADIUS, INITIAL_LAYOUT_REFERENCE_NODES};

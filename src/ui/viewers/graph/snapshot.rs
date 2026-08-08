@@ -188,14 +188,6 @@ pub(super) async fn load_snapshot(
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::super::camera::Camera;
     use super::super::model::{
         ALL_LABELS_MIN_ZOOM, BASE_NODE_RADIUS, GraphFocus, IncidentDirection, incoming_link_scale,

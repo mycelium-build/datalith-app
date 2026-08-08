@@ -357,14 +357,6 @@ fn index_as_i64(index: usize) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
 
     use super::*;
     use crate::document::todo_txt::FocusTarget;

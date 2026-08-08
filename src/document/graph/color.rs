@@ -221,14 +221,6 @@ fn make_color(red: f32, green: f32, blue: f32, alpha: f32) -> Result<GraphColor>
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::*;
 
     #[test]

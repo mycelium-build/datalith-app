@@ -210,14 +210,6 @@ fn next_history(history: &[PathBuf], position: usize, path: &Path) -> (Vec<PathB
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::next_history;
     use std::path::PathBuf;
 

@@ -154,14 +154,6 @@ pub(super) fn escape_like_pattern(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::*;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
     use crate::vault::catalog::{

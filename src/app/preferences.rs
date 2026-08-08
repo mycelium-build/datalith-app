@@ -31,7 +31,6 @@ pub fn apply(cx: &mut App) {
             .filter(|theme| theme.mode == ThemeMode::Dark)
             .cloned()
     });
-    let _ = registry;
 
     if let Some(theme) = light_theme {
         Theme::global_mut(cx).light_theme = theme;

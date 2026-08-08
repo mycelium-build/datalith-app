@@ -173,14 +173,6 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::*;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 

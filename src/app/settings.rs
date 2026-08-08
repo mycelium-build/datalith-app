@@ -245,14 +245,6 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::*;
 
     fn temp_settings_file(test_name: &str) -> PathBuf {

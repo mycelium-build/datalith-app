@@ -456,14 +456,6 @@ fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> BTreeSet
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        clippy::string_slice
-    )]
     use super::*;
     use crate::document::file_types::FileTypeCapabilities;
 
