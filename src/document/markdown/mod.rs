@@ -75,6 +75,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn temp_probe_strong_wiki() {
+        for text in [
+            "**a [[b]] c**",
+            "a [[b]] c",
+            "**a ![[a.png]] c**",
+            "a ![[a.png]] c",
+        ] {
+            println!("=== INPUT {text:?}");
+            let converted = links::convert_wiki_links(text);
+            println!("  converted: {converted:?}");
+            println!("  blocks: {:#?}", parse_markdown(text).blocks);
+        }
+    }
+
+    #[test]
     fn parses_nested_document_structure() {
         let document = parse_markdown("# Title\n\n> 1. **bold** and [[Page|alias]]\n>    - child");
 

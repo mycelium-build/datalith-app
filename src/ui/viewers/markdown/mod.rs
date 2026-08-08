@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, Entity, FocusHandle, Focusable, FontStyle, FontWeight,
     HighlightStyle, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, StyledText, Window, div, img, px, relative,
+    StatefulInteractiveElement, Styled, StyledText, div, img, px, relative,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::ChildElement;
@@ -89,12 +89,7 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    pub fn render(
-        &self,
-        handler: Entity<FileHandler>,
-        _window: &mut Window,
-        cx: &mut App,
-    ) -> AnyElement {
+    pub fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         if content.is_empty() {
             return div()
@@ -456,13 +451,32 @@ impl MarkdownViewer {
                     elements.push(div().w_full().into_any_element());
                 }
                 _ => {
-                    Self::append_inline_text(
-                        std::slice::from_ref(inline),
+                    if Self::try_append_inline_text(
+                        inline,
                         style,
                         ctx.cx,
                         &mut text,
                         &mut highlights,
-                    );
+                    ) {
+                        // consumed as styled text
+                    } else if let Some(children) = Self::strong_or_emphasis_children(inline) {
+                        // Strong/Emphasis wrapping a link, image, or break
+                        // cannot be flattened into the styled text;
+                        // render its children separately.
+                        flush_inline_text(&mut elements, &mut text, &mut highlights);
+                        let child_style = if matches!(inline, MarkdownInline::Strong(_)) {
+                            InlineStyle {
+                                bold: true,
+                                ..style
+                            }
+                        } else {
+                            InlineStyle {
+                                italic: true,
+                                ..style
+                            }
+                        };
+                        elements.extend(self.render_inlines(children, child_style, ctx));
+                    }
                 }
             }
             index = index.saturating_add(1);
@@ -471,56 +485,73 @@ impl MarkdownViewer {
         elements
     }
 
-    fn append_inline_text(
-        inlines: &[MarkdownInline],
+    fn strong_or_emphasis_children(inline: &MarkdownInline) -> Option<&[MarkdownInline]> {
+        match inline {
+            MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => Some(children),
+            _ => None,
+        }
+    }
+
+    fn is_textable(inline: &MarkdownInline) -> bool {
+        match inline {
+            MarkdownInline::Text(_) | MarkdownInline::Code(_) => true,
+            MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
+                children.iter().all(Self::is_textable)
+            }
+            _ => false,
+        }
+    }
+
+    fn try_append_inline_text(
+        inline: &MarkdownInline,
         style: InlineStyle,
         cx: &App,
         text: &mut String,
         highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
-    ) {
-        for inline in inlines {
-            match inline {
-                MarkdownInline::Text(value) => {
-                    let start = text.len();
-                    text.push_str(value);
-                    highlights.push((start..text.len(), inline_highlight(style, cx)));
+    ) -> bool {
+        match inline {
+            MarkdownInline::Text(value) => {
+                let start = text.len();
+                text.push_str(value);
+                highlights.push((start..text.len(), inline_highlight(style, cx)));
+                true
+            }
+            MarkdownInline::Code(value) => {
+                let start = text.len();
+                text.push_str(value);
+                highlights.push((
+                    start..text.len(),
+                    inline_highlight(
+                        InlineStyle {
+                            code: true,
+                            ..style
+                        },
+                        cx,
+                    ),
+                ));
+                true
+            }
+            MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
+                if !children.iter().all(Self::is_textable) {
+                    return false;
                 }
-                MarkdownInline::Code(value) => {
-                    let start = text.len();
-                    text.push_str(value);
-                    highlights.push((
-                        start..text.len(),
-                        inline_highlight(
-                            InlineStyle {
-                                code: true,
-                                ..style
-                            },
-                            cx,
-                        ),
-                    ));
-                }
-                MarkdownInline::Strong(children) => Self::append_inline_text(
-                    children,
+                let child_style = if matches!(inline, MarkdownInline::Strong(_)) {
                     InlineStyle {
                         bold: true,
                         ..style
-                    },
-                    cx,
-                    text,
-                    highlights,
-                ),
-                MarkdownInline::Emphasis(children) => Self::append_inline_text(
-                    children,
+                    }
+                } else {
                     InlineStyle {
                         italic: true,
                         ..style
-                    },
-                    cx,
-                    text,
-                    highlights,
-                ),
-                _ => {}
+                    }
+                };
+                for child in children {
+                    Self::try_append_inline_text(child, child_style, cx, text, highlights);
+                }
+                true
             }
+            _ => false,
         }
     }
 }
@@ -577,7 +608,7 @@ fn inline_highlight(style: InlineStyle, cx: &App) -> HighlightStyle {
 
 #[cfg(test)]
 mod tests {
-    use super::{MarkdownInline, adjacent_image_run_end};
+    use super::{MarkdownInline, MarkdownViewer, adjacent_image_run_end};
 
     fn image(name: &str) -> MarkdownInline {
         MarkdownInline::Image {
@@ -613,5 +644,23 @@ mod tests {
         ];
 
         assert_eq!(adjacent_image_run_end(&inlines, 0), None);
+    }
+
+    #[test]
+    fn strong_or_emphasis_wrapping_a_link_is_not_flattened_into_text() {
+        let link = MarkdownInline::Link {
+            url: "a.md".into(),
+            content: vec![MarkdownInline::Text("a".into())],
+        };
+        let strong_with_link =
+            MarkdownInline::Strong(vec![MarkdownInline::Text("text ".into()), link]);
+        assert!(!MarkdownViewer::is_textable(&strong_with_link));
+        assert!(MarkdownViewer::is_textable(&MarkdownInline::Strong(vec![
+            MarkdownInline::Text("only text".into())
+        ])));
+        assert!(MarkdownViewer::is_textable(&MarkdownInline::Emphasis(
+            vec![MarkdownInline::Code("c".into())]
+        )));
+        assert!(!MarkdownViewer::is_textable(&MarkdownInline::Break));
     }
 }
