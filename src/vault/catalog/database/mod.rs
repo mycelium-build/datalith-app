@@ -211,7 +211,7 @@ mod tests {
                             value: CatalogScalar::String("rust".into()),
                         },
                     ]),
-                    limit: 10,
+                    limit: Some(10),
                 })
                 .await
                 .unwrap();
@@ -251,7 +251,7 @@ mod tests {
                         comparison: CatalogComparison::Equal,
                         value: CatalogScalar::String("done".into()),
                     })),
-                    limit: 10,
+                    limit: Some(10),
                 })
                 .await
                 .unwrap();
@@ -297,7 +297,7 @@ mod tests {
                 .query_documents(CatalogQuery {
                     extension: Some("md".into()),
                     filter: CatalogFilter::InFolder("a_%".into()),
-                    limit: 10,
+                    limit: Some(10),
                 })
                 .await
                 .unwrap();
@@ -589,7 +589,7 @@ mod tests {
                 .query_documents(CatalogQuery {
                     extension: Some("md".into()),
                     filter: CatalogFilter::MatchAll,
-                    limit: 10,
+                    limit: Some(10),
                 })
                 .await
                 .unwrap();

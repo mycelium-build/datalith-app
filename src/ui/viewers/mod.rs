@@ -2,7 +2,7 @@ pub mod graph;
 pub mod image;
 pub mod markdown;
 
-use gpui::{AnyElement, App, Context, Entity, FocusHandle, Window};
+use gpui::{AnyElement, App, Context, Entity, FocusHandle};
 
 use self::graph::GraphViewer;
 use self::image::ImageViewer;
@@ -18,15 +18,10 @@ pub enum ViewerKind {
 }
 
 impl ViewerKind {
-    pub fn render(
-        &self,
-        handler: Entity<FileHandler>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> AnyElement {
+    pub fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
         match self {
             Self::Graph(viewer) => viewer.render(handler, cx),
-            Self::Markdown(viewer) => viewer.render(handler, window, cx),
+            Self::Markdown(viewer) => viewer.render(handler, cx),
             Self::Image(viewer) => viewer.render(cx),
         }
     }

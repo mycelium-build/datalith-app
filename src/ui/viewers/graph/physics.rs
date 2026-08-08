@@ -384,7 +384,7 @@ mod tests {
             source: PathBuf::from("one.md"),
             target: PathBuf::from("two.md"),
         }];
-        let mut snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let mut snapshot = make_snapshot(&definition, nodes, edges);
         snapshot.nodes[0].position = gpui::point(-200.0, 0.0);
         snapshot.nodes[1].position = gpui::point(200.0, 0.0);
         let mut simulation = Simulation::default();
@@ -418,7 +418,7 @@ mod tests {
             source: format!("node-{index}.md").into(),
             target: "node-0.md".into(),
         });
-        let mut snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let mut snapshot = make_snapshot(&definition, nodes, edges);
         let mut simulation = Simulation::default();
 
         for _ in 0..400 {
@@ -452,7 +452,7 @@ mod tests {
             path: "still.md".into(),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         }];
-        let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
+        let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);
 
         Simulation::default().step(&mut snapshot, None);
@@ -470,7 +470,7 @@ mod tests {
             path: "moving.md".into(),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
         }];
-        let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
+        let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);
         let mut simulation = Simulation::default();
 

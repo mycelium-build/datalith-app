@@ -330,12 +330,27 @@ impl CatalogDatabase {
         } else {
             format!(" WHERE {}", clauses.join(" AND "))
         };
-        let sql = format!(
-            "SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path LIMIT ?"
+        let (sql, limit_param) = query.limit.map_or_else(
+            || {
+                (
+                    format!("SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path"),
+                    None,
+                )
+            },
+            |limit| {
+                (
+                    format!(
+                        "SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path LIMIT ?"
+                    ),
+                    Some(Value::Integer(
+                        i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX),
+                    )),
+                )
+            },
         );
-        compiler.parameters.push(Value::Integer(
-            i64::try_from(query.limit.saturating_add(1)).unwrap_or(i64::MAX),
-        ));
+        if let Some(limit_param) = limit_param {
+            compiler.parameters.push(limit_param);
+        }
         let mut rows = connection
             .query(sql, turso::params_from_iter(compiler.parameters))
             .await?;
@@ -351,14 +366,10 @@ impl CatalogDatabase {
                 metadata,
             });
         }
-        let exceeded_limit = documents.len() > query.limit;
-        if exceeded_limit {
-            documents.truncate(query.limit);
+        if let Some(limit) = query.limit {
+            documents.truncate(limit);
         }
-        Ok(DocumentSelection {
-            documents,
-            exceeded_limit,
-        })
+        Ok(DocumentSelection { documents })
     }
 }
 

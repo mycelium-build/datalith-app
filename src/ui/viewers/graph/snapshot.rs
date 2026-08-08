@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use gpui::Point;
 
 use crate::document::graph::{
@@ -81,8 +81,16 @@ pub(super) fn make_snapshot(
     definition: &GraphDefinition,
     candidates: impl IntoIterator<Item = GraphNode>,
     edges: impl IntoIterator<Item = GraphEdge>,
-) -> Result<GraphSnapshot> {
-    let mut nodes = select_nodes(definition, candidates)?;
+) -> GraphSnapshot {
+    let selection = select_nodes(definition, candidates);
+    let rendered = selection.nodes.len();
+    let notice = (selection.total > rendered).then(|| {
+        format!(
+            "Only {rendered} of {} matching nodes rendered; narrow filters or raise the limit.",
+            selection.total
+        )
+    });
+    let mut nodes = selection.nodes;
     let selected: HashSet<_> = nodes.iter().map(|node| node.path.clone()).collect();
     let mut edges = deduplicate_edges(edges, &selected);
     let connected: HashSet<_> = edges
@@ -135,7 +143,7 @@ pub(super) fn make_snapshot(
 
     let edge_width = definition.display.edge.width.unwrap_or(1.0);
     let hover = &definition.display.edge.hover.direction;
-    Ok(GraphSnapshot {
+    GraphSnapshot {
         nodes,
         edges: view_edges,
         edge_color: definition.display.edge.color,
@@ -145,7 +153,8 @@ pub(super) fn make_snapshot(
         edge_hover_both: edge_hover_style(&hover.both, edge_width),
         arrow: definition.display.edge.arrow,
         physics: definition.physics,
-    })
+        notice,
+    }
 }
 
 pub(super) async fn load_snapshot(
@@ -157,15 +166,9 @@ pub(super) async fn load_snapshot(
         .query_documents_with_links(CatalogQuery {
             extension: Some("md".into()),
             filter: definition.catalog_filter(),
-            limit: definition.limit,
+            limit: None,
         })
         .await?;
-    if selection.exceeded_limit {
-        bail!(
-            "graph matches more than {} nodes; narrow filters or raise limit",
-            definition.limit
-        );
-    }
     let candidates = selection.documents.into_iter().filter_map(|document| {
         let path = document.path.strip_prefix(&root).ok()?.to_path_buf();
         let properties = document.metadata.map_or_else(
@@ -183,7 +186,7 @@ pub(super) async fn load_snapshot(
             target: edge.target.strip_prefix(&root).ok()?.to_path_buf(),
         })
     });
-    make_snapshot(&definition, candidates, edges)
+    Ok(make_snapshot(&definition, candidates, edges))
 }
 
 #[cfg(test)]
@@ -210,7 +213,60 @@ mod tests {
             source: PathBuf::from(*source),
             target: PathBuf::from(*target),
         });
-        make_snapshot(definition, nodes, edges).unwrap()
+        make_snapshot(definition, nodes, edges)
+    }
+
+    #[test]
+    fn make_snapshot_renders_all_matching_nodes_when_no_limit_is_set() {
+        use crate::document::graph::parse_definition;
+
+        let definition = parse_definition("").unwrap();
+        assert_eq!(definition.limit, None);
+        let nodes = ["a.md", "b.md", "c.md"].into_iter().map(|path| GraphNode {
+            path: PathBuf::from(path),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+        });
+        let snapshot = make_snapshot(&definition, nodes, []);
+        assert_eq!(snapshot.nodes.len(), 3);
+        assert!(snapshot.notice.is_none());
+    }
+
+    #[test]
+    fn make_snapshot_truncates_to_the_limit_and_reports_it_in_the_notice() {
+        use crate::document::graph::parse_definition;
+
+        let definition = parse_definition("limit: 2").unwrap();
+        let nodes = ["a.md", "b.md", "c.md", "d.md"]
+            .into_iter()
+            .map(|path| GraphNode {
+                path: PathBuf::from(path),
+                properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            });
+        let snapshot = make_snapshot(&definition, nodes, []);
+        assert_eq!(snapshot.nodes.len(), 2);
+        let notice = snapshot.notice.expect("truncation should be reported");
+        assert!(notice.contains("Only 2 of 4"), "{notice}");
+    }
+
+    #[test]
+    fn no_limit_still_caps_at_the_hard_safety_ceiling_with_a_notice() {
+        use crate::document::graph::{HARD_NODE_LIMIT, parse_definition};
+
+        let definition = parse_definition("").unwrap();
+        assert_eq!(definition.limit, None);
+        let nodes = (0..HARD_NODE_LIMIT.saturating_add(1)).map(|index| GraphNode {
+            path: PathBuf::from(format!("node-{index}.md")),
+            properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+        });
+        let snapshot = make_snapshot(&definition, nodes, []);
+        assert_eq!(snapshot.nodes.len(), HARD_NODE_LIMIT);
+        let notice = snapshot
+            .notice
+            .expect("ceiling truncation should be reported");
+        assert!(
+            notice.contains(&format!("Only {HARD_NODE_LIMIT} of")),
+            "{notice}"
+        );
     }
 
     fn graph_catalog(root: &std::path::Path) -> VaultCatalog {
@@ -262,7 +318,7 @@ mod tests {
                 path: path.into(),
                 properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
             });
-        let mut snapshot = make_snapshot(&definition, nodes, []).unwrap();
+        let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(0.0, 0.0);
         snapshot.nodes[1].position = gpui::point(1_000.0, 0.0);
         let viewport = gpui::point(800.0, 600.0);
@@ -339,7 +395,7 @@ display:
             target: PathBuf::from("one.md"),
         }];
 
-        let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let snapshot = make_snapshot(&definition, nodes, edges);
 
         assert_eq!(snapshot.nodes.len(), 2);
         let done = snapshot
@@ -395,7 +451,7 @@ display:
             },
         ];
 
-        let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let snapshot = make_snapshot(&definition, nodes, edges);
         let linked = snapshot
             .nodes
             .iter()
@@ -450,7 +506,7 @@ display:
             target: "linked-b.md".into(),
         }];
 
-        let snapshot = make_snapshot(&definition, nodes, edges).unwrap();
+        let snapshot = make_snapshot(&definition, nodes, edges);
         let linked = snapshot
             .nodes
             .iter()

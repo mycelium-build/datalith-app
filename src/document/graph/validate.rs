@@ -9,7 +9,9 @@ pub fn parse_definition(source: &str) -> Result<GraphDefinition> {
     } else {
         yaml_serde::from_str(source).map_err(|error| anyhow!(format_yaml_error(&error)))?
     };
-    if !(1..=HARD_NODE_LIMIT).contains(&definition.limit) {
+    if let Some(limit) = definition.limit
+        && !(1..=HARD_NODE_LIMIT).contains(&limit)
+    {
         bail!("limit must be between 1 and {HARD_NODE_LIMIT}");
     }
 
@@ -209,6 +211,9 @@ display:
                 .contains("unknown field")
         );
         assert!(parse_definition("limit: 50001").is_err());
+        assert!(parse_definition("limit: 0").is_err());
+        assert_eq!(parse_definition("").unwrap().limit, None);
+        assert_eq!(parse_definition("limit: 50000").unwrap().limit, Some(50000));
         assert!(parse_definition("groups:\n  - name: Empty\n    filters: []").is_err());
         assert!(
             parse_definition("groups:\n  - name: Empty\n    filters: []\n    node: {}").is_err()

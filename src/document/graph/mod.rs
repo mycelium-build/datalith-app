@@ -10,7 +10,6 @@ pub use validate::parse_definition;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
 use serde::Deserialize;
 use yaml_serde::Value;
 
@@ -25,7 +24,7 @@ pub const DEFAULT_LINK_DISTANCE: f32 = 128.0;
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct GraphDefinition {
-    pub(crate) limit: usize,
+    pub(crate) limit: Option<usize>,
     pub(crate) filters: Filter,
     pub(crate) groups: Vec<GraphGroup>,
     pub(crate) display: GraphDisplay,
@@ -35,7 +34,7 @@ pub struct GraphDefinition {
 impl Default for GraphDefinition {
     fn default() -> Self {
         Self {
-            limit: HARD_NODE_LIMIT,
+            limit: None,
             filters: Filter::MatchAll,
             groups: Vec::new(),
             display: GraphDisplay::default(),
@@ -137,22 +136,23 @@ pub fn matching_group<'a>(
         .find(|group| filter_matches_with_file(&group.filters, &file))
 }
 
+pub struct NodeSelection {
+    pub(crate) nodes: Vec<GraphNode>,
+    pub(crate) total: usize,
+}
+
 pub fn select_nodes(
     definition: &GraphDefinition,
     candidates: impl IntoIterator<Item = GraphNode>,
-) -> Result<Vec<GraphNode>> {
-    let nodes: Vec<_> = candidates
+) -> NodeSelection {
+    let mut nodes: Vec<_> = candidates
         .into_iter()
         .filter(|node| matches_definition(definition, &node.path, &node.properties))
         .collect();
-    if nodes.len() > definition.limit {
-        bail!(
-            "graph matches {} nodes, exceeding limit {}; narrow filters or raise limit",
-            nodes.len(),
-            definition.limit
-        );
-    }
-    Ok(nodes)
+    let total = nodes.len();
+    let effective_limit = definition.limit.unwrap_or(HARD_NODE_LIMIT);
+    nodes.truncate(effective_limit);
+    NodeSelection { nodes, total }
 }
 
 pub fn deduplicate_edges(
@@ -217,7 +217,10 @@ groups:
             path: PathBuf::from("A.md"),
             properties,
         };
-        let nodes = select_nodes(&definition, [node]).unwrap();
+        let selection = select_nodes(&definition, [node]);
+        let nodes = selection.nodes;
+        assert_eq!(selection.total, 1);
+        assert_eq!(nodes.len(), 1);
         assert_eq!(
             matching_group(&definition, &nodes[0].path, &nodes[0].properties)
                 .unwrap()

@@ -165,4 +165,4 @@ Strengths must be finite, non-negative numbers; setting a strength to zero disab
 
 ## Limits
 
-A Graph Definition has no default result limit; `limit` only applies when explicitly set, up to the hard safety ceiling of 50,000 nodes. Datalith reports an error instead of silently truncating a graph.
+A Graph Definition has no default `limit`: it renders every matching node up to the hard safety ceiling of 50,000 nodes. An explicit `limit` between 1 and 50,000 lowers that bound. When a graph matches more nodes than its effective bound, Datalith renders the first nodes up to the bound and shows a banner reporting how many of the matching nodes were rendered.

@@ -90,6 +90,7 @@ pub(super) struct GraphSnapshot {
     pub(super) edge_hover_both: ViewEdgeStyle,
     pub(super) arrow: bool,
     pub(super) physics: GraphPhysics,
+    pub(super) notice: Option<String>,
 }
 
 pub(super) struct GraphFocus {

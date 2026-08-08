@@ -411,6 +411,31 @@ impl GraphViewState {
                 );
             }
         }
+
+        if let Some(notice) = &snapshot.notice {
+            root = root.child(Self::render_notice(notice, cx));
+        }
         root.into_any_element()
+    }
+
+    fn render_notice(notice: &str, cx: &App) -> AnyElement {
+        div()
+            .absolute()
+            .top(px(12.0))
+            .left(px(0.0))
+            .right(px(0.0))
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .bg(cx.theme().muted)
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(notice.to_owned()),
+            )
+            .into_any_element()
     }
 }

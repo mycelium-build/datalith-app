@@ -42,21 +42,19 @@ pub struct CatalogDocument {
 #[derive(Clone, Debug)]
 pub struct DocumentSelection {
     pub(crate) documents: Vec<CatalogDocument>,
-    pub(crate) exceeded_limit: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct LinkedDocumentSelection {
     pub(crate) documents: Vec<CatalogDocument>,
     pub(crate) links: Vec<WikiLinkEdge>,
-    pub(crate) exceeded_limit: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct CatalogQuery {
     pub(crate) extension: Option<String>,
     pub(crate) filter: CatalogFilter,
-    pub(crate) limit: usize,
+    pub(crate) limit: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -322,7 +320,6 @@ impl VaultCatalog {
         Ok(LinkedDocumentSelection {
             documents: selection.documents,
             links,
-            exceeded_limit: selection.exceeded_limit,
         })
     }
 }
