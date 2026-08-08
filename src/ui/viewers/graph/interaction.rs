@@ -323,7 +323,13 @@ impl GraphViewState {
             .then(|| self.pointer_position.zip(self.viewport()))
             .flatten();
         let ViewerStatus::Ready(snapshot) = &mut self.status else {
-            return div().into_any_element();
+            let message: String = match &self.status {
+                ViewerStatus::Loading => "Loading Graph View…".into(),
+                ViewerStatus::Empty => "No Markdown files match this Graph Definition.".into(),
+                ViewerStatus::Error(error) => error.clone(),
+                ViewerStatus::Ready(_) => "Graph View unavailable.".into(),
+            };
+            return self.render_centered(message, cx);
         };
         self.simulation.step(snapshot, pinned);
         if let Some((pointer, viewport)) = hover_query {
