@@ -102,16 +102,25 @@ pub struct DatalithView {
 }
 
 fn build_vault_entries() -> Vec<VaultEntry> {
-    let recent_vaults: Vec<VaultEntry> = app_settings::snapshot()
-        .recent_vaults
-        .into_iter()
-        .map(|p| {
-            let path: SharedString = p.to_string_lossy().to_string().into();
-            let name: SharedString = display_name(&p).into();
-            VaultEntry::Vault { path, name }
-        })
-        .collect();
-    let mut items = recent_vaults;
+    let mut items = Vec::new();
+    let docs_vault = crate::app::docs::docs_vault_path();
+    if docs_vault.is_dir() {
+        items.push(VaultEntry::Vault {
+            path: docs_vault.to_string_lossy().to_string().into(),
+            name: SharedString::from(crate::app::docs::DOCS_VAULT_NAME),
+        });
+    }
+    for path in app_settings::snapshot().recent_vaults {
+        if path == docs_vault {
+            continue;
+        }
+        let path_text: SharedString = path.to_string_lossy().to_string().into();
+        let name: SharedString = display_name(&path).into();
+        items.push(VaultEntry::Vault {
+            path: path_text,
+            name,
+        });
+    }
     items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
     items
 }

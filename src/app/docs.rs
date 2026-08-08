@@ -60,9 +60,6 @@ pub fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
     fs::create_dir_all(&docs_vault)
         .with_context(|| format!("Failed to create docs Vault: {}", docs_vault.display()))?;
     seed_into(&docs_vault)?;
-    if let Err(error) = settings::register_recent_vault(&docs_vault) {
-        eprintln!("Failed to register docs Vault in recent vaults: {error:#}");
-    }
     Ok(DocsVaultOutcome {
         docs_vault,
         first_run,
@@ -86,7 +83,7 @@ fn seed_into(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn docs_vault_path() -> PathBuf {
+pub fn docs_vault_path() -> PathBuf {
     super::data_dir().join(DOCS_VAULT_NAME)
 }
 
