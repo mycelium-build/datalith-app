@@ -162,11 +162,11 @@ impl VaultCatalog {
                 .filter(|path| !initial.contains(path))
                 .collect::<Vec<_>>();
             let initial = initial.into_iter().collect::<Vec<_>>();
-            let synchronized =
+            let sync_result =
                 pollster::block_on(inner.database.synchronize(&removed, &initial, file_types))?;
 
             if let Ok(search) = inner.search.lock() {
-                let _ = search.indexer.synchronize(&synchronized);
+                let _ = search.indexer.synchronize(&sync_result.all);
             }
 
             let (notify_tx, notify_rx) = mpsc::channel();
@@ -194,7 +194,7 @@ impl VaultCatalog {
 
             spawn_reconciler(inner, notify_rx)?;
 
-            publish_event(inner, synchronized, true);
+            publish_event(inner, sync_result.all, true);
 
             if let Ok(mut state) = inner.state.lock() {
                 *state = CatalogState::Ready;
@@ -392,14 +392,18 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
 
     let changed = changed.into_iter().collect::<Vec<_>>();
     let removed = removed.into_iter().collect::<Vec<_>>();
-    let Ok(synchronized) = pollster::block_on(inner.database.synchronize(
+    let Ok(sync_result) = pollster::block_on(inner.database.synchronize(
         &removed,
         &changed,
         &inner.file_types,
     )) else {
         return;
     };
-    let synchronized_set = synchronized.iter().collect::<BTreeSet<_>>();
+    // `sync_result.changed` contains only files whose content changed;
+    // unchanged files are not rewritten, reindexed, or re-published.
+    // A reported path that is absent from `sync_result.all` was not synchronized at all
+    // (deleted mid-sync or unreadable) and must be dropped from the derived representations too.
+    let synchronized_set = sync_result.all.iter().collect::<BTreeSet<_>>();
     let omitted = changed
         .iter()
         .filter(|path| !synchronized_set.contains(path))
@@ -407,13 +411,15 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
         .collect::<Vec<_>>();
     let mut removed_from_derived = removed;
     removed_from_derived.extend(omitted);
-    let structure_changed = synchronized.iter().any(|path| !known.contains(path))
+    let structure_changed = sync_result.all.iter().any(|path| !known.contains(path))
         || removed_from_derived.iter().any(|path| known.contains(path));
     if let Ok(search) = inner.search.lock() {
-        let _ = search.indexer.apply(&removed_from_derived, &synchronized);
+        let _ = search
+            .indexer
+            .apply(&removed_from_derived, &sync_result.changed);
     }
     let mut paths = removed_from_derived;
-    paths.extend(synchronized);
+    paths.extend(sync_result.changed);
     publish_event(inner, paths, structure_changed);
 }
 
@@ -519,15 +525,17 @@ mod tests {
         let events = catalog.events();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
         while events.try_recv().is_ok() {}
-        assert_eq!(catalog.search("hidden"), vec![hidden_tracked.clone()]);
+        assert_eq!(catalog.search("hidden"), vec![hidden_tracked]);
 
+        let added = folder.join("New.md");
+        std::fs::write(&added, "new tracked content").unwrap();
         reconcile_paths(&catalog.inner, vec![folder]);
 
         let event = events
             .recv_timeout(std::time::Duration::from_secs(1))
             .unwrap();
-        assert_eq!(event.paths, vec![hidden_tracked, tracked]);
-        assert!(!event.structure_changed);
+        assert_eq!(event.paths, vec![added]);
+        assert!(event.structure_changed);
         drop(catalog);
         let _ = std::fs::remove_dir_all(root);
     }

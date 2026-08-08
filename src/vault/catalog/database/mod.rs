@@ -33,10 +33,17 @@ pub struct Backlink {
     pub target_path: PathBuf,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct SynchronizedFiles {
+    pub(super) all: Vec<PathBuf>,
+    pub(super) changed: Vec<PathBuf>,
+}
+
 #[derive(Clone)]
 pub(super) struct CatalogDatabase {
     pub(super) root: PathBuf,
     connection: turso::Connection,
+    read_connection: turso::Connection,
 }
 
 impl CatalogDatabase {
@@ -65,7 +72,6 @@ impl CatalogDatabase {
                     .context("Failed to rebuild embedded Turso catalog")?
             };
         let connection = database.connect()?;
-        drop(database);
         connection.execute("PRAGMA foreign_keys = ON", ()).await?;
         connection
             .query("PRAGMA journal_mode = WAL", ())
@@ -76,9 +82,13 @@ impl CatalogDatabase {
             .execute("PRAGMA synchronous = NORMAL", ())
             .await?;
         // connection.execute("PRAGMA cache_size = -2000", ()).await?; // Default 2MB
+
+        let read_connection = database.connect()?;
+        drop(database);
         let this = Self {
             root: root.to_path_buf(),
             connection,
+            read_connection,
         };
         this.initialize_schema().await?;
         Ok(this)
@@ -86,6 +96,10 @@ impl CatalogDatabase {
 
     pub(super) fn connection(&self) -> turso::Connection {
         self.connection.clone()
+    }
+
+    pub(super) fn read_connection(&self) -> turso::Connection {
+        self.read_connection.clone()
     }
 
     async fn initialize_schema(&self) -> Result<()> {
@@ -539,6 +553,70 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(resolved_target().await, "Target.txt");
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn warm_resync_preserves_unchanged_document_metadata_and_links() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-warm-resync-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("Source.md");
+        let target = root.join("Target.md");
+        fs::write(&source, "---\ntitle: \"Keep me\"\n---\n\n[[Target]]").unwrap();
+        fs::write(&target, "").unwrap();
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let file_types = markdown_file_types();
+            database
+                .synchronize(&[], &[source.clone(), target.clone()], &file_types)
+                .await
+                .unwrap();
+
+            // Re-sync the same files: the metadata fast pass classifies them unchanged,
+            // and the batch upsert must not rewrite them.
+            let result = database
+                .synchronize(&[], &[source.clone(), target.clone()], &file_types)
+                .await
+                .unwrap();
+            assert!(result.changed.is_empty());
+            assert_eq!(result.all.len(), 2);
+
+            let selection = database
+                .query_documents(CatalogQuery {
+                    extension: Some("md".into()),
+                    filter: CatalogFilter::MatchAll,
+                    limit: 10,
+                })
+                .await
+                .unwrap();
+            let document = selection
+                .documents
+                .iter()
+                .find(|document| document.path.ends_with("Source.md"))
+                .unwrap();
+            assert_eq!(document.metadata.as_ref().unwrap()["title"], "Keep me");
+
+            let connection = database.connection();
+            let mut rows = connection
+                .query(
+                    "SELECT target_path FROM wiki_links WHERE source_path = 'Source.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                rows.next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap(),
+                "Target.md"
+            );
         });
         let _ = fs::remove_dir_all(root);
     }

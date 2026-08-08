@@ -8,7 +8,7 @@ use turso::Value;
 
 use super::filter_compiler::FilterCompiler;
 use super::link_resolution::{collect_matching_targets, link_target_candidates, resolve_links};
-use super::{CatalogDatabase, StoredLink, path_text};
+use super::{CatalogDatabase, StoredLink, SynchronizedFiles, path_text};
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::catalog::{CatalogDocument, CatalogQuery, DocumentSelection};
 use crate::vault::links;
@@ -82,12 +82,10 @@ impl TrackedDocument {
 
     /// Read only filesystem metadata (size, mtime) without file content.
     pub(super) fn read_meta_only(
-        root: &Path,
         path: &Path,
         file_types: &RegisteredFileTypes,
-    ) -> Option<(PathBuf, i64, i64)> {
+    ) -> Option<(i64, i64)> {
         file_types.capabilities(path)?;
-        let relative = path.strip_prefix(root).ok()?.to_path_buf();
         let metadata = fs::metadata(path).ok()?;
         let modified_ns = metadata
             .modified()
@@ -96,7 +94,7 @@ impl TrackedDocument {
             .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
             .unwrap_or_default();
         let size_bytes = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
-        Some((relative, size_bytes, modified_ns))
+        Some((size_bytes, modified_ns))
     }
 }
 
@@ -112,7 +110,7 @@ fn frontmatter_metadata(content: &str) -> Option<serde_json::Value> {
 
 impl CatalogDatabase {
     pub(crate) async fn stored_paths(&self) -> Result<Vec<PathBuf>> {
-        let connection = self.connection();
+        let connection = self.read_connection();
         let mut rows = connection
             .query("SELECT path FROM documents ORDER BY path", ())
             .await?;
@@ -128,7 +126,7 @@ impl CatalogDatabase {
         removed: &[PathBuf],
         changed: &[PathBuf],
         file_types: &RegisteredFileTypes,
-    ) -> Result<Vec<PathBuf>> {
+    ) -> Result<SynchronizedFiles> {
         let root = &self.root;
         let connection = self.connection();
         connection.execute("BEGIN IMMEDIATE", ()).await?;
@@ -220,18 +218,14 @@ impl CatalogDatabase {
 
             resolve_links(&connection, affected_targets).await?;
 
-            Ok::<_, anyhow::Error>(documents)
+            Ok::<_, anyhow::Error>(synchronized_paths(&documents, changed_document_count, root))
         }
         .await;
 
         match result {
-            Ok(documents) => {
+            Ok(result) => {
                 connection.execute("COMMIT", ()).await?;
-                let synchronized = documents
-                    .iter()
-                    .map(|document| self.root.join(&document.path))
-                    .collect::<Vec<_>>();
-                Ok(synchronized)
+                Ok(result)
             }
             Err(error) => {
                 let _ = connection.execute("ROLLBACK", ()).await;
@@ -241,7 +235,7 @@ impl CatalogDatabase {
     }
 
     pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
-        let connection = self.connection();
+        let connection = self.read_connection();
         self.query_documents_on(&connection, query).await
     }
 
@@ -249,7 +243,7 @@ impl CatalogDatabase {
         &self,
         query: CatalogQuery,
     ) -> Result<(DocumentSelection, Vec<StoredLink>)> {
-        let connection = self.connection();
+        let connection = self.read_connection();
         connection.execute("BEGIN DEFERRED", ()).await?;
         let result = async {
             let selection = self.query_documents_on(&connection, query).await?;
@@ -399,9 +393,9 @@ fn partition_changed(
             let relative = path.strip_prefix(root).unwrap_or(path);
             let relative_str = relative.to_string_lossy().replace('\\', "/");
             stored_meta.get(relative_str.as_str()).is_none_or(|stored| {
-                TrackedDocument::read_meta_only(root, path, file_types).is_none_or(
-                    |(_, size, mtime)| size != stored.size_bytes || mtime != stored.modified_ns,
-                )
+                TrackedDocument::read_meta_only(path, file_types).is_none_or(|(size, mtime)| {
+                    size != stored.size_bytes || mtime != stored.modified_ns
+                })
             })
         })
 }
@@ -450,6 +444,23 @@ fn placeholders(count: usize) -> String {
         .join(",")
 }
 
+fn synchronized_paths(
+    documents: &[TrackedDocument],
+    changed_count: usize,
+    root: &Path,
+) -> SynchronizedFiles {
+    let (changed_documents, _) = documents.split_at(changed_count);
+    let all = documents
+        .iter()
+        .map(|document| root.join(&document.path))
+        .collect();
+    let changed = changed_documents
+        .iter()
+        .map(|document| root.join(&document.path))
+        .collect();
+    SynchronizedFiles { all, changed }
+}
+
 async fn batch_delete_documents(connection: &turso::Connection, to_delete: &[&str]) -> Result<()> {
     for chunk in to_delete.chunks(BATCH_SIZE) {
         let placeholders = placeholders(chunk.len());
@@ -477,6 +488,10 @@ async fn upsert_documents_and_links(
                 .as_ref()
                 .map(serde_json::to_string)
                 .transpose()?;
+            // metadata is optional: bind it twice
+            // - once for the NULL test,
+            // - once for the jsonb() conversion
+            // so a single NULL maps to a NULL column value.
             value_groups.push("(?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
             params.push(Value::Text(relative));
             params.push(Value::Text(document.extension.clone()));
