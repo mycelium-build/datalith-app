@@ -8,4 +8,10 @@ pub mod settings;
 mod state;
 pub mod system;
 
+use std::path::PathBuf;
+
 pub use state::AppState;
+
+pub fn data_dir() -> PathBuf {
+    dirs::data_dir().unwrap_or_default().join("datalith")
+}

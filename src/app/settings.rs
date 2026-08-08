@@ -178,10 +178,7 @@ impl SettingsStore {
 }
 
 fn settings_file() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join("datalith")
-        .join("config.json")
+    super::data_dir().join("config.json")
 }
 
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
@@ -211,13 +208,19 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
 
 pub fn register_recent_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
-    settings_lock().update(|settings| push_recent_vault(settings, path))
+    let mut settings = settings_lock();
+    if settings.snapshot().recent_vaults.contains(&path) {
+        return Ok(());
+    }
+    settings.update(|settings| push_recent_vault(settings, path))
 }
 
 fn push_recent_vault(settings: &mut ApplicationSettings, path: PathBuf) {
     if !settings.recent_vaults.contains(&path) {
         settings.recent_vaults.push(path);
-        settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+        if settings.recent_vaults.len() > MAX_RECENT_VAULTS {
+            settings.recent_vaults.remove(0);
+        }
     }
 }
 
@@ -353,5 +356,49 @@ mod tests {
         let _ = fs::remove_file(file);
         let _ = fs::remove_dir(first);
         let _ = fs::remove_dir(second);
+    }
+
+    #[test]
+    fn registering_when_full_keeps_the_appended_vault_and_drops_the_oldest() {
+        let mut paths = Vec::new();
+        for i in 0..MAX_RECENT_VAULTS {
+            let path = std::env::temp_dir().join(format!(
+                "datalith-recent-full-{i}-{}-{}",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            fs::create_dir_all(&path).unwrap();
+            paths.push(path);
+        }
+        let docs_vault = std::env::temp_dir().join(format!(
+            "datalith-recent-docs-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&docs_vault).unwrap();
+        let file = temp_settings_file("recent-full");
+        let mut store = SettingsStore::new(file.clone());
+
+        store
+            .update(|settings| settings.recent_vaults = paths.clone())
+            .unwrap();
+        store
+            .update(|settings| push_recent_vault(&mut *settings, docs_vault.clone()))
+            .unwrap();
+
+        let mut expected = paths.clone();
+        expected.remove(0);
+        expected.push(docs_vault.clone());
+        assert_eq!(
+            store.snapshot().recent_vaults,
+            expected,
+            "appended vault must survive a full list, oldest dropped"
+        );
+
+        let _ = fs::remove_file(file);
+        for path in &paths {
+            let _ = fs::remove_dir(path);
+        }
+        let _ = fs::remove_dir(docs_vault);
     }
 }

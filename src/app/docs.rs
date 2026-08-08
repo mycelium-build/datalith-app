@@ -7,6 +7,8 @@ use super::settings;
 
 pub const DOCS_VAULT_NAME: &str = "Datalith Docs";
 
+pub const INITIAL_TABS: &[&str] = &["Welcome.md", "Tour.todotxt", "Basics.md"];
+
 const SHIPPED_DOCS: &[(&str, &str)] = &[
     ("Welcome.md", include_str!("../../docs/vault/Welcome.md")),
     ("Basics.md", include_str!("../../docs/vault/Basics.md")),
@@ -58,7 +60,9 @@ pub fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
     fs::create_dir_all(&docs_vault)
         .with_context(|| format!("Failed to create docs Vault: {}", docs_vault.display()))?;
     seed_into(&docs_vault)?;
-    settings::register_recent_vault(&docs_vault)?;
+    if let Err(error) = settings::register_recent_vault(&docs_vault) {
+        eprintln!("Failed to register docs Vault in recent vaults: {error:#}");
+    }
     Ok(DocsVaultOutcome {
         docs_vault,
         first_run,
@@ -83,11 +87,7 @@ fn seed_into(root: &Path) -> Result<()> {
 }
 
 fn docs_vault_path() -> PathBuf {
-    datalith_data_dir().join(DOCS_VAULT_NAME)
-}
-
-fn datalith_data_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("datalith")
+    super::data_dir().join(DOCS_VAULT_NAME)
 }
 
 #[cfg(test)]
@@ -106,6 +106,16 @@ mod tests {
             assert!(
                 ["md", "graph", "todotxt"].contains(&extension),
                 "unregistered extension for seeded doc: {relative}"
+            );
+        }
+    }
+
+    #[test]
+    fn initial_tabs_are_shipped_docs() {
+        for name in INITIAL_TABS {
+            assert!(
+                SHIPPED_DOCS.iter().any(|(relative, _)| relative == name),
+                "initial tab is not a shipped doc: {name}"
             );
         }
     }

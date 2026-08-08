@@ -20,6 +20,7 @@ pub fn open_initial(cx: &App, initial_vault: Option<PathBuf>, initial_tabs: Vec<
                         view.open_file(tab, true, window, cx);
                     }
                     view.tabs.select(0);
+                    view.focus_active_tab(window, cx);
                 });
             }
             cx.new(|cx| Root::new(view, window, cx))

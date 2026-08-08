@@ -39,8 +39,8 @@ fn main() {
             };
             let (initial_vault, initial_tabs) = match docs_vault {
                 Some(outcome) if outcome.first_run => {
-                    let tabs = ["Welcome.md", "Tour.todotxt", "Basics.md"]
-                        .into_iter()
+                    let tabs = app::docs::INITIAL_TABS
+                        .iter()
                         .map(|name| outcome.docs_vault.join(name))
                         .collect();
                     (Some(outcome.docs_vault), tabs)
