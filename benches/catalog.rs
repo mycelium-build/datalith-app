@@ -1,12 +1,11 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
 mod fixtures;
 
 // Mirror the crate's module structure so `crate::` paths resolve correctly.
+#[allow(dead_code, unused_imports)]
 mod document {
     pub mod file_types;
 }
+#[allow(dead_code, unused_imports)]
 #[path = "../src/vault/mod.rs"]
 mod vault;
 
@@ -33,11 +32,8 @@ fn vault_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("datalith-bench-{}-{}", name, std::process::id()))
 }
 
-fn delete_catalog_db(root: &Path) {
-    let db = root.join(".datalith/catalog.db");
-    let _ = fs::remove_file(&db);
-    let _ = fs::remove_file(db.with_extension("db-wal"));
-    let _ = fs::remove_file(db.with_extension("db-shm"));
+fn reset_catalog_state(root: &Path) {
+    let _ = fs::remove_dir_all(root.join(".datalith"));
 }
 
 fn open_catalog(root: PathBuf) -> VaultCatalog {
@@ -64,7 +60,7 @@ fn bench_cold_start(c: &mut Criterion) {
 
         group.bench_function(format!("{n}_files"), |b| {
             b.iter_batched(
-                || delete_catalog_db(&root),
+                || reset_catalog_state(&root),
                 |()| {
                     let catalog = open_catalog(root.clone());
                     catalog.wait_until_ready(Duration::from_mins(2));

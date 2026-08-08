@@ -84,16 +84,29 @@ pub fn generate_vault(root: &Path, config: &VaultConfig) -> Vec<PathBuf> {
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut all_paths: Vec<PathBuf> = Vec::new();
 
-    for folder in FOLDER_NAMES.iter().cycle().take(config.projects) {
-        all_paths.push(root.join("projects").join(format!("{folder}.md")));
+    for (i, folder) in FOLDER_NAMES
+        .iter()
+        .cycle()
+        .take(config.projects)
+        .enumerate()
+    {
+        let name = if i < FOLDER_NAMES.len() {
+            folder.to_string()
+        } else {
+            format!("{folder}-{i}")
+        };
+        all_paths.push(root.join("projects").join(format!("{name}.md")));
     }
     for i in 0..config.daily_notes {
         let month = i.rem_euclid(12).saturating_add(1);
         let day = i.rem_euclid(28).saturating_add(1);
-        all_paths.push(
-            root.join("daily")
-                .join(format!("2026-{month:02}-{day:02}.md")),
-        );
+        let cycle = i.div_euclid(336);
+        let name = if cycle == 0 {
+            format!("2026-{month:02}-{day:02}")
+        } else {
+            format!("2026-{month:02}-{day:02}-{cycle}")
+        };
+        all_paths.push(root.join("daily").join(format!("{name}.md")));
     }
     for i in 0..config.notes {
         all_paths.push(root.join("notes").join(format!("note-{i:04}.md")));
