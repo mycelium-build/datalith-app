@@ -48,7 +48,7 @@ Links between Markdown files become the edges of a [[formats/Graph|graph]].
 
 ## Edit or view
 
-The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **⌘E** to switch. 
+The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **⌘E** to switch.
 
 Some files only have a viewer or only an editor. See [[FileTypes]].
 

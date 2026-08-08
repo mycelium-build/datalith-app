@@ -6,7 +6,7 @@ category: welcome
 
 Datalith manages a local **Vault**, a folder of files, and gives you derived ways to find, link, and edit its contents. Everything you see in this window is itself a Vault: the **Datalith Docs** Vault, created to help you discover the app.
 
-Start with the tour file on the right in tab bar, or read what you need:
+Start with the [[Tour.todotxt]] checklist in the tab bar, or read what you need:
 
 - [[Basics]]: what a Vault is and how files, tabs, and the sidebar work
 - [[Search]]: find files and their contents
