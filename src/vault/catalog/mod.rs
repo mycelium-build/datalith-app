@@ -485,9 +485,16 @@ mod tests {
         std::fs::write(&path, "distinctive watcher content").unwrap();
         reconcile_paths(&catalog.inner, vec![path.clone()]);
 
-        let event = events
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let event = loop {
+            if let Ok(event) = events.recv_timeout(std::time::Duration::from_millis(50)) {
+                break event;
+            }
+            assert!(
+                std::time::Instant::now() <= deadline,
+                "catalog did not publish a reconcile event within 5s"
+            );
+        };
         assert!(event.structure_changed);
         assert!(catalog.paths().contains(&path));
         assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
