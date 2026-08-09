@@ -19,6 +19,10 @@ formats = ["appimage", "dmg", "nsis"]
 
 [package.metadata.packager.nsis]
 install-mode = "currentUser"
+installer-icon = "assets/icons/datalith.ico"
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3.0.9"
 
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed" }
