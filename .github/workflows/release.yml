@@ -24,17 +24,26 @@ jobs:
 
   artifacts:
     needs: release
-    name: ${{ matrix.target }}
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
+          - name: macOS Apple Silicon DMG
             os: macos-15
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-24.04
-          - target: x86_64-pc-windows-msvc
+            target: aarch64-apple-darwin
+            format: dmg
+            artifact: target/aarch64-apple-darwin/release/*.dmg
+          - name: Linux x86_64 AppImage
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            format: appimage
+            artifact: target/x86_64-unknown-linux-gnu/release/*.AppImage
+          - name: Windows x86_64 installer
             os: windows-2025
+            target: x86_64-pc-windows-msvc
+            format: nsis
+            artifact: target/x86_64-pc-windows-msvc/release/*setup.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -48,10 +57,27 @@ jobs:
         if: runner.os == 'Linux'
         run: scripts/install-linux-build-dependencies.sh
 
-      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
         with:
-          bin: datalith
-          target: ${{ matrix.target }}
-          locked: true
-          checksum: sha256
-          leading-dir: true
+          toolchain: 1.96.0
+          targets: ${{ matrix.target }}
+
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@d6912b47771be2c443ec90db6945f57898f5d38e
+        with:
+          tool: cargo-packager@0.11.8
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package desktop application
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.format }}
+
+      - name: Upload package to GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          fail_on_unmatched_files: true
+          files: ${{ matrix.artifact }}
