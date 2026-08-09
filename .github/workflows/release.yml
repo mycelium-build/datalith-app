@@ -64,7 +64,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install cargo-packager
-        uses: taiki-e/install-action@d6912b47771be2c443ec90db6945f57898f5d38e
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
           tool: cargo-packager@0.11.8
 
