@@ -1,3 +1,241 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0](https://github.com/mycelium-build/datalith/releases/tag/v0.1.0) - 2026-08-09
+
+### Added
+
+- *(turso-db)* multiple read connection when needed
+- *(markdown)* correctly render **text [[link]] text**
+- *(graph)* now render even if exceed limit and put a notice to warm
+- *(welcome-docs)* always display Datalith Docs to vault list
+- *(welcome-docs)* cleaner and more realiable code for 1st start up
+- *(turso-db)* opti sync by only sync changed file
+- *(clippy)* display bail errors in notification
+- *(clippy)* enforce no panic code
+- *(clippy)* add clippy to tool chain
+- *(graph)* remove default limit and up hard limit
+- *(md-preview)* border on table
+- *(md-preview)* render table
+- *(md-preview)* render MD todo
+- *(opti-startup)* batch delete
+- *(opti-startup)* DB connection singleton, precise not need to have
+- *(opti-startup)* batch upsert, read meta only, filter link in SQL
+- *(opti-startup)* add deps rayon and dev deps criterion and rand for
+- *(turso-db)* optimistc catalog load
+- *(notification)* render
+- *(notification)* state and vault DB
+- *(notification)* rename
+- *(notification)* prebuild
+- rename style same as when no rename
+- *(turso-db)* only update link concerned by the change when updating
+- dont update file tree in side bar when file content change
+- *(turso-db)* load in background
+- *(turso-db)* now search use catalog paths instead walking the whole
+- *(turso-db)* palette now use catalog
+- *(turso-db)* reconcile fs events, public DB fn (resolve and
+- *(turso-db)* new db sync, links/baclinks resolver
+- *(turso-db)* simpler file ops and import/use of it
+- *(tuso-db)* links utils with new resolve fn
+- *(turso-db)* use new interface to interact with catalog
+- *(turso-db)* link utils
+- *(turso-db)* catalog strug with public functions
+- *(turso-db)* init, reconcile, upsert/remove file, query documents
+- *(turso-db)* accept any file extension
+- *(turso-db)* new link service with normalize and extract
+- *(turso-db)* rename service, now can update files with same link,
+- *(turso-db)* graph filter conversion to catalog compatible type
+- *(turso-db)* add yaml frontmatter file type capability
+- *(graph)* group now use same node style
+- *(graph)* different hover styling on outgoing, incoming and both edge
+- *(graph)* display node name when zoom in
+- *(grap)* hover styling node + border
+- *(graph)* hover and border style, custom forces
+- *(graph)* viewer
+- reload viewer for some viewer type
+- add a depedency viewer for optional extra params for viewer
+- now when file catalog finish loading
+- *(markdown)* use YAML serde in parser, display YAML error in preview
+- *(graph)* use Rust serde Deserialize struct to handle parsing
+- *(graph)* change link cache to wiki link index, now save edges
+- *(graph)* register render
+- *(graph)* .graph parser
+- *(graph)* editor
+- *(graph)* add YAML serde deps
+- *(markdown)* render adjacent images on same row
+- *(settings)* remove backward compatibility with last folder
+- *(live-update)* reload from disk interface and reloader for text,
+- *(live-update)* vault catalog handler for event on fs
+- *(live-update)* file type utils with capabilities and registered list
+- *(live-update)* add deps notify
+- *(todo-txt)* use txtodo lib logic to handle update and save
+- *(todo-txt)* simplify priority handling
+- *(todo-txt)* simplify styling task
+- *(todo-txt)* checkbox now a checkbox not a btn
+- *(todo-txt)* icon arrow up and down a to x, funnel
+- *(todo-txt)* add better icon for sort order, add icon for filter, add
+- *(todo-txt)* del task shortcut
+- *(todo-txt)* can move from search to add task if no task (and
+- *(todo-txt)* shift+enter to create subtask
+- *(todo-txt)* press enter to toggle complete
+- *(todo-txt)* move around with arrow key
+- *(todo-txt)* make expand, check box, priority button and sort order
+- *(todo-txt)* search shortcut
+- *(todo-txt)* all elements on task focusable
+- *(todo-txt)* empty display
+- *(todo-txt)* editor
+- reorg const
+- register todo txt editor
+- *(todo-txt)* map todo txt editor
+- simplify logic in MD view no need for events queue
+- allow dead code on events in md viewer
+- move path handle to editor
+- remove useless function
+- input state in editor
+- md viewer
+- image viewer
+- plain text editor
+- md editor
+- registry file handler
+- viewer struct
+- editor struct
+- file handler
+- simplify md preview logic
+- icon for preview and edit mode
+
+### Fixed
+
+- *(test)* flakky because not retrying receiving the event
+- *(markdown)* correctly not convert link in code block
+- *(welcome-docs)* clean shortcut and more link
+- *(benches)* all file truly uniq and clear code
+- *(clippy)* display correctly error message on graph render canvas
+- *(clippy)* missing import viewer graph model
+- *(clippy)* rest of vault
+- *(clippy)* vault search
+- *(clippy)* catalog
+- *(clippy)* rest of UI
+- *(clippy)* rest of viewers
+- *(clippy)* forget one thing in viewer graph
+- *(clippy)* viewers markdown
+- *(clippy)* viewers graph
+- *(clippy)* ui themes
+- *(clippy)* ui tabs
+- *(clippy)* ui sidebar
+- *(clippy)* rest of editors
+- *(clippy)* use conv to remove clippy in app and document
+- *(clippy)* editor todo txt
+- *(clippy)* document
+- *(clippy)* document todo txt
+- *(clippy)* document markdown
+- *(clippy)* document graph
+- *(clippy)* app folder
+- *(clippy)* benches
+- *(notification)* only one vault db ready notification
+- *(md-preview)* display every styling in one line withou new line
+- *(md-preview)* dont edit in code block links
+- *(md-preview)* sub list dont have margin in addition
+- *(md-preview)* display [not this|but this]
+- *(md-preview)* tweak spacing, remove spacing between list item
+- *(todo-txt)* now after opening a todotxt file search shortcuts work
+- *(notification)* not link but sources, add tests
+- *(notification)* in render rename _window to window
+- *(turso-db)* not properties when missing include file, escape special
+- UI rename not at the right place can have dangling state
+- rename first then edit files with old link
+- *(turso-db)* remove useless multiple update links when reconcile DB
+- *(graph)* limit recursion
+- *(markdown)* image max size window
+- *(live-update)* hot reload only if external chage
+- *(live-update)* dont reload from disk if same content
+- render list, bool and text in yaml frontmatter better
+- nested block quote in md preview
+- block quote md preview
+- md preview coding block adding an empty line inside
+- *(todo-txt)* hover color on priority
+- *(todo-txt)* focus styling on btn priority
+- *(todo-txt)* use btn instead of custom div
+- *(todo-txt)* sub tree filtered, creation date save
+- *(todo-txt)* move cursor to upper task or search when del a task
+- *(todo-txt)* border when element focus dont push element around
+- upgrade txtodo deps
+- display toggle editor/viewer only when can toggle
+- link in list for MD viewer
+- linux support optional features
+- redo text wrap and link now work
+- text wrap md preview (in dev)
+- text wrapping on preview mode
+- pin gpui-components to latest version
+- *(sidebar)* restore compatible tree and context menus
+
+### Other
+
+- fix error no branch on release plz
+- *(clippy)* simplify clippy allow for tests
+- *(clippy)* add deps conv
+- *(clippy)* future todo
+- *(clippy)* reorg import in editors
+- *(clippy)* more clear allow clippy in app preferences
+- *(clippy)* todo to fix
+- apply rustfmt
+- Merge branch 'main' into fix/md-preview
+- *(opti-startup)* benches
+- *(opti-startup)* import and use new DB connection method
+- *(notification)* plans folder
+- todotxt editor
+- graph viewer
+- DB catalog
+- todotxt document
+- MD document
+- graph document
+- *(turso-db)* adr
+- *(turso-db)* .datalith convert to a const
+- *(turso-db)* nuke old code
+- *(turso-db)* optimize rename and apply patch with more precise DB
+- *(turso-db)* import and use new catalog functions
+- *(turso-db)* remove now useless properties form MD
+- *(turso-db)* add pollster and turso deps
+- mark graph as done in todo
+- *(graph)* explain why no live update
+- *(graph)* move arrow to edge and rename orphan
+- *(graph)* clearer
+- *(graph)* tweak render cooling
+- *(graph)* tweak render values
+- *(graph)* Barnes-Hut ADR
+- *(graph)* format
+- update todo
+- gpui and gpui components skills
+- *(settings)* move config to settings, classify light and dark
+- *(markdown)* move all parser logic to document folder and only
+- *(tabs)* split tab logic and render
+- *(todo-txt)* split UI and logic
+- main code into app folder
+- move themes to ui
+- move const in dedicated files
+- code base
+- explain why refresh_item_sizes in todo txt editor
+- *(live-update)* note about full reload in todo txt view when reload
+- *(live-update)* use new file types utils and vault catalog
+- separate frontmatter logic and md rendering
+- *(todo-txt)* remove duplicated logic into a fn
+- todo update
+- update cargo deps
+- add txtodo and time deps
+- todo
+- move editor/viewer global logic to their folder
+- remove useless code
+- use new file handler with new viewer/editor struct
+- md preview wrap line, p, render list and flush inline
+- format
+- todo add base view cards
+- todo
+- Initial commit
+# Changelog
+
 All notable changes to Datalith will be documented in this file.
