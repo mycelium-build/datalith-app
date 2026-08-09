@@ -12,7 +12,7 @@ use crate::vault::links;
 
 impl CatalogDatabase {
     pub(crate) async fn resolve_path(&self, authored: &str) -> Result<Option<PathBuf>> {
-        let connection = self.read_connection();
+        let connection = self.read_connection()?;
         Ok(resolve_path_on(&connection, authored)
             .await?
             .map(|path| self.root.join(path)))
@@ -24,7 +24,7 @@ impl CatalogDatabase {
             .context("Rename target is outside the Vault")?;
         let relative_target = relative_target.to_string_lossy().replace('\\', "/");
         let descendant_pattern = format!("{}/%", escape_like_pattern(&relative_target));
-        let connection = self.read_connection();
+        let connection = self.read_connection()?;
         let mut rows = connection
             .query(
                 "SELECT source_path, ordinal, target, target_path \

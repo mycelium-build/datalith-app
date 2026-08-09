@@ -1,5 +1,7 @@
 use std::fs;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use anyhow::{Context, Result, anyhow};
 
@@ -43,7 +45,35 @@ pub(super) struct SynchronizedFiles {
 pub(super) struct CatalogDatabase {
     pub(super) root: PathBuf,
     connection: turso::Connection,
-    read_connection: turso::Connection,
+    connect_fresh: Arc<dyn Fn() -> Result<turso::Connection> + Send + Sync>,
+    read_connection: Arc<Mutex<Option<turso::Connection>>>,
+}
+
+/// A read handle on the catalog.
+/// Reuses the shared read connection while it is free;
+/// otherwise opens a dedicated connection that is dropped on use.
+pub(super) struct ReadConnection {
+    pool: Option<Arc<Mutex<Option<turso::Connection>>>>,
+    connection: turso::Connection,
+}
+
+impl Deref for ReadConnection {
+    type Target = turso::Connection;
+
+    fn deref(&self) -> &turso::Connection {
+        &self.connection
+    }
+}
+
+impl Drop for ReadConnection {
+    fn drop(&mut self) {
+        if let Some(pool) = &self.pool
+            && let Ok(mut parked) = pool.lock()
+            && parked.is_none()
+        {
+            *parked = Some(self.connection.clone());
+        }
+    }
 }
 
 impl CatalogDatabase {
@@ -59,35 +89,43 @@ impl CatalogDatabase {
         let database_path_text = database_path
             .to_str()
             .ok_or_else(|| anyhow!("Catalog database path is not UTF-8"))?;
-        let database =
-            if let Ok(database) = turso::Builder::new_local(database_path_text).build().await {
-                database
-            } else {
-                let _ = fs::remove_file(&database_path);
-                let _ = fs::remove_file(database_path.with_extension("db-wal"));
-                let _ = fs::remove_file(database_path.with_extension("db-shm"));
-                turso::Builder::new_local(database_path_text)
-                    .build()
-                    .await
-                    .context("Failed to rebuild embedded Turso catalog")?
-            };
-        let connection = database.connect()?;
-        connection.execute("PRAGMA foreign_keys = ON", ()).await?;
-        connection
-            .query("PRAGMA journal_mode = WAL", ())
-            .await?
-            .next()
-            .await?;
-        connection
-            .execute("PRAGMA synchronous = NORMAL", ())
-            .await?;
-        // connection.execute("PRAGMA cache_size = -2000", ()).await?; // Default 2MB
+        let (connection, read_connection, connect_fresh) = {
+            let database =
+                if let Ok(database) = turso::Builder::new_local(database_path_text).build().await {
+                    database
+                } else {
+                    let _ = fs::remove_file(&database_path);
+                    let _ = fs::remove_file(database_path.with_extension("db-wal"));
+                    let _ = fs::remove_file(database_path.with_extension("db-shm"));
+                    turso::Builder::new_local(database_path_text)
+                        .build()
+                        .await
+                        .context("Failed to rebuild embedded Turso catalog")?
+                };
+            let connection = database.connect()?;
+            connection.execute("PRAGMA foreign_keys = ON", ()).await?;
+            connection
+                .query("PRAGMA journal_mode = WAL", ())
+                .await?
+                .next()
+                .await?;
+            connection
+                .execute("PRAGMA synchronous = NORMAL", ())
+                .await?;
+            // connection.execute("PRAGMA cache_size = -2000", ()).await?; // Default 2MB
 
-        let read_connection = database.connect()?;
-        drop(database);
+            let read_connection = Arc::new(Mutex::new(Some(database.connect()?)));
+            let connect_fresh: Arc<dyn Fn() -> Result<turso::Connection> + Send + Sync> = {
+                let database = database.clone();
+                Arc::new(move || Ok(database.connect()?))
+            };
+            drop(database);
+            (connection, read_connection, connect_fresh)
+        };
         let this = Self {
             root: root.to_path_buf(),
             connection,
+            connect_fresh,
             read_connection,
         };
         this.initialize_schema().await?;
@@ -98,8 +136,23 @@ impl CatalogDatabase {
         self.connection.clone()
     }
 
-    pub(super) fn read_connection(&self) -> turso::Connection {
-        self.read_connection.clone()
+    pub(super) fn read_connection(&self) -> Result<ReadConnection> {
+        let mut parked = self
+            .read_connection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let pooled = parked.take();
+        drop(parked);
+        if let Some(connection) = pooled {
+            return Ok(ReadConnection {
+                pool: Some(self.read_connection.clone()),
+                connection,
+            });
+        }
+        Ok(ReadConnection {
+            pool: None,
+            connection: (self.connect_fresh)()?,
+        })
     }
 
     async fn initialize_schema(&self) -> Result<()> {

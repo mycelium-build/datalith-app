@@ -110,7 +110,7 @@ fn frontmatter_metadata(content: &str) -> Option<serde_json::Value> {
 
 impl CatalogDatabase {
     pub(crate) async fn stored_paths(&self) -> Result<Vec<PathBuf>> {
-        let connection = self.read_connection();
+        let connection = self.read_connection()?;
         let mut rows = connection
             .query("SELECT path FROM documents ORDER BY path", ())
             .await?;
@@ -235,7 +235,7 @@ impl CatalogDatabase {
     }
 
     pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
-        let connection = self.read_connection();
+        let connection = self.read_connection()?;
         self.query_documents_on(&connection, query).await
     }
 
@@ -243,7 +243,7 @@ impl CatalogDatabase {
         &self,
         query: CatalogQuery,
     ) -> Result<(DocumentSelection, Vec<StoredLink>)> {
-        let connection = self.read_connection();
+        let connection = self.read_connection()?;
         connection.execute("BEGIN DEFERRED", ()).await?;
         let result = async {
             let selection = self.query_documents_on(&connection, query).await?;
