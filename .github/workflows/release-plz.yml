@@ -34,43 +34,88 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+
+      - name: Restore triggering branch context
+        env:
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git switch -C "$RELEASE_BRANCH" "$TRIGGERING_SHA"
+          git branch --set-upstream-to="origin/$RELEASE_BRANCH" "$RELEASE_BRANCH"
+
+      # release-plz works from a temporary repository copy. A global helper makes
+      # the App token available there without writing the token to Git config.
+      - name: Configure Git authentication
+        env:
+          RELEASE_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: >-
+          git config --global credential.https://github.com.helper
+          '!f() { test "$1" = get || exit 0; echo "username=x-access-token"; echo "password=$RELEASE_GITHUB_TOKEN"; }; f'
 
       - name: Release or prepare next release
         id: release-plz
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
           config: release-plz.toml
           version: "0.3.160"
 
-      - name: Tag release candidate
+      - name: Verify release PR contains triggering commit
         if: steps.release-plz.outputs.prs_created == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           RELEASE_PR: ${{ steps.release-plz.outputs.pr }}
-          RC_NUMBER: ${{ github.run_number }}
+          TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const pr = JSON.parse(process.env.RELEASE_PR)
-            const version = pr.releases[0].version
-            const tag = `v${version}-rc.${process.env.RC_NUMBER}`
-            const branch = await github.rest.git.getRef({
-              ...context.repo,
-              ref: `heads/${pr.head_branch}`,
-            })
+            const release = JSON.parse(process.env.RELEASE_PR)
+            if (!Number.isInteger(release.number)) {
+              core.setFailed('release-plz did not return a valid release PR number')
+              return
+            }
 
-            try {
-              await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
-              core.info(`${tag} already exists`)
-            } catch (error) {
-              if (error.status !== 404) throw error
-              await github.rest.git.createRef({
-                ...context.repo,
-                ref: `refs/tags/${tag}`,
-                sha: branch.data.object.sha,
-              })
+            const response = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: release.number,
+            })
+            const pull = response.data
+            const expectedRepository = `${context.repo.owner}/${context.repo.repo}`
+            if (
+              pull.state !== 'open' ||
+              pull.base.ref !== 'main' ||
+              !pull.head.ref.startsWith('release-plz-') ||
+              pull.head.repo?.full_name !== expectedRepository
+            ) {
+              core.setFailed(`release-plz returned unexpected PR #${pull.number}`)
+              return
+            }
+
+            const triggeringSha = process.env.TRIGGERING_SHA
+            const comparison = await github.rest.repos.compareCommitsWithBasehead({
+              ...context.repo,
+              basehead: `${triggeringSha}...${pull.head.sha}`,
+            })
+            const containsTrigger = ['ahead', 'identical'].includes(comparison.data.status)
+
+            await core.summary
+              .addHeading('Release PR ancestry check')
+              .addTable([
+                [{ data: 'Release PR', header: true }, `#${pull.number}`],
+                [{ data: 'Triggering commit', header: true }, triggeringSha],
+                [{ data: 'Release PR head', header: true }, pull.head.sha],
+                [{ data: 'Comparison', header: true }, comparison.data.status],
+              ])
+              .write()
+
+            if (!containsTrigger) {
+              core.setFailed(
+                `Release PR #${pull.number} is stale: triggering commit ${triggeringSha} ` +
+                `is not an ancestor of release PR head ${pull.head.sha} ` +
+                `(comparison: ${comparison.data.status})`
+              )
             }

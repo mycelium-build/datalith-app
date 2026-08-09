@@ -1,0 +1,171 @@
+name: Create release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: create-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  release-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Create automation token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+
+      - name: Create next release candidate tag
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              ...context.repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100,
+            })
+            const releasePulls = pulls.filter((pull) =>
+              pull.head.ref.startsWith('release-plz-') &&
+              pull.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`
+            )
+
+            if (releasePulls.length !== 1) {
+              await core.summary
+                .addHeading('Release candidate not created')
+                .addRaw(
+                  `Expected exactly one open release-plz PR targeting main, ` +
+                  `but found ${releasePulls.length}.`
+                )
+                .write()
+              core.setFailed(
+                `Expected exactly one open release-plz PR targeting main, found ${releasePulls.length}`
+              )
+              return
+            }
+
+            const pull = releasePulls[0]
+            const main = await github.rest.repos.getBranch({
+              ...context.repo,
+              branch: 'main',
+            })
+            const mainSha = main.data.commit.sha
+            const releaseSha = pull.head.sha
+            const comparison = await github.rest.repos.compareCommitsWithBasehead({
+              ...context.repo,
+              basehead: `${mainSha}...${releaseSha}`,
+            })
+
+            if (!['ahead', 'identical'].includes(comparison.data.status)) {
+              await core.summary
+                .addHeading('Release candidate not created')
+                .addTable([
+                  [{ data: 'Release PR', header: true }, `#${pull.number}`],
+                  [{ data: 'Current main', header: true }, mainSha],
+                  [{ data: 'Release PR head', header: true }, releaseSha],
+                  [{ data: 'Comparison', header: true }, comparison.data.status],
+                ])
+                .addRaw('The release-plz PR is stale. Update it before creating an RC.')
+                .write()
+              core.setFailed(
+                `Release PR #${pull.number} is stale: current main ${mainSha} is not an ancestor ` +
+                `of ${releaseSha} (comparison: ${comparison.data.status})`
+              )
+              return
+            }
+
+            const cargoToml = await github.rest.repos.getContent({
+              ...context.repo,
+              path: 'Cargo.toml',
+              ref: releaseSha,
+            })
+            if (Array.isArray(cargoToml.data) || cargoToml.data.type !== 'file') {
+              core.setFailed('Cargo.toml at the release PR head is not a file')
+              return
+            }
+
+            const manifest = Buffer.from(cargoToml.data.content, 'base64').toString('utf8')
+            let inPackage = false
+            let version
+            for (const line of manifest.split(/\r?\n/)) {
+              const section = line.match(/^\s*\[([^\]]+)]\s*(?:#.*)?$/)
+              if (section) {
+                inPackage = section[1].trim() === 'package'
+                continue
+              }
+              if (inPackage) {
+                const value = line.match(/^\s*version\s*=\s*["']([^"']+)["']/)
+                if (value) {
+                  version = value[1]
+                  break
+                }
+              }
+            }
+
+            if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
+              core.setFailed(
+                `Expected a stable semantic version in Cargo.toml [package], found ${version ?? 'none'}`
+              )
+              return
+            }
+
+            const tagPrefix = `v${version}-rc.`
+            const refs = await github.paginate(github.rest.git.listMatchingRefs, {
+              ...context.repo,
+              ref: `tags/${tagPrefix}`,
+              per_page: 100,
+            })
+            const escapedVersion = version.replace(/\./g, '\\.')
+            const tagPattern = new RegExp(`^refs/tags/v${escapedVersion}-rc\\.(\\d+)$`)
+            let highest = 0
+            for (const ref of refs) {
+              const match = ref.ref.match(tagPattern)
+              if (match) highest = Math.max(highest, Number(match[1]))
+            }
+
+            const tag = `${tagPrefix}${highest + 1}`
+            const [latestMain, latestPull] = await Promise.all([
+              github.rest.repos.getBranch({ ...context.repo, branch: 'main' }),
+              github.rest.pulls.get({ ...context.repo, pull_number: pull.number }),
+            ])
+            if (
+              latestMain.data.commit.sha !== mainSha ||
+              latestPull.data.state !== 'open' ||
+              latestPull.data.head.sha !== releaseSha
+            ) {
+              await core.summary
+                .addHeading('Release candidate not created')
+                .addRaw('The main branch or release PR changed during this run. Run the workflow again.')
+                .write()
+              core.setFailed('The main branch or release PR changed while preparing the RC tag')
+              return
+            }
+
+            await github.rest.git.createRef({
+              ...context.repo,
+              ref: `refs/tags/${tag}`,
+              sha: releaseSha,
+            })
+
+            const repositoryUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`
+            await core.summary
+              .addHeading('Release candidate created')
+              .addTable([
+                [{ data: 'Release PR', header: true }, `[#${pull.number}](${pull.html_url})`],
+                [{ data: 'Current main', header: true }, mainSha],
+                [{ data: 'Tagged commit', header: true }, releaseSha],
+                [{ data: 'Version', header: true }, version],
+                [{ data: 'Tag', header: true }, `[${tag}](${repositoryUrl}/releases/tag/${tag})`],
+              ])
+              .write()
