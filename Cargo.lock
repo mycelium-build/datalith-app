@@ -1714,6 +1714,7 @@ dependencies = [
  "conv",
  "criterion",
  "dirs",
+ "embed-resource",
  "gpui",
  "gpui-component",
  "gpui-component-assets",
