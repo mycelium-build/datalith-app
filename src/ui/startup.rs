@@ -15,7 +15,7 @@ use super::monolith::{
 };
 
 const RISE_S: f32 = 1.0;
-const IGNITE_S: f32 = 2.5;
+const IGNITE_S: f32 = 2.0;
 const GLOW_S: f32 = 2.0;
 const BLOOM_S: f32 = 1.0;
 const DISSOLVE_S: f32 = 1.0;
@@ -276,18 +276,20 @@ impl MonolithElement {
             .clamp(GRID_MIN_CELL_PX, 24.0)
     }
 
-    /// The monolith border pulses through the three tiers `2 -> 1 -> M` cycling,
+    /// The monolith border pulses through the tiers `white -> 2 -> 1 -> M` cycling,
     /// so the outline reads as a glowing line.
     fn border_pulse(&self) -> Hsla {
-        let third = 1.0 / 3.0;
+        let quarter = 0.25;
         let p = (self.elapsed * PULSE_CYCLE_S) % 1.0;
-        let t = ease_in_out((p / third) % 1.0);
-        if p < third {
+        let t = ease_in_out((p / quarter) % 1.0);
+        if p < quarter {
+            lerp_hsla(self.tier_inscription, self.tier_two, t)
+        } else if p < quarter * 2.0 {
             lerp_hsla(self.tier_two, self.tier_one, t)
-        } else if p < third * 2.0 {
+        } else if p < quarter * 3.0 {
             lerp_hsla(self.tier_one, self.primary, t)
         } else {
-            lerp_hsla(self.primary, self.tier_two, t)
+            lerp_hsla(self.primary, self.tier_inscription, t)
         }
     }
 
@@ -326,10 +328,13 @@ impl MonolithElement {
     fn inscription_color(&self, cell: &Cell) -> Hsla {
         match self.phase {
             Phase::Ignite => {
-                let wave = (self.progress * WAVES_PER_IGNITE) % 1.0;
                 let row_norm = cell.row / self.logo.height;
-                let behind = (wave - row_norm + 1.0) % 1.0;
-                self.wave_color(behind, 1.0 / WAVES_PER_IGNITE)
+                let distance = self.progress.mul_add(WAVES_PER_IGNITE, -row_norm);
+                if distance < 0.0 {
+                    self.tier_inscription
+                } else {
+                    self.wave_color(distance % 1.0, 1.0 / WAVES_PER_IGNITE)
+                }
             }
             Phase::Glow => self.uniform_settle(self.progress),
             Phase::Bloom => self.primary,
