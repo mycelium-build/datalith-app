@@ -15,12 +15,13 @@ use super::monolith::{
 };
 
 const RISE_S: f32 = 1.0;
-const IGNITE_S: f32 = 2.0;
+const IGNITE_S: f32 = 2.5;
 const GLOW_S: f32 = 2.0;
 const BLOOM_S: f32 = 1.0;
 const DISSOLVE_S: f32 = 1.0;
 const TOTAL_S: f32 = RISE_S + IGNITE_S + GLOW_S + BLOOM_S + DISSOLVE_S;
-const FRAME_DURATION: Duration = Duration::from_millis(16);
+const FRAME_DURATION: Duration = Duration::from_millis(32);
+const PULSE_CYCLE_S: f32 = 0.5;
 
 const GRID_MIN_CELL_PX: f32 = 6.0;
 
@@ -83,6 +84,10 @@ fn ease_in(t: f32) -> f32 {
 
 fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
+}
+
+fn ease_in_out(t: f32) -> f32 {
+    t * t * 2.0f32.mul_add(-t, 3.0)
 }
 
 pub struct StartupAnimation {
@@ -276,13 +281,14 @@ impl MonolithElement {
     /// so the outline reads as a glowing line.
     fn border_pulse(&self) -> Hsla {
         let third = 1.0 / 3.0;
-        let p = (self.elapsed * 1.1) % 1.0;
+        let p = (self.elapsed * PULSE_CYCLE_S) % 1.0;
+        let t = ease_in_out((p / third) % 1.0);
         if p < third {
-            lerp_hsla(self.tier_two, self.tier_one, p * 3.0)
-        } else if p < 2.0 * third {
-            lerp_hsla(self.tier_one, self.primary, (p - third) * 3.0)
+            lerp_hsla(self.tier_two, self.tier_one, t)
+        } else if p < third * 2.0 {
+            lerp_hsla(self.tier_one, self.primary, t)
         } else {
-            lerp_hsla(self.primary, self.tier_two, third.mul_add(-2.0, p) * 3.0)
+            lerp_hsla(self.primary, self.tier_two, t)
         }
     }
 
