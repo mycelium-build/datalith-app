@@ -7,9 +7,9 @@ use gpui_component::{
 };
 
 use super::NavigationAction;
-use crate::app::assets::PEN_ICON;
 use crate::document::handler::FileHandler;
 use crate::ui::DatalithView;
+use crate::ui::icons::DatalithIcon;
 use crate::vault::path::display_name;
 
 impl DatalithView {
@@ -62,7 +62,7 @@ impl DatalithView {
                     let icon = if is_editing {
                         Icon::new(IconName::Eye)
                     } else {
-                        Icon::default().path(SharedString::from(PEN_ICON))
+                        Icon::new(DatalithIcon::Pen)
                     };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
@@ -93,17 +93,24 @@ impl DatalithView {
             })
             .children(self.tabs.iter().map(|(index, path, _)| {
                 let name = SharedString::from(display_name(path));
-                Tab::new().label(name).suffix(
-                    Button::new(format!("close-tab-{index}"))
-                        .icon(IconName::Close)
-                        .ghost()
-                        .xsmall()
-                        .mx_1()
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            cx.stop_propagation();
-                            view.close_tab(index, cx);
-                        })),
-                )
+                Tab::new()
+                    .label(name)
+                    .prefix(
+                        Icon::new(self.registry.config_for(path).icon)
+                            .size_3()
+                            .ml_2(),
+                    )
+                    .suffix(
+                        Button::new(format!("close-tab-{index}"))
+                            .icon(IconName::Close)
+                            .ghost()
+                            .xsmall()
+                            .mr_1()
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                cx.stop_propagation();
+                                view.close_tab(index, cx);
+                            })),
+                    )
             }))
     }
 }
