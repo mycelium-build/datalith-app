@@ -25,9 +25,8 @@ const PULSE_CYCLE_S: f32 = 0.5;
 
 const GRID_MIN_CELL_PX: f32 = 6.0;
 
-// Width of each of the `M`/`1`/`2` bands in the falling inscription wave,
-// as a fraction of the wave period.
-const INSCRIPTION_BAND: f32 = 0.07;
+// How many inscription waves fall per ignite phase.
+const WAVES_PER_IGNITE: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -321,28 +320,37 @@ impl MonolithElement {
 
     /// The color of an inscription cell.
     /// During the ignite phase two waves fall from the top of the monolith down,
-    /// cycling each glyph through `white -> M -> 1 -> 2`;
+    /// each trailing a smooth gradient from `M` up through `1` and `2` into pure white, with a sharp edge at the front;
     /// during the glow the inscriptions turn to `M` uniformly with the border,
     /// and keep `M` through the flash.
     fn inscription_color(&self, cell: &Cell) -> Hsla {
         match self.phase {
             Phase::Ignite => {
-                let wave = (self.progress * 2.0) % 1.0;
+                let wave = (self.progress * WAVES_PER_IGNITE) % 1.0;
                 let row_norm = cell.row / self.logo.height;
                 let behind = (wave - row_norm + 1.0) % 1.0;
-                if behind < INSCRIPTION_BAND {
-                    self.primary
-                } else if behind < INSCRIPTION_BAND * 2.0 {
-                    self.tier_one
-                } else if behind < INSCRIPTION_BAND * 3.0 {
-                    self.tier_two
-                } else {
-                    self.tier_inscription
-                }
+                self.wave_color(behind, 1.0 / WAVES_PER_IGNITE)
             }
             Phase::Glow => self.uniform_settle(self.progress),
             Phase::Bloom => self.primary,
             _ => self.tier_inscription,
+        }
+    }
+
+    /// The smooth gradient trail behind a falling wave:
+    /// the front edge is `M`, fading up through `1` and `2` into a trailing pure white.
+    fn wave_color(&self, behind: f32, trail: f32) -> Hsla {
+        if behind >= trail {
+            return self.tier_inscription;
+        }
+        let third = trail / 3.0;
+        let t = ease_in_out((behind / third) % 1.0);
+        if behind < third {
+            lerp_hsla(self.primary, self.tier_one, t)
+        } else if behind < third * 2.0 {
+            lerp_hsla(self.tier_one, self.tier_two, t)
+        } else {
+            lerp_hsla(self.tier_two, self.tier_inscription, t)
         }
     }
 
