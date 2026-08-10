@@ -1,9 +1,12 @@
 pub mod editors;
+pub mod icons;
+pub mod monolith;
 pub mod notifications;
 pub mod palette;
 pub mod render;
 pub mod settings;
 pub mod sidebar;
+pub mod startup;
 pub mod tabs;
 pub mod themes;
 pub mod viewers;
@@ -30,6 +33,7 @@ use gpui_component::{
 use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
+use crate::ui::startup::StartupAnimation;
 use crate::vault::path::display_name;
 use crate::vault::{CatalogEvent, CatalogState, VaultCatalog};
 use palette::Palette;
@@ -99,6 +103,8 @@ pub struct DatalithView {
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
     pub(crate) registry: FileRegistry,
+    pub(crate) startup: Option<Entity<StartupAnimation>>,
+    startup_driver: Task<()>,
 }
 
 fn build_vault_entries() -> Vec<VaultEntry> {
@@ -183,7 +189,9 @@ impl DatalithView {
             },
         );
 
-        Self {
+        let startup = cx.new(|cx| StartupAnimation::new(cx));
+
+        let mut view = Self {
             tree_state,
             vault_select_state,
             root_path: None,
@@ -217,7 +225,11 @@ impl DatalithView {
             pending_navigation: None,
             pending_notifications: Vec::new(),
             registry: registry::default_registry(),
-        }
+            startup: Some(startup),
+            startup_driver: Task::ready(()),
+        };
+        view.spawn_startup_driver(cx);
+        view
     }
 
     pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -372,6 +384,22 @@ impl DatalithView {
             state.set_items(build_vault_entries(), window, cx);
         });
         self.pending_vault_refresh = false;
+    }
+
+    pub(crate) fn create_quick_file(&mut self, extension: &str, cx: &mut Context<Self>) {
+        let Some(root) = self.root_path.clone() else {
+            return;
+        };
+        let base_name = format!("New Note.{extension}");
+        match crate::vault::file_ops::create_with_name(&root, &base_name) {
+            Ok(path) => {
+                self.pending_open = Some(path);
+            }
+            Err(error) => {
+                eprintln!("Failed to create {base_name}: {error:#}");
+            }
+        }
+        cx.notify();
     }
 
     #[must_use]
