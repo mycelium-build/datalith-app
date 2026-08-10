@@ -37,8 +37,12 @@ pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
 }
 
 pub fn create(target: &Path) -> Result<PathBuf> {
+    create_with_name(target, "New Note.md")
+}
+
+pub fn create_with_name(target: &Path, base_name: &str) -> Result<PathBuf> {
     let directory = parent_dir(target);
-    let path = unique_name(&directory, "New Note.md");
+    let path = unique_name(&directory, base_name);
     fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
