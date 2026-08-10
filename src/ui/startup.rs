@@ -381,9 +381,6 @@ impl MonolithElement {
     /// Paint a ring of grid cells around the center for the blind/reveal wave.
     ///
     /// The front travels from the center outward.
-    /// During the blind (`revealing` is false) cells are lit like this `2 -> 1 -> M`.
-    /// During the reveal the front is the hole and the cells ahead of it go
-    /// `2 -> 1 -> M` before being revealed to the app.
     fn paint_wave(
         &self,
         bounds: Bounds<Pixels>,
@@ -422,13 +419,12 @@ impl MonolithElement {
                     continue;
                 }
                 let color = if offset <= cell {
-                    self.tier_two
+                    self.primary.opacity(alpha * 0.3)
                 } else if offset <= cell * 2.0 {
-                    self.tier_one
+                    self.primary.opacity(alpha * 0.65)
                 } else {
                     self.primary
-                }
-                .opacity(alpha);
+                };
                 Self::fill(
                     Bounds::new(point(px(x), px(y)), size(px(cell), px(cell))),
                     color,
@@ -438,9 +434,7 @@ impl MonolithElement {
         }
     }
 
-    /// The blind: the `2 -> 1 -> M` wave rises from the center and submerges everythings,
-    /// the flash starts translucent so the logo is seen being swallowed by the light,
-    /// then turns opaque and covers it.
+    /// The blind: the `M` wave rises from the center and submerges everything.
     fn paint_bloom(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         Self::fill(bounds, self.background, window);
         let (origin_x, origin_y, cell_size) = self.logo_origin(bounds);
@@ -454,7 +448,7 @@ impl MonolithElement {
     }
 
     /// The reveal: the same wave but the front is a hole that grows from the center,
-    /// dimming the cells `M -> 1 -> 2` ahead of it and then revealing the app.
+    /// fading the `M` cells ahead of it at the edge and then revealing the app.
     fn paint_dissolve(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let wave_end = self
             .logo_cell(bounds)
