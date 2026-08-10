@@ -2,9 +2,9 @@ use gpui::{App, KeyBinding};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenLink, Rename, SelectLastTab, SelectTab1, SelectTab2, SelectTab3,
-    SelectTab4, SelectTab5, SelectTab6, SelectTab7, SelectTab8, ToggleEditorMode,
-    ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
+    NewTab, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts, Rename, SelectLastTab,
+    SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5, SelectTab6, SelectTab7, SelectTab8,
+    ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
 macro_rules! shortcuts {
@@ -56,4 +56,7 @@ shortcuts!(
     ("View", "cmd-shift-f", "Search files", ToggleSearch),
     ("View", "cmd-e", "Toggle edit / view", ToggleEditorMode),
     ("View", "cmd-shift-d", "Toggle theme", ToggleTheme),
+    ("View", "cmd-,", "Open settings", OpenSettings),
+    // Help
+    ("Help", "cmd-/", "Show shortcuts", OpenShortcuts),
 );

@@ -6,7 +6,7 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
-    setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    setting::{SelectIndex, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     slider::{Slider, SliderState},
     v_flex,
 };
@@ -32,8 +32,11 @@ impl Global for ThemeOptions {}
 pub struct SettingsView {
     pub(crate) open: bool,
     focus_handle: FocusHandle,
+    page_index: usize,
     pub(crate) font_size_slider_state: Entity<SliderState>,
 }
+
+const SHORTCUTS_PAGE: usize = 1;
 
 impl SettingsView {
     pub(crate) fn new(cx: &mut App) -> Self {
@@ -48,12 +51,19 @@ impl SettingsView {
         Self {
             open: false,
             focus_handle: cx.focus_handle(),
+            page_index: 0,
             font_size_slider_state,
         }
     }
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
+        self.page_index = 0;
+    }
+
+    pub(crate) const fn open_shortcuts(&mut self) {
+        self.open = true;
+        self.page_index = SHORTCUTS_PAGE;
     }
 
     pub(crate) const fn close(&mut self) {
@@ -173,8 +183,14 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(Settings::new("app-settings").with_size(Size::Small).pages(
-                                vec![
+                            .child(
+                                Settings::new("app-settings")
+                                    .with_size(Size::Small)
+                                    .default_selected_index(SelectIndex {
+                                        page_ix: self.page_index,
+                                        group_ix: None,
+                                    })
+                                    .pages(vec![
                                         SettingPage::new("Appearance").default_open(true).groups(
                                             vec![
                                                 Self::theme_group(cx),
@@ -184,8 +200,8 @@ impl SettingsView {
                                         SettingPage::new("Shortcuts")
                                             .groups(Self::shortcuts_groups()),
                                         SettingPage::new("About").groups(vec![Self::about_group()]),
-                                    ],
-                            )),
+                                    ]),
+                            ),
                     ),
             )
     }

@@ -1,5 +1,7 @@
 use gpui::{App, Menu, MenuItem};
 
+use crate::app::actions::OpenShortcuts;
+
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
     NewTab, OpenInExplorer, OpenSettings, OpenVault, Rename, ToggleQuickSwitcher, ToggleSearch,
@@ -40,5 +42,6 @@ fn navigate_menu() -> Menu {
         MenuItem::action("Toggle Dark Mode", ToggleTheme),
         MenuItem::separator(),
         MenuItem::action("Settings", OpenSettings),
+        MenuItem::action("Shortcuts list", OpenShortcuts),
     ])
 }

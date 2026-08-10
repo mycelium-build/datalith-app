@@ -37,6 +37,7 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
+        OpenShortcuts,
         SelectTab1,
         SelectTab2,
         SelectTab3,
@@ -87,6 +88,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_8);
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
+    cx.on_action(open_shortcuts);
     cx.on_action(toggle_editor_mode);
     cx.on_action(go_back);
     cx.on_action(go_forward);
@@ -351,6 +353,13 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.settings.open();
+        cx.notify();
+    });
+}
+
+pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.settings.open_shortcuts();
         cx.notify();
     });
 }
