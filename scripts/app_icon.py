@@ -29,10 +29,65 @@ ICO_OUT = ROOT / "assets" / "datalith.ico"
 ICNS_OUT = ROOT / "assets" / "datalith.icns"
 
 SIZE = 32
+
+PRIMARY = (0x1E, 0x8D, 0xFF)
+RIGHT_SIDE_WHITEN = 0.35
+LEFT_SIDE_WHITEN = 0.7
+
+
+def rgb_to_hsl(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    r, g, b = (c / 255.0 for c in rgb)
+    mx, mn = max(r, g, b), min(r, g, b)
+    delta = mx - mn
+    l = (mx + mn) / 2.0
+    if l in (0.0, 1.0):
+        s = 0.0
+    elif l < 0.5:
+        s = delta / (2.0 * l)
+    else:
+        s = delta / (2.0 - 2.0 * l)
+    if delta == 0.0:
+        h = 0.0
+    elif mx == r:
+        h = ((g - b) / delta) % 6.0 / 6.0
+    elif mx == g:
+        h = ((b - r) / delta + 2.0) / 6.0
+    else:
+        h = ((r - g) / delta + 4.0) / 6.0
+    return (h, s, l)
+
+
+def hsl_to_rgb(h: float, s: float, l: float) -> tuple[int, int, int]:
+    # Mirrors gpui's `Hsla -> Rgba` conversion.
+    c = (1.0 - abs(2.0 * l - 1.0)) * s
+    x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0))
+    m = l - c / 2.0
+    arm = int(h * 6.0) % 6
+    if arm == 0:
+        r, g, b = c + m, x + m, m
+    elif arm == 1:
+        r, g, b = x + m, c + m, m
+    elif arm == 2:
+        r, g, b = m, c + m, x + m
+    elif arm == 3:
+        r, g, b = m, x + m, c + m
+    elif arm == 4:
+        r, g, b = x + m, m, c + m
+    else:
+        r, g, b = c + m, m, x + m
+    return tuple(min(255, max(0, round(v * 255))) for v in (r, g, b))
+
+
+def whiten(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    h, s, l = rgb_to_hsl(rgb)
+    return hsl_to_rgb(h, s * (1.0 - amount), l + (1.0 - l) * amount)
+
+
 TIER_COLORS = {
-    "M": (0x1E, 0x8D, 0xFF),
-    "1": (0x78, 0xBB, 0xFF),
-    "2": (0xC7, 0xE3, 0xFF),
+    "M": PRIMARY,
+    "1": whiten(PRIMARY, RIGHT_SIDE_WHITEN),
+    "2": whiten(PRIMARY, LEFT_SIDE_WHITEN),
+    "I": (0xFF, 0xFF, 0xFF),
 }
 WHITE = (0xFF, 0xFF, 0xFF)
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
@@ -48,16 +103,20 @@ ICNS_IMAGES = [
 
 
 def load_grid() -> list[list[tuple[int, int, int, int]]]:
-    rows = LOGO.read_text(encoding="utf-8").splitlines()[:SIZE]
-    if len(rows) != SIZE:
-        raise ValueError(f"logo has {len(rows)} rows, expected {SIZE}")
+    rows = LOGO.read_text(encoding="utf-8").splitlines()
+    if len(rows) > SIZE:
+        raise ValueError(f"logo has {len(rows)} rows, expected at most {SIZE}")
     grid: list[list[tuple[int, int, int, int]]] = []
     for row in rows:
         cells = []
         for ch in row[:SIZE]:
             color = TIER_COLORS.get(ch, WHITE)
             cells.append((*color, 255))
+        while len(cells) < SIZE:
+            cells.append((*WHITE, 255))
         grid.append(cells)
+    while len(grid) < SIZE:
+        grid.append([(*WHITE, 255)] * SIZE)
     return grid
 
 
