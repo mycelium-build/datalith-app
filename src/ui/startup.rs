@@ -10,9 +10,10 @@ use gpui::{
 use gpui_component::ActiveTheme;
 
 use super::DatalithView;
-use super::monolith::{Cell, LogoGrid, Tier, parse_logo};
+use super::monolith::{
+    Cell, LEFT_SIDE_WHITEN, LogoGrid, RIGHT_SIDE_WHITEN, Tier, parse_logo, whiten,
+};
 
-// Phase timing, in seconds.
 const RISE_S: f32 = 1.0;
 const IGNITE_S: f32 = 2.0;
 const GLOW_S: f32 = 2.0;
@@ -64,15 +65,6 @@ impl Phase {
             Self::Done => (TOTAL_S, 1.0),
         };
         ((secs - start) / span).clamp(0.0, 1.0)
-    }
-}
-
-fn whiten(color: Hsla, amount: f32) -> Hsla {
-    Hsla {
-        h: color.h,
-        s: color.s * (1.0 - amount),
-        l: (1.0 - color.l).mul_add(amount, color.l),
-        a: color.a,
     }
 }
 
@@ -141,8 +133,8 @@ impl Render for StartupAnimation {
         }
         let theme = cx.theme();
         let primary = theme.primary;
-        let tier_one = whiten(primary, 0.35);
-        let tier_two = whiten(primary, 0.7);
+        let tier_one = whiten(primary, RIGHT_SIDE_WHITEN);
+        let tier_two = whiten(primary, LEFT_SIDE_WHITEN);
 
         let element = MonolithElement {
             phase: self.phase,
@@ -206,7 +198,6 @@ impl Element for MonolithElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        // Fill the whole window regardless of how the parent lays this out.
         let size = window.bounds().size;
         let style = Style {
             size: Size::new(
@@ -268,15 +259,13 @@ impl MonolithElement {
             * 0.5
     }
 
-    /// The pixel size used for the monolith and for the blind/reveal grid,
-    /// so the wave has the same texture as the logo.
     fn logo_cell(&self, bounds: Bounds<Pixels>) -> f32 {
         ((bounds.size.height.as_f32() * 0.6) / self.logo.height)
             .floor()
             .clamp(GRID_MIN_CELL_PX, 24.0)
     }
 
-    /// The M border of the monolith pulses through the three tiers `2 → 1 → M` cycling,
+    /// The monolith border pulses through the three tiers `2 -> 1 -> M` cycling,
     /// so the outline reads as a glowing line.
     fn border_pulse(&self) -> Hsla {
         let third = 1.0 / 3.0;
@@ -290,9 +279,9 @@ impl MonolithElement {
         }
     }
 
-    /// The color of an inscription (`I`) cell.
+    /// The color of an inscription cell.
     /// During the ignite phase a wave falls from the top of the monolith down,
-    /// cycling each glyph through `white → 2 → 1 → M` as it passes;
+    /// cycling each glyph through `white -> M -> 1 -> 2` as it passes;
     /// otherwise the inscription is static white.
     fn inscription_color(&self, cell: &Cell) -> Hsla {
         if self.phase == Phase::Ignite {
@@ -355,10 +344,9 @@ impl MonolithElement {
     /// Paint a ring of grid cells around the center for the blind/reveal wave.
     ///
     /// The front travels from the center outward.
-    /// During the blind (`revealing` is false) cells are lit as the front passes them:
-    /// `2` at the front, `1` behind it, `M` settled — the screen ends all-`M`.
+    /// During the blind (`revealing` is false) cells are lit like this `2 -> 1 -> M`.
     /// During the reveal the front is the hole and the cells ahead of it go
-    /// `2 → 1 → M` before being revealed to the app.
+    /// `2 -> 1 -> M` before being revealed to the app.
     fn paint_wave(
         &self,
         bounds: Bounds<Pixels>,
@@ -413,8 +401,7 @@ impl MonolithElement {
         }
     }
 
-    /// The blind: the `2 → 1 → M` wave rises from the center
-    /// and submerges the still-visible monolith,
+    /// The blind: the `2 -> 1 -> M` wave rises from the center and submerges everythings,
     /// the flash starts translucent so the logo is seen being swallowed by the light,
     /// then turns opaque and covers it.
     fn paint_bloom(&self, bounds: Bounds<Pixels>, window: &mut Window) {
@@ -430,7 +417,7 @@ impl MonolithElement {
     }
 
     /// The reveal: the same wave but the front is a hole that grows from the center,
-    /// dimming the cells `M → 1 → 2` ahead of it and then revealing the app.
+    /// dimming the cells `M -> 1 -> 2` ahead of it and then revealing the app.
     fn paint_dissolve(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let wave_end = self
             .logo_cell(bounds)

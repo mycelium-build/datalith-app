@@ -10,6 +10,28 @@ use gpui::{
 /// on a 32×32 canvas.
 pub const LOGO_SRC: &str = include_str!("../../assets/datalith.txt");
 
+pub const RIGHT_SIDE_WHITEN: f32 = 0.35;
+pub const LEFT_SIDE_WHITEN: f32 = 0.7;
+
+pub fn whiten(color: Hsla, amount: f32) -> Hsla {
+    Hsla {
+        h: color.h,
+        s: color.s * (1.0 - amount),
+        l: (1.0 - color.l).mul_add(amount, color.l),
+        a: color.a,
+    }
+}
+
+#[must_use]
+pub fn tier_color(tier: Tier, primary: Hsla) -> Hsla {
+    match tier {
+        Tier::Light => primary,
+        Tier::RightSide => whiten(primary, RIGHT_SIDE_WHITEN),
+        Tier::LeftSide => whiten(primary, LEFT_SIDE_WHITEN),
+        Tier::Inscription => gpui::white(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
     Light,
@@ -68,13 +90,11 @@ pub fn parse_logo(source: &str) -> LogoGrid {
     }
 }
 
-/// A ready-to-place monolith mark at the given cell size.
+/// Render monolith mark at the given cell size.
 pub fn monolith_mark(cell: f32, color: Hsla) -> MonolithMark {
     MonolithMark::new(parse_logo(LOGO_SRC), cell, color)
 }
 
-/// A static pixel-art monolith mark, painted with one color at three opacities:
-/// the `M` border full, the `1` shading at 2/3, the `2` at 1/3.
 pub struct MonolithMark {
     logo: LogoGrid,
     cell: f32,
@@ -147,12 +167,7 @@ impl Element for MonolithMark {
         let origin_x = bounds.origin.x.as_f32();
         let origin_y = bounds.origin.y.as_f32();
         for cell in &self.logo.cells {
-            let color = match cell.tier {
-                Tier::Light => self.color,
-                Tier::RightSide => self.color.opacity(0.6),
-                Tier::LeftSide => self.color.opacity(0.3),
-                Tier::Inscription => self.color.opacity(0.9),
-            };
+            let color = tier_color(cell.tier, self.color);
             let x = cell.col.mul_add(self.cell, origin_x);
             let y = cell.row.mul_add(self.cell, origin_y);
             let cell_bounds = Bounds::new(point(px(x), px(y)), size(px(self.cell), px(self.cell)));
