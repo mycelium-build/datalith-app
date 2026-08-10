@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use gpui::{
-    AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
+    AnyElement, AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Pixels, ScrollStrategy, SharedString, Size,
     StatefulInteractiveElement, Styled, Subscription, Window, div, px, size,
 };
 use gpui_component::{
-    ActiveTheme, Icon, IconName, VirtualListScrollHandle, h_flex,
+    ActiveTheme, Icon, VirtualListScrollHandle, h_flex,
     input::{Input, InputEvent, InputState},
     v_flex, v_virtual_list,
 };
@@ -142,6 +142,7 @@ impl Palette {
                                 return div().into_any_element();
                             };
                             let file_name = display_name(r).to_string();
+                            let file_icon = view.registry.config_for(r).icon;
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
@@ -163,7 +164,7 @@ impl Palette {
                                     h_flex()
                                         .gap_2()
                                         .items_center()
-                                        .child(Icon::new(IconName::File).size_3())
+                                        .child(Icon::new(file_icon).size_3())
                                         .child(file_name),
                                 )
                                 .into_any_element()
@@ -179,6 +180,7 @@ impl Palette {
                             };
                             let path = entry.path.clone();
                             let name = entry.name.clone();
+                            let file_icon = view.registry.config_for(&path).icon;
                             let open_label = if entry.open {
                                 Some(
                                     div()
@@ -204,7 +206,7 @@ impl Palette {
                                     h_flex()
                                         .gap_2()
                                         .items_center()
-                                        .child(Icon::new(IconName::File).size_3())
+                                        .child(Icon::new(file_icon).size_3())
                                         .child(name)
                                         .child(div().flex_1())
                                         .children(open_label),
@@ -221,7 +223,6 @@ impl Palette {
 
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
         let input = self.input.clone();
-        let results = self.render_results(cx);
 
         div()
             .absolute()
@@ -288,8 +289,52 @@ impl Palette {
                                     .border_color(cx.theme().border)
                                     .child(Input::new(&input).appearance(false)),
                             )
-                            .child(results),
+                            .child(self.render_palette_body(cx)),
                     ),
+            )
+    }
+
+    fn render_palette_body(&self, cx: &Context<DatalithView>) -> AnyElement {
+        let (query, has_results) = match self.kind {
+            PaletteKind::Search => (self.search_query.trim(), !self.search_results.is_empty()),
+            PaletteKind::QuickSwitcher => (
+                self.qs_query.trim(),
+                !self.quick_switcher_entries.is_empty(),
+            ),
+        };
+        if query.is_empty() {
+            return match self.kind {
+                PaletteKind::Search => {
+                    Self::render_body_hint(cx, "Start typing to search your vault")
+                        .into_any_element()
+                }
+                PaletteKind::QuickSwitcher if has_results => {
+                    self.render_results(cx).into_any_element()
+                }
+                PaletteKind::QuickSwitcher => {
+                    Self::render_body_hint(cx, "No files open in this vault").into_any_element()
+                }
+            };
+        }
+        if self.kind == PaletteKind::Search && query.len() < MIN_SEARCH_QUERY_LENGTH {
+            return Self::render_body_hint(cx, "Keep typing to search").into_any_element();
+        }
+        if !has_results {
+            return Self::render_body_hint(cx, "No files match your query").into_any_element();
+        }
+        self.render_results(cx).into_any_element()
+    }
+
+    fn render_body_hint(cx: &Context<DatalithView>, hint: &'static str) -> impl IntoElement {
+        v_flex()
+            .h(px(PALETTE_MAX_HEIGHT))
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(hint),
             )
     }
 
