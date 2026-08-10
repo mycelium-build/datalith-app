@@ -45,7 +45,7 @@ actions!(
         SelectTab6,
         SelectTab7,
         SelectTab8,
-        SelectTab9,
+        SelectLastTab,
         ToggleEditorMode,
         GoBack,
         GoForward,
@@ -85,7 +85,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_6);
     cx.on_action(handle_select_tab_7);
     cx.on_action(handle_select_tab_8);
-    cx.on_action(handle_select_tab_9);
+    cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
     cx.on_action(toggle_editor_mode);
     cx.on_action(go_back);
@@ -385,7 +385,7 @@ define_tab_handlers!(
     handle_select_tab_8 => SelectTab8 => 7,
 );
 
-pub fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
+pub fn handle_select_last_tab(_: &SelectLastTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.tabs.select_last() {
             view.focus_editor_requested = true;
