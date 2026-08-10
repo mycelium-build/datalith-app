@@ -163,9 +163,9 @@ struct MonolithElement {
     phase: Phase,
     progress: f32,
     elapsed: f32,
-    primary: Hsla,
-    tier_one: Hsla,
-    tier_two: Hsla,
+    primary: Hsla,  // M color
+    tier_one: Hsla, // 1 color
+    tier_two: Hsla, // 2 color
     tier_inscription: Hsla,
     background: Hsla,
     logo: LogoGrid,
@@ -279,26 +279,57 @@ impl MonolithElement {
         }
     }
 
-    /// The color of an inscription cell.
-    /// During the ignite phase a wave falls from the top of the monolith down,
-    /// cycling each glyph through `white -> M -> 1 -> 2` as it passes;
-    /// otherwise the inscription is static white.
-    fn inscription_color(&self, cell: &Cell) -> Hsla {
-        if self.phase == Phase::Ignite {
-            let wave = (self.progress * 2.0) % 1.0;
-            let row_norm = cell.row / self.logo.height;
-            let behind = (wave - row_norm + 1.0) % 1.0;
-            if behind < INSCRIPTION_BAND {
-                self.primary
-            } else if behind < INSCRIPTION_BAND * 2.0 {
-                self.tier_one
-            } else if behind < INSCRIPTION_BAND * 3.0 {
-                self.tier_two
-            } else {
-                self.tier_inscription
-            }
+    /// The uniform color both the border and the inscriptions take during the glow:
+    /// every cell transitions `white -> 2 → 1 -> M` together.
+    fn uniform_settle(&self, progress: f32) -> Hsla {
+        let third = 1.0 / 3.0;
+        if progress < third {
+            lerp_hsla(self.tier_inscription, self.tier_two, progress * 3.0)
+        } else if progress < 2.0 * third {
+            lerp_hsla(self.tier_two, self.tier_one, (progress - third) * 3.0)
         } else {
-            self.tier_inscription
+            lerp_hsla(
+                self.tier_one,
+                self.primary,
+                third.mul_add(-2.0, progress) * 3.0,
+            )
+        }
+    }
+
+    /// The border color: it pulses while the waves fall,
+    /// then turns to `M` uniformly with the inscriptions during the glow.
+    fn border_color(&self) -> Hsla {
+        match self.phase {
+            Phase::Glow => self.uniform_settle(self.progress),
+            Phase::Bloom => self.primary,
+            _ => self.border_pulse(),
+        }
+    }
+
+    /// The color of an inscription cell.
+    /// During the ignite phase two waves fall from the top of the monolith down,
+    /// cycling each glyph through `white -> M -> 1 -> 2`;
+    /// during the glow the inscriptions turn to `M` uniformly with the border,
+    /// and keep `M` through the flash.
+    fn inscription_color(&self, cell: &Cell) -> Hsla {
+        match self.phase {
+            Phase::Ignite => {
+                let wave = (self.progress * 2.0) % 1.0;
+                let row_norm = cell.row / self.logo.height;
+                let behind = (wave - row_norm + 1.0) % 1.0;
+                if behind < INSCRIPTION_BAND {
+                    self.primary
+                } else if behind < INSCRIPTION_BAND * 2.0 {
+                    self.tier_one
+                } else if behind < INSCRIPTION_BAND * 3.0 {
+                    self.tier_two
+                } else {
+                    self.tier_inscription
+                }
+            }
+            Phase::Glow => self.uniform_settle(self.progress),
+            Phase::Bloom => self.primary,
+            _ => self.tier_inscription,
         }
     }
 
@@ -326,10 +357,9 @@ impl MonolithElement {
     }
 
     fn paint_logo_cells(&self, origin_x: f32, origin_y: f32, cell_size: f32, window: &mut Window) {
-        let border = self.border_pulse();
         for cell in &self.logo.cells {
             let color = match cell.tier {
-                Tier::Light => border,
+                Tier::Light => self.border_color(),
                 Tier::Inscription => self.inscription_color(cell),
                 Tier::RightSide => self.tier_one,
                 Tier::LeftSide => self.tier_two,
