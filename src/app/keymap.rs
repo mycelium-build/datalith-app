@@ -2,13 +2,18 @@ use gpui::{App, KeyBinding};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenLink, Rename, SelectTab1, SelectTab2, SelectTab3, SelectTab4,
+    NewTab, OpenInExplorer, OpenLink, Quit, Rename, SelectTab1, SelectTab2, SelectTab3, SelectTab4,
     SelectTab5, SelectTab6, SelectTab7, SelectTab8, SelectTab9, ToggleEditorMode,
     ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
 pub fn register(cx: &mut App) {
-    cx.bind_keys([
+    cx.bind_keys(bindings());
+}
+
+fn bindings() -> Vec<KeyBinding> {
+    vec![
+        KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("cmd-n", NewFile, None),
         KeyBinding::new("cmd-shift-n", NewFolder, None),
         KeyBinding::new("f2", Rename, None),
@@ -35,5 +40,24 @@ pub fn register(cx: &mut App) {
         KeyBinding::new("cmd-[", GoBack, None),
         KeyBinding::new("cmd-]", GoForward, None),
         KeyBinding::new("cmd-enter", OpenLink, None),
-    ]);
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{Action, Keystroke};
+
+    use super::*;
+    use crate::app::actions::Quit;
+
+    #[test]
+    fn cmd_q_is_bound_to_quit() {
+        let cmd_q = Keystroke::parse("cmd-q").expect("valid test keystroke");
+        let has_binding = bindings().into_iter().any(|binding| {
+            binding.action().name() == Quit.name()
+                && binding.match_keystrokes(std::slice::from_ref(&cmd_q)) == Some(false)
+        });
+
+        assert!(has_binding, "cmd-q should invoke datalith::Quit");
+    }
 }
