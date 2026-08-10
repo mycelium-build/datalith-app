@@ -2,12 +2,16 @@ use gpui::{App, Menu, MenuItem};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenSettings, OpenVault, Rename, ToggleQuickSwitcher, ToggleSearch,
-    ToggleTheme,
+    NewTab, OpenInExplorer, OpenSettings, OpenVault, Quit, Rename, ToggleQuickSwitcher,
+    ToggleSearch, ToggleTheme,
 };
 
 pub fn install(cx: &App) {
-    cx.set_menus([file_menu(), navigate_menu()]);
+    cx.set_menus([application_menu(), file_menu(), navigate_menu()]);
+}
+
+fn application_menu() -> Menu {
+    Menu::new("Datalith").items([MenuItem::action("Quit Datalith", Quit)])
 }
 
 fn file_menu() -> Menu {
@@ -41,4 +45,24 @@ fn navigate_menu() -> Menu {
         MenuItem::separator(),
         MenuItem::action("Settings", OpenSettings),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::Action;
+
+    use super::*;
+    use crate::app::actions::Quit;
+
+    #[test]
+    fn application_menu_contains_quit_action() {
+        let contains_quit = application_menu().items.into_iter().any(|item| {
+            matches!(
+                item,
+                MenuItem::Action { action, .. } if action.name() == Quit.name()
+            )
+        });
+
+        assert!(contains_quit, "application menu should contain Quit");
+    }
 }
