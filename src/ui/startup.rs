@@ -87,6 +87,7 @@ fn ease_out(t: f32) -> f32 {
 
 pub struct StartupAnimation {
     started_at: Instant,
+    finished: bool,
     needs_focus: bool,
     focus_handle: FocusHandle,
     logo: LogoGrid,
@@ -99,6 +100,7 @@ impl StartupAnimation {
     pub fn new(cx: &Context<Self>) -> Self {
         Self {
             started_at: Instant::now(),
+            finished: false,
             needs_focus: true,
             focus_handle: cx.focus_handle(),
             logo: parse_logo(super::monolith::LOGO_SRC),
@@ -109,6 +111,9 @@ impl StartupAnimation {
     }
 
     fn advance(&mut self) -> bool {
+        if self.finished {
+            return true;
+        }
         let secs = self.started_at.elapsed().as_secs_f32();
         let phase = Phase::of(secs);
         self.elapsed = secs;
@@ -118,6 +123,7 @@ impl StartupAnimation {
     }
 
     fn finish(&mut self, cx: &mut Context<Self>) {
+        self.finished = true;
         self.phase = Phase::Done;
         self.progress = 1.0;
         self.elapsed = TOTAL_S;
@@ -233,6 +239,7 @@ impl Element for MonolithElement {
         match self.phase {
             Phase::Bloom => self.paint_bloom(bounds, window),
             Phase::Dissolve => self.paint_dissolve(bounds, window),
+            Phase::Done => {}
             _ => self.paint_monolith(bounds, window),
         }
     }
