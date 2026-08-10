@@ -37,7 +37,7 @@ jobs:
               per_page: 100,
             })
             const releasePulls = pulls.filter((pull) =>
-              pull.head.ref.startsWith('release-plz-') &&
+              pull.head.ref.startsWith('release/') &&
               pull.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`
             )
 
