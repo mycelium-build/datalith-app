@@ -98,7 +98,7 @@ impl MarkdownViewer {
                 .items_center()
                 .justify_center()
                 .text_color(cx.theme().muted_foreground)
-                .child("Start writing markdown...")
+                .child("Empty markdown")
                 .into_any_element();
         }
 
