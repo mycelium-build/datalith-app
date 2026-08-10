@@ -4,12 +4,17 @@ use gpui::{
     Window, div, px,
 };
 use gpui_component::{
-    Root, WindowExt, h_flex,
+    ActiveTheme, Icon, IconName, Root, Sizable, WindowExt,
+    button::{Button, ButtonVariants as _},
+    h_flex,
     resizable::{h_resizable, resizable_panel},
     v_flex,
 };
 
+use crate::ui::monolith::monolith_mark;
+
 const SIDEBAR_WIDTH: f32 = 260.0;
+const GLYPH_CELL: f32 = 4.0;
 
 impl Render for DatalithView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -95,23 +100,77 @@ impl Render for DatalithView {
             layout = layout.child(self.settings.render_overlay(cx));
         }
 
-        layout.children(Root::render_notification_layer(window, cx))
+        layout
+            .children(Root::render_notification_layer(window, cx))
+            .children(self.startup.clone())
     }
 }
 
 impl DatalithView {
+    fn render_empty_hint(cx: &Context<Self>, hint: &'static str) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_5()
+            .child(monolith_mark(GLYPH_CELL, cx.theme().primary.opacity(0.55)))
+            .child(div().text_color(cx.theme().muted_foreground).child(hint))
+    }
+
+    fn render_quick_start(cx: &Context<Self>) -> impl IntoElement {
+        v_flex()
+            .flex_1()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_5()
+            .child(
+                Icon::new(IconName::Plus)
+                    .size_8()
+                    .text_color(cx.theme().primary.opacity(0.55)),
+            )
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Start writing"),
+            )
+            .child(
+                h_flex()
+                    .gap_3()
+                    .child(Self::quick_create_button("note", "New note", "md", cx))
+                    .child(Self::quick_create_button("todo", "New todo", "todotxt", cx))
+                    .child(Self::quick_create_button("graph", "New graph", "graph", cx)),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                    .child("⌘⇧F search  ·  ⌘T new tab  ·  ⌘0 focus sidebar"),
+            )
+    }
+
+    fn quick_create_button(
+        id: &'static str,
+        label: &'static str,
+        extension: &'static str,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        Button::new(id)
+            .ghost()
+            .small()
+            .label(label)
+            .on_click(cx.listener(move |view, _, _, cx| {
+                view.create_quick_file(extension, cx);
+            }))
+    }
+
     fn render_editor(&self, cx: &Context<Self>) -> impl IntoElement {
         if self.tabs.is_empty() {
-            return div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(match self.root_path {
-                    Some(_) => "Select a file from the sidebar",
-                    None => "Select a folder from the menu bar",
-                })
-                .into_any_element();
+            return if self.root_path.is_some() {
+                Self::render_quick_start(cx).into_any_element()
+            } else {
+                Self::render_empty_hint(cx, "Select a folder from the menu bar").into_any_element()
+            };
         }
 
         let Some(active_tab) = self.tabs.active() else {
@@ -124,15 +183,7 @@ impl DatalithView {
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
             .child(if is_empty {
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .gap_4()
-                    .child("Empty tab")
-                    .into_any_element()
+                Self::render_quick_start(cx).into_any_element()
             } else {
                 div()
                     .flex_1()
