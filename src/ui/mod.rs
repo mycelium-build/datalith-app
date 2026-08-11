@@ -396,7 +396,10 @@ impl DatalithView {
                 self.pending_open = Some(path);
             }
             Err(error) => {
-                eprintln!("Failed to create {base_name}: {error:#}");
+                notifications::push_window_notification(
+                    cx,
+                    notifications::create_file_failed(&base_name, &error),
+                );
             }
         }
         cx.notify();

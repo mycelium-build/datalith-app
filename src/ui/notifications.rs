@@ -49,3 +49,7 @@ pub fn rename_failed() -> Notification {
 pub fn settings_save_failed(action: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to save {action}: {error}")).autohide(false)
 }
+
+pub fn create_file_failed(base_name: &str, error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to create {base_name}: {error}")).autohide(false)
+}
