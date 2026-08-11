@@ -25,6 +25,7 @@ fn main() {
         .with_assets(app::assets::DatalithAssets)
         .run(|cx| {
             gpui_component::init(cx);
+            app::fonts::load_embedded_fonts(cx);
             ui::themes::load_embedded_themes(cx);
             ui::settings::SettingsView::init_theme_options(cx);
 
