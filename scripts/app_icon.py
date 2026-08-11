@@ -8,6 +8,7 @@ the app icons for every platform into `assets/`:
   assets/datalith.png      1024×1024 (32× per logo pixel) — Linux / bundles
   assets/datalith.ico      16/24/32/48/64/128/256 embedded PNGs — Windows
   assets/datalith.icns     icp4/icp5/icp6/ic07/ic08/ic09/ic10 — macOS
+  assets/datalith.rc       Windows resource file embedding the .ico
 
 Everything is produced with the standard library (zlib/struct) — the logo is
 pixel art, so no SVG rasterizer is needed.
@@ -27,6 +28,7 @@ SVG_OUT = ROOT / "assets" / "datalith.svg"
 PNG_OUT = ROOT / "assets" / "datalith.png"
 ICO_OUT = ROOT / "assets" / "datalith.ico"
 ICNS_OUT = ROOT / "assets" / "datalith.icns"
+RC_OUT = ROOT / "assets" / "datalith.rc"
 
 SIZE = 32
 
@@ -217,12 +219,19 @@ def write_icns(grid) -> None:
     print(f"wrote {ICNS_OUT.relative_to(ROOT)}")
 
 
+def write_rc() -> None:
+    ico_path = ICO_OUT.relative_to(ROOT).as_posix()
+    RC_OUT.write_text(f'1 ICON "{ico_path}"\n', encoding="utf-8")
+    print(f"wrote {RC_OUT.relative_to(ROOT)}")
+
+
 def main() -> int:
     grid = load_grid()
     write_svg(grid)
     write_png(scale_to(grid, 1024), PNG_OUT)
     write_ico(grid)
     write_icns(grid)
+    write_rc()
     return 0
 
 
