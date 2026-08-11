@@ -181,6 +181,20 @@ struct MonolithElement {
     logo: LogoGrid,
 }
 
+/// The geometry and timing of one wave frame:
+/// concentric rings around the window center whose front has travelled `front` pixels from the center.
+struct Wave {
+    center_x: f32,
+    center_y: f32,
+    cell: f32,
+    band: f32,
+    cols: usize,
+    rows: usize,
+    front: f32,
+    revealing: bool,
+    alpha: f32,
+}
+
 impl IntoElement for MonolithElement {
     type Element = Self;
 
@@ -397,9 +411,10 @@ impl MonolithElement {
         }
     }
 
-    /// Paint a ring of grid cells around the center for the blind/reveal wave.
-    ///
-    /// The front travels from the center outward.
+    /// The wave is painted as concentric rings around the window center.
+    /// Only the thin band where the color depends on the front is painted cell-by-cell;
+    /// the uniformly colored interior/exterior is painted as one strip quad per row,
+    /// so a large window stays cheap during the ~2s wave.
     fn paint_wave(
         &self,
         bounds: Bounds<Pixels>,
@@ -409,47 +424,31 @@ impl MonolithElement {
         window: &mut Window,
     ) {
         let center = bounds.center();
-        let center_x = center.x.as_f32();
-        let center_y = center.y.as_f32();
         let cell = self.logo_cell(bounds);
-        let cols = (bounds.size.width.as_f32() / cell)
-            .ceil()
-            .approx_as::<usize>()
-            .unwrap_or(0)
-            .max(1);
-        let rows = (bounds.size.height.as_f32() / cell)
-            .ceil()
-            .approx_as::<usize>()
-            .unwrap_or(0)
-            .max(1);
-        for row in 0..rows {
-            for col in 0..cols {
-                let x = col.approx_as::<f32>().unwrap_or_inf() * cell;
-                let y = row.approx_as::<f32>().unwrap_or_inf() * cell;
-                let dx = cell.mul_add(0.5, x) - center_x;
-                let dy = cell.mul_add(0.5, y) - center_y;
-                let distance = dx.mul_add(dx, dy * dy).sqrt();
-                let offset = if revealing {
-                    distance - front
-                } else {
-                    front - distance
-                };
-                if offset <= 0.0 {
-                    continue;
-                }
-                let color = if offset <= cell {
-                    self.primary.opacity(alpha * 0.3)
-                } else if offset <= cell * 2.0 {
-                    self.primary.opacity(alpha * 0.65)
-                } else {
-                    self.primary
-                };
-                Self::fill(
-                    Bounds::new(point(px(x), px(y)), size(px(cell), px(cell))),
-                    color,
-                    window,
-                );
-            }
+        let wave = Wave {
+            center_x: center.x.as_f32(),
+            center_y: center.y.as_f32(),
+            cell,
+            band: cell * 2.0,
+            cols: (bounds.size.width.as_f32() / cell)
+                .ceil()
+                .approx_as::<usize>()
+                .unwrap_or(0)
+                .max(1),
+            rows: (bounds.size.height.as_f32() / cell)
+                .ceil()
+                .approx_as::<usize>()
+                .unwrap_or(0)
+                .max(1),
+            front,
+            revealing,
+            alpha,
+        };
+        for row in 0..wave.rows {
+            let dy = wave
+                .cell
+                .mul_add(row.approx_as::<f32>().unwrap_or_inf() + 0.5, -wave.center_y);
+            wave.paint_row(self, row, dy, window);
         }
     }
 
@@ -474,6 +473,161 @@ impl MonolithElement {
             .mul_add(2.0, Self::max_radius(bounds));
         let front = wave_end * ease_in(self.progress);
         self.paint_wave(bounds, front, true, 1.0, window);
+    }
+}
+
+impl Wave {
+    fn paint_row(&self, element: &MonolithElement, row: usize, dy: f32, window: &mut Window) {
+        if self.revealing {
+            self.paint_reveal_row(element, row, dy, window);
+        } else {
+            self.paint_blind_row(element, row, dy, window);
+        }
+    }
+
+    /// Column range of cells whose center lies within `radius` of the window center,
+    /// for a row at vertical offset `dy`, or `None` when no cell does.
+    fn circle_column_range(&self, dy: f32, radius: f32) -> Option<std::ops::Range<usize>> {
+        if radius <= 0.0 || dy.abs() >= radius {
+            return None;
+        }
+        let half = (dy.mul_add(-dy, radius * radius)).sqrt();
+        let cols = self.cols.approx_as::<f32>().unwrap_or_inf();
+        let first = ((self.center_x - half) / self.cell - 0.5)
+            .ceil()
+            .clamp(0.0, cols)
+            .approx_as::<usize>()
+            .unwrap_or(0);
+        let last = (((self.center_x + half) / self.cell - 0.5).floor() + 1.0)
+            .clamp(0.0, cols)
+            .approx_as::<usize>()
+            .unwrap_or(0);
+        (first < last).then_some(first..last)
+    }
+
+    /// The blind (`revealing = false`) front submerges everything within the front radius:
+    /// a full-color interior plus a ramping band at the edge.
+    fn paint_blind_row(&self, element: &MonolithElement, row: usize, dy: f32, window: &mut Window) {
+        let Some(painted) = self.circle_column_range(dy, self.front) else {
+            return;
+        };
+        match self.circle_column_range(dy, self.front - self.band) {
+            Some(interior) => {
+                Self::paint_row_strip(
+                    row,
+                    self.cell,
+                    interior.start,
+                    interior.end,
+                    element.primary,
+                    window,
+                );
+                self.paint_band_cells(element, row, dy, &(painted.start..interior.start), window);
+                self.paint_band_cells(element, row, dy, &(interior.end..painted.end), window);
+            }
+            None => {
+                self.paint_band_cells(element, row, dy, &painted, window);
+            }
+        }
+    }
+
+    /// The reveal (`revealing = true`) front is a hole that grows from the center:
+    /// the full-color exterior is painted as strip quads and only the ramping band around the hole is painted cell-by-cell.
+    fn paint_reveal_row(
+        &self,
+        element: &MonolithElement,
+        row: usize,
+        dy: f32,
+        window: &mut Window,
+    ) {
+        let revealed = self.circle_column_range(dy, self.front);
+        match self.circle_column_range(dy, self.front + self.band) {
+            None => {
+                Self::paint_row_strip(row, self.cell, 0, self.cols, element.primary, window);
+            }
+            Some(full) => {
+                Self::paint_row_strip(row, self.cell, 0, full.start, element.primary, window);
+                Self::paint_row_strip(row, self.cell, full.end, self.cols, element.primary, window);
+                match &revealed {
+                    Some(revealed) => {
+                        self.paint_band_cells(
+                            element,
+                            row,
+                            dy,
+                            &(full.start..revealed.start),
+                            window,
+                        );
+                        self.paint_band_cells(element, row, dy, &(revealed.end..full.end), window);
+                    }
+                    None => {
+                        self.paint_band_cells(element, row, dy, &full, window);
+                    }
+                }
+            }
+        }
+    }
+
+    fn paint_band_cells(
+        &self,
+        element: &MonolithElement,
+        row: usize,
+        dy: f32,
+        columns: &std::ops::Range<usize>,
+        window: &mut Window,
+    ) {
+        for col in columns.clone() {
+            let x = self
+                .cell
+                .mul_add(col.approx_as::<f32>().unwrap_or_inf() + 0.5, 0.0);
+            let dx = x - self.center_x;
+            let distance = dx.mul_add(dx, dy * dy).sqrt();
+            let offset = if self.revealing {
+                distance - self.front
+            } else {
+                self.front - distance
+            };
+            if offset <= 0.0 {
+                continue;
+            }
+            let color = if offset <= self.cell {
+                element.primary.opacity(self.alpha * 0.3)
+            } else if offset <= self.cell * 2.0 {
+                element.primary.opacity(self.alpha * 0.65)
+            } else {
+                element.primary
+            };
+            let x = self.cell * col.approx_as::<f32>().unwrap_or_inf();
+            let y = self.cell * row.approx_as::<f32>().unwrap_or_inf();
+            MonolithElement::fill(
+                Bounds::new(point(px(x), px(y)), size(px(self.cell), px(self.cell))),
+                color,
+                window,
+            );
+        }
+    }
+
+    fn paint_row_strip(
+        row: usize,
+        cell: f32,
+        from_col: usize,
+        to_col: usize,
+        color: Hsla,
+        window: &mut Window,
+    ) {
+        if from_col >= to_col {
+            return;
+        }
+        let x = cell * from_col.approx_as::<f32>().unwrap_or_inf();
+        let y = cell * row.approx_as::<f32>().unwrap_or_inf();
+        let width = cell
+            * to_col
+                .saturating_sub(from_col)
+                .approx_as::<f32>()
+                .unwrap_or_inf();
+        MonolithElement::fill(
+            Bounds::new(point(px(x), px(y)), size(px(width), px(cell))),
+            color,
+            window,
+        );
     }
 }
 
