@@ -2,11 +2,9 @@
 category: format
 ---
 
-# Todo.txt
-
 A `.todotxt` file is a plain-text task list in the [todo.txt](https://github.com/todotxt/todo.txt) format. Datalith gives it a dedicated editor: filter, sort, complete, and nest tasks.
 
-## A task line
+# A task line
 
 ```
 (A) 2026-01-01 Ship the docs Vault +project @context due:2026-02-01
@@ -21,15 +19,15 @@ A line is made of optional parts:
 - **Project** `+name` and **Context** `@name`: tagging tokens in the description.
 - **Extensions**: extra `key:value` pairs such as `due:2026-02-01`.
 
-## Subtasks
+# Subtasks
 
 Indent a line to make it a subtask of the task above. While editing a task, press `⇧↩` to add a subtask below it, and use the disclosure arrow to collapse a parent.
 
-## Done
+# Done
 
 Marking a task complete prefixes it with `x`. You can filter them out, or sort to push them down.
 
-## Using the editor
+# Using the editor
 
 - Press `↩` on a task to toggle it complete.
 - Press `⇧↩` on a task to add a subtask.

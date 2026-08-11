@@ -2,11 +2,9 @@
 category: format
 ---
 
-# Markdown
-
 Datalith edits Markdown files with a live preview and renders them with standard Markdown plus a couple of additions.
 
-## Core syntax
+# Core syntax
 
 - **Headings:** `#` to `######`
 - **Emphasis:** `*italic*`, `**bold**`, `~~strikethrough~~`
@@ -17,7 +15,7 @@ Datalith edits Markdown files with a live preview and renders them with standard
 - **Quotes:** `> blockquote`
 - **Rules:** `---`, `***`, `___`
 
-## Links
+# Links
 
 There are two kinds of links:
 
@@ -26,7 +24,7 @@ There are two kinds of links:
 
 Wiki links can add a label: `[[Welcome|home]]`. A name-only link resolves to the unique same-folder target; a path link is exact. Use **⌘↩** on a link to jump.
 
-## Properties
+# Properties
 
 A file may start with [[Properties|properties]], written as YAML frontmatter:
 

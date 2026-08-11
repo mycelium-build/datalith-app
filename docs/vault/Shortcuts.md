@@ -2,9 +2,7 @@
 category: reference
 ---
 
-# Shortcuts
-
-## Files
+# Files
 
 | Shortcut | Action |
 | --- | --- |
@@ -16,7 +14,7 @@ category: reference
 | `⌘⇧E` | Open in Explorer / Finder |
 | `⌘L` | Copy path |
 
-## Sidebar
+# Sidebar
 
 | Shortcut | Action |
 | --- | --- |
@@ -25,7 +23,7 @@ category: reference
 | `⌘↩` | Open file in a new tab |
 | `↑` / `↓` | Move through the file tree |
 
-## Navigate
+# Navigate
 
 | Shortcut | Action |
 | --- | --- |
@@ -35,7 +33,7 @@ category: reference
 | `⌘[` / `⌘]` | Go back / forward |
 | `⌘↩` | Open link under cursor |
 
-## Tabs
+# Tabs
 
 | Shortcut | Action |
 | --- | --- |
@@ -44,7 +42,7 @@ category: reference
 | `⌘1`-`⌘9` | Select tab 1-9 |
 | `⌘E` | Toggle edit / view mode |
 
-## Appearance
+# Appearance
 
 | Shortcut | Action |
 | --- | --- |

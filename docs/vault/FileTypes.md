@@ -2,8 +2,6 @@
 category: reference
 ---
 
-# File Types
-
 Every file Datalith can open has a registered **File Type**. Each type declares which capabilities its files support:
 
 | File Type | Editor | Viewer | Text search | Wiki Links | Properties |
