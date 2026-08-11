@@ -53,3 +53,10 @@ pub fn settings_save_failed(action: &str, error: &anyhow::Error) -> Notification
 pub fn create_file_failed(base_name: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to create {base_name}: {error}")).autohide(false)
 }
+
+pub fn theme_fallback(saved: &str, fallback: &str) -> Notification {
+    Notification::warning(format!(
+        "Saved theme \"{saved}\" is not available, using \"{fallback}\""
+    ))
+    .autohide(false)
+}

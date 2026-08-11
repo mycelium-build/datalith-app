@@ -28,7 +28,7 @@ fn main() {
             ui::themes::load_embedded_themes(cx);
             ui::settings::SettingsView::init_theme_options(cx);
 
-            app::preferences::apply(cx);
+            let pending_notifications = app::preferences::apply(cx);
             cx.set_global(app::AppState::default());
             app::actions::register(cx);
             app::keymap::register(cx);
@@ -52,6 +52,6 @@ fn main() {
                 _ => (app::settings::snapshot().last_vault, Vec::new()),
             };
 
-            ui::window::open_initial(cx, initial_vault, initial_tabs);
+            ui::window::open_initial(cx, initial_vault, initial_tabs, pending_notifications);
         });
 }
