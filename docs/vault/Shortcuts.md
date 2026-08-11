@@ -11,7 +11,7 @@ category: reference
 | `F2` | Rename |
 | `⌘⌫` | Delete |
 | `⌘D` | Duplicate |
-| `⌘⇧E` | Open in Explorer / Finder |
+| `⌘⇧E` | Open in your explorer |
 | `⌘L` | Copy path |
 
 # Sidebar
@@ -21,17 +21,17 @@ category: reference
 | `⌘0` | Focus sidebar |
 | `↩` | Expand/collapse folder, or open file |
 | `⌘↩` | Open file in a new tab |
-| `↑` / `↓` | Move through the file tree |
+| `↑` / `↓` | Select file |
 
 # Navigate
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘P` | Quick switcher (open files) |
-| `⌘⇧F` | Search files |
+| `⌘P` | Quick switcher |
+| `⌘⇧F` | Search |
 | `⌘0` | Focus sidebar |
 | `⌘[` / `⌘]` | Go back / forward |
-| `⌘↩` | Open link under cursor |
+| `⌘↩` | Open link at cursor |
 
 # Tabs
 
@@ -40,12 +40,12 @@ category: reference
 | `⌘T` | New tab |
 | `⌘W` | Close tab |
 | `⌘1`-`⌘9` | Select tab 1-9 |
-| `⌘E` | Toggle edit / view mode |
+| `⌘E` | Toggle edit/view mode |
 
 # Appearance
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘⇧D` | Toggle light / dark theme |
+| `⌘⇧D` | Toggle between light and dark theme |
 
 For the full set of options, see [[Settings]]. See [[Basics]] if you are new to the app.
