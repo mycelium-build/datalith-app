@@ -287,4 +287,56 @@ mod tests {
         drop(catalog);
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn create_with_name_creates_the_requested_file() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-create-name-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let path = create_with_name(&root, "Meeting.md").unwrap();
+
+        assert_eq!(path, root.join("Meeting.md"));
+        assert!(path.exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn create_uses_the_default_new_note_name() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-create-default-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let path = create(&root).unwrap();
+
+        assert_eq!(path, root.join("New Note.md"));
+        assert!(path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unique_name_numbering_skips_existing_names() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-unique-name-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Note.md"), "").unwrap();
+        fs::write(root.join("Note 1.md"), "").unwrap();
+
+        assert_eq!(unique_name(&root, "Note.md"), root.join("Note 2.md"));
+
+        let created = create_with_name(&root, "Note.md").unwrap();
+        assert_eq!(created, root.join("Note 2.md"));
+        assert!(created.exists());
+        let _ = fs::remove_dir_all(root);
+    }
 }
