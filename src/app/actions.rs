@@ -51,6 +51,7 @@ actions!(
         GoBack,
         GoForward,
         OpenLink,
+        Quit,
     ]
 );
 
@@ -63,6 +64,7 @@ macro_rules! with_view {
 }
 
 pub fn register(cx: &mut App) {
+    cx.on_action(quit);
     cx.on_action(open_vault);
     cx.on_action(toggle_search);
     cx.on_action(toggle_quick_switcher);
@@ -93,6 +95,10 @@ pub fn register(cx: &mut App) {
     cx.on_action(go_back);
     cx.on_action(go_forward);
     cx.on_action(handle_open_link);
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.quit();
 }
 
 pub fn open_vault(_: &OpenVault, cx: &mut App) {

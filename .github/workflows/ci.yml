@@ -31,6 +31,8 @@ jobs:
         run: scripts/install-linux-build-dependencies.sh
 
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          save-if: ${{ github.event_name == 'push' }}
 
       - name: Apply formatting
         if: env.INTERNAL_PR == 'true'

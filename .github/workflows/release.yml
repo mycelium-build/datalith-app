@@ -20,6 +20,7 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   artifacts:
@@ -64,7 +65,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install cargo-packager
-        uses: taiki-e/install-action@d6912b47771be2c443ec90db6945f57898f5d38e
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
           tool: cargo-packager@0.11.8
 
@@ -80,4 +81,5 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           fail_on_unmatched_files: true
+          draft: true
           files: ${{ matrix.artifact }}

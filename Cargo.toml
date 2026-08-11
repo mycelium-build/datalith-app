@@ -18,7 +18,7 @@ license-file = "LICENSE"
 formats = ["appimage", "dmg", "nsis"]
 
 [package.metadata.packager.nsis]
-install-mode = "currentUser"
+installMode = "currentUser"
 installer-icon = "assets/datalith.ico"
 
 [target.'cfg(windows)'.build-dependencies]
