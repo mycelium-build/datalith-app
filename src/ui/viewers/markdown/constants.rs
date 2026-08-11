@@ -4,6 +4,7 @@ pub(super) const MD_LIST_INDENT: &str = "  ";
 
 pub(super) const MD_HEADING_SIZES: [f32; 6] = [2.5, 2.25, 2.0, 1.75, 1.5, 1.25];
 pub(super) const MD_HEADING_MARGIN: f32 = 8.0;
+pub(super) const MD_TITLE_SIZE: f32 = 3.0;
 
 pub(super) const MD_CODE_FONT_SCALE: f32 = 0.9;
 pub(super) const MD_CODE_BLOCK_PADDING: f32 = 3.0;
