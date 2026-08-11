@@ -36,7 +36,37 @@ pub struct SettingsView {
     pub(crate) font_size_slider_state: Entity<SliderState>,
 }
 
-const SHORTCUTS_PAGE: usize = 1;
+/// The settings pages, in render order. Both the page builders and the
+/// shortcuts page index derive from this list, so they cannot drift.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsPage {
+    Appearance,
+    Shortcuts,
+    About,
+}
+
+const SETTINGS_PAGES: [SettingsPage; 3] = [
+    SettingsPage::Appearance,
+    SettingsPage::Shortcuts,
+    SettingsPage::About,
+];
+
+impl SettingsPage {
+    const fn title(self) -> &'static str {
+        match self {
+            Self::Appearance => "Appearance",
+            Self::Shortcuts => "Shortcuts",
+            Self::About => "About",
+        }
+    }
+}
+
+fn shortcuts_page_index() -> usize {
+    SETTINGS_PAGES
+        .iter()
+        .position(|page| *page == SettingsPage::Shortcuts)
+        .unwrap_or(0)
+}
 
 impl SettingsView {
     pub(crate) fn new(cx: &mut App) -> Self {
@@ -61,9 +91,9 @@ impl SettingsView {
         self.page_index = 0;
     }
 
-    pub(crate) const fn open_shortcuts(&mut self) {
+    pub(crate) fn open_shortcuts(&mut self) {
         self.open = true;
-        self.page_index = SHORTCUTS_PAGE;
+        self.page_index = shortcuts_page_index();
     }
 
     pub(crate) const fn close(&mut self) {
@@ -190,20 +220,30 @@ impl SettingsView {
                                         page_ix: self.page_index,
                                         group_ix: None,
                                     })
-                                    .pages(vec![
-                                        SettingPage::new("Appearance").default_open(true).groups(
-                                            vec![
-                                                Self::theme_group(cx),
-                                                Self::display_group(&self.font_size_slider_state),
-                                            ],
-                                        ),
-                                        SettingPage::new("Shortcuts")
-                                            .groups(Self::shortcuts_groups()),
-                                        SettingPage::new("About").groups(vec![Self::about_group()]),
-                                    ]),
+                                    .pages(self.settings_pages(cx)),
                             ),
                     ),
             )
+    }
+
+    fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+        SETTINGS_PAGES
+            .iter()
+            .map(|page| match page {
+                SettingsPage::Appearance => SettingPage::new(page.title())
+                    .default_open(true)
+                    .groups(vec![
+                        Self::theme_group(cx),
+                        Self::display_group(&self.font_size_slider_state),
+                    ]),
+                SettingsPage::Shortcuts => {
+                    SettingPage::new(page.title()).groups(Self::shortcuts_groups())
+                }
+                SettingsPage::About => {
+                    SettingPage::new(page.title()).groups(vec![Self::about_group()])
+                }
+            })
+            .collect()
     }
 
     fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
