@@ -12,17 +12,52 @@ macro_rules! icon_asset {
     };
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DatalithIcon {
+    Note,
+    Todo,
+    Graph,
+    Image,
+    File,
+    Pen,
+    Funnel,
+    ArrowUpAz,
+    ArrowDownAz,
+}
+
+impl DatalithIcon {
+    const fn asset(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Note => icon_asset!("icons/note.svg"),
+            Self::Todo => icon_asset!("icons/todo.svg"),
+            Self::Graph => icon_asset!("icons/graph.svg"),
+            Self::Image => icon_asset!("icons/image.svg"),
+            Self::File => icon_asset!("icons/file.svg"),
+            Self::Pen => icon_asset!("icons/pen.svg"),
+            Self::Funnel => icon_asset!("icons/funnel.svg"),
+            Self::ArrowUpAz => icon_asset!("icons/arrow-up-a-z.svg"),
+            Self::ArrowDownAz => icon_asset!("icons/arrow-down-a-z.svg"),
+        }
+    }
+}
+
+impl IconNamed for DatalithIcon {
+    fn path(self) -> SharedString {
+        self.asset().0.into()
+    }
+}
+
 pub const ICON_ASSETS: &[(&str, &str)] = &[
-    // Custom icons, referenced through `DatalithIcon`.
-    icon_asset!("icons/note.svg"),
-    icon_asset!("icons/todo.svg"),
-    icon_asset!("icons/graph.svg"),
-    icon_asset!("icons/image.svg"),
-    icon_asset!("icons/file.svg"),
-    icon_asset!("icons/pen.svg"),
-    icon_asset!("icons/funnel.svg"),
-    icon_asset!("icons/arrow-up-a-z.svg"),
-    icon_asset!("icons/arrow-down-a-z.svg"),
+    // Custom icons, resolved through `DatalithIcon`.
+    DatalithIcon::Note.asset(),
+    DatalithIcon::Todo.asset(),
+    DatalithIcon::Graph.asset(),
+    DatalithIcon::Image.asset(),
+    DatalithIcon::File.asset(),
+    DatalithIcon::Pen.asset(),
+    DatalithIcon::Funnel.asset(),
+    DatalithIcon::ArrowUpAz.asset(),
+    DatalithIcon::ArrowDownAz.asset(),
     // Overrides of gpui-component's lucide icons.
     icon_asset!("icons/search.svg"),
     icon_asset!("icons/layout-dashboard.svg"),
@@ -42,34 +77,3 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     icon_asset!("icons/eye.svg"),
     icon_asset!("icons/inbox.svg"),
 ];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DatalithIcon {
-    Note,
-    Todo,
-    Graph,
-    Image,
-    File,
-    Pen,
-    Funnel,
-    ArrowUpAz,
-    ArrowDownAz,
-}
-
-/// Paths must stay in sync with `ICON_ASSETS`.
-impl IconNamed for DatalithIcon {
-    fn path(self) -> SharedString {
-        match self {
-            Self::Note => "icons/note.svg",
-            Self::Todo => "icons/todo.svg",
-            Self::Graph => "icons/graph.svg",
-            Self::Image => "icons/image.svg",
-            Self::File => "icons/file.svg",
-            Self::Pen => "icons/pen.svg",
-            Self::Funnel => "icons/funnel.svg",
-            Self::ArrowUpAz => "icons/arrow-up-a-z.svg",
-            Self::ArrowDownAz => "icons/arrow-down-a-z.svg",
-        }
-        .into()
-    }
-}
