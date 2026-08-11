@@ -14,19 +14,16 @@ use super::monolith::{
     Cell, LEFT_SIDE_WHITEN, LogoGrid, RIGHT_SIDE_WHITEN, Tier, parse_logo, whiten,
 };
 
-const RISE_S: f32 = 1.0;
+const RISE_S: f32 = 0.5;
 const IGNITE_S: f32 = 2.0;
-const GLOW_S: f32 = 2.0;
-const BLOOM_S: f32 = 1.0;
-const DISSOLVE_S: f32 = 1.0;
+const GLOW_S: f32 = 1.0;
+const BLOOM_S: f32 = 0.75;
+const DISSOLVE_S: f32 = 0.75;
 const TOTAL_S: f32 = RISE_S + IGNITE_S + GLOW_S + BLOOM_S + DISSOLVE_S;
 const FRAME_DURATION: Duration = Duration::from_millis(32);
-const PULSE_CYCLE_S: f32 = 0.5;
+const WAVES_PER_IGNITE: f32 = 2.0;
 
 const GRID_MIN_CELL_PX: f32 = 6.0;
-
-// How many inscription waves fall per ignite phase.
-const WAVES_PER_IGNITE: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -294,7 +291,7 @@ impl MonolithElement {
     /// so the outline reads as a glowing line.
     fn border_pulse(&self) -> Hsla {
         let quarter = 0.25;
-        let p = (self.elapsed * PULSE_CYCLE_S) % 1.0;
+        let p = (self.elapsed * 1.1) % 1.0;
         let t = ease_in_out((p / quarter) % 1.0);
         if p < quarter {
             lerp_hsla(self.tier_inscription, self.tier_two, t)
