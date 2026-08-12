@@ -448,6 +448,7 @@ impl MonolithElement {
                 Tier::Inscription => self.inscription_color(cell),
                 Tier::RightSide => self.tier_one,
                 Tier::LeftSide => self.tier_two,
+                Tier::Top => self.tier_inscription,
             };
             let x = cell.col.mul_add(cell_size, origin_x).round();
             let y = cell.row.mul_add(cell_size, origin_y).round();
@@ -556,6 +557,7 @@ impl MonolithElement {
                 Tier::Light | Tier::Inscription => self.primary,
                 Tier::RightSide => self.tier_one,
                 Tier::LeftSide => self.tier_two,
+                Tier::Top => self.tier_inscription,
             };
             let x = cell.col.mul_add(cell_size, origin_x).round();
             let y = cell.row.mul_add(cell_size, origin_y).round();
