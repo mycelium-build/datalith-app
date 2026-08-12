@@ -10,13 +10,14 @@ use crate::ui::DatalithView;
 
 pub fn open_initial(
     cx: &App,
+    first_startup: bool,
     initial_vault: Option<PathBuf>,
     initial_tabs: Vec<PathBuf>,
     pending_notifications: Vec<Notification>,
 ) {
     cx.spawn(async move |cx| {
         match cx.open_window(WindowOptions::default(), |window, cx| {
-            let view = cx.new(|cx| DatalithView::new(window, cx));
+            let view = cx.new(|cx| DatalithView::new(first_startup, window, cx));
             cx.update_global(|state: &mut AppState, _| {
                 state.view = Some(view.clone());
             });

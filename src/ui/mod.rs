@@ -33,7 +33,7 @@ use gpui_component::{
 use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
-use crate::ui::startup::StartupAnimation;
+use crate::ui::startup::{StartupAnimation, StartupType};
 use crate::vault::path::display_name;
 use crate::vault::{CatalogEvent, CatalogState, VaultCatalog};
 use palette::Palette;
@@ -142,7 +142,7 @@ fn is_current_vault_load(
 
 impl DatalithView {
     #[must_use]
-    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(first_startup: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
@@ -189,7 +189,14 @@ impl DatalithView {
             },
         );
 
-        let startup = cx.new(|cx| StartupAnimation::new(cx));
+        let startup = cx.new(|cx| {
+            let kind = if first_startup {
+                StartupType::First
+            } else {
+                StartupType::Standard
+            };
+            StartupAnimation::new(kind, cx)
+        });
 
         let mut view = Self {
             tree_state,

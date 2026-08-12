@@ -42,6 +42,9 @@ fn main() {
                     None
                 }
             };
+            let first_startup = docs_vault
+                .as_ref()
+                .is_some_and(|outcome| outcome.first_run);
             let (initial_vault, initial_tabs) = match docs_vault {
                 Some(outcome) if outcome.first_run => {
                     let tabs = app::docs::INITIAL_TABS
@@ -53,6 +56,12 @@ fn main() {
                 _ => (app::settings::snapshot().last_vault, Vec::new()),
             };
 
-            ui::window::open_initial(cx, initial_vault, initial_tabs, pending_notifications);
+            ui::window::open_initial(
+                cx,
+                first_startup,
+                initial_vault,
+                initial_tabs,
+                pending_notifications,
+            );
         });
 }

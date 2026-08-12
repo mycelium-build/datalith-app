@@ -14,12 +14,6 @@ use super::monolith::{
     Cell, LEFT_SIDE_WHITEN, LogoGrid, RIGHT_SIDE_WHITEN, Tier, parse_logo, whiten,
 };
 
-const RISE_S: f32 = 0.5;
-const IGNITE_S: f32 = 2.0;
-const GLOW_S: f32 = 1.0;
-const BLOOM_S: f32 = 0.75;
-const DISSOLVE_S: f32 = 0.75;
-const TOTAL_S: f32 = RISE_S + IGNITE_S + GLOW_S + BLOOM_S + DISSOLVE_S;
 const FRAME_DURATION: Duration = Duration::from_millis(32);
 const WAVES_PER_IGNITE: f32 = 2.0;
 
@@ -35,33 +29,81 @@ enum Phase {
     Done,
 }
 
-impl Phase {
-    fn of(secs: f32) -> Self {
-        if secs < RISE_S {
-            Self::Rise
-        } else if secs < RISE_S + IGNITE_S {
-            Self::Ignite
-        } else if secs < RISE_S + IGNITE_S + GLOW_S {
-            Self::Glow
-        } else if secs < RISE_S + IGNITE_S + GLOW_S + BLOOM_S {
-            Self::Bloom
-        } else if secs < TOTAL_S {
-            Self::Dissolve
+/// The duration, in seconds, of each animation phase.
+#[derive(Clone, Copy, Debug)]
+struct StartupTiming {
+    rise: f32,
+    ignite: f32,
+    glow: f32,
+    bloom: f32,
+    dissolve: f32,
+}
+
+impl StartupTiming {
+    const FIRST: Self = Self {
+        rise: 0.5,
+        ignite: 2.0,
+        glow: 1.0,
+        bloom: 0.75,
+        dissolve: 0.75,
+    };
+
+    const STANDARD: Self = Self {
+        rise: 0.0,
+        ignite: 0.0,
+        glow: 1.0,
+        bloom: 0.75,
+        dissolve: 0.75,
+    };
+
+    const fn total(self) -> f32 {
+        self.rise + self.ignite + self.glow + self.bloom + self.dissolve
+    }
+
+    fn phase_of(self, secs: f32) -> Phase {
+        if secs < self.rise {
+            Phase::Rise
+        } else if secs < self.rise + self.ignite {
+            Phase::Ignite
+        } else if secs < self.rise + self.ignite + self.glow {
+            Phase::Glow
+        } else if secs < self.rise + self.ignite + self.glow + self.bloom {
+            Phase::Bloom
+        } else if secs < self.total() {
+            Phase::Dissolve
         } else {
-            Self::Done
+            Phase::Done
         }
     }
 
-    fn progress(secs: f32, phase: Self) -> f32 {
+    fn phase_progress(self, secs: f32, phase: Phase) -> f32 {
         let (start, span) = match phase {
-            Self::Rise => (0.0, RISE_S),
-            Self::Ignite => (RISE_S, IGNITE_S),
-            Self::Glow => (RISE_S + IGNITE_S, GLOW_S),
-            Self::Bloom => (RISE_S + IGNITE_S + GLOW_S, BLOOM_S),
-            Self::Dissolve => (RISE_S + IGNITE_S + GLOW_S + BLOOM_S, DISSOLVE_S),
-            Self::Done => (TOTAL_S, 1.0),
+            Phase::Rise => (0.0, self.rise),
+            Phase::Ignite => (self.rise, self.ignite),
+            Phase::Glow => (self.rise + self.ignite, self.glow),
+            Phase::Bloom => (self.rise + self.ignite + self.glow, self.bloom),
+            Phase::Dissolve => (
+                self.rise + self.ignite + self.glow + self.bloom,
+                self.dissolve,
+            ),
+            Phase::Done => (self.total(), 1.0),
         };
         ((secs - start) / span).clamp(0.0, 1.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartupType {
+    First,
+    Standard,
+}
+
+impl StartupType {
+    const fn timing(self) -> StartupTiming {
+        match self {
+            Self::First => StartupTiming::FIRST,
+            Self::Standard => StartupTiming::STANDARD,
+        }
     }
 }
 
@@ -95,19 +137,22 @@ pub struct StartupAnimation {
     phase: Phase,
     progress: f32,
     elapsed: f32,
+    timing: StartupTiming,
 }
 
 impl StartupAnimation {
-    pub fn new(cx: &Context<Self>) -> Self {
+    pub fn new(kind: StartupType, cx: &Context<Self>) -> Self {
+        let timing = kind.timing();
         Self {
             started_at: Instant::now(),
             finished: false,
             needs_focus: true,
             focus_handle: cx.focus_handle(),
             logo: parse_logo(super::monolith::LOGO_SRC),
-            phase: Phase::Rise,
+            phase: timing.phase_of(0.0),
             progress: 0.0,
             elapsed: 0.0,
+            timing,
         }
     }
 
@@ -116,9 +161,9 @@ impl StartupAnimation {
             return true;
         }
         let secs = self.started_at.elapsed().as_secs_f32();
-        let phase = Phase::of(secs);
+        let phase = self.timing.phase_of(secs);
         self.elapsed = secs;
-        self.progress = Phase::progress(secs, phase);
+        self.progress = self.timing.phase_progress(secs, phase);
         self.phase = phase;
         self.phase == Phase::Done
     }
@@ -127,7 +172,7 @@ impl StartupAnimation {
         self.finished = true;
         self.phase = Phase::Done;
         self.progress = 1.0;
-        self.elapsed = TOTAL_S;
+        self.elapsed = self.timing.total();
         cx.notify();
     }
 }
