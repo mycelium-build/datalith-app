@@ -43,7 +43,7 @@ impl StartupTiming {
     const FIRST: Self = Self {
         rise: 0.5,
         ignite: 2.0,
-        glow: 1.0,
+        glow: 1.5,
         bloom: 0.75,
         dissolve: 0.75,
     };
@@ -51,7 +51,7 @@ impl StartupTiming {
     const STANDARD: Self = Self {
         rise: 0.0,
         ignite: 0.0,
-        glow: 1.0,
+        glow: 1.5,
         bloom: 0.75,
         dissolve: 0.75,
     };
