@@ -23,6 +23,7 @@ pub enum DatalithIcon {
     Funnel,
     ArrowUpAz,
     ArrowDownAz,
+    Settings,
 }
 
 impl DatalithIcon {
@@ -37,6 +38,7 @@ impl DatalithIcon {
             Self::Funnel => icon_asset!("icons/funnel.svg"),
             Self::ArrowUpAz => icon_asset!("icons/arrow-up-a-z.svg"),
             Self::ArrowDownAz => icon_asset!("icons/arrow-down-a-z.svg"),
+            Self::Settings => icon_asset!("icons/gear.svg"),
         }
     }
 }
@@ -58,6 +60,7 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     DatalithIcon::Funnel.asset(),
     DatalithIcon::ArrowUpAz.asset(),
     DatalithIcon::ArrowDownAz.asset(),
+    DatalithIcon::Settings.asset(),
     // Overrides of gpui-component's lucide icons.
     icon_asset!("icons/search.svg"),
     icon_asset!("icons/layout-dashboard.svg"),
