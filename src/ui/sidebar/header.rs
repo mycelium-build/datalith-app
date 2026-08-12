@@ -5,8 +5,8 @@ use gpui::{
 use gpui_component::{ActiveTheme, Icon, IconName, h_flex};
 
 use super::super::palette::PaletteKind;
-use crate::ui::icons::DatalithIcon;
 use super::{DatalithView, TREE_PADDING_PX};
+use crate::ui::icons::DatalithIcon;
 
 const BORDER_WIDTH: f32 = 2.0;
 const ICON_PADDING: f32 = 4.0;
