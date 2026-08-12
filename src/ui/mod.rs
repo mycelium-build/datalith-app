@@ -142,7 +142,12 @@ fn is_current_vault_load(
 
 impl DatalithView {
     #[must_use]
-    pub(crate) fn new(first_startup: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(
+        first_startup: bool,
+        initial_notifications: Vec<Notification>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
@@ -230,7 +235,7 @@ impl DatalithView {
             sidebar_focus_handle,
             last_sidebar_selection: None,
             pending_navigation: None,
-            pending_notifications: Vec::new(),
+            pending_notifications: initial_notifications,
             registry: registry::default_registry(),
             startup: Some(startup),
             startup_driver: Task::ready(()),

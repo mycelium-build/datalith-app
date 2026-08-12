@@ -24,8 +24,10 @@ impl Render for DatalithView {
                 .focus_input(window, cx, self.vault_catalog.as_ref(), &open_paths);
         }
 
-        for notification in self.pending_notifications.drain(..) {
-            window.push_notification(notification, cx);
+        if self.startup.is_none() {
+            for notification in self.pending_notifications.drain(..) {
+                window.push_notification(notification, cx);
+            }
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {

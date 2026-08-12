@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use gpui::{App, AppContext, BorrowAppContext, WindowOptions};
 use gpui_component::Root;
-use gpui_component::WindowExt;
 use gpui_component::notification::Notification;
 
 use crate::app::AppState;
@@ -16,8 +15,10 @@ pub fn open_initial(
     pending_notifications: Vec<Notification>,
 ) {
     cx.spawn(async move |cx| {
-        match cx.open_window(WindowOptions::default(), |window, cx| {
-            let view = cx.new(|cx| DatalithView::new(first_startup, window, cx));
+        if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
+            let view = cx.new(|cx| {
+                DatalithView::new(first_startup, pending_notifications, window, cx)
+            });
             cx.update_global(|state: &mut AppState, _| {
                 state.view = Some(view.clone());
             });
@@ -33,16 +34,7 @@ pub fn open_initial(
             }
             cx.new(|cx| Root::new(view, window, cx))
         }) {
-            Ok(window) => {
-                for notification in pending_notifications {
-                    let _ = window.update(cx, |_, window, cx| {
-                        window.push_notification(notification, cx);
-                    });
-                }
-            }
-            Err(error) => {
-                eprintln!("Failed to open window: {error}");
-            }
+            eprintln!("Failed to open window: {error}");
         }
     })
     .detach();
