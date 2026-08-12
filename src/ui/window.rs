@@ -16,9 +16,8 @@ pub fn open_initial(
 ) {
     cx.spawn(async move |cx| {
         if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
-            let view = cx.new(|cx| {
-                DatalithView::new(first_startup, pending_notifications, window, cx)
-            });
+            let view =
+                cx.new(|cx| DatalithView::new(first_startup, pending_notifications, window, cx));
             cx.update_global(|state: &mut AppState, _| {
                 state.view = Some(view.clone());
             });
