@@ -68,6 +68,13 @@ fn shortcuts_page_index() -> usize {
         .unwrap_or(0)
 }
 
+fn about_page_index() -> usize {
+    SETTINGS_PAGES
+        .iter()
+        .position(|page| *page == SettingsPage::About)
+        .unwrap_or(0)
+}
+
 impl SettingsView {
     pub(crate) fn new(cx: &mut App) -> Self {
         let font_size_multiplier = settings::snapshot().font_scale;
@@ -94,6 +101,11 @@ impl SettingsView {
     pub(crate) fn open_shortcuts(&mut self) {
         self.open = true;
         self.page_index = shortcuts_page_index();
+    }
+
+    pub(crate) fn open_about(&mut self) {
+        self.open = true;
+        self.page_index = about_page_index();
     }
 
     pub(crate) const fn close(&mut self) {
