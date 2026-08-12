@@ -51,8 +51,8 @@ impl StartupTiming {
     const STANDARD: Self = Self {
         rise: 0.0,
         ignite: 0.0,
-        glow: 1.5,
-        bloom: 0.75,
+        glow: 0.5,
+        bloom: 0.0,
         dissolve: 0.75,
     };
 
@@ -192,6 +192,7 @@ impl Render for StartupAnimation {
             phase: self.phase,
             progress: self.progress,
             elapsed: self.elapsed,
+            bloomed: self.timing.bloom > 0.0,
             primary,
             tier_one,
             tier_two,
@@ -215,6 +216,7 @@ struct MonolithElement {
     phase: Phase,
     progress: f32,
     elapsed: f32,
+    bloomed: bool,
     primary: Hsla,  // M color
     tier_one: Hsla, // 1 color
     tier_two: Hsla, // 2 color
@@ -235,6 +237,7 @@ struct Wave {
     front: f32,
     revealing: bool,
     alpha: f32,
+    cover: Hsla,
 }
 
 impl IntoElement for MonolithElement {
@@ -457,12 +460,16 @@ impl MonolithElement {
     /// Only the thin band where the color depends on the front is painted cell-by-cell;
     /// the uniformly colored interior/exterior is painted as one strip quad per row,
     /// so a large window stays cheap during the ~2s wave.
+    ///
+    /// `cover` is the color the wave paints over the covered region
+    /// (the accent color for the bloom blind, and either the accent or the theme background for the dissolve).
     fn paint_wave(
         &self,
         bounds: Bounds<Pixels>,
         front: f32,
         revealing: bool,
         alpha: f32,
+        cover: Hsla,
         window: &mut Window,
     ) {
         let center = bounds.center();
@@ -485,12 +492,13 @@ impl MonolithElement {
             front,
             revealing,
             alpha,
+            cover,
         };
         for row in 0..wave.rows {
             let dy = wave
                 .cell
                 .mul_add(row.approx_as::<f32>().unwrap_or_inf() + 0.5, -wave.center_y);
-            wave.paint_row(self, row, dy, window);
+            wave.paint_row(row, dy, window);
         }
     }
 
@@ -504,26 +512,68 @@ impl MonolithElement {
             .mul_add(2.0, Self::max_radius(bounds));
         let front = wave_end * ease_in(self.progress);
         let flash_alpha = self.progress.mul_add(0.7, 0.3);
-        self.paint_wave(bounds, front, false, flash_alpha, window);
+        self.paint_wave(bounds, front, false, flash_alpha, self.primary, window);
     }
 
-    /// The reveal: the same wave but the front is a hole that grows from the center,
-    /// fading the `M` cells ahead of it at the edge and then revealing the app.
+    /// The reveal: the same wave but the front is a hole that grows from the center, revealing the app.
+    /// The covering state is the pixel state that preceded the dissolve:
+    /// the bloom's uniform accent color when bloom ran,
+    /// otherwise the settled glow scene (theme background + monolith)
+    /// which is re-painted so it does not pop out of existence when the dissolve starts.
     fn paint_dissolve(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let wave_end = self
             .logo_cell(bounds)
             .mul_add(2.0, Self::max_radius(bounds));
         let front = wave_end * ease_in(self.progress);
-        self.paint_wave(bounds, front, true, 1.0, window);
+        let cover = if self.bloomed {
+            self.primary
+        } else {
+            self.background
+        };
+        self.paint_wave(bounds, front, true, 1.0, cover, window);
+        if !self.bloomed {
+            self.paint_covered_monolith(bounds, front, window);
+        }
+    }
+
+    /// The monolith cells of the settled glow scene,
+    /// repainted only where the reveal still covers them
+    /// (their centers lie beyond the hole's front).
+    /// Cells already revealed are left for the app to show through.
+    fn paint_covered_monolith(&self, bounds: Bounds<Pixels>, front: f32, window: &mut Window) {
+        let (origin_x, origin_y, cell_size) = self.logo_origin(bounds);
+        let center = bounds.center();
+        let front_sq = front * front;
+        for cell in &self.logo.cells {
+            let x = cell_size.mul_add(0.5, cell.col.mul_add(cell_size, origin_x));
+            let y = cell_size.mul_add(0.5, cell.row.mul_add(cell_size, origin_y));
+            let dx = x - center.x.as_f32();
+            let dy = y - center.y.as_f32();
+            if dx.mul_add(dx, dy * dy) <= front_sq {
+                continue;
+            }
+            let color = match cell.tier {
+                Tier::Light | Tier::Inscription => self.primary,
+                Tier::RightSide => self.tier_one,
+                Tier::LeftSide => self.tier_two,
+            };
+            let x = cell.col.mul_add(cell_size, origin_x).round();
+            let y = cell.row.mul_add(cell_size, origin_y).round();
+            Self::fill(
+                Bounds::new(point(px(x), px(y)), size(px(cell_size), px(cell_size))),
+                color,
+                window,
+            );
+        }
     }
 }
 
 impl Wave {
-    fn paint_row(&self, element: &MonolithElement, row: usize, dy: f32, window: &mut Window) {
+    fn paint_row(&self, row: usize, dy: f32, window: &mut Window) {
         if self.revealing {
-            self.paint_reveal_row(element, row, dy, window);
+            self.paint_reveal_row(row, dy, window);
         } else {
-            self.paint_blind_row(element, row, dy, window);
+            self.paint_blind_row(row, dy, window);
         }
     }
 
@@ -549,7 +599,7 @@ impl Wave {
 
     /// The blind (`revealing = false`) front submerges everything within the front radius:
     /// a full-color interior plus a ramping band at the edge.
-    fn paint_blind_row(&self, element: &MonolithElement, row: usize, dy: f32, window: &mut Window) {
+    fn paint_blind_row(&self, row: usize, dy: f32, window: &mut Window) {
         let Some(painted) = self.circle_column_range(dy, self.front) else {
             return;
         };
@@ -560,48 +610,36 @@ impl Wave {
                     self.cell,
                     interior.start,
                     interior.end,
-                    element.primary,
+                    self.cover,
                     window,
                 );
-                self.paint_band_cells(element, row, dy, &(painted.start..interior.start), window);
-                self.paint_band_cells(element, row, dy, &(interior.end..painted.end), window);
+                self.paint_band_cells(row, dy, &(painted.start..interior.start), window);
+                self.paint_band_cells(row, dy, &(interior.end..painted.end), window);
             }
             None => {
-                self.paint_band_cells(element, row, dy, &painted, window);
+                self.paint_band_cells(row, dy, &painted, window);
             }
         }
     }
 
     /// The reveal (`revealing = true`) front is a hole that grows from the center:
     /// the full-color exterior is painted as strip quads and only the ramping band around the hole is painted cell-by-cell.
-    fn paint_reveal_row(
-        &self,
-        element: &MonolithElement,
-        row: usize,
-        dy: f32,
-        window: &mut Window,
-    ) {
+    fn paint_reveal_row(&self, row: usize, dy: f32, window: &mut Window) {
         let revealed = self.circle_column_range(dy, self.front);
         match self.circle_column_range(dy, self.front + self.band) {
             None => {
-                Self::paint_row_strip(row, self.cell, 0, self.cols, element.primary, window);
+                Self::paint_row_strip(row, self.cell, 0, self.cols, self.cover, window);
             }
             Some(full) => {
-                Self::paint_row_strip(row, self.cell, 0, full.start, element.primary, window);
-                Self::paint_row_strip(row, self.cell, full.end, self.cols, element.primary, window);
+                Self::paint_row_strip(row, self.cell, 0, full.start, self.cover, window);
+                Self::paint_row_strip(row, self.cell, full.end, self.cols, self.cover, window);
                 match &revealed {
                     Some(revealed) => {
-                        self.paint_band_cells(
-                            element,
-                            row,
-                            dy,
-                            &(full.start..revealed.start),
-                            window,
-                        );
-                        self.paint_band_cells(element, row, dy, &(revealed.end..full.end), window);
+                        self.paint_band_cells(row, dy, &(full.start..revealed.start), window);
+                        self.paint_band_cells(row, dy, &(revealed.end..full.end), window);
                     }
                     None => {
-                        self.paint_band_cells(element, row, dy, &full, window);
+                        self.paint_band_cells(row, dy, &full, window);
                     }
                 }
             }
@@ -610,7 +648,6 @@ impl Wave {
 
     fn paint_band_cells(
         &self,
-        element: &MonolithElement,
         row: usize,
         dy: f32,
         columns: &std::ops::Range<usize>,
@@ -631,11 +668,11 @@ impl Wave {
                 continue;
             }
             let color = if offset <= self.cell {
-                element.primary.opacity(self.alpha * 0.3)
+                self.cover.opacity(self.alpha * 0.3)
             } else if offset <= self.cell * 2.0 {
-                element.primary.opacity(self.alpha * 0.65)
+                self.cover.opacity(self.alpha * 0.65)
             } else {
-                element.primary
+                self.cover
             };
             let x = self.cell * col.approx_as::<f32>().unwrap_or_inf();
             let y = self.cell * row.approx_as::<f32>().unwrap_or_inf();
