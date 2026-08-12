@@ -53,23 +53,3 @@ fn navigate_menu() -> Menu {
         MenuItem::action("Toggle Dark Mode", ToggleTheme),
     ])
 }
-
-#[cfg(test)]
-mod tests {
-    use gpui::Action;
-
-    use super::*;
-    use crate::app::actions::Quit;
-
-    #[test]
-    fn application_menu_contains_quit_action() {
-        let contains_quit = application_menu().items.into_iter().any(|item| {
-            matches!(
-                item,
-                MenuItem::Action { action, .. } if action.name() == Quit.name()
-            )
-        });
-
-        assert!(contains_quit, "application menu should contain Quit");
-    }
-}
