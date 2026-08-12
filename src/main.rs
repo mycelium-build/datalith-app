@@ -42,9 +42,7 @@ fn main() {
                     None
                 }
             };
-            let first_startup = docs_vault
-                .as_ref()
-                .is_some_and(|outcome| outcome.first_run);
+            let first_startup = docs_vault.as_ref().is_some_and(|outcome| outcome.first_run);
             let (initial_vault, initial_tabs) = match docs_vault {
                 Some(outcome) if outcome.first_run => {
                     let tabs = app::docs::INITIAL_TABS
