@@ -2,7 +2,7 @@
 category: reference
 ---
 
-Open settings from **Navigate → Settings**.
+Open settings from the **Datalith** menu, or press **⌘,**.
 
 # Theme
 

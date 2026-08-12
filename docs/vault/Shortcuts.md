@@ -6,7 +6,7 @@ category: reference
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘N` | New file |
+| `⌘N` | New note |
 | `⌘⇧N` | New folder |
 | `F2` | Rename |
 | `⌘⌫` | Delete |
@@ -23,15 +23,15 @@ category: reference
 | `⌘↩` | Open file in a new tab |
 | `↑` / `↓` | Select file |
 
-# Navigate
+# Navigation
 
 | Shortcut | Action |
 | --- | --- |
 | `⌘P` | Quick switcher |
-| `⌘⇧F` | Search |
 | `⌘0` | Focus sidebar |
 | `⌘[` / `⌘]` | Go back / forward |
 | `⌘↩` | Open link at cursor |
+| `⌘Q` | Quit Datalith |
 
 # Tabs
 
@@ -39,13 +39,23 @@ category: reference
 | --- | --- |
 | `⌘T` | New tab |
 | `⌘W` | Close tab |
-| `⌘1`-`⌘9` | Select tab 1-9 |
+| `⌘1`-`⌘8` | Select tab |
+| `⌘9` | Select last tab |
 | `⌘E` | Toggle edit/view mode |
 
-# Appearance
+# View
 
 | Shortcut | Action |
 | --- | --- |
+| `⌘⇧F` | Search files |
+| `⌘E` | Toggle edit / view |
 | `⌘⇧D` | Toggle between light and dark theme |
+| `⌘,` | Open settings |
+
+# Help
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘/` | Show shortcuts |
 
 For the full set of options, see [[Settings]]. See [[Basics]] if you are new to the app.
