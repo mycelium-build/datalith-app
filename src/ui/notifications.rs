@@ -60,3 +60,10 @@ pub fn theme_fallback(saved: &str, fallback: &str) -> Notification {
     ))
     .autohide(false)
 }
+
+pub fn font_load_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!(
+        "Failed to load the bundled Pixeloid font: {error}"
+    ))
+    .autohide(false)
+}

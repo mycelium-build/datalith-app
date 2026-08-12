@@ -25,11 +25,11 @@ fn main() {
         .with_assets(app::assets::DatalithAssets)
         .run(|cx| {
             gpui_component::init(cx);
-            app::fonts::load_embedded_fonts(cx);
+            let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
             ui::themes::load_embedded_themes(cx);
             ui::settings::SettingsView::init_theme_options(cx);
 
-            let pending_notifications = app::preferences::apply(cx);
+            pending_notifications.extend(app::preferences::apply(cx));
             cx.set_global(app::AppState::default());
             app::actions::register(cx);
             app::keymap::register(cx);
