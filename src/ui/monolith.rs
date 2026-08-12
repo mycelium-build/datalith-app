@@ -10,6 +10,9 @@ use gpui::{
 /// on a 32×32 canvas.
 pub const LOGO_SRC: &str = include_str!("../../assets/datalith.txt");
 
+/// Whitening applied to the primary color for the monolith's two sides.
+/// Values mirror `scripts/app_icon.py` (`RIGHT_SIDE_WHITEN` / `LEFT_SIDE_WHITEN`);
+/// keep both in sync so the app icon and the in-app mark match.
 pub const RIGHT_SIDE_WHITEN: f32 = 0.35;
 pub const LEFT_SIDE_WHITEN: f32 = 0.7;
 

@@ -33,6 +33,9 @@ RC_OUT = ROOT / "assets" / "datalith.rc"
 SIZE = 32
 
 PRIMARY = (0x1E, 0x8D, 0xFF)
+
+# Whitening applied to PRIMARY for the monolith's two sides.
+# Mirrored by src/ui/monolith.rs (RIGHT_SIDE_WHITEN / LEFT_SIDE_WHITEN); keep in sync.
 RIGHT_SIDE_WHITEN = 0.35
 LEFT_SIDE_WHITEN = 0.7
 
