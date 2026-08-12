@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+name: datalith
+arch: ${PACKAGE_ARCH}
+platform: linux
+version: ${PACKAGE_VERSION}
+release: 1
+section: utils
+priority: optional
+maintainer: lmandrelli <luca.mandrelli@icloud.com>
+description: A fast, local-first knowledge workspace.
+vendor: Mycelium Build
+homepage: https://github.com/mycelium-build/datalith
+license: MIT
+
+contents:
+  - src: target/x86_64-unknown-linux-gnu/release/datalith
+    dst: /usr/bin/datalith
+    file_info:
+      mode: 0755
+  - src: packaging/datalith.desktop
+    dst: /usr/share/applications/datalith.desktop
+    file_info:
+      mode: 0644
+  - src: assets/datalith.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/datalith.svg
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/datalith/LICENSE
+    file_info:
+      mode: 0644
+
+overrides:
+  deb:
+    depends: []
+  rpm:
+    depends: []
+  archlinux:
+    depends: []
+
+deb:
+  fields:
+    Uploaders: rom100main <rom100main@proton.me>
+
+rpm:
+  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>
+
+archlinux:
+  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>

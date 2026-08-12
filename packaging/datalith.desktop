@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Datalith
+Comment=A fast, local-first knowledge workspace.
+Exec=datalith
+Icon=datalith
+Terminal=false
+Categories=Office;
