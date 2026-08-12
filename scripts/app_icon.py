@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate every Datalith app-icon format from the pixel-art logo.
 
-Reads `assets/datalith.txt` (a 32×32 grid: `M` border, `1`/`2` sides, `0` top
-side and `I` inscriptions) and writes the app icons for every platform into
-`assets/`:
+Reads `assets/datalith.txt`
+(a 32×32 grid: `M` border, `1`/`2` sides, `0` top side and `I` inscriptions)
+and writes the app icons for every platform into `assets/`:
 
   assets/datalith.svg      32×32 vector source (Linux/SVG, icon source)
   assets/datalith.png      1024×1024 (32× per logo pixel) — Linux / bundles
@@ -12,12 +12,11 @@ side and `I` inscriptions) and writes the app icons for every platform into
   assets/datalith-macos.png  1024×1024 viewable preview of the macOS icon
   assets/datalith.rc       Windows resource file embedding the .ico
 
-Linux and Windows get the bare monolith mark on a transparent background, so
-it floats with no chrome. macOS gets the classic Big-Sur layout: the monolith
-centred on a solid-blue squircle with continuous corners, with the `M` border
-drawn white so it reads against the blue. Everything is
-produced with the standard library (zlib/struct) — the logo is pixel art, so
-no SVG rasterizer is needed.
+Linux and Windows get the bare monolith mark on a transparent background,
+so it floats with no chrome.
+macOS gets the classic Big-Sur layout:
+the monolith centred on a solid-blue squircle with continuous corners,
+with the `M` border drawn white so it reads against the blue.
 
 Usage:
   uv run scripts/app_icon.py
@@ -47,11 +46,11 @@ RIGHT_SIDE_WHITEN = 0.35
 LEFT_SIDE_WHITEN = 0.7
 
 # macOS (Big Sur) icon layout.
-# The background is Apple's true app-icon shape: a continuous-corner rounded
-# rectangle (UIBezierPath(roundedRect:cornerRadius:)), not a superellipse. The
-# corner is three cubic Bézier segments reverse-engineered from that call, with
-# corner radius CORNER_RADIUS_FRACTION of the icon and the cut point CORNER_CUT
-# along each edge (Liam Rosenfeld, "My Quest for the Apple Icon Shape").
+# The background is Apple's true app-icon shape:
+# a continuous-corner rounded rectangle (UIBezierPath(roundedRect:cornerRadius:)), not a superellipse.
+# The corner is three cubic Bézier segments reverse-engineered from that call,
+# with corner radius CORNER_RADIUS_FRACTION of the icon and the cut point CORNER_CUT along each edge
+# (Liam Rosenfeld, "My Quest for the Apple Icon Shape").
 # The mark is scaled to MARK_FRACTION of the icon and centred.
 MACOS_BG = (0x23, 0x8C, 0xFF)
 MACOS_MARK_FRACTION = 0.80
@@ -294,9 +293,9 @@ def macos_grid(size: int) -> list[list[tuple[int, int, int, int]]]:
     radius = CORNER_RADIUS_FRACTION * size
     cut = CORNER_CUT * radius
 
-    # Left boundary tabulated at eighth-pixel vertical resolution for the top
-    # half; the corner curve is steep near the top edge, so a single row-centre
-    # sample under-renders the edge.
+    # Left boundary tabulated at eighth-pixel vertical resolution for the top half;
+    # the corner curve is steep near the top edge,
+    # so a single row-centre sample under-renders the edge.
     samples = 8
     table_len = size * samples // 2 + 1
     left_tab = [0.0] * table_len

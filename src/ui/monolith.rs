@@ -6,8 +6,8 @@ use gpui::{
 };
 
 /// The monolith mark source art, in the tier color encoding
-/// (`M` border, `1` slightly whiter, `2` closest to white, `I` inscription,
-/// `0` top side) on a 32×32 canvas.
+/// (`M` border, `1` slightly whiter, `2` closest to white, `I` inscription, `0` top side)
+/// on a 32×32 canvas.
 pub const LOGO_SRC: &str = include_str!("../../assets/datalith.txt");
 
 /// Whitening applied to the primary color for the monolith's two sides.
