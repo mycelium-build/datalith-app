@@ -17,14 +17,16 @@ use gpui_component::scroll::ScrollableElement;
 use gpui_component::table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow};
 use percent_encoding::percent_decode_str;
 
+use crate::app::fonts::PIXELOID_FONT;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{ListItem, MarkdownBlock, MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
+use crate::vault::path::display_name;
 
 use constants::{
     MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING, MD_CODE_BLOCK_RADIUS,
     MD_CODE_FONT_SCALE, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_LIST_INDENT,
-    MD_PARAGRAPH_MARGIN,
+    MD_PARAGRAPH_MARGIN, MD_TITLE_SIZE,
 };
 use frontmatter::render_frontmatter;
 
@@ -98,13 +100,14 @@ impl MarkdownViewer {
                 .items_center()
                 .justify_center()
                 .text_color(cx.theme().muted_foreground)
-                .child("Start writing markdown...")
+                .child("Empty markdown")
                 .into_any_element();
         }
 
         let document = parse_markdown(&content);
         let mut elements = Vec::new();
         let mut element_id = 0usize;
+        elements.push(self.render_title());
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
@@ -183,6 +186,26 @@ impl MarkdownViewer {
         }
     }
 
+    fn render_title(&self) -> AnyElement {
+        let name = self
+            .file_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map_or_else(|| display_name(&self.file_path).to_owned(), str::to_owned);
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .flex_wrap()
+            .font_family(PIXELOID_FONT)
+            .font_weight(FontWeight::BOLD)
+            .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
+            .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
+            .mb(px(MD_HEADING_MARGIN * MD_TITLE_SIZE))
+            .child(name)
+            .into_any_element()
+    }
+
     fn render_heading(
         &self,
         level: u32,
@@ -203,8 +226,9 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
+            .font_family(PIXELOID_FONT)
             .text_size(px(BASE_FONT_SIZE * size))
-            .font_weight(FontWeight::BOLD)
+            //.font_weight(FontWeight::BOLD)
             .mt(px(MD_HEADING_MARGIN * size))
             .mb(px(MD_HEADING_MARGIN * size))
             .line_height(px(BASE_FONT_SIZE * size * MD_LINE_HEIGHT))

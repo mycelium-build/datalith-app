@@ -5,6 +5,7 @@ pub fn load_embedded_themes(cx: &mut gpui::App) {
 
     // From https://github.com/longbridge/gpui-component/tree/main/themes
 
+    let _ = registry.load_themes_from_str(include_str!("datalith.json"));
     let _ = registry.load_themes_from_str(include_str!("adventure.json"));
     let _ = registry.load_themes_from_str(include_str!("alduin.json"));
     let _ = registry.load_themes_from_str(include_str!("asciinema.json"));

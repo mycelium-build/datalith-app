@@ -2,14 +2,22 @@ use std::path::PathBuf;
 
 use gpui::{App, AppContext, BorrowAppContext, WindowOptions};
 use gpui_component::Root;
+use gpui_component::notification::Notification;
 
 use crate::app::AppState;
 use crate::ui::DatalithView;
 
-pub fn open_initial(cx: &App, initial_vault: Option<PathBuf>, initial_tabs: Vec<PathBuf>) {
+pub fn open_initial(
+    cx: &App,
+    first_startup: bool,
+    initial_vault: Option<PathBuf>,
+    initial_tabs: Vec<PathBuf>,
+    pending_notifications: Vec<Notification>,
+) {
     cx.spawn(async move |cx| {
         if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
-            let view = cx.new(|cx| DatalithView::new(window, cx));
+            let view =
+                cx.new(|cx| DatalithView::new(first_startup, pending_notifications, window, cx));
             cx.update_global(|state: &mut AppState, _| {
                 state.view = Some(view.clone());
             });

@@ -49,3 +49,19 @@ pub fn rename_failed() -> Notification {
 pub fn settings_save_failed(action: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to save {action}: {error}")).autohide(false)
 }
+
+pub fn create_file_failed(base_name: &str, error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to create {base_name}: {error}")).autohide(false)
+}
+
+pub fn theme_fallback(saved: &str, fallback: &str) -> Notification {
+    Notification::warning(format!(
+        "Saved theme \"{saved}\" is not available, using \"{fallback}\""
+    ))
+    .autohide(false)
+}
+
+pub fn font_load_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to load the bundled Pixeloid font: {error}"))
+        .autohide(false)
+}

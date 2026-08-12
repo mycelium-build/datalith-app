@@ -146,12 +146,14 @@ impl DatalithView {
     ) -> ListItem {
         let is_renaming = this.rename_target.as_ref().is_some_and(|p| *p == path);
 
-        let icon = if !is_folder {
-            IconName::File
-        } else if is_expanded {
-            IconName::FolderOpen
+        let icon = if is_folder {
+            Icon::new(if is_expanded {
+                IconName::FolderOpen
+            } else {
+                IconName::Folder
+            })
         } else {
-            IconName::Folder
+            Icon::new(this.registry.config_for(path).icon)
         };
 
         let mut list_item = ListItem::new(ix).selected(selected).pl(px(depth

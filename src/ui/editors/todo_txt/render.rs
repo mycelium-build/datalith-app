@@ -2,7 +2,7 @@ use std::ops::Div;
 
 use gpui::{
     AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Render, SharedString, Styled, Window, div, px, relative,
+    ParentElement, Render, Styled, Window, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::input::Input;
@@ -11,7 +11,7 @@ use gpui_component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list
 
 use conv::ConvAsUtil;
 
-use crate::app::assets::{ARROW_DOWN_AZ_ICON, ARROW_UP_AZ_ICON, FUNNEL_ICON};
+use crate::ui::icons::DatalithIcon;
 
 use super::TodoTxtState;
 use super::constants::{TODO_HEADER_HEIGHT, TODO_INDENT_PX, TODO_NEW_ROW_HEIGHT, TODO_ROW_HEIGHT};
@@ -99,13 +99,9 @@ impl TodoTxtState {
         let sort_select = Select::new(&self.sort_select);
 
         let sort_icon = if self.workspace.sort_descending() {
-            Icon::default()
-                .path(SharedString::from(ARROW_DOWN_AZ_ICON))
-                .size_4()
+            Icon::new(DatalithIcon::ArrowDownAz).size_4()
         } else {
-            Icon::default()
-                .path(SharedString::from(ARROW_UP_AZ_ICON))
-                .size_4()
+            Icon::new(DatalithIcon::ArrowUpAz).size_4()
         };
 
         h_flex()
@@ -150,8 +146,7 @@ impl TodoTxtState {
                     .gap_0p5()
                     .flex_shrink_0()
                     .child(
-                        Icon::default()
-                            .path(SharedString::from(FUNNEL_ICON))
+                        Icon::new(DatalithIcon::Funnel)
                             .size_4()
                             .text_color(cx.theme().muted_foreground),
                     )

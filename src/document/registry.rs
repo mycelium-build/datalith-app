@@ -11,6 +11,7 @@ use crate::ui::editors::graph::GraphEditor;
 use crate::ui::editors::markdown::MarkdownEditor;
 use crate::ui::editors::plain_text::{PlainTextEditor, reload_text};
 use crate::ui::editors::todo_txt::{TodoTxtEditor, reload_todo_txt};
+use crate::ui::icons::DatalithIcon;
 use crate::ui::viewers::ViewerKind;
 use crate::ui::viewers::graph::GraphViewer;
 use crate::ui::viewers::image::ImageViewer;
@@ -19,6 +20,7 @@ use crate::vault::VaultCatalog;
 
 pub struct FileTypeConfig {
     pub(crate) capabilities: FileTypeCapabilities,
+    pub(crate) icon: DatalithIcon,
     pub(crate) editor_factory: Option<EditorFactory>,
     pub(crate) viewer_factory: Option<ViewerFactory>,
     pub(crate) reload_adapter: Option<ReloadAdapter>,
@@ -59,6 +61,7 @@ impl FileRegistry {
                     wiki_links: false,
                     yaml_frontmatter: false,
                 },
+                icon: DatalithIcon::File,
                 editor_factory: Some(|path, window, cx| {
                     EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
                         path, window, cx,
@@ -128,6 +131,7 @@ pub fn default_registry() -> FileRegistry {
                 wiki_links: false,
                 yaml_frontmatter: false,
             },
+            icon: DatalithIcon::Graph,
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Graph(GraphEditor::new(GraphEditor::new_state(path, window, cx)))
             }),
@@ -153,6 +157,7 @@ pub fn default_registry() -> FileRegistry {
                 wiki_links: true,
                 yaml_frontmatter: true,
             },
+            icon: DatalithIcon::Note,
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
                     path, window, cx,
@@ -181,6 +186,7 @@ pub fn default_registry() -> FileRegistry {
                     wiki_links: false,
                     yaml_frontmatter: false,
                 },
+                icon: DatalithIcon::Image,
                 editor_factory: None,
                 viewer_factory: Some(|path, _editor, _dependencies, _cx| {
                     Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
@@ -200,6 +206,7 @@ pub fn default_registry() -> FileRegistry {
                 wiki_links: false,
                 yaml_frontmatter: false,
             },
+            icon: DatalithIcon::Todo,
             editor_factory: Some(|path, window, cx| {
                 EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(
                     path, window, cx,

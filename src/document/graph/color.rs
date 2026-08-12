@@ -71,9 +71,6 @@ fn color_parts(args: &str) -> Vec<String> {
 
 fn parse_rgb(args: &str) -> Result<GraphColor> {
     let parts = color_parts(args);
-    if !(3..=4).contains(&parts.len()) {
-        bail!("rgb requires three channels and optional alpha");
-    }
     let channel = |part: &str| -> Result<f32> {
         if let Some(percent) = part.strip_suffix('%') {
             Ok(percent.parse::<f32>()? / 100.0)
@@ -81,24 +78,22 @@ fn parse_rgb(args: &str) -> Result<GraphColor> {
             Ok(part.parse::<f32>()? / 255.0)
         }
     };
-    let [red, green, blue] = parts.as_slice() else {
-        bail!("rgb requires three channels");
+    let (red, green, blue, alpha) = match parts.as_slice() {
+        [red, green, blue] => (red, green, blue, 1.0_f32),
+        [red, green, blue, alpha_value] => (red, green, blue, alpha(alpha_value)?),
+        _ => bail!("rgb requires three channels and optional alpha"),
     };
-    make_color(
-        channel(red)?,
-        channel(green)?,
-        channel(blue)?,
-        parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
-    )
+    make_color(channel(red)?, channel(green)?, channel(blue)?, alpha)
 }
 
 fn parse_hsl(args: &str) -> Result<GraphColor> {
     let parts = color_parts(args);
-    if !(3..=4).contains(&parts.len()) {
-        bail!("hsl requires hue, saturation, lightness, and optional alpha");
-    }
-    let [hue, saturation, lightness] = parts.as_slice() else {
-        bail!("hsl requires hue, saturation, and lightness channels");
+    let (hue, saturation, lightness, alpha) = match parts.as_slice() {
+        [hue, saturation, lightness] => (hue, saturation, lightness, 1.0_f32),
+        [hue, saturation, lightness, alpha_value] => {
+            (hue, saturation, lightness, alpha(alpha_value)?)
+        }
+        _ => bail!("hsl requires hue, saturation, lightness, and optional alpha"),
     };
     let h = hue
         .trim_end_matches("deg")
@@ -134,7 +129,7 @@ fn parse_hsl(args: &str) -> Result<GraphColor> {
         hue_fn(h + 1.0 / 3.0),
         hue_fn(h),
         hue_fn(h - 1.0 / 3.0),
-        parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
+        alpha,
     )
 }
 
@@ -142,11 +137,10 @@ fn parse_hsl(args: &str) -> Result<GraphColor> {
 // Published OKLab conversion coefficients; nested mul_add forms would obscure the reference.
 fn parse_oklch(args: &str) -> Result<GraphColor> {
     let parts = color_parts(args);
-    if !(3..=4).contains(&parts.len()) {
-        bail!("oklch requires lightness, chroma, hue, and optional alpha");
-    }
-    let [lightness, chroma, hue] = parts.as_slice() else {
-        bail!("oklch requires lightness, chroma, and hue channels");
+    let (lightness, chroma, hue, alpha) = match parts.as_slice() {
+        [lightness, chroma, hue] => (lightness, chroma, hue, 1.0_f32),
+        [lightness, chroma, hue, alpha_value] => (lightness, chroma, hue, alpha(alpha_value)?),
+        _ => bail!("oklch requires lightness, chroma, hue, and optional alpha"),
     };
     let light = if lightness.ends_with('%') {
         percentage(lightness)?
@@ -184,7 +178,7 @@ fn parse_oklch(args: &str) -> Result<GraphColor> {
         gamma(red_linear).clamp(0.0, 1.0),
         gamma(green_linear).clamp(0.0, 1.0),
         gamma(blue_linear).clamp(0.0, 1.0),
-        parts.get(3).map(|v| alpha(v)).transpose()?.unwrap_or(1.0),
+        alpha,
     )
 }
 
@@ -228,5 +222,15 @@ mod tests {
         let color = parse_color("#00000000").unwrap();
         assert!((color.alpha - 0.0).abs() <= 1e-6);
         assert!(parse_color("rgb(300 0 0)").is_err());
+    }
+
+    #[test]
+    fn functional_colors_with_alpha() {
+        let oklch = parse_color("oklch(60% 0.05 250 / 40%)").unwrap();
+        assert!((oklch.alpha - 0.4).abs() <= 1e-6);
+        let rgb = parse_color("rgb(255 0 0 / 50%)").unwrap();
+        assert!((rgb.alpha - 0.5).abs() <= 1e-6);
+        let hsl = parse_color("hsl(120 100% 50% / 0.25)").unwrap();
+        assert!((hsl.alpha - 0.25).abs() <= 1e-6);
     }
 }

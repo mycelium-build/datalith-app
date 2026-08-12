@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod assets;
 pub mod docs;
+pub mod fonts;
 pub mod keymap;
 pub mod menus;
 pub mod preferences;

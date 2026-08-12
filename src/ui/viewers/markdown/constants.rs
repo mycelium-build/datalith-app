@@ -2,6 +2,7 @@ pub(super) const MD_LINE_HEIGHT: f32 = 1.2;
 
 pub(super) const MD_LIST_INDENT: &str = "  ";
 
+pub(super) const MD_TITLE_SIZE: f32 = 2.75;
 pub(super) const MD_HEADING_SIZES: [f32; 6] = [2.5, 2.25, 2.0, 1.75, 1.5, 1.25];
 pub(super) const MD_HEADING_MARGIN: f32 = 8.0;
 

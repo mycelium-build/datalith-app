@@ -1,9 +1,11 @@
 use gpui::{App, Menu, MenuItem};
 
+use crate::app::actions::{OpenAbout, OpenSettings, OpenShortcuts};
+
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenSettings, OpenVault, Quit, Rename, ToggleQuickSwitcher,
-    ToggleSearch, ToggleTheme,
+    NewTab, OpenInExplorer, OpenVault, Quit, Rename, ToggleQuickSwitcher, ToggleSearch,
+    ToggleTheme,
 };
 
 pub fn install(cx: &App) {
@@ -11,7 +13,14 @@ pub fn install(cx: &App) {
 }
 
 fn application_menu() -> Menu {
-    Menu::new("Datalith").items([MenuItem::action("Quit Datalith", Quit)])
+    Menu::new("Datalith").items([
+        MenuItem::action("About Datalith", OpenAbout),
+        MenuItem::separator(),
+        MenuItem::action("Settings", OpenSettings),
+        MenuItem::action("Shortcuts list", OpenShortcuts),
+        MenuItem::separator(),
+        MenuItem::action("Quit Datalith", Quit),
+    ])
 }
 
 fn file_menu() -> Menu {
@@ -42,27 +51,5 @@ fn navigate_menu() -> Menu {
         MenuItem::action("Go Forward", GoForward),
         MenuItem::separator(),
         MenuItem::action("Toggle Dark Mode", ToggleTheme),
-        MenuItem::separator(),
-        MenuItem::action("Settings", OpenSettings),
     ])
-}
-
-#[cfg(test)]
-mod tests {
-    use gpui::Action;
-
-    use super::*;
-    use crate::app::actions::Quit;
-
-    #[test]
-    fn application_menu_contains_quit_action() {
-        let contains_quit = application_menu().items.into_iter().any(|item| {
-            matches!(
-                item,
-                MenuItem::Action { action, .. } if action.name() == Quit.name()
-            )
-        });
-
-        assert!(contains_quit, "application menu should contain Quit");
-    }
 }

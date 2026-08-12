@@ -2,16 +2,14 @@
 category: guide
 ---
 
-# Basics
-
-## Open or create a Vault
+# Open or create a Vault
 
 A **Vault** is a directory whose files are managed together. Datalith watches it, builds a catalog, and derives search results, wiki-link connections, and graph views.
 
 - **Navigate → Open Vault** opens a folder from disk. Your recent Vaults appear in the vault selector at the bottom of the sidebar.
 - The first time Datalith runs, it opens the **Datalith Docs** Vault you are reading now.
 
-## Create a new note
+# Create a new note
 
 Press **⌘N** to create a new file. It is created in the current Vault and immediately renamed, type a name and press **Enter**. The extension decides the file type:
 
@@ -21,7 +19,7 @@ Press **⌘N** to create a new file. It is created in the current Vault and imme
 
 You can also right-click in the sidebar and choose **New File** or **New Folder**.
 
-## Write some content
+# Write some content
 
 If you created a Markdown file, you are in **edit mode** by default. Write normally: headings, lists, bold, code blocks. The [[formats/Markdown]] page lists everything supported.
 
@@ -35,24 +33,24 @@ category: ideas
 
 See [[formats/Properties]] for the details.
 
-## Link your notes
+# Link your notes
 
 Wiki links are what make a Vault feel connected. In a Markdown file, write `[[My Other Note]]` to create a link. Datalith resolves it automatically. Use `[[My Other Note|display text]]` to set a custom label.
 
 Links between Markdown files become the edges of a [[formats/Graph|graph]].
 
-## Navigate
+# Navigate
 
 - **⌘P** opens the quick switcher to jump between open files by name.
 - **⌘⇧F** opens the search palette to find files by name or content.
 
-## Edit or view
+# Edit or view
 
 The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **⌘E** to switch.
 
 Some files only have a viewer or only an editor. See [[FileTypes]].
 
-## What else
+# What else
 
 - The **OS menu bar** has File and Navigate menus with all available actions.
 - **⌘⇧D** toggles between light and dark mode. See [[Settings]].

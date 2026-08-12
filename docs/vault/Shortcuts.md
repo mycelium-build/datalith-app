@@ -2,52 +2,60 @@
 category: reference
 ---
 
-# Shortcuts
-
-## Files
+# Files
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘N` | New file |
+| `⌘N` | New note |
 | `⌘⇧N` | New folder |
 | `F2` | Rename |
 | `⌘⌫` | Delete |
 | `⌘D` | Duplicate |
-| `⌘⇧E` | Open in Explorer / Finder |
+| `⌘⇧E` | Open in your explorer |
 | `⌘L` | Copy path |
 
-## Sidebar
+# Sidebar
 
 | Shortcut | Action |
 | --- | --- |
 | `⌘0` | Focus sidebar |
 | `↩` | Expand/collapse folder, or open file |
 | `⌘↩` | Open file in a new tab |
-| `↑` / `↓` | Move through the file tree |
+| `↑` / `↓` | Select file |
 
-## Navigate
+# Navigation
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘P` | Quick switcher (open files) |
-| `⌘⇧F` | Search files |
+| `⌘P` | Quick switcher |
 | `⌘0` | Focus sidebar |
 | `⌘[` / `⌘]` | Go back / forward |
-| `⌘↩` | Open link under cursor |
+| `⌘↩` | Open link at cursor |
+| `⌘Q` | Quit Datalith |
 
-## Tabs
+# Tabs
 
 | Shortcut | Action |
 | --- | --- |
 | `⌘T` | New tab |
 | `⌘W` | Close tab |
-| `⌘1`-`⌘9` | Select tab 1-9 |
-| `⌘E` | Toggle edit / view mode |
+| `⌘1`-`⌘8` | Select tab |
+| `⌘9` | Select last tab |
+| `⌘E` | Toggle edit/view mode |
 
-## Appearance
+# View
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘⇧D` | Toggle light / dark theme |
+| `⌘⇧F` | Search files |
+| `⌘E` | Toggle edit / view |
+| `⌘⇧D` | Toggle between light and dark theme |
+| `⌘,` | Open settings |
+
+# Help
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘/` | Show shortcuts |
 
 For the full set of options, see [[Settings]]. See [[Basics]] if you are new to the app.

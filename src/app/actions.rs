@@ -37,6 +37,8 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
+        OpenShortcuts,
+        OpenAbout,
         SelectTab1,
         SelectTab2,
         SelectTab3,
@@ -45,7 +47,7 @@ actions!(
         SelectTab6,
         SelectTab7,
         SelectTab8,
-        SelectTab9,
+        SelectLastTab,
         ToggleEditorMode,
         GoBack,
         GoForward,
@@ -87,8 +89,10 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_6);
     cx.on_action(handle_select_tab_7);
     cx.on_action(handle_select_tab_8);
-    cx.on_action(handle_select_tab_9);
+    cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
+    cx.on_action(open_shortcuts);
+    cx.on_action(open_about);
     cx.on_action(toggle_editor_mode);
     cx.on_action(go_back);
     cx.on_action(go_forward);
@@ -361,6 +365,20 @@ pub fn open_settings(_: &OpenSettings, cx: &mut App) {
     });
 }
 
+pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.settings.open_shortcuts();
+        cx.notify();
+    });
+}
+
+pub fn open_about(_: &OpenAbout, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.settings.open_about();
+        cx.notify();
+    });
+}
+
 fn select_tab_index(index: usize, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.tabs.select(index) {
@@ -391,7 +409,7 @@ define_tab_handlers!(
     handle_select_tab_8 => SelectTab8 => 7,
 );
 
-pub fn handle_select_tab_9(_: &SelectTab9, cx: &mut App) {
+pub fn handle_select_last_tab(_: &SelectLastTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.tabs.select_last() {
             view.focus_editor_requested = true;

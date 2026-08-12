@@ -6,7 +6,7 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
-    setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    setting::{SelectIndex, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     slider::{Slider, SliderState},
     v_flex,
 };
@@ -14,6 +14,7 @@ use gpui_component::{
 use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::app::settings::{self, ThemeKind};
+use crate::ui::monolith::monolith_mark;
 
 use super::{DatalithView, notifications};
 
@@ -31,7 +32,47 @@ impl Global for ThemeOptions {}
 pub struct SettingsView {
     pub(crate) open: bool,
     focus_handle: FocusHandle,
+    page_index: usize,
     pub(crate) font_size_slider_state: Entity<SliderState>,
+}
+
+/// The settings pages, in render order. Both the page builders and the
+/// shortcuts page index derive from this list, so they cannot drift.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsPage {
+    Appearance,
+    Shortcuts,
+    About,
+}
+
+const SETTINGS_PAGES: [SettingsPage; 3] = [
+    SettingsPage::Appearance,
+    SettingsPage::Shortcuts,
+    SettingsPage::About,
+];
+
+impl SettingsPage {
+    const fn title(self) -> &'static str {
+        match self {
+            Self::Appearance => "Appearance",
+            Self::Shortcuts => "Shortcuts",
+            Self::About => "About",
+        }
+    }
+}
+
+fn shortcuts_page_index() -> usize {
+    SETTINGS_PAGES
+        .iter()
+        .position(|page| *page == SettingsPage::Shortcuts)
+        .unwrap_or(0)
+}
+
+fn about_page_index() -> usize {
+    SETTINGS_PAGES
+        .iter()
+        .position(|page| *page == SettingsPage::About)
+        .unwrap_or(0)
 }
 
 impl SettingsView {
@@ -47,12 +88,24 @@ impl SettingsView {
         Self {
             open: false,
             focus_handle: cx.focus_handle(),
+            page_index: 0,
             font_size_slider_state,
         }
     }
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
+        self.page_index = 0;
+    }
+
+    pub(crate) fn open_shortcuts(&mut self) {
+        self.open = true;
+        self.page_index = shortcuts_page_index();
+    }
+
+    pub(crate) fn open_about(&mut self) {
+        self.open = true;
+        self.page_index = about_page_index();
     }
 
     pub(crate) const fn close(&mut self) {
@@ -172,16 +225,37 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(Settings::new("app-settings").with_size(Size::Small).pages(
-                                vec![SettingPage::new("Appearance").default_open(true).groups(
-                                    vec![
-                                        Self::theme_group(cx),
-                                        Self::display_group(&self.font_size_slider_state),
-                                    ],
-                                )],
-                            )),
+                            .child(
+                                Settings::new("app-settings")
+                                    .with_size(Size::Small)
+                                    .default_selected_index(SelectIndex {
+                                        page_ix: self.page_index,
+                                        group_ix: None,
+                                    })
+                                    .pages(self.settings_pages(cx)),
+                            ),
                     ),
             )
+    }
+
+    fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+        SETTINGS_PAGES
+            .iter()
+            .map(|page| match page {
+                SettingsPage::Appearance => SettingPage::new(page.title())
+                    .default_open(true)
+                    .groups(vec![
+                        Self::theme_group(cx),
+                        Self::display_group(&self.font_size_slider_state),
+                    ]),
+                SettingsPage::Shortcuts => {
+                    SettingPage::new(page.title()).groups(Self::shortcuts_groups())
+                }
+                SettingsPage::About => {
+                    SettingPage::new(page.title()).groups(vec![Self::about_group()])
+                }
+            })
+            .collect()
     }
 
     fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
@@ -268,6 +342,128 @@ impl SettingsView {
                         .child(label)
                         .into_any_element()
                 }
+            })])
+    }
+
+    fn shortcuts_groups() -> Vec<SettingGroup> {
+        struct Run {
+            category: SharedString,
+            description: SharedString,
+            first_keys: SharedString,
+            last_keys: SharedString,
+        }
+
+        let descriptions = crate::app::keymap::shortcut_descriptions();
+
+        // Merge consecutive shortcuts that share a category and description into a range
+        let mut runs: Vec<Run> = Vec::new();
+        for (category, keys, description) in descriptions {
+            let extends = runs.last().is_some_and(|run| {
+                run.category.as_str() == category && run.description.as_str() == description
+            });
+            if extends && let Some(run) = runs.last_mut() {
+                run.last_keys = keys.into();
+            } else {
+                runs.push(Run {
+                    category: category.into(),
+                    description: description.into(),
+                    first_keys: keys.into(),
+                    last_keys: keys.into(),
+                });
+            }
+        }
+
+        let merged: Vec<(SharedString, SharedString, SharedString)> = runs
+            .into_iter()
+            .map(|run| {
+                let keys = if run.first_keys == run.last_keys {
+                    run.first_keys
+                } else {
+                    format!("{} … {}", run.first_keys, run.last_keys).into()
+                };
+                (run.category, keys, run.description)
+            })
+            .collect();
+
+        let mut groups: Vec<(SharedString, Vec<(SharedString, SharedString)>)> = Vec::new();
+        for (category, keys, description) in merged {
+            match groups.last_mut() {
+                Some((cat, rows)) if cat.as_str() == category.as_str() => {
+                    rows.push((keys, description));
+                }
+                _ => groups.push((category, vec![(keys, description)])),
+            }
+        }
+
+        groups
+            .into_iter()
+            .map(|(category, rows)| {
+                SettingGroup::new()
+                    .title(category)
+                    .items(vec![SettingItem::render(move |_options, _window, cx| {
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .children(rows.iter().map(|(keys, description)| {
+                                h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .gap_4()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(description.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .px_2()
+                                            .py_0p5()
+                                            .rounded_sm()
+                                            .bg(cx.theme().muted)
+                                            .text_sm()
+                                            .child(keys.clone()),
+                                    )
+                                    .into_any_element()
+                            }))
+                            .into_any_element()
+                    })])
+            })
+            .collect()
+    }
+
+    fn about_group() -> SettingGroup {
+        let docs_vault = crate::app::docs::docs_vault_path()
+            .to_string_lossy()
+            .to_string();
+        SettingGroup::new()
+            .title("Datalith")
+            .items(vec![SettingItem::render(move |_options, _window, cx| {
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(monolith_mark(3.0, cx.theme().primary))
+                    .child(div().font_weight(gpui::FontWeight::BOLD).child("Datalith"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("A fast, local-first knowledge workspace."),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Docs Vault: {docs_vault}")),
+                    )
+                    .into_any_element()
             })])
     }
 }

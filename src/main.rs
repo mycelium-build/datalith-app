@@ -25,10 +25,11 @@ fn main() {
         .with_assets(app::assets::DatalithAssets)
         .run(|cx| {
             gpui_component::init(cx);
+            let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
             ui::themes::load_embedded_themes(cx);
             ui::settings::SettingsView::init_theme_options(cx);
 
-            app::preferences::apply(cx);
+            pending_notifications.extend(app::preferences::apply(cx));
             cx.set_global(app::AppState::default());
             app::actions::register(cx);
             app::keymap::register(cx);
@@ -41,6 +42,7 @@ fn main() {
                     None
                 }
             };
+            let first_startup = docs_vault.as_ref().is_some_and(|outcome| outcome.first_run);
             let (initial_vault, initial_tabs) = match docs_vault {
                 Some(outcome) if outcome.first_run => {
                     let tabs = app::docs::INITIAL_TABS
@@ -52,6 +54,12 @@ fn main() {
                 _ => (app::settings::snapshot().last_vault, Vec::new()),
             };
 
-            ui::window::open_initial(cx, initial_vault, initial_tabs);
+            ui::window::open_initial(
+                cx,
+                first_startup,
+                initial_vault,
+                initial_tabs,
+                pending_notifications,
+            );
         });
 }

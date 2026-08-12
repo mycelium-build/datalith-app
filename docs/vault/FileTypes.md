@@ -2,15 +2,13 @@
 category: reference
 ---
 
-# File Types
-
 Every file Datalith can open has a registered **File Type**. Each type declares which capabilities its files support:
 
 | File Type | Editor | Viewer | Text search | Wiki Links | Properties |
 | --- | --- | --- | --- | --- | --- |
-| `.md`: Note | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `.graph`: Graph Definition | ✓ | ✓ | — | — | — |
-| `.todotxt`: Todo | ✓ | — | ✓ | — | — |
+| `.md` Note | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `.graph` Graph | ✓ | ✓ | — | — | — |
+| `.todotxt` To-do | ✓ | — | ✓ | — | — |
 | Images | — | ✓ | — | — | — |
 
 - **Editor**: files open in a dedicated editor, not just a viewer.
