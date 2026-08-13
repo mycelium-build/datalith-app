@@ -58,13 +58,13 @@ FORMATS = {
     ".rpm": {
         "distro": "fedora",
         "image": "docker.io/library/fedora:44",
-        "install": "sudo dnf install -y /tmp/datalith.rpm",
+        "install": "sudo dnf reinstall -y /tmp/datalith.rpm || sudo dnf install -y /tmp/datalith.rpm",
         "xvfb": "sudo dnf install -y xorg-x11-server-Xvfb",
     },
     ".pkg.tar.zst": {
         "distro": "arch",
         "image": "docker.io/library/archlinux:latest",
-        "install": "sudo pacman -U --noconfirm /tmp/datalith.pkg.tar.zst",
+        "install": "sudo pacman -R --noconfirm datalith 2>/dev/null; sudo pacman -U --noconfirm /tmp/datalith.pkg.tar.zst",
         "xvfb": "sudo pacman -S --noconfirm xorg-server-xvfb",
     },
 }
@@ -236,14 +236,15 @@ def format_for(pkg: pathlib.Path) -> str:
 def smoke_test(pkg: pathlib.Path, cleanup: bool) -> bool:
     if pkg.suffix == ".AppImage":
         return smoke_test_appimage(pkg, cleanup)
-    spec = FORMATS[format_for(pkg)]
+    fmt = format_for(pkg)
+    spec = FORMATS[fmt]
     distro = spec["distro"]
     container = f"datalith-smoke-{distro}"
     print(f"\n=== [{distro}] {pkg.name} ===")
 
     ensure_container(container, spec["image"])
     c = distrobox_cmd
-    remote = f"/tmp/datalith{pkg.suffix}"
+    remote = f"/tmp/datalith{fmt}"
 
     run(c(container, ["sudo", "cp", str(pkg), remote]))
 
@@ -267,6 +268,20 @@ def smoke_test(pkg: pathlib.Path, cleanup: bool) -> bool:
         for line in result.stdout.splitlines():
             if "not found" in line:
                 print("    " + line, file=sys.stderr)
+        if cleanup:
+            run(["distrobox", "rm", "--force", "--yes", container], check=False)
+        return False
+
+    print(f"  checking desktop file and icon on {distro}...")
+    result = run(
+        c(container, ["bash", "-c",
+            "test -f /usr/share/applications/datalith.desktop && "
+            "grep -q '^StartupWMClass=datalith$' /usr/share/applications/datalith.desktop && "
+            "find /usr/share/icons/hicolor -name 'datalith.*' | grep -q ."]),
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"  FAIL: desktop file or icon missing on {distro}", file=sys.stderr)
         if cleanup:
             run(["distrobox", "rm", "--force", "--yes", container], check=False)
         return False

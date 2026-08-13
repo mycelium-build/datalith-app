@@ -4,5 +4,6 @@ Name=Datalith
 Comment=A fast, local-first knowledge workspace.
 Exec=datalith
 Icon=datalith
+StartupWMClass=datalith
 Terminal=false
 Categories=Office;
