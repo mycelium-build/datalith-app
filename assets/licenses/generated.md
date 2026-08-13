@@ -11,27 +11,25 @@ is produced by `scripts/licenses/generate.sh`; do not edit it by hand.
 The complete scope map, including the GPL distribution boundary and
 Corresponding Source, is in `LICENSING.md`.
 
-## Review notes
+## Bundled theme review
 
-The following bundled themes have licensing that is permissive but unusual or
-not fully expressible as a standard SPDX identifier. They are retained for now
-and flagged for focused legal review before the first public release:
+Five themes were removed after review against their upstream licenses, and two
+were retained with corrected provenance:
 
-- **Adventure, Fahrenheit, Harper, Kibble** (`iTerm2-Color-Schemes`): the
-  collection repository is MIT, but upstream notes that each individual scheme
-  belongs to its original author, whose separate license is not recorded in the
-  collection.
-- **Gruvbox**: no `LICENSE` file in the upstream repository; the README declares
-  the license as "MIT/X11".
-- **Molokai**: the `molokai.vim` source is MIT, but the palette is derived from
-  the Monokai theme (copyright Wimer Hazenberg), whose own license is
-  ambiguous.
-- **Twilight**: distributed under a custom permissive grant from the TextMate
-  themes bundle (no standard SPDX identifier).
-
-If a review finds any of these unsuitable for redistribution, remove the theme
-from `src/ui/themes/`, its `include_str!` registration, and its
-`assets/licences.toml` entry in the same change.
+- **Removed — Adventure, Fahrenheit, Harper, Kibble** (`iTerm2-Color-Schemes`):
+  the collection's MIT license explicitly covers only the collection itself and
+  notes that each individual scheme belongs to its original author, whose
+  license is not recorded in the collection. No chain of title could be
+  established, so the themes were removed.
+- **Removed — Molokai**: the MIT license on `molokai.vim` covers the Vim source
+  only; the Monokai palette (copyright Wimer Hazenberg) that the theme's colors
+  derive from has no license.
+- **Retained — Gruvbox**: no standalone `LICENSE` file upstream, but the README
+  declares "MIT/X11" (MIT) and Debian packages it as MIT under
+  copyright Pavel Pertsev (morhetz).
+- **Retained — Twilight**: distributed under the TextMate themes bundle's
+  permissive grant (copy/use/modify/sell/distribute), recorded as
+  `LicenseRef-TextMateThemesBundle`.
 
 ## Bundled assets
 
@@ -104,18 +102,6 @@ by hand.
 - Revision: ggbot.net release (see font metadata for version)
 - License text: assets/fonts/Pixeloid/LICENSE.txt
 
-### Adventure
-
-- Identifier: `theme-adventure`
-- Kind: theme
-- Author: iTerm2-Color-Schemes (individual scheme author unrecorded)
-- Copyright: Copyright (c) 2011-present Mark Badolato
-- License: MIT
-- Source: https://github.com/mbadolato/iTerm2-Color-Schemes
-- Revision: master (license file at repo root)
-- License text: assets/licenses/texts/MIT.txt
-- Notes: Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review.
-
 ### Asciinema
 
 - Identifier: `theme-asciinema`
@@ -170,18 +156,6 @@ by hand.
 - Revision: master
 - License text: assets/licenses/texts/MIT.txt
 
-### Fahrenheit
-
-- Identifier: `theme-fahrenheit`
-- Kind: theme
-- Author: iTerm2-Color-Schemes (individual scheme author unrecorded)
-- Copyright: Copyright (c) 2011-present Mark Badolato
-- License: MIT
-- Source: https://github.com/mbadolato/iTerm2-Color-Schemes
-- Revision: master (license file at repo root)
-- License text: assets/licenses/texts/MIT.txt
-- Notes: Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review.
-
 ### Flexoki
 
 - Identifier: `theme-flexoki`
@@ -197,25 +171,13 @@ by hand.
 
 - Identifier: `theme-gruvbox`
 - Kind: theme
-- Author: morhetz
-- Copyright: Copyright (c) morhetz
+- Author: Pavel Pertsev (morhetz)
+- Copyright: Copyright (c) 2012-2023 Pavel Pertsev
 - License: MIT
 - Source: https://github.com/morhetz/gruvbox
 - Revision: master
 - License text: assets/licenses/texts/MIT.txt
-- Notes: No LICENSE file; README declares MIT/X11. Flagged for legal review.
-
-### Harper
-
-- Identifier: `theme-harper`
-- Kind: theme
-- Author: iTerm2-Color-Schemes (individual scheme author unrecorded)
-- Copyright: Copyright (c) 2011-present Mark Badolato
-- License: MIT
-- Source: https://github.com/mbadolato/iTerm2-Color-Schemes
-- Revision: master (license file at repo root)
-- License text: assets/licenses/texts/MIT.txt
-- Notes: Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review.
+- Notes: No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT.
 
 ### Hybrid
 
@@ -240,18 +202,6 @@ by hand.
 - Revision: master
 - License text: assets/licenses/texts/MIT.txt
 - Notes: License declared in file header (no standalone LICENSE file).
-
-### Kibble
-
-- Identifier: `theme-kibble`
-- Kind: theme
-- Author: iTerm2-Color-Schemes (individual scheme author unrecorded)
-- Copyright: Copyright (c) 2011-present Mark Badolato
-- License: MIT
-- Source: https://github.com/mbadolato/iTerm2-Color-Schemes
-- Revision: master (license file at repo root)
-- License text: assets/licenses/texts/MIT.txt
-- Notes: Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review.
 
 ### macOS Classic
 
@@ -285,18 +235,6 @@ by hand.
 - Source: https://github.com/ramojus/mellifluous.nvim
 - Revision: main
 - License text: assets/licenses/texts/MIT.txt
-
-### Molokai
-
-- Identifier: `theme-molokai`
-- Kind: theme
-- Author: Tomas Restrepo
-- Copyright: Copyright (c) 2011 Tomas Restrepo
-- License: MIT
-- Source: https://github.com/tomasr/molokai
-- Revision: master
-- License text: assets/licenses/texts/MIT.txt
-- Notes: MIT for molokai.vim source; palette derived from Monokai (copyright Wimer Hazenberg). Flagged for legal review.
 
 ### Solarized
 
@@ -341,7 +279,7 @@ by hand.
 - Source: https://macromates.com
 - Revision: master (github.com/textmate/themes.tmbundle)
 - License text: assets/licenses/texts/LicenseRef-TextMateThemesBundle.txt
-- Notes: Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id. Flagged for legal review.
+- Notes: Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle.
 
 ## Bundled asset license texts
 
@@ -735,7 +673,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ### assets/licenses/texts/MIT.txt
 
-Used by: Adventure, Ayu, Catppuccin, Everforest, Fahrenheit, Flexoki, Gruvbox, Harper, Hybrid, Jellybeans, Kibble, macOS Classic, Matrix, Mellifluous, Molokai, Solarized, Spaceduck
+Used by: Ayu, Catppuccin, Everforest, Flexoki, Gruvbox, Hybrid, Jellybeans, macOS Classic, Matrix, Mellifluous, Solarized, Spaceduck
 
 ```
 MIT License

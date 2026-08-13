@@ -87,74 +87,6 @@ paths = [
 # --- Bundled themes (adapted via gpui-component) ---------------------------
 
 [[asset]]
-id = "theme-adventure"
-kind = "theme"
-name = "Adventure"
-author = "iTerm2-Color-Schemes (individual scheme author unrecorded)"
-copyright = "Copyright (c) 2011-present Mark Badolato"
-source = "https://github.com/mbadolato/iTerm2-Color-Schemes"
-revision = "master (license file at repo root)"
-license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://raw.githubusercontent.com/mbadolato/iTerm2-Color-Schemes/master/LICENSE"
-adaptation_source = "https://github.com/longbridge/gpui-component"
-adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
-distribution = "embedded"
-paths = ["src/ui/themes/adventure.json"]
-notes = "Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review."
-
-[[asset]]
-id = "theme-fahrenheit"
-kind = "theme"
-name = "Fahrenheit"
-author = "iTerm2-Color-Schemes (individual scheme author unrecorded)"
-copyright = "Copyright (c) 2011-present Mark Badolato"
-source = "https://github.com/mbadolato/iTerm2-Color-Schemes"
-revision = "master (license file at repo root)"
-license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://raw.githubusercontent.com/mbadolato/iTerm2-Color-Schemes/master/LICENSE"
-adaptation_source = "https://github.com/longbridge/gpui-component"
-adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
-distribution = "embedded"
-paths = ["src/ui/themes/fahrenheit.json"]
-notes = "Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review."
-
-[[asset]]
-id = "theme-harper"
-kind = "theme"
-name = "Harper"
-author = "iTerm2-Color-Schemes (individual scheme author unrecorded)"
-copyright = "Copyright (c) 2011-present Mark Badolato"
-source = "https://github.com/mbadolato/iTerm2-Color-Schemes"
-revision = "master (license file at repo root)"
-license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://raw.githubusercontent.com/mbadolato/iTerm2-Color-Schemes/master/LICENSE"
-adaptation_source = "https://github.com/longbridge/gpui-component"
-adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
-distribution = "embedded"
-paths = ["src/ui/themes/harper.json"]
-notes = "Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review."
-
-[[asset]]
-id = "theme-kibble"
-kind = "theme"
-name = "Kibble"
-author = "iTerm2-Color-Schemes (individual scheme author unrecorded)"
-copyright = "Copyright (c) 2011-present Mark Badolato"
-source = "https://github.com/mbadolato/iTerm2-Color-Schemes"
-revision = "master (license file at repo root)"
-license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://raw.githubusercontent.com/mbadolato/iTerm2-Color-Schemes/master/LICENSE"
-adaptation_source = "https://github.com/longbridge/gpui-component"
-adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
-distribution = "embedded"
-paths = ["src/ui/themes/kibble.json"]
-notes = "Repo-level MIT; upstream notes individual themes belong to their authors. Flagged for legal review."
-
-[[asset]]
 id = "theme-asciinema"
 kind = "theme"
 name = "Asciinema"
@@ -238,18 +170,18 @@ paths = ["src/ui/themes/flexoki.json"]
 id = "theme-gruvbox"
 kind = "theme"
 name = "Gruvbox"
-author = "morhetz"
-copyright = "Copyright (c) morhetz"
+author = "Pavel Pertsev (morhetz)"
+copyright = "Copyright (c) 2012-2023 Pavel Pertsev"
 source = "https://github.com/morhetz/gruvbox"
 revision = "master"
 license = "MIT"
 license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://github.com/morhetz/gruvbox (README declares MIT/X11; no LICENSE file)"
+license_evidence = "https://github.com/morhetz/gruvbox (README declares MIT/X11; Debian ships as MIT)"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
 paths = ["src/ui/themes/gruvbox.json"]
-notes = "No LICENSE file; README declares MIT/X11. Flagged for legal review."
+notes = "No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT."
 
 [[asset]]
 id = "theme-hybrid"
@@ -331,24 +263,7 @@ license_evidence = "https://raw.githubusercontent.com/ramojus/mellifluous.nvim/m
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/mellifluous.json"]
-
-[[asset]]
-id = "theme-molokai"
-kind = "theme"
-name = "Molokai"
-author = "Tomas Restrepo"
-copyright = "Copyright (c) 2011 Tomas Restrepo"
-source = "https://github.com/tomasr/molokai"
-revision = "master"
-license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
-license_evidence = "https://raw.githubusercontent.com/tomasr/molokai/master/LICENSE.md"
-adaptation_source = "https://github.com/longbridge/gpui-component"
-adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
-distribution = "embedded"
-paths = ["src/ui/themes/molokai.json"]
-notes = "MIT for molokai.vim source; palette derived from Monokai (copyright Wimer Hazenberg). Flagged for legal review."
+ paths = ["src/ui/themes/mellifluous.json"]
 
 [[asset]]
 id = "theme-solarized"
@@ -413,7 +328,7 @@ adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
 paths = ["src/ui/themes/twilight.json"]
-notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id. Flagged for legal review."
+notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle."
 
 # --- Assets arriving via Rust dependencies --------------------------------
 

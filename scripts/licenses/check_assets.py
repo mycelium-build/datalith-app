@@ -78,7 +78,12 @@ def tracked_files() -> list[str]:
     except (subprocess.CalledProcessError, FileNotFoundError):
         output = ""
     if output:
-        return [line for line in output.splitlines() if line]
+        tracked: list[str] = []
+        for line in output.splitlines():
+            line = line.strip()
+            if line and (REPO_ROOT / line).is_file():
+                tracked.append(line)
+        return tracked
 
     result: list[str] = []
     for root in EMBEDDED_ASSET_ROOTS:
