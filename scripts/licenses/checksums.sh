@@ -3,8 +3,8 @@
 #
 # Usage: checksums.sh <artifact-dir>
 #
-# The artifact dir must contain exactly the expected set of release files. The
-# script fails on duplicate names, missing artifacts, or unexpected files.
+# The artifact dir must contain exactly the expected set of release files.
+# The script fails on duplicate names, missing artifacts, or unexpected files.
 set -euo pipefail
 
 ARTIFACT_DIR="${1:?artifact dir required}"
@@ -47,8 +47,8 @@ for pattern in "${REQUIRED_PATTERNS[@]}"; do
 done
 
 # Reject anything outside the contract before checksumming it.
-# A retry may download a checksum file from an earlier draft run. It is output,
-# not input, and is replaced after the artifact set is accepted.
+# A retry may download a checksum file from an earlier draft run.
+# It is output, not input, and is replaced after the artifact set is accepted.
 mapfile -t files < <(
     find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | sort
 )

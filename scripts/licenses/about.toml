@@ -1,4 +1,3 @@
-# cargo-about configuration for Datalith.
 # Generates the Rust-dependency section of THIRD-PARTY-NOTICES.md.
 # See scripts/licenses/generate.sh.
 
@@ -34,8 +33,8 @@ private = { ignore = false }
 
 workarounds = ["ring", "rustls", "cocoa"]
 
-# Packages whose manifests lack machine-readable license metadata. Each
-# clarification cites the upstream license file from the exact locked revision
+# Packages whose manifests lack machine-readable license metadata.
+# Each clarification cites the upstream license file from the exact locked revision
 # and pins its SHA-256 checksum so drift fails the generation.
 
 [gpui_shared_string.clarify]

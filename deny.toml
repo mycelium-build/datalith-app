@@ -1,6 +1,6 @@
-# cargo-deny configuration for Datalith.
-# Enforces the accepted-license and source policy documented in
-# docs/license-compliance-plan.md. Run with `cargo deny check`.
+# cargo-deny configuration
+# Enforces the accepted-license and source policy documented in docs/license-compliance-plan.md.
+# Run with `cargo deny check`.
 
 [graph]
 # The dependency graph is checked for the union of all production targets.
@@ -13,13 +13,12 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-# Maintenance status is only enforced for direct workspace dependencies; the
-# pinned zed revision pulls in several unmaintained transitive crates that
-# cannot be upgraded without moving the zed revision.
+# Maintenance status is only enforced for direct workspace dependencies;
+# the pinned zed revision pulls in several unmaintained transitive crates
+# that cannot be upgraded without moving the zed revision.
 unmaintained = "workspace"
-# Pre-existing security advisories in the pinned zed revision (all transitive
-# dependencies). Upgrading them requires moving the zed revision, which is
-# tracked separately from license compliance.
+# Pre-existing security advisories in the pinned zed revision (all transitive dependencies).
+# Upgrading them requires moving the zed revision, which is tracked separately from license compliance.
 ignore = [
     { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch via zed (transitive)" },
     { id = "RUSTSEC-2026-0221", reason = "event-listener via zed (transitive)" },
@@ -55,9 +54,6 @@ ignore = false
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Datalith is a private crate that pins its Git dependencies in Cargo.lock
-# (and via `rev` where the build permits). Allow those Git paths rather than
-# flagging them as `*` wildcards.
 allow-wildcard-paths = true
 
 [sources]

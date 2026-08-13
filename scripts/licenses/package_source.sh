@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Assembles the Corresponding Source archive for a release.
 #
-# The archive contains the exact source tree for the release commit, the
-# vendored dependency sources, and the offline Cargo configuration needed to
-# rebuild each supported target. It is produced with `cargo vendor --locked`.
+# The archive contains the exact source tree for the release commit,
+# the vendored dependency sources,
+# and the offline Cargo configuration needed to rebuild each supported target.
+# It is produced with `cargo vendor --locked`.
 #
 # Usage: package_source.sh [--tag <tag>] [--output <dir>]
 set -euo pipefail
@@ -54,8 +55,8 @@ if [[ -n "$(git status --porcelain)" ]]; then
     fail "working tree is not clean; commit or stash changes before packaging source"
 fi
 
-# 2. Verify the tag is either the Cargo version or one of its release
-# candidates. RC tags point at the release PR, whose Cargo version is stable.
+# 2. Verify the tag is either the Cargo version or one of its release candidates.
+#    RC tags point at the release PR, whose Cargo version is stable.
 RELEASE_VERSION="${TAG#v}"
 ESCAPED_PACKAGE_VERSION="${PACKAGE_VERSION//./\\.}"
 if [[ "$RELEASE_VERSION" != "$PACKAGE_VERSION" && \
@@ -81,9 +82,9 @@ mkdir -p "$SRC_DIR/.cargo"
     cd "$SRC_DIR"
     cargo vendor --locked vendor >.cargo/config.toml
 
-    # Prove that the generated configuration redirects both registry and Git
-    # dependencies. An empty Cargo home prevents a warm Git checkout or
-    # registry cache from hiding an incomplete source replacement.
+    # Prove that the generated configuration redirects both registry and Git dependencies.
+    # An empty Cargo home prevents a warm Git checkout
+    # or registry cache from hiding an incomplete source replacement.
     OFFLINE_CARGO_HOME="$STAGING/offline-cargo-home"
     mkdir -p "$OFFLINE_CARGO_HOME"
     CARGO_HOME="$OFFLINE_CARGO_HOME" \

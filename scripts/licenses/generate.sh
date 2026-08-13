@@ -9,8 +9,8 @@ cd "$REPO_ROOT"
 
 SCRIPTS_DIR="$REPO_ROOT/scripts/licenses"
 
-# Pinned tool versions. Bump in a dedicated dependency-update change that also
-# regenerates the notices.
+# Pinned tool versions.
+# Bump in a dedicated dependency-update change that also regenerates the notices.
 CARGO_ABOUT_VERSION="0.9.1"
 
 TMP_DIR="$(mktemp -d)"
@@ -53,8 +53,8 @@ cargo about generate \
     cat "$TMP_DIR/rust.md"
 } > "$TMP_DIR/notices.md"
 
-# 6. Write the committed artifact byte-for-byte. The application embeds this
-# same file directly, so there is no second generated copy to keep in sync.
+# 6. Write the committed artifact byte-for-byte.
+# The application embeds this same file directly, so there is no second generated copy to keep in sync.
 cp "$TMP_DIR/notices.md" "$REPO_ROOT/THIRD-PARTY-NOTICES.md"
 
 echo "wrote THIRD-PARTY-NOTICES.md"

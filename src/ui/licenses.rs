@@ -20,26 +20,18 @@ const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith";
 const RELEASE_TAG: Option<&str> = option_env!("DATALITH_RELEASE_TAG");
 
-/// Fixed height of every row in the virtualized licenses list. All rows must
-/// share one height because `uniform_list` measures a single row and reuses
-/// that measurement for the whole list instead of laying out every row.
 const ROW_HEIGHT: f32 = 20.0;
 
-/// Approximate character width the licenses panel's content area can fit on
-/// one monospace line, used to pre-wrap paragraphs once instead of relying on
-/// GPUI to reflow the entire multi-megabyte notices text on every frame.
-const WRAP_WIDTH: usize = 100;
+/// Approximate character width the licenses panel's content area can fit on one monospace line,
+/// used to pre-wrap paragraphs once
+/// instead of relying on GPUI to reflow the entire multi-megabyte notices text on every frame.
+const WRAP_WIDTH: usize = 100; // chars
 
-/// One rendered row of the licenses overlay: either a bold section header or
-/// a single pre-wrapped line of a license/notice text.
 enum Row {
     Header(String),
     Line(String),
 }
 
-/// Every row across all four sections, pre-split and pre-wrapped once (on
-/// first access) so opening or scrolling the licenses overlay never has to
-/// lay out the ~18k-line third-party notices text in a single pass.
 static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let sections = [
         ("MIT License (original Datalith source)", MIT_LICENSE),
@@ -61,8 +53,6 @@ static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     rows
 });
 
-/// Greedily wraps `line` on word boundaries so every wrapped piece is at most
-/// `width` characters, preserving blank lines as a single empty piece.
 fn wrap_line(line: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
@@ -86,7 +76,6 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
     lines
 }
 
-/// The version-specific URL of the Corresponding Source archive for this build.
 #[must_use]
 pub fn corresponding_source_url() -> String {
     let tag = RELEASE_TAG.unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));

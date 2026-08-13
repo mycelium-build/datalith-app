@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Validate assets/licences.toml and emit deterministic asset-license Markdown.
 
-The manifest is the single source of truth for non-Cargo assets (fonts, icons,
-themes, artwork). This script:
+The manifest is the single source of truth for non-Cargo assets (fonts, icons, themes, artwork).
+
+This script:
 
   1. loads the manifest with the stdlib TOML parser;
-  2. enumerates tracked asset files (git ls-files, falling back to os.walk);
+  2. enumerates tracked asset files (git ls-files, falling back to os walk);
   3. expands every entry's `paths` globs;
   4. fails if a tracked asset file matches no entry (uncovered);
   5. fails if an entry path matches no file;
@@ -16,21 +17,20 @@ themes, artwork). This script:
  10. rejects third-party themes without a verifiable license;
  11. optionally emits deterministic Markdown (--emit) in stable id order.
 
-Exit codes follow the LICENSE-E* prefixes documented in
-docs/license-compliance-plan.md.
+Exit codes follow the LICENSE-E* prefixes.
 """
 
 from __future__ import annotations
 
 import argparse
 import glob
-import os
 import re
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
+
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -123,7 +123,7 @@ def expand_paths(patterns: list[str]) -> set[str]:
         if not matches:
             fail(f"LICENSE-E104 manifest path matches no file: pattern={pattern}")
         for match in matches:
-            full = (REPO_ROOT / match)
+            full = REPO_ROOT / match
             if full.is_file():
                 expanded.add(match)
     return expanded
@@ -212,7 +212,9 @@ def main() -> int:
                     f"path={license_file}"
                 )
             if path.stat().st_size == 0:
-                fail(f"LICENSE-E103 empty asset license file: id={asset_id} path={license_file}")
+                fail(
+                    f"LICENSE-E103 empty asset license file: id={asset_id} path={license_file}"
+                )
 
         paths = asset.get("paths", [])
         if paths:
@@ -283,9 +285,8 @@ def write_markdown(assets: list[dict[str, Any]], destination: Path) -> None:
             lines.append(f"- Notes: {notes}")
         lines.append("")
 
-    # Inline the full text of every retained license once, grouped by file, so
-    # the notices are self-contained (cargo-about covers Rust dependencies; this
-    # covers bundled assets, including non-standard grants).
+    # Inline the full text of every retained license once, grouped by file, so the notices are self-contained
+    # (cargo-about covers Rust dependencies; this covers bundled assets, including non-standard grants).
     texts: dict[str, list[str]] = {}
     for asset in ordered:
         license_file = asset.get("license_file")

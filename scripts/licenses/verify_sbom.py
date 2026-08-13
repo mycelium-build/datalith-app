@@ -3,8 +3,10 @@
 
 Usage: verify_sbom.py <sbom.json> <version>
 
-Checks that the SBOM is SPDX JSON, identifies the Datalith release, and lists
-the core Rust components. Bundled assets are covered by assets/licences.toml.
+Checks that the SBOM is SPDX JSON, identifies the Datalith release, and lists the core Rust components.
+Bundled assets are covered by assets/licences.toml.
+
+Exit codes follow the LICENSE-E* prefixes.
 """
 
 from __future__ import annotations
