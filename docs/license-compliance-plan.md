@@ -1,15 +1,17 @@
 # License compliance release checklist
 
-Status: implemented controls reviewed; first public release still blocked on the
-items below
+Status: best-effort controls implemented; first public release still requires
+the maintainer checks below
 
 Last reviewed: 2026-08-13
 
 Scope: source, AppImage, DEB, RPM, Arch package, DMG, NSIS installer, and GitHub
 release assets
 
-This is an engineering checklist, not legal advice. License texts and advice
-from qualified counsel control where they differ from this document.
+This is a best-effort engineering checklist, not legal advice. The project does
+not require paid legal review to release. License texts control where they
+differ from this document, and uncertainty must be disclosed or resolved by
+removing the affected component.
 
 ## Policy
 
@@ -43,13 +45,15 @@ The policy and applicable texts are in `LICENSING.md`, `LICENSE`,
 
 ## Final cleanup before the first public release
 
-These are release blockers, in order:
+These are maintainer release checks, in order:
 
-1. **Focused legal review.** Confirm the GPL distribution boundary, the
-   MIT/GPL wording, the TextMate custom grant, Pixeloid OFL handling, and the
-   retained theme provenance. Replace every moving `main`, `master`, or
-   `develop` evidence reference in `assets/licences.toml` with an immutable
-   upstream commit or archived evidence accepted by the reviewer.
+1. **Focused maintainer review.** Recheck the documented GPL distribution
+   posture, MIT/GPL wording, TextMate custom grant, Pixeloid OFL handling, and
+   retained theme provenance against available primary sources. Replace moving
+   `main`, `master`, or `develop` evidence references in
+   `assets/licences.toml` with immutable upstream commits or archived evidence
+   where practical. Document any remaining limitation rather than claiming
+   certainty that the evidence does not support.
 2. **Corresponding Source reconstruction.** Build the source archive for a
    release-candidate tag, unpack it on Linux, macOS, and Windows, disable
    network access, and run `cargo build --release --locked --offline` for each
@@ -101,8 +105,8 @@ its policy/inventory and generated notice in the same pull request.
 - [x] Locked Git revisions and compliance tool versions are reproducible.
 - [x] Package legal files and release artifact membership are verified.
 - [x] Versioned Corresponding Source, SBOM, and checksums are automated.
-- [ ] Focused legal review is complete.
-- [ ] Immutable retained-theme evidence is approved.
+- [ ] Focused maintainer review is complete and limitations are documented.
+- [ ] Retained-theme evidence is immutable where practical.
 - [ ] Offline source reconstruction passes on all supported targets.
 - [ ] A complete release-candidate rehearsal passes.
 - [ ] Branch protection requires both CI gates.
