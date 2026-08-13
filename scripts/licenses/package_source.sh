@@ -76,22 +76,21 @@ tar xf "$STAGING/source.tar" -C "$STAGING/src"
 SRC_DIR="$STAGING/src/datalith-${RELEASE_VERSION}"
 
 # 4. Vendor all dependencies (crates.io and Git) with the locked versions.
+mkdir -p "$SRC_DIR/.cargo"
 (
     cd "$SRC_DIR"
-    cargo vendor --locked vendor >/dev/null
+    cargo vendor --locked vendor >.cargo/config.toml
+
+    # Prove that the generated configuration redirects both registry and Git
+    # dependencies. An empty Cargo home prevents a warm Git checkout or
+    # registry cache from hiding an incomplete source replacement.
+    OFFLINE_CARGO_HOME="$STAGING/offline-cargo-home"
+    mkdir -p "$OFFLINE_CARGO_HOME"
+    CARGO_HOME="$OFFLINE_CARGO_HOME" \
+        cargo metadata --offline --locked --format-version=1 >/dev/null
 )
 
-# 5. Write the offline Cargo source-replacement configuration.
-mkdir -p "$SRC_DIR/.cargo"
-cat >"$SRC_DIR/.cargo/config.toml" <<'EOF'
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "vendor"
-EOF
-
-# 6. Record a source manifest.
+# 5. Record a source manifest.
 {
     echo "package = datalith"
     echo "package_version = ${PACKAGE_VERSION}"
@@ -101,7 +100,7 @@ EOF
     echo "toolchain = $(cat rust-toolchain.toml)"
 } >"$SRC_DIR/SOURCE-MANIFEST"
 
-# 7. Create the deterministic archive.
+# 6. Create the deterministic archive.
 mkdir -p "$OUTPUT_DIR"
 tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
     --zstd -cf "$OUTPUT_DIR/$ARCHIVE_NAME" -C "$STAGING/src" "datalith-${RELEASE_VERSION}"

@@ -99,8 +99,9 @@ by hand.
 - Copyright: Copyright (c) 2020-2025 GGBotNet
 - License: OFL-1.1
 - Source: https://ggbot.net/fonts/
-- Revision: ggbot.net release (see font metadata for version)
+- Revision: 1.0 (embedded font metadata)
 - License text: assets/fonts/Pixeloid/LICENSE.txt
+- Notes: The publisher does not expose a stable versioned archive. Exact bundled files are identified by SHA-256: regular 6c74e947e13eac61b3199cfe85ae78d3b27865aec4b9b4b39a05d34518d3bb3e; bold d8bc38413101440e2d68b8d886f82dae298e3d4550728b5c99f717377ed8a195; OFL text de7a71bd2d330c09aaadb38cd09eda3c62693a55350e288b43dac73f4a5e67a8.
 
 ### Asciinema
 
@@ -110,8 +111,9 @@ by hand.
 - Copyright: Copyright 2011-2021 Marcin Kulik
 - License: Apache-2.0
 - Source: https://asciinema.org
-- Revision: asciinema-player develop branch
+- Revision: 4e056bee42703a88da5c97d99a5c58e6096a47bb
 - License text: assets/licenses/texts/Apache-2.0.txt
+- License evidence: https://raw.githubusercontent.com/asciinema/asciinema-player/4e056bee42703a88da5c97d99a5c58e6096a47bb/LICENSE
 
 ### Ayu
 
@@ -121,8 +123,9 @@ by hand.
 - Copyright: Copyright (c) 2016 Ike Ku
 - License: MIT
 - Source: https://github.com/dempfi/ayu
-- Revision: master
+- Revision: 41e0098e8ce5014f1f90474a16bf31639f74fecf
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/dempfi/ayu/41e0098e8ce5014f1f90474a16bf31639f74fecf/LICENSE
 
 ### Catppuccin
 
@@ -132,8 +135,9 @@ by hand.
 - Copyright: Copyright (c) 2021 Catppuccin
 - License: MIT
 - Source: https://github.com/catppuccin/catppuccin
-- Revision: main
+- Revision: d09787dd98ca6fba08af5ef2ae94a7e09f17daca
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/catppuccin/catppuccin/d09787dd98ca6fba08af5ef2ae94a7e09f17daca/LICENSE
 
 ### Datalith
 
@@ -153,8 +157,9 @@ by hand.
 - Copyright: Copyright (c) 2019 sainnhe
 - License: MIT
 - Source: https://github.com/sainnhe/everforest
-- Revision: master
+- Revision: 85a86eb62409e3ec88713bff3d1b9d7374e112e4
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/sainnhe/everforest/85a86eb62409e3ec88713bff3d1b9d7374e112e4/LICENSE
 
 ### Flexoki
 
@@ -164,8 +169,9 @@ by hand.
 - Copyright: Copyright (c) 2023 Steph Ango
 - License: MIT
 - Source: https://github.com/kepano/flexoki
-- Revision: main
+- Revision: 8d723bac4a9ac46adfdf99d42155286977aac72a
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/kepano/flexoki/8d723bac4a9ac46adfdf99d42155286977aac72a/LICENSE
 
 ### Gruvbox
 
@@ -175,8 +181,9 @@ by hand.
 - Copyright: Copyright (c) 2012-2023 Pavel Pertsev
 - License: MIT
 - Source: https://github.com/morhetz/gruvbox
-- Revision: master
+- Revision: 5d15b2765f59754d7ac263c88a0f6e3e58124951
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/morhetz/gruvbox/5d15b2765f59754d7ac263c88a0f6e3e58124951/README.md
 - Notes: No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT.
 
 ### Hybrid
@@ -187,8 +194,9 @@ by hand.
 - Copyright: Copyright (c) Andrew Wong (w0ng)
 - License: MIT
 - Source: https://github.com/w0ng/vim-hybrid
-- Revision: master
+- Revision: cc58baabeabc7b83768e25b852bf89c34756bf90
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/w0ng/vim-hybrid/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim
 - Notes: License declared in file header (no standalone LICENSE file).
 
 ### Jellybeans
@@ -199,8 +207,9 @@ by hand.
 - Copyright: Copyright (c) 2009-2019 NanoTech
 - License: MIT
 - Source: https://github.com/nanotech/jellybeans.vim
-- Revision: master
+- Revision: ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/nanotech/jellybeans.vim/ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa/colors/jellybeans.vim
 - Notes: License declared in file header (no standalone LICENSE file).
 
 ### macOS Classic
@@ -211,8 +220,9 @@ by hand.
 - Copyright: Copyright (c) 2023 Jason Lee
 - License: MIT
 - Source: https://github.com/huacnlee/zed-theme-macos-classic
-- Revision: main
+- Revision: 22266e11c4b8962be2e259011251b4016ff00552
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/huacnlee/zed-theme-macos-classic/22266e11c4b8962be2e259011251b4016ff00552/LICENSE
 
 ### Matrix
 
@@ -222,8 +232,9 @@ by hand.
 - Copyright: Copyright (c) 2022 iruzo
 - License: MIT
 - Source: https://github.com/iruzo/matrix-nvim
-- Revision: main
+- Revision: 5fafe6b440d08c1070e3c4c4cb9d648436d5d867
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/iruzo/matrix-nvim/5fafe6b440d08c1070e3c4c4cb9d648436d5d867/LICENSE
 
 ### Mellifluous
 
@@ -233,8 +244,9 @@ by hand.
 - Copyright: Copyright (c) 2024 Ramojus Lapinskas
 - License: MIT
 - Source: https://github.com/ramojus/mellifluous.nvim
-- Revision: main
+- Revision: ec0575bdb63594c5e7fba6eb9607b009aa1fb74e
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/ramojus/mellifluous.nvim/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE
 
 ### Solarized
 
@@ -244,8 +256,9 @@ by hand.
 - Copyright: Copyright (c) 2011 Ethan Schoonover
 - License: MIT
 - Source: https://ethanschoonover.com/solarized
-- Revision: master (github.com/altercation/solarized)
+- Revision: 62f656a02f93c5190a8753159e34b385588d5ff3
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE
 
 ### Spaceduck
 
@@ -255,8 +268,9 @@ by hand.
 - Copyright: Copyright (c) 2020 pineapplegiant
 - License: MIT
 - Source: https://github.com/pineapplegiant/spaceduck
-- Revision: master
+- Revision: 350491f19343b24fa85809242089caa02d4dadce
 - License text: assets/licenses/texts/MIT.txt
+- License evidence: https://raw.githubusercontent.com/pineapplegiant/spaceduck/350491f19343b24fa85809242089caa02d4dadce/LICENSE
 
 ### Tokyo Night
 
@@ -266,8 +280,9 @@ by hand.
 - Copyright: Copyright (c) Folke Lemaitre
 - License: Apache-2.0
 - Source: https://github.com/folke/tokyonight.nvim
-- Revision: main
+- Revision: cdc07ac78467a233fd62c493de29a17e0cf2b2b6
 - License text: assets/licenses/texts/Apache-2.0.txt
+- License evidence: https://raw.githubusercontent.com/folke/tokyonight.nvim/cdc07ac78467a233fd62c493de29a17e0cf2b2b6/LICENSE
 
 ### Twilight
 
@@ -277,8 +292,9 @@ by hand.
 - Copyright: No explicit copyright line (permissive grant; author Michael Sheets)
 - License: LicenseRef-TextMateThemesBundle
 - Source: https://macromates.com
-- Revision: master (github.com/textmate/themes.tmbundle)
+- Revision: e6e918506291b2dec178ad1b7e6f04653d25818c
 - License text: assets/licenses/texts/LicenseRef-TextMateThemesBundle.txt
+- License evidence: https://raw.githubusercontent.com/textmate/themes.tmbundle/e6e918506291b2dec178ad1b7e6f04653d25818c/README.mdown
 - Notes: Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle.
 
 ## Bundled asset license texts

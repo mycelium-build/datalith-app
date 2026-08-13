@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -194,6 +195,13 @@ def main() -> int:
                     f"LICENSE-E102 unverified theme license: id={asset_id} "
                     f"source={asset.get('source')}"
                 )
+            if asset.get("kind") == "theme":
+                evidence = str(asset["license_evidence"])
+                if re.search(r"/(?:main|master|develop)/", evidence, re.IGNORECASE):
+                    fail(
+                        f"LICENSE-E112 mutable theme license evidence: id={asset_id} "
+                        f"evidence={evidence}"
+                    )
 
         license_file = asset.get("license_file")
         if license_file:
@@ -267,6 +275,9 @@ def write_markdown(assets: list[dict[str, Any]], destination: Path) -> None:
             lines.append("- Source: first-party (Datalith)")
         if license_file:
             lines.append(f"- License text: {license_file}")
+        license_evidence = asset.get("license_evidence")
+        if license_evidence:
+            lines.append(f"- License evidence: {license_evidence}")
         notes = asset.get("notes")
         if notes:
             lines.append(f"- Notes: {notes}")

@@ -35,7 +35,7 @@ The policy and applicable texts are in `LICENSING.md`, `LICENSE`,
 |---|---|
 | Rust dependencies | Pinned `cargo-deny` policy and `cargo-about` notice generation |
 | Git dependencies | Exact commits locked in `Cargo.lock`; builds use `--locked`; Git sources allowlisted |
-| Bundled assets | `assets/licences.toml` plus complete-coverage validation |
+| Bundled assets | `assets/licences.toml`, complete-coverage validation, and immutable theme-license evidence |
 | Notices | One generated `THIRD-PARTY-NOTICES.md`, embedded by the app and shipped in packages |
 | Application | Offline license viewer and version-specific source-release link |
 | Packages | Extract each format and compare its legal files byte-for-byte with the release source |
@@ -49,11 +49,12 @@ These are maintainer release checks, in order:
 
 1. **Focused maintainer review.** Recheck the documented GPL distribution
    posture, MIT/GPL wording, TextMate custom grant, Pixeloid OFL handling, and
-   retained theme provenance against available primary sources. Replace moving
-   `main`, `master`, or `develop` evidence references in
-   `assets/licences.toml` with immutable upstream commits or archived evidence
-   where practical. Document any remaining limitation rather than claiming
-   certainty that the evidence does not support.
+   retained theme provenance against available primary sources. Theme-license
+   evidence is pinned to immutable upstream commits. Pixeloid's publisher does
+   not expose a stable versioned archive, so the manifest records version 1.0
+   from the embedded metadata and SHA-256 identifiers for the exact retained
+   files. Document any further limitation rather than claiming certainty that
+   the evidence does not support.
 2. **Corresponding Source reconstruction.** Build the source archive for a
    release-candidate tag, unpack it on Linux, macOS, and Windows, disable
    network access, and run `cargo build --release --locked --offline` for each
@@ -106,7 +107,7 @@ its policy/inventory and generated notice in the same pull request.
 - [x] Package legal files and release artifact membership are verified.
 - [x] Versioned Corresponding Source, SBOM, and checksums are automated.
 - [ ] Focused maintainer review is complete and limitations are documented.
-- [ ] Retained-theme evidence is immutable where practical.
+- [x] Retained-theme evidence is immutable where practical.
 - [ ] Offline source reconstruction passes on all supported targets.
 - [ ] A complete release-candidate rehearsal passes.
 - [ ] Branch protection requires both CI gates.
