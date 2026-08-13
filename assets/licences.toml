@@ -1,19 +1,20 @@
-# Canonical inventory of non-Cargo assets embedded in or distributed with
-# Datalith. The asset sections of THIRD-PARTY-NOTICES.md are derived from this
-# file, which is validated by scripts/licenses/check_assets.py.
+# Canonical inventory of non-Cargo assets embedded in or distributed with Datalith.
+# The asset sections of THIRD-PARTY-NOTICES.md are derived from this file,
+# which is validated by scripts/licenses/check_assets.py.
 #
 # Field notes:
-#   paths      repo-relative file/glob patterns covered by this entry
-#   source     upstream URL, or "first-party" for original Datalith assets
-#   revision   immutable upstream license-evidence identifier where available;
-#              theme acquisition is recorded separately by adaptation_revision
-#   license    SPDX expression, or a LicenseRef-* for non-standard grants
+#   paths         repo-relative file/glob patterns covered by this entry
+#   source        upstream URL, or "first-party" for original Datalith assets
+#   revision      immutable upstream license-evidence identifier where available;
+#                 theme acquisition is recorded separately by adaptation_revision
+#   license       SPDX expression, or a LicenseRef-* for non-standard grants
 #   license_file  path to the retained, exact license text
-#   distribution  "embedded" (compiled into the binary) or "packaged" (installed
-#                 beside it) or "dependency" (arrives via a Rust dependency)
+#   distribution  "embedded" (compiled into the binary)
+#                 or "packaged" (installed beside it)
+#                 or "dependency" (arrives via a Rust dependency)
 
-# gpui-component adaptation revision (the point at which Datalith obtained the
-# bundled themes and component assets).
+# gpui-component adaptation revision
+# (the point at which Datalith obtained the bundled themes and component assets).
 ADAPTATION_SOURCE = "https://github.com/longbridge/gpui-component"
 ADAPTATION_REVISION = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 
@@ -29,12 +30,12 @@ license = "MIT"
 license_file = "LICENSE"
 distribution = "embedded"
 paths = ["assets/icons/*.svg", "assets/icons/*.txt"]
-notes = "Original 7x7 pixel art generated from ASCII sources (scripts/txt2svg.py). Stylistically inspired by line-icon sets such as Nucleo Arcade."
+notes = "Original 7x7 and 2 color levels pixel art icons. Inspired by Nucleo Arcade icon sets."
 
 [[asset]]
 id = "datalith-app-icons"
 kind = "artwork"
-name = "Datalith application icon and artwork"
+name = "Datalith application icon"
 author = "Datalith"
 copyright = "Copyright (c) 2026 mycelium-build"
 source = "first-party"
@@ -85,7 +86,7 @@ paths = [
     "assets/fonts/Pixeloid/LICENSE.txt",
 ]
 
-# --- Bundled themes (adapted via gpui-component) ---------------------------
+# --- Bundled themes (adapted via gpui-component)
 
 [[asset]]
 id = "theme-asciinema"
@@ -331,7 +332,7 @@ distribution = "embedded"
 paths = ["src/ui/themes/twilight.json"]
 notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle."
 
-# --- Assets arriving via Rust dependencies --------------------------------
+# --- Assets arriving via Rust dependencies
 
 [[asset]]
 id = "gpui-component-assets"
