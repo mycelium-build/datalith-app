@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+name: datalith
+arch: ${PACKAGE_ARCH}
+platform: linux
+version: ${PACKAGE_VERSION}
+release: 1
+section: utils
+priority: optional
+maintainer: lmandrelli <luca.mandrelli@icloud.com>
+description: A fast, local-first knowledge workspace.
+vendor: Mycelium Build
+homepage: https://github.com/mycelium-build/datalith
+license: MIT
+
+contents:
+  - src: target/${PACKAGE_TARGET}/release/datalith
+    dst: /usr/bin/datalith
+    expand: true
+    file_info:
+      mode: 0755
+  - src: packaging/datalith.desktop
+    dst: /usr/share/applications/datalith.desktop
+    file_info:
+      mode: 0644
+  - src: assets/datalith.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/datalith.svg
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/16x16/apps/datalith.png
+    dst: /usr/share/icons/hicolor/16x16/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/32x32/apps/datalith.png
+    dst: /usr/share/icons/hicolor/32x32/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/48x48/apps/datalith.png
+    dst: /usr/share/icons/hicolor/48x48/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/64x64/apps/datalith.png
+    dst: /usr/share/icons/hicolor/64x64/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/128x128/apps/datalith.png
+    dst: /usr/share/icons/hicolor/128x128/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/256x256/apps/datalith.png
+    dst: /usr/share/icons/hicolor/256x256/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/datalith/LICENSE
+    file_info:
+      mode: 0644
+
+# Runtime deps derived from the release binary (`readelf -d` + dlopen'd libs
+# for the wgpu/wayland/x11 backends). No fontconfig or alsa: fontconfig_parser
+# is a pure-Rust crate and Datalith has no audio stack.
+overrides:
+  deb:
+    depends:
+      - libgcc-s1
+      - libwayland-client0
+      - libwayland-egl1
+      - libxcb1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libegl1
+      - libvulkan1
+  rpm:
+    depends:
+      - libgcc
+      - libwayland-client
+      - libwayland-egl
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libglvnd-egl
+      - vulkan-loader
+  archlinux:
+    depends:
+      - gcc-libs
+      - wayland
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libglvnd
+      - vulkan-icd-loader
+
+deb:
+  fields:
+    Uploaders: rom100main <rom100main@proton.me>
+
+rpm:
+  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>
+
+archlinux:
+  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>

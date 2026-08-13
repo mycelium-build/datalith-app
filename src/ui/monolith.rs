@@ -6,7 +6,7 @@ use gpui::{
 };
 
 /// The monolith mark source art, in the tier color encoding
-/// (`M` main, `1` slightly whiter, `2` closest to white, `I` inscription)
+/// (`M` border, `1` slightly whiter, `2` closest to white, `I` inscription, `0` top side)
 /// on a 32×32 canvas.
 pub const LOGO_SRC: &str = include_str!("../../assets/datalith.txt");
 
@@ -31,7 +31,7 @@ pub fn tier_color(tier: Tier, primary: Hsla) -> Hsla {
         Tier::Light => primary,
         Tier::RightSide => whiten(primary, RIGHT_SIDE_WHITEN),
         Tier::LeftSide => whiten(primary, LEFT_SIDE_WHITEN),
-        Tier::Inscription => gpui::white(),
+        Tier::Inscription | Tier::Top => gpui::white(),
     }
 }
 
@@ -41,6 +41,7 @@ pub enum Tier {
     RightSide,
     LeftSide,
     Inscription,
+    Top,
 }
 
 #[derive(Clone)]
@@ -72,6 +73,7 @@ pub fn parse_logo(source: &str) -> LogoGrid {
                 '1' => Some(Tier::RightSide),
                 '2' => Some(Tier::LeftSide),
                 'I' => Some(Tier::Inscription),
+                '0' => Some(Tier::Top),
                 _ => None,
             };
             if let Some(tier) = tier {

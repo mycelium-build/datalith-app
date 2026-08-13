@@ -35,11 +35,15 @@ jobs:
             target: aarch64-apple-darwin
             format: dmg
             artifact: target/aarch64-apple-darwin/release/*.dmg
-          - name: Linux x86_64 AppImage
+          - name: Linux x86_64 packages
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             format: appimage
-            artifact: target/x86_64-unknown-linux-gnu/release/*.AppImage
+            artifact: |
+              target/x86_64-unknown-linux-gnu/release/*.AppImage
+              target/x86_64-unknown-linux-gnu/release/*.deb
+              target/x86_64-unknown-linux-gnu/release/*.rpm
+              target/x86_64-unknown-linux-gnu/release/*.pkg.tar.zst
           - name: Windows x86_64 installer
             os: windows-2025
             target: x86_64-pc-windows-msvc
@@ -69,6 +73,22 @@ jobs:
         with:
           tool: cargo-packager@0.11.8
 
+      - name: Install nFPM
+        if: runner.os == 'Linux'
+        env:
+          NFPM_VERSION: 2.47.0
+        run: |
+          curl -fsSL \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            -o "nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSL \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/checksums.txt" \
+            -o checksums.txt
+          sha256sum --ignore-missing -c checksums.txt
+          tar xzf "nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" nfpm
+          sudo install -m 0755 nfpm /usr/local/bin/nfpm
+          nfpm --version
+
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
@@ -76,6 +96,20 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.format }}
+
+      - name: Package native Linux formats
+        if: runner.os == 'Linux'
+        env:
+          PACKAGE_ARCH: x86_64
+          PACKAGE_TARGET: x86_64-unknown-linux-gnu
+        run: |
+          export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+          for packager in deb rpm archlinux; do
+            nfpm package \
+              --config nfpm.yaml \
+              --packager "$packager" \
+              --target "target/${PACKAGE_TARGET}/release/"
+          done
 
       - name: Upload package to GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
