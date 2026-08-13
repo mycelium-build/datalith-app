@@ -71,3 +71,24 @@ jobs:
           commit_user_email: "datalith-automation[bot]@users.noreply.github.com"
           file_pattern: ":(glob)**/*.rs"
           disable_globbing: true
+
+  license-compliance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
+        with:
+          toolchain: 1.96.0
+
+      - name: Install cargo-about and cargo-deny
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        with:
+          tool: cargo-about@0.9.1,cargo-deny@0.18.9
+
+      - name: Run license-compliance checks
+        run: scripts/licenses/check.sh

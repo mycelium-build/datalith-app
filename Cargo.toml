@@ -14,7 +14,13 @@ description = "A fast, local-first knowledge workspace."
 homepage = "https://github.com/mycelium-build/datalith"
 category = "Productivity"
 icons = ["assets/datalith.png", "assets/datalith.icns"]
-license-file = "LICENSE"
+license-file = "LICENSING.md"
+resources = [
+  { src = "LICENSE", target = "Licenses/LICENSE" },
+  { src = "LICENSE-GPL-3.0", target = "Licenses/LICENSE-GPL-3.0" },
+  { src = "LICENSING.md", target = "Licenses/LICENSING.md" },
+  { src = "THIRD-PARTY-NOTICES.md", target = "Licenses/THIRD-PARTY-NOTICES.md" },
+]
 formats = ["appimage", "dmg", "nsis"]
 
 [package.metadata.packager.nsis]

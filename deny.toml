@@ -1,0 +1,75 @@
+# cargo-deny configuration for Datalith.
+# Enforces the accepted-license and source policy documented in
+# docs/license-compliance-plan.md. Run with `cargo deny check`.
+
+[graph]
+# The dependency graph is checked for the union of all production targets.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+# Maintenance status is only enforced for direct workspace dependencies; the
+# pinned zed revision pulls in several unmaintained transitive crates that
+# cannot be upgraded without moving the zed revision.
+unmaintained = "workspace"
+# Pre-existing security advisories in the pinned zed revision (all transitive
+# dependencies). Upgrading them requires moving the zed revision, which is
+# tracked separately from license compliance.
+ignore = [
+    { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch via zed (transitive)" },
+    { id = "RUSTSEC-2026-0221", reason = "event-listener via zed (transitive)" },
+    { id = "RUSTSEC-2026-0253", reason = "lru via zed (transitive)" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml via zed (transitive)" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml via zed (transitive)" },
+]
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "GPL-3.0-or-later",
+    "MPL-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "0BSD",
+    "NCSA",
+    "Unicode-3.0",
+    "Zlib",
+    "BSL-1.0",
+    "bzip2-1.0.6",
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Datalith is a private crate that pins its Git dependencies in Cargo.lock
+# (and via `rev` where the build permits). Allow those Git paths rather than
+# flagging them as `*` wildcards.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/zed-industries/zed",
+    "https://github.com/zed-industries/wasm_thread",
+    "https://github.com/zed-industries/xim-rs",
+    "https://github.com/zed-industries/font-kit",
+    "https://github.com/zed-industries/reqwest",
+    "https://github.com/zed-industries/scap",
+    "https://github.com/longbridge/gpui-component",
+]

@@ -1,6 +1,6 @@
 use gpui::{App, Menu, MenuItem};
 
-use crate::app::actions::{OpenAbout, OpenSettings, OpenShortcuts};
+use crate::app::actions::{OpenAbout, OpenLicenses, OpenSettings, OpenShortcuts, OpenSource};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -9,7 +9,7 @@ use super::actions::{
 };
 
 pub fn install(cx: &App) {
-    cx.set_menus([application_menu(), file_menu(), navigate_menu()]);
+    cx.set_menus([application_menu(), file_menu(), navigate_menu(), help_menu()]);
 }
 
 fn application_menu() -> Menu {
@@ -51,5 +51,12 @@ fn navigate_menu() -> Menu {
         MenuItem::action("Go Forward", GoForward),
         MenuItem::separator(),
         MenuItem::action("Toggle Dark Mode", ToggleTheme),
+    ])
+}
+
+fn help_menu() -> Menu {
+    Menu::new("Help").items([
+        MenuItem::action("View Dependency Licenses", OpenLicenses),
+        MenuItem::action("View Corresponding Source", OpenSource),
     ])
 }

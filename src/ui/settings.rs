@@ -436,9 +436,8 @@ impl SettingsView {
         let docs_vault = crate::app::docs::docs_vault_path()
             .to_string_lossy()
             .to_string();
-        SettingGroup::new()
-            .title("Datalith")
-            .items(vec![SettingItem::render(move |_options, _window, cx| {
+        SettingGroup::new().title("Datalith").items(vec![
+            SettingItem::render(move |_options, _window, cx| {
                 v_flex()
                     .w_full()
                     .items_center()
@@ -464,6 +463,71 @@ impl SettingsView {
                             .child(format!("Docs Vault: {docs_vault}")),
                     )
                     .into_any_element()
-            })])
+            }),
+            SettingItem::render(move |_options, _window, cx| {
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Copyright (c) 2026 mycelium-build"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Original Datalith source code: MIT License."),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "Distributed binaries include GPL-3.0-or-later components \
+                                 and are conveyed under GPL-3.0-or-later.",
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "This program comes with ABSOLUTELY NO WARRANTY; \
+                                 for details see the GNU GPL.",
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("about-view-licenses")
+                                    .outline()
+                                    .small()
+                                    .label("View licenses")
+                                    .on_click(|_, window, cx| {
+                                        window.dispatch_action(
+                                            Box::new(crate::app::actions::OpenLicenses),
+                                            cx,
+                                        );
+                                    }),
+                            )
+                            .child(
+                                Button::new("about-view-source")
+                                    .outline()
+                                    .small()
+                                    .label("View corresponding source")
+                                    .on_click(|_, _, _cx| {
+                                        let url =
+                                            crate::ui::licenses::corresponding_source_url();
+                                        let _ = crate::app::system::open_url(&url);
+                                    }),
+                            ),
+                    )
+                    .into_any_element()
+            }),
+        ])
     }
 }

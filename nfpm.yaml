@@ -10,7 +10,7 @@ maintainer: lmandrelli <luca.mandrelli@icloud.com>
 description: A fast, local-first knowledge workspace.
 vendor: Mycelium Build
 homepage: https://github.com/mycelium-build/datalith
-license: MIT
+license: GPL-3.0-or-later
 
 contents:
   - src: target/${PACKAGE_TARGET}/release/datalith
@@ -60,6 +60,18 @@ contents:
       mode: 0644
   - src: LICENSE
     dst: /usr/share/licenses/datalith/LICENSE
+    file_info:
+      mode: 0644
+  - src: LICENSE-GPL-3.0
+    dst: /usr/share/licenses/datalith/LICENSE-GPL-3.0
+    file_info:
+      mode: 0644
+  - src: LICENSING.md
+    dst: /usr/share/licenses/datalith/LICENSING.md
+    file_info:
+      mode: 0644
+  - src: THIRD-PARTY-NOTICES.md
+    dst: /usr/share/licenses/datalith/THIRD-PARTY-NOTICES.md
     file_info:
       mode: 0644
 
