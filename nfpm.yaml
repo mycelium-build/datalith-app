@@ -13,8 +13,9 @@ homepage: https://github.com/mycelium-build/datalith
 license: MIT
 
 contents:
-  - src: target/x86_64-unknown-linux-gnu/release/datalith
+  - src: target/${PACKAGE_TARGET}/release/datalith
     dst: /usr/bin/datalith
+    expand: true
     file_info:
       mode: 0755
   - src: packaging/datalith.desktop
@@ -30,13 +31,39 @@ contents:
     file_info:
       mode: 0644
 
+# Runtime deps derived from the release binary (`readelf -d` + dlopen'd libs
+# for the wgpu/wayland/x11 backends). No fontconfig or alsa: fontconfig_parser
+# is a pure-Rust crate and Datalith has no audio stack.
 overrides:
   deb:
-    depends: []
+    depends:
+      - libgcc-s1
+      - libwayland-client0
+      - libwayland-egl1
+      - libxcb1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libegl1
+      - libvulkan1
   rpm:
-    depends: []
+    depends:
+      - libgcc
+      - libwayland-client
+      - libwayland-egl
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libglvnd-egl
+      - vulkan-loader
   archlinux:
-    depends: []
+    depends:
+      - gcc-libs
+      - wayland
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libglvnd
+      - vulkan-icd-loader
 
 deb:
   fields:

@@ -101,13 +101,14 @@ jobs:
         if: runner.os == 'Linux'
         env:
           PACKAGE_ARCH: x86_64
+          PACKAGE_TARGET: x86_64-unknown-linux-gnu
         run: |
           export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
           for packager in deb rpm archlinux; do
             nfpm package \
               --config nfpm.yaml \
               --packager "$packager" \
-              --target "target/x86_64-unknown-linux-gnu/release/"
+              --target "target/${PACKAGE_TARGET}/release/"
           done
 
       - name: Upload package to GitHub release
