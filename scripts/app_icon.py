@@ -11,6 +11,7 @@ and writes the app icons for every platform into `assets/`:
   assets/datalith.icns     icp4/icp5/icp6/ic07/ic08/ic09/ic10 — macOS
   assets/datalith-macos.png  1024×1024 viewable preview of the macOS icon
   assets/datalith.rc       Windows resource file embedding the .ico
+  assets/icons/hicolor/<N>x<N>/apps/datalith.png 16/32/48/64/128/256/512/1024 — Linux icon theme
 
 Linux and Windows get the bare monolith mark on a transparent background,
 so it floats with no chrome.
@@ -35,6 +36,8 @@ ICO_OUT = ROOT / "assets" / "datalith.ico"
 ICNS_OUT = ROOT / "assets" / "datalith.icns"
 MACOS_PNG_OUT = ROOT / "assets" / "datalith-macos.png"
 RC_OUT = ROOT / "assets" / "datalith.rc"
+HICOLOR_DIR = ROOT / "assets" / "icons" / "hicolor"
+HICOLOR_SIZES = [16, 32, 48, 64, 128, 256, 512, 1024]
 
 SIZE = 32
 
@@ -210,7 +213,8 @@ def write_svg(grid) -> None:
                 continue
             rects.append(f'<rect x="{x}" y="{y}" width="1" height="1" fill="#{r:02x}{g:02x}{b:02x}"/>')
     svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" '
+        'viewBox="0 0 32 32" shape-rendering="crispEdges">'
         f'{''.join(rects)}</svg>'
     )
     SVG_OUT.write_text(svg, encoding="utf-8")
@@ -221,6 +225,12 @@ def write_png(grid, path: pathlib.Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(png_bytes(grid))
     print(f"wrote {path.relative_to(ROOT)}")
+
+
+def write_hicolor(grid) -> None:
+    for size in HICOLOR_SIZES:
+        path = HICOLOR_DIR / f"{size}x{size}" / "apps" / "datalith.png"
+        write_png(scale_to(grid, size), path)
 
 
 def write_ico(grid) -> None:
@@ -390,6 +400,7 @@ def main() -> int:
     grid = load_grid()
     write_svg(grid)
     write_png(scale_to(grid, 1024), PNG_OUT)
+    write_hicolor(grid)
     write_ico(grid)
     write_icns()
     write_rc()

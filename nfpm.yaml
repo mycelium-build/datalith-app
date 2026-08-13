@@ -50,6 +50,14 @@ contents:
     dst: /usr/share/icons/hicolor/256x256/apps/datalith.png
     file_info:
       mode: 0644
+  - src: assets/icons/hicolor/512x512/apps/datalith.png
+    dst: /usr/share/icons/hicolor/512x512/apps/datalith.png
+    file_info:
+      mode: 0644
+  - src: assets/icons/hicolor/1024x1024/apps/datalith.png
+    dst: /usr/share/icons/hicolor/1024x1024/apps/datalith.png
+    file_info:
+      mode: 0644
   - src: LICENSE
     dst: /usr/share/licenses/datalith/LICENSE
     file_info:

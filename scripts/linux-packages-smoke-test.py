@@ -277,7 +277,13 @@ def smoke_test(pkg: pathlib.Path, cleanup: bool) -> bool:
         c(container, ["bash", "-c",
             "test -f /usr/share/applications/datalith.desktop && "
             "grep -q '^StartupWMClass=datalith$' /usr/share/applications/datalith.desktop && "
-            "find /usr/share/icons/hicolor -name 'datalith.*' | grep -q ."]),
+            "test -f /usr/share/icons/hicolor/scalable/apps/datalith.svg && "
+            "for s in 16 32 48 64 128 256 512 1024; do "
+            "p=/usr/share/icons/hicolor/${s}x${s}/apps/datalith.png; "
+            "test -f \"$p\" || exit 1; "
+            "test \"$(od -An -tu1 -j24 -N1 \"$p\" | tr -d ' ')\" = 8 || exit 1; "
+            "test \"$(od -An -tu1 -j25 -N1 \"$p\" | tr -d ' ')\" = 6 || exit 1; "
+            "done"]),
         check=False,
     )
     if result.returncode != 0:
