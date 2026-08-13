@@ -64,6 +64,11 @@ jobs:
           config: release-plz.toml
           version: "0.3.160"
 
+      - name: Wait for release PR branch to propagate
+        if: steps.release-plz.outputs.prs_created == 'true'
+        run: sleep 10
+        shell: bash
+
       - name: Verify release PR contains triggering commit
         if: steps.release-plz.outputs.prs_created == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
