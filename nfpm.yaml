@@ -3,7 +3,7 @@ name: datalith
 arch: ${PACKAGE_ARCH}
 platform: linux
 version: ${PACKAGE_VERSION}
-release: 1
+release: "1"
 section: utils
 priority: optional
 maintainer: lmandrelli <luca.mandrelli@icloud.com>
