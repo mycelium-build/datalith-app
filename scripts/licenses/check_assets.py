@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import glob
 import os
-import re
 import subprocess
 import sys
 import tomllib
@@ -54,9 +53,21 @@ ACCEPTED_LICENSES = {
     "bzip2-1.0.6",
 }
 
+ACCEPTED_EXPRESSIONS = ACCEPTED_LICENSES | {
+    "Apache-2.0 WITH LLVM-exception",
+    "LicenseRef-TextMateThemesBundle",
+}
+
 REQUIRED_FIELDS = {"id", "kind", "name", "license"}
 
-THIRD_PARTY_REQUIRED = {"author", "copyright", "source", "revision", "license"}
+THIRD_PARTY_REQUIRED = {
+    "author",
+    "copyright",
+    "source",
+    "revision",
+    "license",
+    "license_file",
+}
 
 EMBEDDED_ASSET_ROOTS = ("assets/icons/", "assets/fonts/", "src/ui/themes/")
 
@@ -118,23 +129,11 @@ def expand_paths(patterns: list[str]) -> set[str]:
 
 
 def validate_spdx(asset_id: str, expression: str) -> None:
-    if expression.startswith("LicenseRef-"):
-        if not re.fullmatch(r"LicenseRef-[A-Za-z0-9.-]+", expression):
-            fail(
-                f"LICENSE-E105 invalid LicenseRef expression: id={asset_id} "
-                f"expression={expression}"
-            )
-        return
-    # Accept a simple SPDX id, an exception form, or an AND/OR join of ids.
-    tokens = re.findall(r"[A-Za-z0-9.+-]+", expression)
-    for token in tokens:
-        if token in {"WITH", "AND", "OR"}:
-            continue
-        if token not in ACCEPTED_LICENSES:
-            fail(
-                f"LICENSE-E001 unknown asset license: id={asset_id} "
-                f"expression={expression} token={token}"
-            )
+    if expression not in ACCEPTED_EXPRESSIONS:
+        fail(
+            f"LICENSE-E001 unapproved asset license: id={asset_id} "
+            f"expression={expression}"
+        )
 
 
 def load_manifest(path: Path) -> list[dict[str, Any]]:
@@ -178,6 +177,8 @@ def main() -> int:
             )
 
         license_expr = asset["license"]
+        if not isinstance(license_expr, str) or not license_expr:
+            fail(f"LICENSE-E105 asset license must be a string: id={asset_id}")
         validate_spdx(asset_id, license_expr)
 
         is_first_party = asset.get("source") == "first-party"

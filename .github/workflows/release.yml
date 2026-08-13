@@ -45,7 +45,7 @@ jobs:
         run: scripts/licenses/check.sh
 
   source:
-    needs: compliance
+    needs: [release, compliance]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -137,6 +137,8 @@ jobs:
           nfpm --version
 
       - name: Build release binary
+        env:
+          DATALITH_RELEASE_TAG: ${{ github.ref_name }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package desktop application
@@ -215,10 +217,16 @@ jobs:
 
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@04151451f829cb881fd7b3250eccf4021433e14e
+        env:
+          SYFT_SOURCE_NAME: datalith
+          SYFT_SOURCE_VERSION: ${{ github.ref_name }}
         with:
           path: .
           format: spdx-json
           output-file: datalith.sbom.spdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Rename SBOM with version
         run: |

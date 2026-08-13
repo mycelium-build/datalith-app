@@ -520,8 +520,7 @@ impl SettingsView {
                                     .small()
                                     .label("View corresponding source")
                                     .on_click(|_, _, _cx| {
-                                        let url =
-                                            crate::ui::licenses::corresponding_source_url();
+                                        let url = crate::ui::licenses::corresponding_source_url();
                                         let _ = crate::app::system::open_url(&url);
                                     }),
                             ),

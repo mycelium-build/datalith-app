@@ -3,8 +3,8 @@
 
 Usage: verify_sbom.py <sbom.json> <version>
 
-Checks that the SBOM is valid JSON, identifies the Datalith version, and lists
-the expected GPL, Apache, MIT, font, and icon components.
+Checks that the SBOM is SPDX JSON, identifies the Datalith release, and lists
+the core Rust components. Bundled assets are covered by assets/licences.toml.
 """
 
 from __future__ import annotations
@@ -34,6 +34,10 @@ def main() -> int:
     if not isinstance(data, dict):
         fail("top-level SPDX document is not an object")
 
+    spdx_version = data.get("spdxVersion")
+    if not isinstance(spdx_version, str) or not spdx_version.startswith("SPDX-"):
+        fail(f"missing SPDX version: spdxVersion={spdx_version}")
+
     name = str(data.get("name", ""))
     if version not in name:
         fail(f"SBOM does not identify Datalith version {version}: name={name}")
@@ -42,11 +46,15 @@ def main() -> int:
     if not isinstance(packages, list) or not packages:
         fail("SBOM has no packages")
 
-    text = json.dumps(data)
-    required = ["ztracing", "gpui"]
-    for token in required:
-        if token not in text:
-            fail(f"SBOM missing expected component: component={token}")
+    package_names = {
+        package.get("name")
+        for package in packages
+        if isinstance(package, dict) and isinstance(package.get("name"), str)
+    }
+    required = {"gpui", "gpui-component", "zlog", "ztracing", "ztracing_macro"}
+    missing = sorted(required - package_names)
+    if missing:
+        fail(f"SBOM missing expected components: components={','.join(missing)}")
 
     print(f"SBOM OK: path={path} version={version} packages={len(packages)}")
     return 0

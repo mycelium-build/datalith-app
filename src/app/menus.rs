@@ -9,7 +9,12 @@ use super::actions::{
 };
 
 pub fn install(cx: &App) {
-    cx.set_menus([application_menu(), file_menu(), navigate_menu(), help_menu()]);
+    cx.set_menus([
+        application_menu(),
+        file_menu(),
+        navigate_menu(),
+        help_menu(),
+    ]);
 }
 
 fn application_menu() -> Menu {

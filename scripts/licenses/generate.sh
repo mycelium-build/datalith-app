@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deterministic regeneration entry point for license notice material.
-# Produces THIRD-PARTY-NOTICES.md and assets/licenses/generated.md.
+# Produces THIRD-PARTY-NOTICES.md.
 # Do not edit the generated files by hand; run this script instead.
 set -euo pipefail
 
@@ -53,9 +53,8 @@ cargo about generate \
     cat "$TMP_DIR/rust.md"
 } > "$TMP_DIR/notices.md"
 
-# 6. Write the committed artifacts byte-for-byte.
+# 6. Write the committed artifact byte-for-byte. The application embeds this
+# same file directly, so there is no second generated copy to keep in sync.
 cp "$TMP_DIR/notices.md" "$REPO_ROOT/THIRD-PARTY-NOTICES.md"
-mkdir -p "$REPO_ROOT/assets/licenses"
-cp "$TMP_DIR/notices.md" "$REPO_ROOT/assets/licenses/generated.md"
 
-echo "wrote THIRD-PARTY-NOTICES.md and assets/licenses/generated.md"
+echo "wrote THIRD-PARTY-NOTICES.md"

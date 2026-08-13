@@ -49,9 +49,9 @@ for Rust dependencies and bundled assets — is in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The canonical non-Cargo asset
 inventory is [assets/licences.toml](assets/licences.toml).
 
-A small number of bundled themes have unusual or incompletely-expressible
-licensing and are flagged for focused legal review before the first public
-release; see the "Review notes" section of `THIRD-PARTY-NOTICES.md`.
+The retained Twilight theme uses a custom permissive grant and is flagged for
+focused legal review before the first public release; see "Bundled theme
+review" in `THIRD-PARTY-NOTICES.md`.
 
 ## Corresponding Source
 

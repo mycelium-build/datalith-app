@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Resolve the version from Cargo.toml.
-VERSION="$(python3 - <<'PY'
+PACKAGE_VERSION="$(python3 - <<'PY'
 import tomllib
 with open('Cargo.toml', 'rb') as f:
     print(tomllib.load(f)['package']['version'])
@@ -36,7 +36,7 @@ PY
 )"
 
 if [[ -z "$TAG" ]]; then
-    TAG="v${VERSION}"
+    TAG="v${PACKAGE_VERSION}"
 fi
 
 # 1. Require the checkout to be at the tag and clean.
@@ -54,22 +54,26 @@ if [[ -n "$(git status --porcelain)" ]]; then
     fail "working tree is not clean; commit or stash changes before packaging source"
 fi
 
-# 2. Verify the Cargo package version agrees with the tag.
-if [[ "${TAG#v}" != "$VERSION" ]]; then
-    fail "release/source version mismatch: tag=${TAG} cargo=${VERSION}"
+# 2. Verify the tag is either the Cargo version or one of its release
+# candidates. RC tags point at the release PR, whose Cargo version is stable.
+RELEASE_VERSION="${TAG#v}"
+ESCAPED_PACKAGE_VERSION="${PACKAGE_VERSION//./\\.}"
+if [[ "$RELEASE_VERSION" != "$PACKAGE_VERSION" && \
+      ! "$RELEASE_VERSION" =~ ^${ESCAPED_PACKAGE_VERSION}-rc\.[1-9][0-9]*$ ]]; then
+    fail "release/source version mismatch: tag=${TAG} cargo=${PACKAGE_VERSION}"
 fi
 
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
-ARCHIVE_NAME="datalith-${VERSION}-corresponding-source.tar.zst"
+ARCHIVE_NAME="datalith-${RELEASE_VERSION}-corresponding-source.tar.zst"
 
 # 3. Copy tracked source using git archive (excludes .git, target, etc.).
-git archive --format=tar --prefix="datalith-${VERSION}/" "$TAG" \
+git archive --format=tar --prefix="datalith-${RELEASE_VERSION}/" "$TAG" \
     -o "$STAGING/source.tar"
 mkdir -p "$STAGING/src"
 tar xf "$STAGING/source.tar" -C "$STAGING/src"
-SRC_DIR="$STAGING/src/datalith-${VERSION}"
+SRC_DIR="$STAGING/src/datalith-${RELEASE_VERSION}"
 
 # 4. Vendor all dependencies (crates.io and Git) with the locked versions.
 (
@@ -90,7 +94,8 @@ EOF
 # 6. Record a source manifest.
 {
     echo "package = datalith"
-    echo "version = ${VERSION}"
+    echo "package_version = ${PACKAGE_VERSION}"
+    echo "release_version = ${RELEASE_VERSION}"
     echo "tag = ${TAG}"
     echo "commit = ${TAG_SHA}"
     echo "toolchain = $(cat rust-toolchain.toml)"
@@ -99,6 +104,6 @@ EOF
 # 7. Create the deterministic archive.
 mkdir -p "$OUTPUT_DIR"
 tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
-    --zstd -cf "$OUTPUT_DIR/$ARCHIVE_NAME" -C "$STAGING/src" "datalith-${VERSION}"
+    --zstd -cf "$OUTPUT_DIR/$ARCHIVE_NAME" -C "$STAGING/src" "datalith-${RELEASE_VERSION}"
 
 echo "wrote $OUTPUT_DIR/$ARCHIVE_NAME"

@@ -26,10 +26,9 @@ cargo deny --manifest-path "$REPO_ROOT/Cargo.toml" check licenses sources bans a
 # 2. Regenerate notices and fail if they are stale.
 "$REPO_ROOT/scripts/licenses/generate.sh"
 
-if ! git diff --exit-code --quiet -- \
-    THIRD-PARTY-NOTICES.md assets/licenses/generated.md; then
+if ! git diff --exit-code --quiet -- THIRD-PARTY-NOTICES.md; then
     echo "LICENSE-E201 generated notices are stale: run scripts/licenses/generate.sh" >&2
-    git diff --stat -- THIRD-PARTY-NOTICES.md assets/licenses/generated.md >&2
+    git diff --stat -- THIRD-PARTY-NOTICES.md >&2
     exit 1
 fi
 

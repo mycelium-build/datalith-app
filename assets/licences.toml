@@ -1,7 +1,6 @@
 # Canonical inventory of non-Cargo assets embedded in or distributed with
-# Datalith. Generated notice content (assets/licenses/generated.md and the
-# asset sections of THIRD-PARTY-NOTICES.md) is derived from this file, which is
-# validated by scripts/licenses/check_assets.py.
+# Datalith. The asset sections of THIRD-PARTY-NOTICES.md are derived from this
+# file, which is validated by scripts/licenses/check_assets.py.
 #
 # Field notes:
 #   paths      repo-relative file/glob patterns covered by this entry

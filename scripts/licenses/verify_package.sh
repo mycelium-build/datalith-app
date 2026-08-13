@@ -7,6 +7,7 @@ set -euo pipefail
 
 FORMAT="${1:?format required}"
 PACKAGE="${2:?package path required}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 REQUIRED_FILES=(
     "LICENSE"
@@ -66,6 +67,9 @@ for file in "${REQUIRED_FILES[@]}"; do
     fi
     if [[ ! -s "$found" ]]; then
         fail "package legal file empty: format=$FORMAT file=$file"
+    fi
+    if ! cmp -s "$REPO_ROOT/$file" "$found"; then
+        fail "package legal file differs from release source: format=$FORMAT file=$file"
     fi
 done
 

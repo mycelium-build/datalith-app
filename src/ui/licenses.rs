@@ -13,14 +13,16 @@ use super::DatalithView;
 const MIT_LICENSE: &str = include_str!("../../LICENSE");
 const GPL_LICENSE: &str = include_str!("../../LICENSE-GPL-3.0");
 const LICENSING: &str = include_str!("../../LICENSING.md");
-const THIRD_PARTY_NOTICES: &str = include_str!("../../assets/licenses/generated.md");
+const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 
 const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith";
+const RELEASE_TAG: Option<&str> = option_env!("DATALITH_RELEASE_TAG");
 
 /// The version-specific URL of the Corresponding Source archive for this build.
 #[must_use]
 pub fn corresponding_source_url() -> String {
-    format!("{RELEASE_REPO}/releases/tag/v{}", env!("CARGO_PKG_VERSION"))
+    let tag = RELEASE_TAG.unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
+    format!("{RELEASE_REPO}/releases/tag/{tag}")
 }
 
 pub struct LicensesView {
@@ -113,7 +115,10 @@ impl LicensesView {
                                     .overflow_y_scroll()
                                     .p_4()
                                     .children([
-                                        section("MIT License (original Datalith source)", MIT_LICENSE),
+                                        section(
+                                            "MIT License (original Datalith source)",
+                                            MIT_LICENSE,
+                                        ),
                                         section("GNU General Public License v3", GPL_LICENSE),
                                         section("Licensing overview", LICENSING),
                                         section("Third-party notices", THIRD_PARTY_NOTICES),
@@ -159,7 +164,7 @@ mod tests {
     #[test]
     fn corresponding_source_url_uses_package_version() {
         let url = corresponding_source_url();
-        assert!(url.contains(env!("CARGO_PKG_VERSION")));
+        assert!(url.contains(RELEASE_TAG.unwrap_or(env!("CARGO_PKG_VERSION"))));
         assert!(url.starts_with(RELEASE_REPO));
         assert!(url.contains("/releases/tag/v"));
     }
