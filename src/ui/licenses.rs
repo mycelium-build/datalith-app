@@ -1,6 +1,8 @@
+use std::sync::LazyLock;
+
 use gpui::{
     App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, UniformListScrollHandle, div, px, uniform_list,
 };
 use gpui_component::{
     ActiveTheme, IconName, Sizable,
@@ -18,6 +20,72 @@ const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith";
 const RELEASE_TAG: Option<&str> = option_env!("DATALITH_RELEASE_TAG");
 
+/// Fixed height of every row in the virtualized licenses list. All rows must
+/// share one height because `uniform_list` measures a single row and reuses
+/// that measurement for the whole list instead of laying out every row.
+const ROW_HEIGHT: f32 = 20.0;
+
+/// Approximate character width the licenses panel's content area can fit on
+/// one monospace line, used to pre-wrap paragraphs once instead of relying on
+/// GPUI to reflow the entire multi-megabyte notices text on every frame.
+const WRAP_WIDTH: usize = 100;
+
+/// One rendered row of the licenses overlay: either a bold section header or
+/// a single pre-wrapped line of a license/notice text.
+enum Row {
+    Header(String),
+    Line(String),
+}
+
+/// Every row across all four sections, pre-split and pre-wrapped once (on
+/// first access) so opening or scrolling the licenses overlay never has to
+/// lay out the ~18k-line third-party notices text in a single pass.
+static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
+    let sections = [
+        ("MIT License (original Datalith source)", MIT_LICENSE),
+        ("GNU General Public License v3", GPL_LICENSE),
+        ("Licensing overview", LICENSING),
+        ("Third-party notices", THIRD_PARTY_NOTICES),
+    ];
+
+    let mut rows = Vec::new();
+    for (title, content) in sections {
+        if !rows.is_empty() {
+            rows.push(Row::Line(String::new()));
+        }
+        rows.push(Row::Header(title.to_string()));
+        for line in content.lines() {
+            rows.extend(wrap_line(line, WRAP_WIDTH).into_iter().map(Row::Line));
+        }
+    }
+    rows
+});
+
+/// Greedily wraps `line` on word boundaries so every wrapped piece is at most
+/// `width` characters, preserving blank lines as a single empty piece.
+fn wrap_line(line: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in line.split_whitespace() {
+        let fits_current = current.len().saturating_add(1).saturating_add(word.len()) <= width;
+        if !current.is_empty() {
+            if fits_current {
+                current.push(' ');
+            } else {
+                lines.push(std::mem::take(&mut current));
+            }
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
 /// The version-specific URL of the Corresponding Source archive for this build.
 #[must_use]
 pub fn corresponding_source_url() -> String {
@@ -28,6 +96,7 @@ pub fn corresponding_source_url() -> String {
 pub struct LicensesView {
     open: bool,
     focus_handle: FocusHandle,
+    scroll_handle: UniformListScrollHandle,
 }
 
 impl LicensesView {
@@ -35,6 +104,7 @@ impl LicensesView {
         Self {
             open: false,
             focus_handle: cx.focus_handle(),
+            scroll_handle: UniformListScrollHandle::new(),
         }
     }
 
@@ -109,38 +179,40 @@ impl LicensesView {
                                     ),
                             )
                             .child(
-                                div()
-                                    .id("licenses-scroll")
-                                    .flex_1()
-                                    .overflow_y_scroll()
-                                    .p_4()
-                                    .children([
-                                        section(
-                                            "MIT License (original Datalith source)",
-                                            MIT_LICENSE,
-                                        ),
-                                        section("GNU General Public License v3", GPL_LICENSE),
-                                        section("Licensing overview", LICENSING),
-                                        section("Third-party notices", THIRD_PARTY_NOTICES),
-                                    ]),
+                                uniform_list("licenses-scroll", ROWS.len(), |range, _, _| {
+                                    range
+                                        .filter_map(|ix| ROWS.get(ix).map(render_row))
+                                        .collect()
+                                })
+                                .track_scroll(&self.scroll_handle)
+                                .flex_1()
+                                .px_4()
+                                .py_2(),
                             ),
                     ),
             )
     }
 }
 
-fn section(title: &'static str, content: &'static str) -> impl IntoElement {
-    v_flex()
-        .w_full()
-        .gap_1()
-        .mb_4()
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::BOLD)
-                .text_sm()
-                .child(title),
-        )
-        .child(div().font_family("monospace").text_xs().child(content))
+fn render_row(row: &Row) -> impl IntoElement {
+    let (text, is_header) = match row {
+        Row::Header(title) => (title.as_str(), true),
+        Row::Line(line) => (line.as_str(), false),
+    };
+
+    let row = div()
+        .h(px(ROW_HEIGHT))
+        .flex()
+        .items_center()
+        .font_family("monospace")
+        .text_xs()
+        .child(text.to_string());
+
+    if is_header {
+        row.font_weight(gpui::FontWeight::BOLD).text_sm()
+    } else {
+        row
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +251,42 @@ mod tests {
     fn licensing_overview_states_mit_and_gpl_scope() {
         assert!(LICENSING.contains("MIT"));
         assert!(LICENSING.contains("GPL-3.0-or-later"));
+    }
+
+    #[test]
+    fn wrap_line_splits_long_lines_on_word_boundaries() {
+        let wrapped = wrap_line("one two three four five", 10);
+        assert!(wrapped.iter().all(|line| line.len() <= 10));
+        assert_eq!(wrapped.join(" "), "one two three four five");
+    }
+
+    #[test]
+    fn wrap_line_preserves_blank_lines() {
+        assert_eq!(wrap_line("", 10), vec![String::new()]);
+        assert_eq!(wrap_line("   ", 10), vec![String::new()]);
+    }
+
+    #[test]
+    fn wrap_line_keeps_an_overlong_word_intact() {
+        let word = "x".repeat(50);
+        let wrapped = wrap_line(&word, 10);
+        assert_eq!(wrapped, vec![word]);
+    }
+
+    #[test]
+    fn rows_cover_every_section_with_a_header() {
+        let header_count = ROWS
+            .iter()
+            .filter(|row| matches!(row, Row::Header(_)))
+            .count();
+        assert_eq!(header_count, 4);
+        assert!(matches!(ROWS.first(), Some(Row::Header(_))));
+        // Wrapping must never produce a row wider than the configured budget.
+        for row in ROWS.iter() {
+            let text = match row {
+                Row::Header(text) | Row::Line(text) => text,
+            };
+            assert!(text.len() <= WRAP_WIDTH || !text.contains(' '));
+        }
     }
 }
