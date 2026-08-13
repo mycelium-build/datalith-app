@@ -13,7 +13,7 @@ publisher = "Mycelium Build"
 description = "A fast, local-first knowledge workspace."
 homepage = "https://github.com/mycelium-build/datalith"
 category = "Productivity"
-icons = ["assets/datalith.png"]
+icons = ["assets/datalith.png", "assets/datalith.icns"]
 license-file = "LICENSE"
 formats = ["appimage", "dmg", "nsis"]
 
