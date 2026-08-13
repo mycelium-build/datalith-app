@@ -2,9 +2,8 @@
 
 A fast, local-first knowledge workspace.
 
-Datalith is a desktop application for notes, tasks, documents, and a graph view
-of your knowledge, backed by a local search index. It runs on Linux, macOS, and
-Windows.
+Datalith is a desktop application for your notes and tasks, backed by a local search index. 
+Available on Linux, macOS, and Windows.
 
 ## Licensing
 
