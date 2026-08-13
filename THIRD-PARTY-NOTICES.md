@@ -13,9 +13,11 @@ Corresponding Source, is in `LICENSING.md`.
 
 ## Bundled theme review
 
-Five themes were removed after review against their upstream licenses, and two
+Six themes were removed after review against their upstream licenses, and two
 were retained with corrected provenance:
 
+- **Removed — Alduin**: no license is recorded upstream
+  (`AlessandroYorba/Alduin`), so no redistribution grant could be established.
 - **Removed — Adventure, Fahrenheit, Harper, Kibble** (`iTerm2-Color-Schemes`):
   the collection's MIT license explicitly covers only the collection itself and
   notes that each individual scheme belongs to its original author, whose
