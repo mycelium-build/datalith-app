@@ -32,10 +32,13 @@ fi
 # 2. Validate the asset manifest.
 python3 "$SCRIPTS_DIR/check_assets.py"
 
-# 3. Render the non-Cargo asset sections.
+# 3. Sync the cargo-about accepted-license list from deny.toml (single source).
+python3 "$SCRIPTS_DIR/sync_allowlist.py"
+
+# 4. Render the non-Cargo asset sections.
 python3 "$SCRIPTS_DIR/check_assets.py" --emit "$TMP_DIR/assets.md"
 
-# 4. Render the Rust dependency sections.
+# 5. Render the Rust dependency sections.
 cargo about generate \
     --config "$SCRIPTS_DIR/about.toml" \
     --format handlebars \
@@ -44,7 +47,7 @@ cargo about generate \
     --output-file "$TMP_DIR/rust.md" \
     "$SCRIPTS_DIR/about.hbs"
 
-# 5. Combine into the final documents.
+# 6. Combine into the final documents.
 {
     cat "$SCRIPTS_DIR/notices-intro.md"
     printf '\n'
@@ -53,7 +56,7 @@ cargo about generate \
     cat "$TMP_DIR/rust.md"
 } > "$TMP_DIR/notices.md"
 
-# 6. Write the committed artifact byte-for-byte.
+# 7. Write the committed artifact byte-for-byte.
 # The application embeds this same file directly, so there is no second generated copy to keep in sync.
 cp "$TMP_DIR/notices.md" "$REPO_ROOT/THIRD-PARTY-NOTICES.md"
 

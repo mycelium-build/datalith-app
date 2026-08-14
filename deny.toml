@@ -25,15 +25,19 @@ ignore = [
 
 [licenses]
 confidence-threshold = 0.8
+# Single source of truth for the accepted-license allowlist.
+# This order is significant: scripts/licenses/sync_allowlist.py mirrors it into scripts/licenses/about.toml,
+# where cargo-about treats it as a priority list.
+# Do not reorder without regenerating THIRD-PARTY-NOTICES.md.
 allow = [
+    "GPL-3.0-or-later",
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "MIT-0",
-    "GPL-3.0-or-later",
+    "Apache-2.0 WITH LLVM-exception",
     "MPL-2.0",
-    "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSD-2-Clause",
     "ISC",
     "CC0-1.0",
     "0BSD",
