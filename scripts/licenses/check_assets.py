@@ -34,30 +34,28 @@ import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-ACCEPTED_LICENSES = {
-    "0BSD",
-    "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "BSL-1.0",
-    "CC0-1.0",
-    "GPL-3.0-or-later",
-    "ISC",
-    "MIT",
-    "MIT-0",
-    "MPL-2.0",
-    "NCSA",
-    "OFL-1.1",
-    "Unicode-3.0",
-    "Zlib",
-    "bzip2-1.0.6",
-}
 
-ACCEPTED_EXPRESSIONS = ACCEPTED_LICENSES | {
-    "Apache-2.0 WITH LLVM-exception",
-    "LicenseRef-TextMateThemesBundle",
-}
+def fail(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def load_accepted_licenses() -> set[str]:
+    deny_toml = REPO_ROOT / "deny.toml"
+    try:
+        with deny_toml.open("rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        fail(f"LICENSE-E113 cannot load license allowlist: path={deny_toml}")
+    allow = data.get("licenses", {}).get("allow", [])
+    if not allow:
+        fail(f"LICENSE-E113 deny.toml has no [licenses].allow: path={deny_toml}")
+    return set(allow)
+
+
+ACCEPTED_LICENSES = load_accepted_licenses()
+
+ACCEPTED_EXPRESSIONS = ACCEPTED_LICENSES | {"LicenseRef-TextMateThemesBundle"}
 
 REQUIRED_FIELDS = {"id", "kind", "name", "license"}
 
@@ -71,11 +69,6 @@ THIRD_PARTY_REQUIRED = {
 }
 
 EMBEDDED_ASSET_ROOTS = ("assets/icons/", "assets/fonts/", "src/ui/themes/")
-
-
-def fail(message: str) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(1)
 
 
 def tracked_files() -> list[str]:
