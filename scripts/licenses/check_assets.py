@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate assets/licences.toml and emit deterministic asset-license Markdown.
+"""Validate assets/licenses.toml and emit deterministic asset-license Markdown.
 
 The manifest is the single source of truth for non-Cargo assets (fonts, icons, themes, artwork).
 
@@ -148,7 +148,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    manifest_path = REPO_ROOT / "assets" / "licences.toml"
+    manifest_path = REPO_ROOT / "assets" / "licenses.toml"
     assets = load_manifest(manifest_path)
 
     seen_ids: set[str] = set()
@@ -239,7 +239,7 @@ def write_markdown(assets: list[dict[str, Any]], destination: Path) -> None:
         "## Bundled assets",
         "",
         "This section lists non-Cargo assets embedded in or distributed with",
-        "Datalith. It is generated from `assets/licences.toml`; do not edit it",
+        "Datalith. It is generated from `assets/licenses.toml`; do not edit it",
         "by hand.",
         "",
     ]

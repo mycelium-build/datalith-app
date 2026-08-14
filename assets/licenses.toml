@@ -1,5 +1,5 @@
 # Canonical inventory of non-Cargo assets embedded in or distributed with Datalith.
-# The asset sections of THIRD-PARTY-NOTICES.md are derived from this file,
+# The asset sections of THIRD-PARTY-NOTICES.md are derived from assets/licenses.toml,
 # which is validated by scripts/licenses/check_assets.py.
 #
 # Field notes:

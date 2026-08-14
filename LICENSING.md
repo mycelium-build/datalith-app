@@ -47,7 +47,7 @@ Third-party components retain their own licenses. The complete, generated
 inventory — with license expressions, copyright notices, and full license texts
 for Rust dependencies and bundled assets — is in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The canonical non-Cargo asset
-inventory is [assets/licences.toml](assets/licences.toml).
+inventory is [assets/licenses.toml](assets/licenses.toml).
 
 The retained Twilight theme uses a custom permissive grant and is explicitly
 documented for maintainer review; see "Bundled theme review" in
