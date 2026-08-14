@@ -7,7 +7,9 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, scroll::{Scrollbar, ScrollbarShow}, v_flex,
+    h_flex,
+    scroll::{Scrollbar, ScrollbarShow},
+    v_flex,
 };
 
 use super::DatalithView;
@@ -187,13 +189,10 @@ impl LicensesView {
                                         .py_2(),
                                     )
                                     .child(
-                                        div()
-                                            .absolute()
-                                            .inset_0()
-                                            .child(
-                                                Scrollbar::vertical(&self.scroll_handle)
-                                                    .scrollbar_show(ScrollbarShow::Always),
-                                            ),
+                                        div().absolute().inset_0().child(
+                                            Scrollbar::vertical(&self.scroll_handle)
+                                                .scrollbar_show(ScrollbarShow::Always),
+                                        ),
                                     ),
                             ),
                     ),
