@@ -68,7 +68,7 @@ THIRD_PARTY_REQUIRED = {
     "license_file",
 }
 
-EMBEDDED_ASSET_ROOTS = ("assets/icons/", "assets/fonts/", "src/ui/themes/")
+EMBEDDED_ASSET_ROOTS = ("assets/icons/", "assets/fonts/", "assets/themes/")
 
 
 def tracked_files() -> list[str]:
@@ -104,7 +104,7 @@ def tracked_files() -> list[str]:
 def is_asset_file(path: str) -> bool:
     if path.startswith(("assets/icons/", "assets/fonts/")):
         return True
-    if path.startswith("src/ui/themes/"):
+    if path.startswith("assets/themes/"):
         return path.endswith(".json")
     return False
 

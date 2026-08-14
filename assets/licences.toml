@@ -63,9 +63,9 @@ copyright = "Copyright (c) 2026 mycelium-build"
 source = "first-party"
 revision = "first-party"
 license = "MIT"
-license_file = "LICENSE"
+license_file = "assets/themes/datalith-LICENSE.txt"
 distribution = "embedded"
-paths = ["src/ui/themes/datalith.json"]
+paths = ["assets/themes/datalith.json"]
 
 [[asset]]
 id = "pixeloid"
@@ -97,12 +97,12 @@ copyright = "Copyright 2011-2021 Marcin Kulik"
 source = "https://asciinema.org"
 revision = "4e056bee42703a88da5c97d99a5c58e6096a47bb"
 license = "Apache-2.0"
-license_file = "assets/licenses/texts/Apache-2.0.txt"
+license_file = "assets/themes/asciinema-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/asciinema/asciinema-player/4e056bee42703a88da5c97d99a5c58e6096a47bb/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/asciinema.json"]
+paths = ["assets/themes/asciinema.json"]
 
 [[asset]]
 id = "theme-ayu"
@@ -113,12 +113,12 @@ copyright = "Copyright (c) 2016 Ike Ku"
 source = "https://github.com/dempfi/ayu"
 revision = "41e0098e8ce5014f1f90474a16bf31639f74fecf"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/ayu-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/dempfi/ayu/41e0098e8ce5014f1f90474a16bf31639f74fecf/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/ayu.json"]
+paths = ["assets/themes/ayu.json"]
 
 [[asset]]
 id = "theme-catppuccin"
@@ -129,12 +129,12 @@ copyright = "Copyright (c) 2021 Catppuccin"
 source = "https://github.com/catppuccin/catppuccin"
 revision = "d09787dd98ca6fba08af5ef2ae94a7e09f17daca"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/catppuccin-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/catppuccin/catppuccin/d09787dd98ca6fba08af5ef2ae94a7e09f17daca/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/catppuccin.json"]
+paths = ["assets/themes/catppuccin.json"]
 
 [[asset]]
 id = "theme-everforest"
@@ -145,12 +145,12 @@ copyright = "Copyright (c) 2019 sainnhe"
 source = "https://github.com/sainnhe/everforest"
 revision = "85a86eb62409e3ec88713bff3d1b9d7374e112e4"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/everforest-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/sainnhe/everforest/85a86eb62409e3ec88713bff3d1b9d7374e112e4/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/everforest.json"]
+paths = ["assets/themes/everforest.json"]
 
 [[asset]]
 id = "theme-flexoki"
@@ -161,12 +161,12 @@ copyright = "Copyright (c) 2023 Steph Ango"
 source = "https://github.com/kepano/flexoki"
 revision = "8d723bac4a9ac46adfdf99d42155286977aac72a"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/flexoki-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/kepano/flexoki/8d723bac4a9ac46adfdf99d42155286977aac72a/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/flexoki.json"]
+paths = ["assets/themes/flexoki.json"]
 
 [[asset]]
 id = "theme-gruvbox"
@@ -177,12 +177,12 @@ copyright = "Copyright (c) 2012-2023 Pavel Pertsev"
 source = "https://github.com/morhetz/gruvbox"
 revision = "5d15b2765f59754d7ac263c88a0f6e3e58124951"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/gruvbox-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/morhetz/gruvbox/5d15b2765f59754d7ac263c88a0f6e3e58124951/README.md"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/gruvbox.json"]
+paths = ["assets/themes/gruvbox.json"]
 notes = "No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT."
 
 [[asset]]
@@ -194,12 +194,12 @@ copyright = "Copyright (c) Andrew Wong (w0ng)"
 source = "https://github.com/w0ng/vim-hybrid"
 revision = "cc58baabeabc7b83768e25b852bf89c34756bf90"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/hybrid-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/w0ng/vim-hybrid/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/hybrid.json"]
+paths = ["assets/themes/hybrid.json"]
 notes = "License declared in file header (no standalone LICENSE file)."
 
 [[asset]]
@@ -211,12 +211,12 @@ copyright = "Copyright (c) 2009-2019 NanoTech"
 source = "https://github.com/nanotech/jellybeans.vim"
 revision = "ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/jellybeans-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/nanotech/jellybeans.vim/ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa/colors/jellybeans.vim"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/jellybeans.json"]
+paths = ["assets/themes/jellybeans.json"]
 notes = "License declared in file header (no standalone LICENSE file)."
 
 [[asset]]
@@ -228,12 +228,12 @@ copyright = "Copyright (c) 2023 Jason Lee"
 source = "https://github.com/huacnlee/zed-theme-macos-classic"
 revision = "22266e11c4b8962be2e259011251b4016ff00552"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/macos-classic-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/huacnlee/zed-theme-macos-classic/22266e11c4b8962be2e259011251b4016ff00552/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/macos-classic.json"]
+paths = ["assets/themes/macos-classic.json"]
 
 [[asset]]
 id = "theme-matrix"
@@ -244,12 +244,12 @@ copyright = "Copyright (c) 2022 iruzo"
 source = "https://github.com/iruzo/matrix-nvim"
 revision = "5fafe6b440d08c1070e3c4c4cb9d648436d5d867"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/matrix-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/iruzo/matrix-nvim/5fafe6b440d08c1070e3c4c4cb9d648436d5d867/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/matrix.json"]
+paths = ["assets/themes/matrix.json"]
 
 [[asset]]
 id = "theme-mellifluous"
@@ -260,12 +260,12 @@ copyright = "Copyright (c) 2024 Ramojus Lapinskas"
 source = "https://github.com/ramojus/mellifluous.nvim"
 revision = "ec0575bdb63594c5e7fba6eb9607b009aa1fb74e"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/mellifluous-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/ramojus/mellifluous.nvim/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
- paths = ["src/ui/themes/mellifluous.json"]
+paths = ["assets/themes/mellifluous.json"]
 
 [[asset]]
 id = "theme-solarized"
@@ -276,12 +276,12 @@ copyright = "Copyright (c) 2011 Ethan Schoonover"
 source = "https://ethanschoonover.com/solarized"
 revision = "62f656a02f93c5190a8753159e34b385588d5ff3"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/solarized-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/solarized.json"]
+paths = ["assets/themes/solarized.json"]
 
 [[asset]]
 id = "theme-spaceduck"
@@ -292,12 +292,12 @@ copyright = "Copyright (c) 2020 pineapplegiant"
 source = "https://github.com/pineapplegiant/spaceduck"
 revision = "350491f19343b24fa85809242089caa02d4dadce"
 license = "MIT"
-license_file = "assets/licenses/texts/MIT.txt"
+license_file = "assets/themes/spaceduck-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/pineapplegiant/spaceduck/350491f19343b24fa85809242089caa02d4dadce/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/spaceduck.json"]
+paths = ["assets/themes/spaceduck.json"]
 
 [[asset]]
 id = "theme-tokyonight"
@@ -308,12 +308,12 @@ copyright = "Copyright (c) Folke Lemaitre"
 source = "https://github.com/folke/tokyonight.nvim"
 revision = "cdc07ac78467a233fd62c493de29a17e0cf2b2b6"
 license = "Apache-2.0"
-license_file = "assets/licenses/texts/Apache-2.0.txt"
+license_file = "assets/themes/tokyonight-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/folke/tokyonight.nvim/cdc07ac78467a233fd62c493de29a17e0cf2b2b6/LICENSE"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/tokyonight.json"]
+paths = ["assets/themes/tokyonight.json"]
 
 [[asset]]
 id = "theme-twilight"
@@ -324,12 +324,12 @@ copyright = "No explicit copyright line (permissive grant; author Michael Sheets
 source = "https://macromates.com"
 revision = "e6e918506291b2dec178ad1b7e6f04653d25818c"
 license = "LicenseRef-TextMateThemesBundle"
-license_file = "assets/licenses/texts/LicenseRef-TextMateThemesBundle.txt"
+license_file = "assets/themes/twilight-LICENSE.txt"
 license_evidence = "https://raw.githubusercontent.com/textmate/themes.tmbundle/e6e918506291b2dec178ad1b7e6f04653d25818c/README.mdown"
 adaptation_source = "https://github.com/longbridge/gpui-component"
 adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 distribution = "embedded"
-paths = ["src/ui/themes/twilight.json"]
+paths = ["assets/themes/twilight.json"]
 notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle."
 
 # --- Assets arriving via Rust dependencies
@@ -338,12 +338,13 @@ notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard 
 id = "gpui-component-assets"
 kind = "dependency"
 name = "gpui-component-assets"
-author = "gpui-component contributors"
-copyright = "Copyright (c) gpui-component contributors"
+author = "Longbridge"
+copyright = "Copyright 2024 - 2025 Longbridge"
 source = "https://github.com/longbridge/gpui-component"
 revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
 license = "Apache-2.0"
-license_file = "assets/licenses/texts/Apache-2.0.txt"
+license_file = "assets/licenses/texts/gpui-component-assets-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/longbridge/gpui-component/46576ae7aa63ab9db9923e5d8c32228ed330a259/LICENSE-APACHE"
 distribution = "dependency"
 
 [[asset]]
