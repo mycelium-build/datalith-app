@@ -7,7 +7,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex, scroll::{Scrollbar, ScrollbarShow}, v_flex,
 };
 
 use super::DatalithView;
@@ -168,15 +168,33 @@ impl LicensesView {
                                     ),
                             )
                             .child(
-                                uniform_list("licenses-scroll", ROWS.len(), |range, _, _| {
-                                    range
-                                        .filter_map(|ix| ROWS.get(ix).map(render_row))
-                                        .collect()
-                                })
-                                .track_scroll(&self.scroll_handle)
-                                .flex_1()
-                                .px_4()
-                                .py_2(),
+                                div()
+                                    .relative()
+                                    .flex_1()
+                                    .child(
+                                        uniform_list(
+                                            "licenses-scroll",
+                                            ROWS.len(),
+                                            |range, _, _| {
+                                                range
+                                                    .filter_map(|ix| ROWS.get(ix).map(render_row))
+                                                    .collect()
+                                            },
+                                        )
+                                        .track_scroll(&self.scroll_handle)
+                                        .size_full()
+                                        .px_4()
+                                        .py_2(),
+                                    )
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .inset_0()
+                                            .child(
+                                                Scrollbar::vertical(&self.scroll_handle)
+                                                    .scrollbar_show(ScrollbarShow::Always),
+                                            ),
+                                    ),
                             ),
                     ),
             )
