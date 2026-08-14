@@ -54,3 +54,13 @@ license = "Apache-2.0"
 files = [
     { path = "LICENSE", checksum = "408bbc4d10bdf74d8c9b74b64ea4910603257e24133da18edc4d16198e3b4010" },
 ]
+
+# The root crate's source directory is the repository root,
+# so the filesystem scan would also pick up every assets/themes/*-LICENSE.txt as an MIT candidate
+# (all tie on expression and confidence, so the survivor is platform-dependent).
+# Pin the actual LICENSE so generation is deterministic across machines.
+[datalith.clarify]
+license = "MIT"
+files = [
+    { path = "LICENSE", checksum = "c41f3989590266fd675a3fad6371b9f51620f41e093f4a193f625337d6535407" },
+]
