@@ -11,35 +11,13 @@ is produced by `scripts/licenses/generate.sh`; do not edit it by hand.
 The complete scope map, including the GPL distribution boundary and
 Corresponding Source, is in `LICENSING.md`.
 
-## Bundled theme review
-
-Six themes were removed after review against their upstream licenses, and two
-were retained with corrected provenance:
-
-- **Removed — Alduin**: no license is recorded upstream
-  (`AlessandroYorba/Alduin`), so no redistribution grant could be established.
-- **Removed — Adventure, Fahrenheit, Harper, Kibble** (`iTerm2-Color-Schemes`):
-  the collection's MIT license explicitly covers only the collection itself and
-  notes that each individual scheme belongs to its original author, whose
-  license is not recorded in the collection. No chain of title could be
-  established, so the themes were removed.
-- **Removed — Molokai**: the MIT license on `molokai.vim` covers the Vim source
-  only; the Monokai palette (copyright Wimer Hazenberg) that the theme's colors
-  derive from has no license.
-- **Retained — Gruvbox**: no standalone `LICENSE` file upstream, but the README
-  declares "MIT/X11" (MIT) and Debian packages it as MIT under
-  copyright Pavel Pertsev (morhetz).
-- **Retained — Twilight**: distributed under the TextMate themes bundle's
-  permissive grant (copy/use/modify/sell/distribute), recorded as
-  `LicenseRef-TextMateThemesBundle`.
-
 ## Bundled assets
 
 This section lists non-Cargo assets embedded in or distributed with
 Datalith. It is generated from `assets/licences.toml`; do not edit it
 by hand.
 
-### Datalith application icon and artwork
+### Datalith application icon
 
 - Identifier: `datalith-app-icons`
 - Kind: artwork
@@ -58,7 +36,7 @@ by hand.
 - License: MIT
 - Source: first-party (Datalith)
 - License text: LICENSE
-- Notes: Original 7x7 pixel art generated from ASCII sources (scripts/txt2svg.py). Stylistically inspired by line-icon sets such as Nucleo Arcade.
+- Notes: Original 7x7 and 2 color levels pixel art icons. Inspired by Nucleo Arcade icon sets.
 
 ### Feather icons (Lucide-derived subset)
 
@@ -305,7 +283,7 @@ The following license texts are reproduced in full for the bundled assets listed
 
 ### LICENSE
 
-Used by: Datalith application icon and artwork, Datalith pixel-art icons, Datalith
+Used by: Datalith application icon, Datalith pixel-art icons, Datalith
 
 ```
 MIT License
