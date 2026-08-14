@@ -13,12 +13,8 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-# Maintenance status is only enforced for direct workspace dependencies;
-# the pinned zed revision pulls in several unmaintained transitive crates
-# that cannot be upgraded without moving the zed revision.
+# To prevent dependencies from GitHub from being incorrectly flagged
 unmaintained = "workspace"
-# Pre-existing security advisories in the pinned zed revision (all transitive dependencies).
-# Upgrading them requires moving the zed revision, which is tracked separately from license compliance.
 ignore = [
     { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch via zed (transitive)" },
     { id = "RUSTSEC-2026-0221", reason = "event-listener via zed (transitive)" },
