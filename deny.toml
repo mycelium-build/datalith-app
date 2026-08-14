@@ -1,5 +1,5 @@
 # cargo-deny configuration
-# Enforces the accepted-license and source policy documented in docs/license-compliance-plan.md.
+# Enforces the accepted-license and source policy.
 # Run with `cargo deny check`.
 
 [graph]
