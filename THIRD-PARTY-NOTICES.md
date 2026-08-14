@@ -5,7 +5,7 @@ licenses. This file records the components, their copyright notices, and the
 license text under which each is distributed.
 
 The Rust-dependency section is generated from `Cargo.lock` with `cargo-about`.
-The bundled-assets section is generated from `assets/licences.toml`. This file
+The bundled-assets section is generated from `assets/licenses.toml`. This file
 is produced by `scripts/licenses/generate.sh`; do not edit it by hand.
 
 The complete scope map, including the GPL distribution boundary and
@@ -14,7 +14,7 @@ Corresponding Source, is in `LICENSING.md`.
 ## Bundled assets
 
 This section lists non-Cargo assets embedded in or distributed with
-Datalith. It is generated from `assets/licences.toml`; do not edit it
+Datalith. It is generated from `assets/licenses.toml`; do not edit it
 by hand.
 
 ### Datalith application icon
@@ -53,12 +53,13 @@ by hand.
 
 - Identifier: `gpui-component-assets`
 - Kind: dependency
-- Author: gpui-component contributors
-- Copyright: Copyright (c) gpui-component contributors
+- Author: Longbridge
+- Copyright: Copyright 2024 - 2025 Longbridge
 - License: Apache-2.0
 - Source: https://github.com/longbridge/gpui-component
 - Revision: 46576ae7aa63ab9db9923e5d8c32228ed330a259
-- License text: assets/licenses/texts/Apache-2.0.txt
+- License text: assets/licenses/texts/gpui-component-assets-LICENSE.txt
+- License evidence: https://raw.githubusercontent.com/longbridge/gpui-component/46576ae7aa63ab9db9923e5d8c32228ed330a259/LICENSE-APACHE
 
 ### Lucide icons
 
@@ -92,7 +93,7 @@ by hand.
 - License: Apache-2.0
 - Source: https://asciinema.org
 - Revision: 4e056bee42703a88da5c97d99a5c58e6096a47bb
-- License text: assets/licenses/texts/Apache-2.0.txt
+- License text: assets/themes/asciinema-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/asciinema/asciinema-player/4e056bee42703a88da5c97d99a5c58e6096a47bb/LICENSE
 
 ### Ayu
@@ -104,7 +105,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/dempfi/ayu
 - Revision: 41e0098e8ce5014f1f90474a16bf31639f74fecf
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/ayu-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/dempfi/ayu/41e0098e8ce5014f1f90474a16bf31639f74fecf/LICENSE
 
 ### Catppuccin
@@ -116,7 +117,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/catppuccin/catppuccin
 - Revision: d09787dd98ca6fba08af5ef2ae94a7e09f17daca
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/catppuccin-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/catppuccin/catppuccin/d09787dd98ca6fba08af5ef2ae94a7e09f17daca/LICENSE
 
 ### Datalith
@@ -127,7 +128,7 @@ by hand.
 - Copyright: Copyright (c) 2026 mycelium-build
 - License: MIT
 - Source: first-party (Datalith)
-- License text: LICENSE
+- License text: assets/themes/datalith-LICENSE.txt
 
 ### Everforest
 
@@ -138,7 +139,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/sainnhe/everforest
 - Revision: 85a86eb62409e3ec88713bff3d1b9d7374e112e4
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/everforest-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/sainnhe/everforest/85a86eb62409e3ec88713bff3d1b9d7374e112e4/LICENSE
 
 ### Flexoki
@@ -150,7 +151,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/kepano/flexoki
 - Revision: 8d723bac4a9ac46adfdf99d42155286977aac72a
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/flexoki-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/kepano/flexoki/8d723bac4a9ac46adfdf99d42155286977aac72a/LICENSE
 
 ### Gruvbox
@@ -162,7 +163,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/morhetz/gruvbox
 - Revision: 5d15b2765f59754d7ac263c88a0f6e3e58124951
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/gruvbox-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/morhetz/gruvbox/5d15b2765f59754d7ac263c88a0f6e3e58124951/README.md
 - Notes: No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT.
 
@@ -175,7 +176,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/w0ng/vim-hybrid
 - Revision: cc58baabeabc7b83768e25b852bf89c34756bf90
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/hybrid-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/w0ng/vim-hybrid/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim
 - Notes: License declared in file header (no standalone LICENSE file).
 
@@ -188,7 +189,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/nanotech/jellybeans.vim
 - Revision: ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/jellybeans-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/nanotech/jellybeans.vim/ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa/colors/jellybeans.vim
 - Notes: License declared in file header (no standalone LICENSE file).
 
@@ -201,7 +202,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/huacnlee/zed-theme-macos-classic
 - Revision: 22266e11c4b8962be2e259011251b4016ff00552
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/macos-classic-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/huacnlee/zed-theme-macos-classic/22266e11c4b8962be2e259011251b4016ff00552/LICENSE
 
 ### Matrix
@@ -213,7 +214,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/iruzo/matrix-nvim
 - Revision: 5fafe6b440d08c1070e3c4c4cb9d648436d5d867
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/matrix-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/iruzo/matrix-nvim/5fafe6b440d08c1070e3c4c4cb9d648436d5d867/LICENSE
 
 ### Mellifluous
@@ -225,7 +226,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/ramojus/mellifluous.nvim
 - Revision: ec0575bdb63594c5e7fba6eb9607b009aa1fb74e
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/mellifluous-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/ramojus/mellifluous.nvim/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE
 
 ### Solarized
@@ -237,7 +238,7 @@ by hand.
 - License: MIT
 - Source: https://ethanschoonover.com/solarized
 - Revision: 62f656a02f93c5190a8753159e34b385588d5ff3
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/solarized-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE
 
 ### Spaceduck
@@ -249,7 +250,7 @@ by hand.
 - License: MIT
 - Source: https://github.com/pineapplegiant/spaceduck
 - Revision: 350491f19343b24fa85809242089caa02d4dadce
-- License text: assets/licenses/texts/MIT.txt
+- License text: assets/themes/spaceduck-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/pineapplegiant/spaceduck/350491f19343b24fa85809242089caa02d4dadce/LICENSE
 
 ### Tokyo Night
@@ -261,7 +262,7 @@ by hand.
 - License: Apache-2.0
 - Source: https://github.com/folke/tokyonight.nvim
 - Revision: cdc07ac78467a233fd62c493de29a17e0cf2b2b6
-- License text: assets/licenses/texts/Apache-2.0.txt
+- License text: assets/themes/tokyonight-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/folke/tokyonight.nvim/cdc07ac78467a233fd62c493de29a17e0cf2b2b6/LICENSE
 
 ### Twilight
@@ -273,7 +274,7 @@ by hand.
 - License: LicenseRef-TextMateThemesBundle
 - Source: https://macromates.com
 - Revision: e6e918506291b2dec178ad1b7e6f04653d25818c
-- License text: assets/licenses/texts/LicenseRef-TextMateThemesBundle.txt
+- License text: assets/themes/twilight-LICENSE.txt
 - License evidence: https://raw.githubusercontent.com/textmate/themes.tmbundle/e6e918506291b2dec178ad1b7e6f04653d25818c/README.mdown
 - Notes: Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle.
 
@@ -283,7 +284,7 @@ The following license texts are reproduced in full for the bundled assets listed
 
 ### LICENSE
 
-Used by: Datalith application icon, Datalith pixel-art icons, Datalith
+Used by: Datalith application icon, Datalith pixel-art icons
 
 ```
 MIT License
@@ -359,12 +360,2114 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### assets/licenses/texts/Apache-2.0.txt
+### assets/licenses/texts/gpui-component-assets-LICENSE.txt
 
-Used by: gpui-component-assets, Asciinema, Tokyo Night
+Used by: gpui-component-assets
 
 ```
+Copyright 2024 - 2025 Longbridge <https://longbridge.com>
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+
+                              Apache License
+                        Version 2.0, January 2004
+                     http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+   "License" shall mean the terms and conditions for use, reproduction,
+   and distribution as defined by Sections 1 through 9 of this document.
+
+   "Licensor" shall mean the copyright owner or entity authorized by
+   the copyright owner that is granting the License.
+
+   "Legal Entity" shall mean the union of the acting entity and all
+   other entities that control, are controlled by, or are under common
+   control with that entity. For the purposes of this definition,
+   "control" means (i) the power, direct or indirect, to cause the
+   direction or management of such entity, whether by contract or
+   otherwise, or (ii) ownership of fifty percent (50%) or more of the
+   outstanding shares, or (iii) beneficial ownership of such entity.
+
+   "You" (or "Your") shall mean an individual or Legal Entity
+   exercising permissions granted by this License.
+
+   "Source" form shall mean the preferred form for making modifications,
+   including but not limited to software source code, documentation
+   source, and configuration files.
+
+   "Object" form shall mean any form resulting from mechanical
+   transformation or translation of a Source form, including but
+   not limited to compiled object code, generated documentation,
+   and conversions to other media types.
+
+   "Work" shall mean the work of authorship, whether in Source or
+   Object form, made available under the License, as indicated by a
+   copyright notice that is included in or attached to the work
+   (an example is provided in the Appendix below).
+
+   "Derivative Works" shall mean any work, whether in Source or Object
+   form, that is based on (or derived from) the Work and for which the
+   editorial revisions, annotations, elaborations, or other modifications
+   represent, as a whole, an original work of authorship. For the purposes
+   of this License, Derivative Works shall not include works that remain
+   separable from, or merely link (or bind by name) to the interfaces of,
+   the Work and Derivative Works thereof.
+
+   "Contribution" shall mean any work of authorship, including
+   the original version of the Work and any modifications or additions
+   to that Work or Derivative Works thereof, that is intentionally
+   submitted to Licensor for inclusion in the Work by the copyright owner
+   or by an individual or Legal Entity authorized to submit on behalf of
+   the copyright owner. For the purposes of this definition, "submitted"
+   means any form of electronic, verbal, or written communication sent
+   to the Licensor or its representatives, including but not limited to
+   communication on electronic mailing lists, source code control systems,
+   and issue tracking systems that are managed by, or on behalf of, the
+   Licensor for the purpose of discussing and improving the Work, but
+   excluding communication that is conspicuously marked or otherwise
+   designated in writing by the copyright owner as "Not a Contribution."
+
+   "Contributor" shall mean Licensor and any individual or Legal Entity
+   on behalf of whom a Contribution has been received by Licensor and
+   subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   copyright license to reproduce, prepare Derivative Works of,
+   publicly display, publicly perform, sublicense, and distribute the
+   Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   (except as stated in this section) patent license to make, have made,
+   use, offer to sell, sell, import, and otherwise transfer the Work,
+   where such license applies only to those patent claims licensable
+   by such Contributor that are necessarily infringed by their
+   Contribution(s) alone or by combination of their Contribution(s)
+   with the Work to which such Contribution(s) was submitted. If You
+   institute patent litigation against any entity (including a
+   cross-claim or counterclaim in a lawsuit) alleging that the Work
+   or a Contribution incorporated within the Work constitutes direct
+   or contributory patent infringement, then any patent licenses
+   granted to You under this License for that Work shall terminate
+   as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the
+   Work or Derivative Works thereof in any medium, with or without
+   modifications, and in Source or Object form, provided that You
+   meet the following conditions:
+
+   (a) You must give any other recipients of the Work or
+       Derivative Works a copy of this License; and
+
+   (b) You must cause any modified files to carry prominent notices
+       stating that You changed the files; and
+
+   (c) You must retain, in the Source form of any Derivative Works
+       that You distribute, all copyright, patent, trademark, and
+       attribution notices from the Source form of the Work,
+       excluding those notices that do not pertain to any part of
+       the Derivative Works; and
+
+   (d) If the Work includes a "NOTICE" text file as part of its
+       distribution, then any Derivative Works that You distribute must
+       include a readable copy of the attribution notices contained
+       within such NOTICE file, excluding those notices that do not
+       pertain to any part of the Derivative Works, in at least one
+       of the following places: within a NOTICE text file distributed
+       as part of the Derivative Works; within the Source form or
+       documentation, if provided along with the Derivative Works; or,
+       within a display generated by the Derivative Works, if and
+       wherever such third-party notices normally appear. The contents
+       of the NOTICE file are for informational purposes only and
+       do not modify the License. You may add Your own attribution
+       notices within Derivative Works that You distribute, alongside
+       or as an addendum to the NOTICE text from the Work, provided
+       that such additional attribution notices cannot be construed
+       as modifying the License.
+
+   You may add Your own copyright statement to Your modifications and
+   may provide additional or different license terms and conditions
+   for use, reproduction, or distribution of Your modifications, or
+   for any such Derivative Works as a whole, provided Your use,
+   reproduction, and distribution of the Work otherwise complies with
+   the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise,
+   any Contribution intentionally submitted for inclusion in the Work
+   by You to the Licensor shall be under the terms and conditions of
+   this License, without any additional terms or conditions.
+   Notwithstanding the above, nothing herein shall supersede or modify
+   the terms of any separate license agreement you may have executed
+   with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade
+   names, trademarks, service marks, or product names of the Licensor,
+   except as required for reasonable and customary use in describing the
+   origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or
+   agreed to in writing, Licensor provides the Work (and each
+   Contributor provides its Contributions) on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+   implied, including, without limitation, any warranties or conditions
+   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+   PARTICULAR PURPOSE. You are solely responsible for determining the
+   appropriateness of using or redistributing the Work and assume any
+   risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory,
+   whether in tort (including negligence), contract, or otherwise,
+   unless required by applicable law (such as deliberate and grossly
+   negligent acts) or agreed to in writing, shall any Contributor be
+   liable to You for damages, including any direct, indirect, special,
+   incidental, or consequential damages of any character arising as a
+   result of this License or out of the use or inability to use the
+   Work (including but not limited to damages for loss of goodwill,
+   work stoppage, computer failure or malfunction, or any and all
+   other commercial damages or losses), even if such Contributor
+   has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing
+   the Work or Derivative Works thereof, You may choose to offer,
+   and charge a fee for, acceptance of support, warranty, indemnity,
+   or other liability obligations and/or rights consistent with this
+   License. However, in accepting such obligations, You may act only
+   on Your own behalf and on Your sole responsibility, not on behalf
+   of any other Contributor, and only if You agree to indemnify,
+   defend, and hold each Contributor harmless for any liability
+   incurred by, or claims asserted against, such Contributor by reason
+   of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+```
+
+### assets/fonts/Pixeloid/LICENSE.txt
+
+Used by: Pixeloid Sans
+
+```
+﻿Copyright © 2020-2025 GGBotNet (https://ggbot.net/fonts/), with Reserved Font Name "Pixeloid".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### assets/themes/asciinema-LICENSE.txt
+
+Used by: Asciinema
+
+```
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "{}"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright 2011-2021 Marcin Kulik
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+```
+
+### assets/themes/ayu-LICENSE.txt
+
+Used by: Ayu
+
+```
+MIT License
+
+Copyright (c) 2016 Ike Kurghinyan (Ike Ku)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/catppuccin-LICENSE.txt
+
+Used by: Catppuccin
+
+```
+MIT License
+
+Copyright (c) 2021 Catppuccin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/datalith-LICENSE.txt
+
+Used by: Datalith
+
+```
+MIT License
+
+Copyright (c) 2026 mycelium-build
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/everforest-LICENSE.txt
+
+Used by: Everforest
+
+```
+MIT License
+
+Copyright (c) 2019 sainnhe
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/flexoki-LICENSE.txt
+
+Used by: Flexoki
+
+```
+MIT License
+
+Copyright (c) 2023 Steph Ango
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/gruvbox-LICENSE.txt
+
+Used by: Gruvbox
+
+```
+<p align="center"><img src="https://morhetz.com/gruvbox.svg"></p>
+
+gruvbox is heavily inspired by [badwolf][], [jellybeans][] and [solarized][].
+
+Designed as a bright theme with pastel 'retro groove' colors and light/dark mode switching in the way of [solarized][]. The main focus when developing gruvbox is to keep colors easily distinguishable, contrast enough and still pleasant for the eyes.
+
+   [badwolf]: https://github.com/sjl/badwolf
+   [jellybeans]: https://github.com/nanotech/jellybeans.vim
+   [solarized]: http://ethanschoonover.com/solarized
+
+Attention
+---------
+
+1. [Read this first](https://github.com/morhetz/gruvbox/wiki/Terminal-specific)
+2. Typeface from gallery is [Fantasque Sans Mono](https://github.com/belluzj/fantasque-sans)
+3. Typeface from screenshots below is [Fira Mono](https://mozilla.github.io/Fira/)
+
+Screenshots
+-----------
+
+Refer [Gallery][] for more syntax-specific screenshots.
+
+   [Gallery]: https://github.com/morhetz/gruvbox/wiki/Gallery
+
+### Dark mode
+
+![Screenshot Dark](http://i.imgur.com/GkIl8Fn.png)
+
+### Light mode
+
+![Screenshot Light](http://i.imgur.com/X75niEa.png)
+
+### Airline theme
+
+![Screenshot Airline](http://i.imgur.com/wRQceUR.png)
+
+Palette
+-------
+
+### Dark mode
+
+![Palette Dark](http://i.imgur.com/wa666xg.png)
+
+### Light mode
+
+![Palette Light](http://i.imgur.com/49qKyYW.png)
+
+Contrast options
+----------------
+
+Refer [wiki section][] for contrast configuration and other options.
+
+   [wiki section]: https://github.com/morhetz/gruvbox/wiki/Configuration#ggruvbox_contrast_dark
+
+![Contrast Options](http://i.imgur.com/5MSbe6T.png)
+
+Documentation
+-------------
+
+Please check [wiki][] for installation details, terminal-specific setup, troubleshooting, configuration options and others.
+
+   [wiki]: https://github.com/morhetz/gruvbox/wiki
+
+Features
+--------
+
+* Lots of style-customization options (contrast, color invertion, italics usage etc.)
+* Extended filetype highlighting: Html, Xml, Vim, Clojure, C, Python, JavaScript, TypeScript, PureScript, CoffeeScript, Ruby, Objective-C, Go, Lua, MoonScript, Java, Markdown, Haskell, Elixir
+* Supported plugins: [EasyMotion][], [vim-sneak][], [Indent Guides][], [indentLine][], [Rainbow Parentheses][], [Airline][], [Lightline][], [GitGutter][], [Signify][], [ShowMarks][], [Signature][], [Syntastic][], [Ale][], [CtrlP][], [Startify][], [NERDTree][], [Dirvish][]
+
+   [EasyMotion]: https://github.com/Lokaltog/vim-easymotion
+   [vim-sneak]: https://github.com/justinmk/vim-sneak
+   [Indent Guides]: https://github.com/nathanaelkane/vim-indent-guides
+   [indentLine]: https://github.com/Yggdroot/indentLine
+   [Rainbow Parentheses]: https://github.com/kien/rainbow_parentheses.vim
+   [Airline]: https://github.com/bling/vim-airline
+   [Lightline]: https://github.com/itchyny/lightline.vim
+   [GitGutter]: https://github.com/airblade/vim-gitgutter
+   [Signify]: https://github.com/mhinz/vim-signify
+   [ShowMarks]: http://www.vim.org/scripts/script.php?script_id=152
+   [Signature]: https://github.com/kshenoy/vim-signature
+   [Syntastic]: https://github.com/scrooloose/syntastic
+   [Ale]: https://github.com/w0rp/ale
+   [CtrlP]: https://github.com/kien/ctrlp.vim
+   [Startify]: https://github.com/mhinz/vim-startify
+   [NERDTree]: https://github.com/scrooloose/nerdtree
+   [Dirvish]: https://github.com/justinmk/vim-dirvish
+
+Contributions
+-------------
+
+See [gruvbox-contrib][] repo for contributions, ports and extras.
+
+[gruvbox-contrib]: https://github.com/morhetz/gruvbox-contrib
+
+ToDo
+----
+
+* Filetype syntax highlighting (R, TeX, Swift, Erlang)
+* Plugin support (Tagbar, VimPlug)
+
+Self-Promotion
+--------------
+
+If you like gruvbox follow the repository on
+[GitHub](https://github.com/morhetz/gruvbox) and vote for it on
+[vim.org](http://www.vim.org/scripts/script.php?script_id=4349).
+
+License
+-------
+[MIT/X11][]
+
+   [MIT/X11]: https://en.wikipedia.org/wiki/MIT_License
+```
+
+### assets/themes/hybrid-LICENSE.txt
+
+Used by: Hybrid
+
+```
+" File:       hybrid.vim
+" Maintainer: Andrew Wong (w0ng)
+" URL:        https://github.com/w0ng/vim-hybrid
+" Modified:   27 Jan 2013 07:33 AM AEST
+" License:    MIT
+
+" Description:"{{{
+" ----------------------------------------------------------------------------
+" The default RGB colour palette is taken from Tomorrow-Night.vim:
+" https://github.com/chriskempson/vim-tomorrow-theme
+"
+" The reduced RGB colour palette is taken from Codecademy's online editor:
+" https://www.codecademy.com/learn
+"
+" The syntax highlighting scheme is taken from jellybeans.vim:
+" https://github.com/nanotech/jellybeans.vim
+"
+" The is code taken from solarized.vim:
+" https://github.com/altercation/vim-colors-solarized
+
+"}}}
+" Requirements And Recommendations:"{{{
+" ----------------------------------------------------------------------------
+" Requirements
+"   - gVim 7.3+ on Linux, Mac and Windows.
+"   - Vim 7.3+ on Linux and Mac, using a terminal that supports 256 colours.
+"
+" Due to the limited 256 palette, colours in Vim and gVim will still be slightly
+" different.
+"
+" In order to have Vim use the same colours as gVim (the way this colour scheme
+" is intended), it is recommended that you define the basic 16 colours in your
+" terminal.
+"
+" For Linux users (rxvt-unicode, xterm):
+"
+" 1.  Add the default palette to ~/.Xresources:
+"
+"         https://gist.github.com/3278077
+"
+"     or alternatively, add the reduced contrast palette to ~/.Xresources:
+"
+"         https://gist.github.com/w0ng/16e33902508b4a0350ae
+"
+" 2.  Add to ~/.vimrc:
+"
+"         let g:hybrid_custom_term_colors = 1
+"         let g:hybrid_reduced_contrast = 1 " Remove this line if using the default palette.
+"         colorscheme hybrid
+"
+" For OSX users (iTerm):
+"
+" 1.  Import the default colour preset into iTerm:
+"
+"         https://raw.githubusercontent.com/w0ng/dotfiles/master/iterm2/hybrid.itermcolors
+"
+"     or alternatively, import the reduced contrast color preset into iTerm:
+"
+"         https://raw.githubusercontent.com/w0ng/dotfiles/master/iterm2/hybrid-reduced-contrast.itermcolors
+"
+" 2.  Add to ~/.vimrc:
+"
+"         let g:hybrid_custom_term_colors = 1
+"         let g:hybrid_reduced_contrast = 1 " Remove this line if using the default palette.
+"         colorscheme hybrid
+
+"}}}
+" Initialisation:"{{{
+" ----------------------------------------------------------------------------
+
+hi clear
+
+if exists("syntax_on")
+  syntax reset
+endif
+
+let s:style = &background
+
+let g:colors_name = "hybrid"
+
+"}}}
+" GUI And Cterm Palettes:"{{{
+" ----------------------------------------------------------------------------
+
+let s:palette = {'gui' : {} , 'cterm' : {}}
+
+if exists("g:hybrid_reduced_contrast") && g:hybrid_reduced_contrast == 1
+  let s:gui_background = "#232c31"
+  let s:gui_selection  = "#425059"
+  let s:gui_line       = "#2d3c46"
+  let s:gui_comment    = "#6c7a80"
+else
+  let s:gui_background = "#1d1f21"
+  let s:gui_selection  = "#373b41"
+  let s:gui_line       = "#282a2e"
+  let s:gui_comment    = "#707880"
+endif
+
+let s:palette.gui.background = { 'dark' : s:gui_background , 'light' : "#e4e4e4" }
+let s:palette.gui.foreground = { 'dark' : "#c5c8c6"        , 'light' : "#000000" }
+let s:palette.gui.selection  = { 'dark' : s:gui_selection  , 'light' : "#bcbcbc" }
+let s:palette.gui.line       = { 'dark' : s:gui_line       , 'light' : "#d0d0d0" }
+let s:palette.gui.comment    = { 'dark' : s:gui_comment    , 'light' : "#5f5f5f" }
+let s:palette.gui.red        = { 'dark' : "#cc6666"        , 'light' : "#5f0000" }
+let s:palette.gui.orange     = { 'dark' : "#de935f"        , 'light' : "#875f00" }
+let s:palette.gui.yellow     = { 'dark' : "#f0c674"        , 'light' : "#5f5f00" }
+let s:palette.gui.green      = { 'dark' : "#b5bd68"        , 'light' : "#005f00" }
+let s:palette.gui.aqua       = { 'dark' : "#8abeb7"        , 'light' : "#005f5f" }
+let s:palette.gui.blue       = { 'dark' : "#81a2be"        , 'light' : "#00005f" }
+let s:palette.gui.purple     = { 'dark' : "#b294bb"        , 'light' : "#5f005f" }
+let s:palette.gui.window     = { 'dark' : "#303030"        , 'light' : "#9e9e9e" }
+let s:palette.gui.darkcolumn = { 'dark' : "#1c1c1c"        , 'light' : "#808080" }
+let s:palette.gui.addbg      = { 'dark' : "#5F875F"        , 'light' : "#d7ffd7" }
+let s:palette.gui.addfg      = { 'dark' : "#d7ffaf"        , 'light' : "#005f00" }
+let s:palette.gui.changebg   = { 'dark' : "#5F5F87"        , 'light' : "#d7d7ff" }
+let s:palette.gui.changefg   = { 'dark' : "#d7d7ff"        , 'light' : "#5f005f" }
+let s:palette.gui.delbg      = { 'dark' : "#cc6666"        , 'light' : "#ffd7d7" }
+let s:palette.gui.darkblue   = { 'dark' : "#00005f"        , 'light' : "#d7ffd7" }
+let s:palette.gui.darkcyan   = { 'dark' : "#005f5f"        , 'light' : "#005f00" }
+let s:palette.gui.darkred    = { 'dark' : "#5f0000"        , 'light' : "#d7d7ff" }
+let s:palette.gui.darkpurple = { 'dark' : "#5f005f"        , 'light' : "#5f005f" }
+
+if exists("g:hybrid_custom_term_colors") && g:hybrid_custom_term_colors == 1
+  let s:cterm_foreground = "15"  " White
+  let s:cterm_selection  = "8"   " DarkGrey
+  let s:cterm_line       = "0"   " Black
+  let s:cterm_comment    = "7"   " LightGrey
+  let s:cterm_red        = "9"   " LightRed
+  let s:cterm_orange     = "3"   " DarkYellow
+  let s:cterm_yellow     = "11"  " LightYellow
+  let s:cterm_green      = "10"  " LightGreen
+  let s:cterm_aqua       = "14"  " LightCyan
+  let s:cterm_blue       = "12"  " LightBlue
+  let s:cterm_purple     = "13"  " LightMagenta
+  let s:cterm_delbg      = "9"   " LightRed
+else
+  let s:cterm_foreground = "250"
+  let s:cterm_selection  = "237"
+  let s:cterm_line       = "235"
+  let s:cterm_comment    = "243"
+  let s:cterm_red        = "167"
+  let s:cterm_orange     = "173"
+  let s:cterm_yellow     = "221"
+  let s:cterm_green      = "143"
+  let s:cterm_aqua       = "109"
+  let s:cterm_blue       = "110"
+  let s:cterm_purple     = "139"
+  let s:cterm_delbg      = "167"
+endif
+
+let s:palette.cterm.background = { 'dark' : "234"              , 'light' : "254" }
+let s:palette.cterm.foreground = { 'dark' : s:cterm_foreground , 'light' : "16"  }
+let s:palette.cterm.window     = { 'dark' : "236"              , 'light' : "247" }
+let s:palette.cterm.selection  = { 'dark' : s:cterm_selection  , 'light' : "250" }
+let s:palette.cterm.line       = { 'dark' : s:cterm_line       , 'light' : "252" }
+let s:palette.cterm.comment    = { 'dark' : s:cterm_comment    , 'light' : "59"  }
+let s:palette.cterm.red        = { 'dark' : s:cterm_red        , 'light' : "52"  }
+let s:palette.cterm.orange     = { 'dark' : s:cterm_orange     , 'light' : "94"  }
+let s:palette.cterm.yellow     = { 'dark' : s:cterm_yellow     , 'light' : "58"  }
+let s:palette.cterm.green      = { 'dark' : s:cterm_green      , 'light' : "22"  }
+let s:palette.cterm.aqua       = { 'dark' : s:cterm_aqua       , 'light' : "23"  }
+let s:palette.cterm.blue       = { 'dark' : s:cterm_blue       , 'light' : "17"  }
+let s:palette.cterm.purple     = { 'dark' : s:cterm_purple     , 'light' : "53"  }
+let s:palette.cterm.darkcolumn = { 'dark' : "234"              , 'light' : "244" }
+let s:palette.cterm.addbg      = { 'dark' : "65"               , 'light' : "194" }
+let s:palette.cterm.addfg      = { 'dark' : "193"              , 'light' : "22"  }
+let s:palette.cterm.changebg   = { 'dark' : "60"               , 'light' : "189" }
+let s:palette.cterm.changefg   = { 'dark' : "189"              , 'light' : "53"  }
+let s:palette.cterm.delbg      = { 'dark' : s:cterm_delbg      , 'light' : "224" }
+let s:palette.cterm.darkblue   = { 'dark' : "17"               , 'light' : "194" }
+let s:palette.cterm.darkcyan   = { 'dark' : "24"               , 'light' : "22"  }
+let s:palette.cterm.darkred    = { 'dark' : "52"               , 'light' : "189" }
+let s:palette.cterm.darkpurple = { 'dark' : "53"               , 'light' : "53"  }
+
+"}}}
+" Formatting Options:"{{{
+" ----------------------------------------------------------------------------
+let s:none   = "NONE"
+let s:t_none = "NONE"
+let s:n      = "NONE"
+let s:c      = ",undercurl"
+let s:r      = ",reverse"
+let s:s      = ",standout"
+let s:b      = ",bold"
+let s:u      = ",underline"
+let s:i      = ",italic"
+
+"}}}
+" Highlighting Primitives:"{{{
+" ----------------------------------------------------------------------------
+function! s:build_prim(hi_elem, field)
+  " Given a:hi_elem = bg, a:field = comment
+  let l:vname = "s:" . a:hi_elem . "_" . a:field " s:bg_comment
+  let l:gui_assign = "gui".a:hi_elem."=".s:palette.gui[a:field][s:style] " guibg=...
+  let l:cterm_assign = "cterm".a:hi_elem."=".s:palette.cterm[a:field][s:style] " ctermbg=...
+  exe "let " . l:vname . " = ' " . l:gui_assign . " " . l:cterm_assign . "'"
+endfunction
+
+let s:bg_none = ' guibg=NONE ctermbg=NONE'
+call s:build_prim('bg', 'foreground')
+call s:build_prim('bg', 'background')
+call s:build_prim('bg', 'selection')
+call s:build_prim('bg', 'line')
+call s:build_prim('bg', 'comment')
+call s:build_prim('bg', 'red')
+call s:build_prim('bg', 'orange')
+call s:build_prim('bg', 'yellow')
+call s:build_prim('bg', 'green')
+call s:build_prim('bg', 'aqua')
+call s:build_prim('bg', 'blue')
+call s:build_prim('bg', 'purple')
+call s:build_prim('bg', 'window')
+call s:build_prim('bg', 'darkcolumn')
+call s:build_prim('bg', 'addbg')
+call s:build_prim('bg', 'addfg')
+call s:build_prim('bg', 'changebg')
+call s:build_prim('bg', 'changefg')
+call s:build_prim('bg', 'delbg')
+call s:build_prim('bg', 'darkblue')
+call s:build_prim('bg', 'darkcyan')
+call s:build_prim('bg', 'darkred')
+call s:build_prim('bg', 'darkpurple')
+
+let s:fg_none = ' guifg=NONE ctermfg=NONE'
+call s:build_prim('fg', 'foreground')
+call s:build_prim('fg', 'background')
+call s:build_prim('fg', 'selection')
+call s:build_prim('fg', 'line')
+call s:build_prim('fg', 'comment')
+call s:build_prim('fg', 'red')
+call s:build_prim('fg', 'orange')
+call s:build_prim('fg', 'yellow')
+call s:build_prim('fg', 'green')
+call s:build_prim('fg', 'aqua')
+call s:build_prim('fg', 'blue')
+call s:build_prim('fg', 'purple')
+call s:build_prim('fg', 'window')
+call s:build_prim('fg', 'darkcolumn')
+call s:build_prim('fg', 'addbg')
+call s:build_prim('fg', 'addfg')
+call s:build_prim('fg', 'changebg')
+call s:build_prim('fg', 'changefg')
+call s:build_prim('fg', 'darkblue')
+call s:build_prim('fg', 'darkcyan')
+call s:build_prim('fg', 'darkred')
+call s:build_prim('fg', 'darkpurple')
+
+exe "let s:fmt_none = ' gui=NONE".          " cterm=NONE".          " term=NONE"        ."'"
+exe "let s:fmt_bold = ' gui=NONE".s:b.      " cterm=NONE".s:b.      " term=NONE".s:b    ."'"
+exe "let s:fmt_bldi = ' gui=NONE".s:b.      " cterm=NONE".s:b.      " term=NONE".s:b    ."'"
+exe "let s:fmt_undr = ' gui=NONE".s:u.      " cterm=NONE".s:u.      " term=NONE".s:u    ."'"
+exe "let s:fmt_undb = ' gui=NONE".s:u.s:b.  " cterm=NONE".s:u.s:b.  " term=NONE".s:u.s:b."'"
+exe "let s:fmt_undi = ' gui=NONE".s:u.      " cterm=NONE".s:u.      " term=NONE".s:u    ."'"
+exe "let s:fmt_curl = ' gui=NONE".s:c.      " cterm=NONE".s:c.      " term=NONE".s:c    ."'"
+exe "let s:fmt_ital = ' gui=NONE".s:i.      " cterm=NONE".s:i.      " term=NONE".s:i    ."'"
+exe "let s:fmt_stnd = ' gui=NONE".s:s.      " cterm=NONE".s:s.      " term=NONE".s:s    ."'"
+exe "let s:fmt_revr = ' gui=NONE".s:r.      " cterm=NONE".s:r.      " term=NONE".s:r    ."'"
+exe "let s:fmt_revb = ' gui=NONE".s:r.s:b.  " cterm=NONE".s:r.s:b.  " term=NONE".s:r.s:b."'"
+
+exe "let s:sp_none       = ' guisp=". s:none                            ."'"
+exe "let s:sp_foreground = ' guisp=". s:palette.gui.foreground[s:style] ."'"
+exe "let s:sp_background = ' guisp=". s:palette.gui.background[s:style] ."'"
+exe "let s:sp_selection  = ' guisp=". s:palette.gui.selection[s:style]  ."'"
+exe "let s:sp_line       = ' guisp=". s:palette.gui.line[s:style]       ."'"
+exe "let s:sp_comment    = ' guisp=". s:palette.gui.comment[s:style]    ."'"
+exe "let s:sp_red        = ' guisp=". s:palette.gui.red[s:style]        ."'"
+exe "let s:sp_orange     = ' guisp=". s:palette.gui.orange[s:style]     ."'"
+exe "let s:sp_yellow     = ' guisp=". s:palette.gui.yellow[s:style]     ."'"
+exe "let s:sp_green      = ' guisp=". s:palette.gui.green[s:style]      ."'"
+exe "let s:sp_aqua       = ' guisp=". s:palette.gui.aqua[s:style]       ."'"
+exe "let s:sp_blue       = ' guisp=". s:palette.gui.blue[s:style]       ."'"
+exe "let s:sp_purple     = ' guisp=". s:palette.gui.purple[s:style]     ."'"
+exe "let s:sp_window     = ' guisp=". s:palette.gui.window[s:style]     ."'"
+exe "let s:sp_addbg      = ' guisp=". s:palette.gui.addbg[s:style]      ."'"
+exe "let s:sp_addfg      = ' guisp=". s:palette.gui.addfg[s:style]      ."'"
+exe "let s:sp_changebg   = ' guisp=". s:palette.gui.changebg[s:style]   ."'"
+exe "let s:sp_changefg   = ' guisp=". s:palette.gui.changefg[s:style]   ."'"
+exe "let s:sp_darkblue   = ' guisp=". s:palette.gui.darkblue[s:style]   ."'"
+exe "let s:sp_darkcyan   = ' guisp=". s:palette.gui.darkcyan[s:style]   ."'"
+exe "let s:sp_darkred    = ' guisp=". s:palette.gui.darkred[s:style]    ."'"
+exe "let s:sp_darkpurple = ' guisp=". s:palette.gui.darkpurple[s:style] ."'"
+
+"}}}
+" Vim Highlighting: (see :help highlight-groups)"{{{
+" ----------------------------------------------------------------------------
+exe "hi! ColorColumn"   .s:fg_none        .s:bg_line        .s:fmt_none
+"   Conceal"
+"   Cursor"
+"   CursorIM"
+exe "hi! CursorColumn"  .s:fg_none        .s:bg_line        .s:fmt_none
+exe "hi! CursorLine"    .s:fg_none        .s:bg_line        .s:fmt_none
+exe "hi! Directory"     .s:fg_blue        .s:bg_none        .s:fmt_none
+exe "hi! DiffAdd"       .s:fg_addfg       .s:bg_addbg       .s:fmt_none
+exe "hi! DiffChange"    .s:fg_changefg    .s:bg_changebg    .s:fmt_none
+exe "hi! DiffDelete"    .s:fg_background  .s:bg_delbg       .s:fmt_none
+exe "hi! DiffText"      .s:fg_background  .s:bg_blue        .s:fmt_none
+exe "hi! ErrorMsg"      .s:fg_background  .s:bg_red         .s:fmt_stnd
+exe "hi! VertSplit"     .s:fg_window      .s:bg_none        .s:fmt_none
+exe "hi! Folded"        .s:fg_comment     .s:bg_darkcolumn  .s:fmt_none
+exe "hi! FoldColumn"    .s:fg_none        .s:bg_darkcolumn  .s:fmt_none
+exe "hi! SignColumn"    .s:fg_none        .s:bg_darkcolumn  .s:fmt_none
+"   Incsearch"
+exe "hi! LineNr"        .s:fg_selection   .s:bg_none        .s:fmt_none
+exe "hi! CursorLineNr"  .s:fg_yellow      .s:bg_none        .s:fmt_none
+exe "hi! MatchParen"    .s:fg_background  .s:bg_changebg    .s:fmt_none
+exe "hi! ModeMsg"       .s:fg_green       .s:bg_none        .s:fmt_none
+exe "hi! MoreMsg"       .s:fg_green       .s:bg_none        .s:fmt_none
+exe "hi! NonText"       .s:fg_selection   .s:bg_none        .s:fmt_none
+exe "hi! Pmenu"         .s:fg_foreground  .s:bg_selection   .s:fmt_none
+exe "hi! PmenuSel"      .s:fg_foreground  .s:bg_selection   .s:fmt_revr
+"   PmenuSbar"
+"   PmenuThumb"
+exe "hi! Question"      .s:fg_green       .s:bg_none        .s:fmt_none
+exe "hi! Search"        .s:fg_background  .s:bg_yellow      .s:fmt_none
+exe "hi! SpecialKey"    .s:fg_selection   .s:bg_none        .s:fmt_none
+exe "hi! SpellCap"      .s:fg_blue        .s:bg_darkblue    .s:fmt_undr
+exe "hi! SpellLocal"    .s:fg_aqua        .s:bg_darkcyan    .s:fmt_undr
+exe "hi! SpellBad"      .s:fg_red         .s:bg_darkred     .s:fmt_undr
+exe "hi! SpellRare"     .s:fg_purple      .s:bg_darkpurple  .s:fmt_undr
+exe "hi! StatusLine"    .s:fg_comment     .s:bg_background  .s:fmt_revr
+exe "hi! StatusLineNC"  .s:fg_window      .s:bg_comment     .s:fmt_revr
+exe "hi! TabLine"       .s:fg_foreground  .s:bg_darkcolumn  .s:fmt_revr
+"   TabLineFill"
+"   TabLineSel"
+exe "hi! Title"         .s:fg_yellow      .s:bg_none        .s:fmt_none
+exe "hi! Visual"        .s:fg_none        .s:bg_selection   .s:fmt_none
+"   VisualNos"
+exe "hi! WarningMsg"    .s:fg_red         .s:bg_none        .s:fmt_none
+" FIXME LongLineWarning to use variables instead of hardcoding
+hi LongLineWarning  guifg=NONE        guibg=#371F1C     gui=underline ctermfg=NONE        ctermbg=NONE        cterm=underline
+"   WildMenu"
+
+" Use defined custom background colour for terminal Vim.
+if !has('gui_running') && exists("g:hybrid_custom_term_colors") && g:hybrid_custom_term_colors == 1
+  let s:bg_normal = s:bg_none
+else
+  let s:bg_normal = s:bg_background
+endif
+exe "hi! Normal"        .s:fg_foreground  .s:bg_normal      .s:fmt_none
+
+"}}}
+" Generic Syntax Highlighting: (see :help group-name)"{{{
+" ----------------------------------------------------------------------------
+exe "hi! Comment"         .s:fg_comment     .s:bg_none        .s:fmt_none
+
+exe "hi! Constant"        .s:fg_red         .s:bg_none        .s:fmt_none
+exe "hi! String"          .s:fg_green       .s:bg_none        .s:fmt_none
+"   Character"
+"   Number"
+"   Boolean"
+"   Float"
+
+exe "hi! Identifier"      .s:fg_purple      .s:bg_none        .s:fmt_none
+exe "hi! Function"        .s:fg_yellow      .s:bg_none        .s:fmt_none
+
+exe "hi! Statement"       .s:fg_blue        .s:bg_none        .s:fmt_none
+"   Conditional"
+"   Repeat"
+"   Label"
+exe "hi! Operator"        .s:fg_aqua        .s:bg_none        .s:fmt_none
+"   Keyword"
+"   Exception"
+
+exe "hi! PreProc"         .s:fg_aqua        .s:bg_none        .s:fmt_none
+"   Include"
+"   Define"
+"   Macro"
+"   PreCondit"
+
+exe "hi! Type"            .s:fg_orange      .s:bg_none        .s:fmt_none
+"   StorageClass"
+exe "hi! Structure"       .s:fg_aqua        .s:bg_none        .s:fmt_none
+"   Typedef"
+
+exe "hi! Special"         .s:fg_green       .s:bg_none        .s:fmt_none
+"   SpecialChar"
+"   Tag"
+"   Delimiter"
+"   SpecialComment"
+"   Debug"
+"
+exe "hi! Underlined"      .s:fg_blue        .s:bg_none        .s:fmt_none
+
+exe "hi! Ignore"          .s:fg_none        .s:bg_none        .s:fmt_none
+
+exe "hi! Error"           .s:fg_red         .s:bg_darkred     .s:fmt_undr
+
+exe "hi! Todo"            .s:fg_addfg       .s:bg_none        .s:fmt_none
+
+" Quickfix window highlighting
+exe "hi! qfLineNr"        .s:fg_yellow      .s:bg_none        .s:fmt_none
+"   qfFileName"
+"   qfLineNr"
+"   qfError"
+
+"}}}
+" Diff Syntax Highlighting:"{{{
+" ----------------------------------------------------------------------------
+" Diff
+"   diffOldFile
+"   diffNewFile
+"   diffFile
+"   diffOnly
+"   diffIdentical
+"   diffDiffer
+"   diffBDiffer
+"   diffIsA
+"   diffNoEOL
+"   diffCommon
+hi! link diffRemoved Constant
+"   diffChanged
+hi! link diffAdded Special
+"   diffLine
+"   diffSubname
+"   diffComment
+
+"}}}
+"
+" This is needed for some reason: {{{
+
+let &background = s:style
+
+" }}}
+" Legal:"{{{
+" ----------------------------------------------------------------------------
+" Copyright (c) 2011 Ethan Schoonover
+" Copyright (c) 2009-2012 NanoTech
+" Copyright (c) 2012 w0ng
+"
+" Permission is hereby granted, free of charge, to any per‐
+" son obtaining a copy of this software and associated doc‐
+" umentation files (the “Software”), to deal in the Soft‐
+" ware without restriction, including without limitation
+" the rights to use, copy, modify, merge, publish, distrib‐
+" ute, sublicense, and/or sell copies of the Software, and
+" to permit persons to whom the Software is furnished to do
+" so, subject to the following conditions:
+"
+" The above copyright notice and this permission notice
+" shall be included in all copies or substantial portions
+" of the Software.
+"
+" THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY
+" KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+" THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICU‐
+" LAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+" AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+" DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CON‐
+" TRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CON‐
+" NECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+" THE SOFTWARE.
+
+" }}}
+```
+
+### assets/themes/jellybeans-LICENSE.txt
+
+Used by: Jellybeans
+
+```
+" Vim color file
+"
+"  "    __       _ _       _                             "
+"  "    \ \  ___| | |_   _| |__   ___  __ _ _ __  ___    "
+"  "     \ \/ _ \ | | | | |  _ \ / _ \/ _  |  _ \/ __|   "
+"  "  /\_/ /  __/ | | |_| | |_| |  __/ |_| | | | \__ \   "
+"  "  \___/ \___|_|_|\__  |____/ \___|\____|_| |_|___/   "
+"  "                 \___/                               "
+"
+"         "A colorful, dark color scheme for Vim."
+"
+" File:         jellybeans.vim
+" URL:          github.com/nanotech/jellybeans.vim
+" Scripts URL:  vim.org/scripts/script.php?script_id=2555
+" Maintainer:   NanoTech (nanotech.nanotechcorp.net)
+" Version:      1.7
+" Last Change:  June 21st, 2019
+" License:      MIT
+" Contributors: Andrew Wong (w0ng)
+"               Benjamin R. Haskell (benizi)
+"               Brian Marshall (bmars)
+"               Daniel Herbert (pocketninja)
+"               David Liang <bmdavll at gmail dot com>
+"               Filipe Silva (ninrod)
+"               Henry So, Jr. <henryso@panix.com>
+"               Ihor Kalnytskyi (ikalnytskyi)
+"               Joe Doherty (docapotamus)
+"               Karl Litterfeldt (Litterfeldt)
+"               Keith Pitt (keithpitt)
+"               Mike Schreifels (schreifels)
+"               Philipp Rustemeier (12foo)
+"               Rafael Bicalho (rbika)
+"               Rich Healey (richo)
+"               Siwen Yu (yusiwen)
+"               Tim Willis (willist)
+"               Tom McLaughlin (tmcoma)
+"
+" Copyright (c) 2009-2019 NanoTech
+"
+" Permission is hereby granted, free of charge, to any per‐
+" son obtaining a copy of this software and associated doc‐
+" umentation  files  (the “Software”), to deal in the Soft‐
+" ware without restriction,  including  without  limitation
+" the rights to use, copy, modify, merge, publish, distrib‐
+" ute, sublicense, and/or sell copies of the Software,  and
+" to permit persons to whom the Software is furnished to do
+" so, subject to the following conditions:
+"
+" The above copyright notice  and  this  permission  notice
+" shall  be  included in all copies or substantial portions
+" of the Software.
+"
+" THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY
+" KIND,  EXPRESS  OR  IMPLIED, INCLUDING BUT NOT LIMITED TO
+" THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICU‐
+" LAR  PURPOSE  AND  NONINFRINGEMENT. IN NO EVENT SHALL THE
+" AUTHORS OR COPYRIGHT HOLDERS BE  LIABLE  FOR  ANY  CLAIM,
+" DAMAGES  OR OTHER LIABILITY, WHETHER IN AN ACTION OF CON‐
+" TRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CON‐
+" NECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+" THE SOFTWARE.
+
+set background=dark
+
+hi clear
+
+if exists("syntax_on")
+  syntax reset
+endif
+
+let colors_name = "jellybeans"
+
+if has("gui_running") || (has('termguicolors') && &termguicolors)
+  let s:true_color = 1
+else
+  let s:true_color = 0
+endif
+
+if s:true_color || &t_Co >= 88
+  let s:low_color = 0
+else
+  let s:low_color = 1
+endif
+
+" Configuration Variables:
+" - g:jellybeans_overrides          (default = {})
+" - g:jellybeans_use_lowcolor_black (default = 0)
+" - g:jellybeans_use_gui_italics    (default = 1)
+" - g:jellybeans_use_term_italics   (default = 0)
+
+let s:background_color = "151515"
+
+if exists("g:jellybeans_overrides")
+  let s:overrides = g:jellybeans_overrides
+else
+  let s:overrides = {}
+endif
+
+" Backwards compatibility
+if exists("g:jellybeans_background_color")
+  \ || exists("g:jellybeans_background_color_256")
+  \ || exists("g:jellybeans_use_term_background_color")
+
+  let s:overrides = deepcopy(s:overrides)
+
+  if !has_key(s:overrides, "background")
+    let s:overrides["background"] = {}
+  endif
+
+  if exists("g:jellybeans_background_color")
+    let s:overrides["background"]["guibg"] = g:jellybeans_background_color
+  endif
+
+  if exists("g:jellybeans_background_color_256")
+    let s:overrides["background"]["256ctermbg"] = g:jellybeans_background_color_256
+  endif
+
+  if exists("g:jellybeans_use_term_background_color")
+    \ && g:jellybeans_use_term_background_color
+    let s:overrides["background"]["ctermbg"] = "NONE"
+    let s:overrides["background"]["256ctermbg"] = "NONE"
+  endif
+endif
+
+if exists("g:jellybeans_use_lowcolor_black") && g:jellybeans_use_lowcolor_black
+  let s:termBlack = "Black"
+else
+  let s:termBlack = "Grey"
+endif
+
+" When `termguicolors` is set, Vim[^1] ignores `hi Normal guibg=NONE`
+" after Normal's `guibg` is already set to a color. See:
+"
+" - https://github.com/vim/vim/issues/981
+" - https://github.com/nanotech/jellybeans.vim/issues/64
+"
+" To work around this, ensure we don't set the default background
+" color before an override changes it to `NONE` by ensuring that the
+" background color isn't set to a value different from its override.
+"
+" [^1]: Tested on 8.0.567. Does not apply to Neovim.
+"
+if has_key(s:overrides, "background") && has_key(s:overrides["background"], "guibg")
+    let s:background_color = s:overrides["background"]["guibg"]
+endif
+
+" Color approximation functions by Henry So, Jr. and David Liang {{{
+" Added to jellybeans.vim by Daniel Herbert
+
+if &t_Co == 88
+
+  " returns an approximate grey index for the given grey level
+  fun! s:grey_number(x)
+    if a:x < 23
+      return 0
+    elseif a:x < 69
+      return 1
+    elseif a:x < 103
+      return 2
+    elseif a:x < 127
+      return 3
+    elseif a:x < 150
+      return 4
+    elseif a:x < 173
+      return 5
+    elseif a:x < 196
+      return 6
+    elseif a:x < 219
+      return 7
+    elseif a:x < 243
+      return 8
+    else
+      return 9
+    endif
+  endfun
+
+  " returns the actual grey level represented by the grey index
+  fun! s:grey_level(n)
+    if a:n == 0
+      return 0
+    elseif a:n == 1
+      return 46
+    elseif a:n == 2
+      return 92
+    elseif a:n == 3
+      return 115
+    elseif a:n == 4
+      return 139
+    elseif a:n == 5
+      return 162
+    elseif a:n == 6
+      return 185
+    elseif a:n == 7
+      return 208
+    elseif a:n == 8
+      return 231
+    else
+      return 255
+    endif
+  endfun
+
+  " returns the palette index for the given grey index
+  fun! s:grey_color(n)
+    if a:n == 0
+      return 16
+    elseif a:n == 9
+      return 79
+    else
+      return 79 + a:n
+    endif
+  endfun
+
+  " returns an approximate color index for the given color level
+  fun! s:rgb_number(x)
+    if a:x < 69
+      return 0
+    elseif a:x < 172
+      return 1
+    elseif a:x < 230
+      return 2
+    else
+      return 3
+    endif
+  endfun
+
+  " returns the actual color level for the given color index
+  fun! s:rgb_level(n)
+    if a:n == 0
+      return 0
+    elseif a:n == 1
+      return 139
+    elseif a:n == 2
+      return 205
+    else
+      return 255
+    endif
+  endfun
+
+  " returns the palette index for the given R/G/B color indices
+  fun! s:rgb_color(x, y, z)
+    return 16 + (a:x * 16) + (a:y * 4) + a:z
+  endfun
+
+else " assuming &t_Co == 256
+
+  " returns an approximate grey index for the given grey level
+  fun! s:grey_number(x)
+    if a:x < 14
+      return 0
+    else
+      let l:n = (a:x - 8) / 10
+      let l:m = (a:x - 8) % 10
+      if l:m < 5
+        return l:n
+      else
+        return l:n + 1
+      endif
+    endif
+  endfun
+
+  " returns the actual grey level represented by the grey index
+  fun! s:grey_level(n)
+    if a:n == 0
+      return 0
+    else
+      return 8 + (a:n * 10)
+    endif
+  endfun
+
+  " returns the palette index for the given grey index
+  fun! s:grey_color(n)
+    if a:n == 0
+      return 16
+    elseif a:n == 25
+      return 231
+    else
+      return 231 + a:n
+    endif
+  endfun
+
+  " returns an approximate color index for the given color level
+  fun! s:rgb_number(x)
+    if a:x < 75
+      return 0
+    else
+      let l:n = (a:x - 55) / 40
+      let l:m = (a:x - 55) % 40
+      if l:m < 20
+        return l:n
+      else
+        return l:n + 1
+      endif
+    endif
+  endfun
+
+  " returns the actual color level for the given color index
+  fun! s:rgb_level(n)
+    if a:n == 0
+      return 0
+    else
+      return 55 + (a:n * 40)
+    endif
+  endfun
+
+  " returns the palette index for the given R/G/B color indices
+  fun! s:rgb_color(x, y, z)
+    return 16 + (a:x * 36) + (a:y * 6) + a:z
+  endfun
+
+endif
+
+" returns the palette index to approximate the given R/G/B color levels
+fun! s:color(r, g, b)
+  " map greys directly (see xterm's 256colres.pl)
+  if &t_Co == 256 && a:r == a:g && a:g == a:b && a:r > 3 && a:r < 243
+    return (a:r - 8) / 10 + 232
+  endif
+
+  " get the closest grey
+  let l:gx = s:grey_number(a:r)
+  let l:gy = s:grey_number(a:g)
+  let l:gz = s:grey_number(a:b)
+
+  " get the closest color
+  let l:x = s:rgb_number(a:r)
+  let l:y = s:rgb_number(a:g)
+  let l:z = s:rgb_number(a:b)
+
+  if l:gx == l:gy && l:gy == l:gz
+    " there are two possibilities
+    let l:dgr = s:grey_level(l:gx) - a:r
+    let l:dgg = s:grey_level(l:gy) - a:g
+    let l:dgb = s:grey_level(l:gz) - a:b
+    let l:dgrey = (l:dgr * l:dgr) + (l:dgg * l:dgg) + (l:dgb * l:dgb)
+    let l:dr = s:rgb_level(l:gx) - a:r
+    let l:dg = s:rgb_level(l:gy) - a:g
+    let l:db = s:rgb_level(l:gz) - a:b
+    let l:drgb = (l:dr * l:dr) + (l:dg * l:dg) + (l:db * l:db)
+    if l:dgrey < l:drgb
+      " use the grey
+      return s:grey_color(l:gx)
+    else
+      " use the color
+      return s:rgb_color(l:x, l:y, l:z)
+    endif
+  else
+    " only one possibility
+    return s:rgb_color(l:x, l:y, l:z)
+  endif
+endfun
+
+fun! s:is_empty_or_none(str)
+  return empty(a:str) || a:str ==? "NONE"
+endfun
+
+" returns the palette index to approximate the 'rrggbb' hex string
+fun! s:rgb(rgb)
+  if s:is_empty_or_none(a:rgb)
+    return "NONE"
+  endif
+  let l:r = ("0x" . strpart(a:rgb, 0, 2)) + 0
+  let l:g = ("0x" . strpart(a:rgb, 2, 2)) + 0
+  let l:b = ("0x" . strpart(a:rgb, 4, 2)) + 0
+  return s:color(l:r, l:g, l:b)
+endfun
+
+fun! s:prefix_highlight_value_with(prefix, color)
+  if s:is_empty_or_none(a:color)
+    return "NONE"
+  else
+    return a:prefix . a:color
+  endif
+endfun
+
+fun! s:remove_italic_attr(attr)
+  let l:attr = join(filter(split(a:attr, ","), "v:val !=? 'italic'"), ",")
+  if empty(l:attr)
+    let l:attr = "NONE"
+  endif
+  return l:attr
+endfun
+
+" sets the highlighting for the given group
+fun! s:X(group, fg, bg, attr, lcfg, lcbg)
+  if s:low_color
+    let l:cmd = "hi ".a:group.
+    \ " ctermfg=".s:prefix_highlight_value_with("", a:lcfg).
+    \ " ctermbg=".s:prefix_highlight_value_with("", a:lcbg)
+  else
+    let l:cmd = "hi ".a:group.
+    \ " guifg=".s:prefix_highlight_value_with("#", a:fg).
+    \ " guibg=".s:prefix_highlight_value_with("#", a:bg)
+    if !s:true_color
+      let l:cmd = l:cmd.
+      \ " ctermfg=".s:rgb(a:fg).
+      \ " ctermbg=".s:rgb(a:bg)
+    endif
+  endif
+
+  let l:attr = s:prefix_highlight_value_with("", a:attr)
+
+  if exists("g:jellybeans_use_term_italics") && g:jellybeans_use_term_italics
+    let l:cterm_attr = l:attr
+  else
+    let l:cterm_attr = s:remove_italic_attr(l:attr)
+  endif
+
+  if !exists("g:jellybeans_use_gui_italics") || g:jellybeans_use_gui_italics
+    let l:gui_attr = l:attr
+  else
+    let l:gui_attr = s:remove_italic_attr(l:attr)
+  endif
+
+  let l:cmd = l:cmd." gui=".l:gui_attr." cterm=".l:cterm_attr
+  exec l:cmd
+endfun
+" }}}
+
+call s:X("Normal","e8e8d3",s:background_color,"","White","")
+set background=dark
+
+call s:X("CursorLine","","1c1c1c","","",s:termBlack)
+call s:X("CursorColumn","","1c1c1c","","",s:termBlack)
+
+" Some of Terminal.app's default themes have a cursor color
+" too close to Jellybeans' preferred MatchParen background
+" color to be easily distinguishable. Other terminals tend
+" to use a brighter cursor color.
+"
+" Use a more distinct color in Terminal.app, and also in
+" low-color terminals if the preferred background color is
+" not available.
+if !has('gui_running') && $TERM_PROGRAM == "Apple_Terminal"
+    let s:matchParenGuiFg = "dd0093"
+    let s:matchParenGuiBg = "000000"
+else
+    let s:matchParenGuiFg = "ffffff"
+    let s:matchParenGuiBg = "556779"
+endif
+if s:termBlack != "Black"
+    let s:matchParenTermFg = "Magenta"
+    let s:matchParenTermBg = ""
+else
+    let s:matchParenTermFg = ""
+    let s:matchParenTermBg = s:termBlack
+endif
+call s:X("MatchParen",s:matchParenGuiFg,s:matchParenGuiBg,"bold",
+\                     s:matchParenTermFg,s:matchParenTermBg)
+
+call s:X("TabLine","000000","b0b8c0","italic","",s:termBlack)
+call s:X("TabLineFill","9098a0","","","",s:termBlack)
+call s:X("TabLineSel","000000","f0f0f0","italic,bold",s:termBlack,"White")
+
+" Auto-completion
+call s:X("Pmenu","ffffff","606060","","White",s:termBlack)
+call s:X("PmenuSel","101010","eeeeee","",s:termBlack,"White")
+
+call s:X("Visual","","404040","","",s:termBlack)
+call s:X("Cursor",s:background_color,"b0d0f0","","","")
+
+call s:X("LineNr","605958",s:background_color,"NONE",s:termBlack,"")
+call s:X("CursorLineNr","ccc5c4","","NONE","White","")
+call s:X("Comment","888888","","italic","Grey","")
+call s:X("Todo","c7c7c7","","bold","White",s:termBlack)
+
+call s:X("StatusLine","000000","dddddd","italic","","White")
+call s:X("StatusLineNC","ffffff","403c41","italic","White","Black")
+call s:X("VertSplit","777777","403c41","",s:termBlack,s:termBlack)
+call s:X("WildMenu","f0a0c0","302028","","Magenta","")
+
+call s:X("Folded","a0a8b0","384048","italic",s:termBlack,"")
+call s:X("FoldColumn","535D66","1f1f1f","","",s:termBlack)
+call s:X("SignColumn","777777","333333","","",s:termBlack)
+call s:X("ColorColumn","","000000","","",s:termBlack)
+
+call s:X("Title","70b950","","bold","Green","")
+
+call s:X("Constant","cf6a4c","","","Red","")
+call s:X("Special","799d6a","","","Green","")
+call s:X("Delimiter","668799","","","Grey","")
+
+call s:X("String","99ad6a","","","Green","")
+call s:X("StringDelimiter","556633","","","DarkGreen","")
+
+call s:X("Identifier","c6b6ee","","","LightCyan","")
+call s:X("Structure","8fbfdc","","","LightCyan","")
+call s:X("Function","fad07a","","","Yellow","")
+call s:X("Statement","8197bf","","","DarkBlue","")
+call s:X("PreProc","8fbfdc","","","LightBlue","")
+
+hi! link Operator Structure
+hi! link Conceal Operator
+
+call s:X("Type","ffb964","","","Yellow","")
+call s:X("NonText","606060",s:background_color,"",s:termBlack,"")
+
+call s:X("SpecialKey","444444","1c1c1c","",s:termBlack,"")
+
+call s:X("Search","f0a0c0","302028","underline","Magenta","")
+
+call s:X("Directory","dad085","","","Yellow","")
+call s:X("ErrorMsg","","902020","","","DarkRed")
+hi! link Error ErrorMsg
+hi! link MoreMsg Special
+call s:X("Question","65C254","","","Green","")
+
+
+" Spell Checking
+
+call s:X("SpellBad","","902020","underline","","DarkRed")
+call s:X("SpellCap","","0000df","underline","","Blue")
+call s:X("SpellRare","","540063","underline","","DarkMagenta")
+call s:X("SpellLocal","","2D7067","underline","","Green")
+
+" Diff
+
+hi! link diffRemoved Constant
+hi! link diffAdded String
+
+" VimDiff
+
+call s:X("DiffAdd","D2EBBE","437019","","White","DarkGreen")
+call s:X("DiffDelete","40000A","700009","","DarkRed","DarkRed")
+call s:X("DiffChange","","2B5B77","","White","DarkBlue")
+call s:X("DiffText","8fbfdc","000000","reverse","Yellow","")
+
+" PHP
+
+hi! link phpFunctions Function
+call s:X("StorageClass","c59f6f","","","Red","")
+hi! link phpSuperglobal Identifier
+hi! link phpQuoteSingle StringDelimiter
+hi! link phpQuoteDouble StringDelimiter
+hi! link phpBoolean Constant
+hi! link phpNull Constant
+hi! link phpArrayPair Operator
+hi! link phpOperator Normal
+hi! link phpRelation Normal
+hi! link phpVarSelector Identifier
+
+" Python
+
+hi! link pythonOperator Statement
+
+" Ruby
+
+hi! link rubySharpBang Comment
+call s:X("rubyClass","447799","","","DarkBlue","")
+call s:X("rubyIdentifier","c6b6fe","","","Cyan","")
+hi! link rubyConstant Type
+hi! link rubyFunction Function
+
+call s:X("rubyInstanceVariable","c6b6fe","","","Cyan","")
+call s:X("rubySymbol","7697d6","","","Blue","")
+hi! link rubyGlobalVariable rubyInstanceVariable
+hi! link rubyModule rubyClass
+call s:X("rubyControl","7597c6","","","Blue","")
+
+hi! link rubyString String
+hi! link rubyStringDelimiter StringDelimiter
+hi! link rubyInterpolationDelimiter Identifier
+
+call s:X("rubyRegexpDelimiter","540063","","","Magenta","")
+call s:X("rubyRegexp","dd0093","","","DarkMagenta","")
+call s:X("rubyRegexpSpecial","a40073","","","Magenta","")
+
+call s:X("rubyPredefinedIdentifier","de5577","","","Red","")
+
+" Erlang
+
+hi! link erlangAtom rubySymbol
+hi! link erlangBIF rubyPredefinedIdentifier
+hi! link erlangFunction rubyPredefinedIdentifier
+hi! link erlangDirective Statement
+hi! link erlangNode Identifier
+
+" Elixir
+
+hi! link elixirAtom rubySymbol
+
+
+" JavaScript
+
+hi! link javaScriptValue Constant
+hi! link javaScriptRegexpString rubyRegexp
+hi! link javaScriptTemplateVar StringDelim
+hi! link javaScriptTemplateDelim Identifier
+hi! link javaScriptTemplateString String
+
+" CoffeeScript
+
+hi! link coffeeRegExp javaScriptRegexpString
+
+" Lua
+
+hi! link luaOperator Conditional
+
+" C
+
+hi! link cFormat Identifier
+hi! link cOperator Constant
+
+" Objective-C/Cocoa
+
+hi! link objcClass Type
+hi! link cocoaClass objcClass
+hi! link objcSubclass objcClass
+hi! link objcSuperclass objcClass
+hi! link objcDirective rubyClass
+hi! link objcStatement Constant
+hi! link cocoaFunction Function
+hi! link objcMethodName Identifier
+hi! link objcMethodArg Normal
+hi! link objcMessageName Identifier
+
+" Vimscript
+
+hi! link vimOper Normal
+
+" HTML
+
+hi! link htmlTag Statement
+hi! link htmlEndTag htmlTag
+hi! link htmlTagName htmlTag
+
+" XML
+
+hi! link xmlTag Statement
+hi! link xmlEndTag xmlTag
+hi! link xmlTagName xmlTag
+hi! link xmlEqual xmlTag
+hi! link xmlEntity Special
+hi! link xmlEntityPunct xmlEntity
+hi! link xmlDocTypeDecl PreProc
+hi! link xmlDocTypeKeyword PreProc
+hi! link xmlProcessingDelim xmlAttrib
+
+" Debugger.vim
+
+call s:X("DbgCurrent","DEEBFE","345FA8","","White","DarkBlue")
+call s:X("DbgBreakPt","","4F0037","","","DarkMagenta")
+
+" vim-indent-guides
+
+if !exists("g:indent_guides_auto_colors")
+  let g:indent_guides_auto_colors = 0
+endif
+call s:X("IndentGuidesOdd","","232323","","","")
+call s:X("IndentGuidesEven","","1b1b1b","","","")
+
+" Plugins, etc.
+
+hi! link TagListFileName Directory
+call s:X("PreciseJumpTarget","B9ED67","405026","","White","Green")
+
+" Manual overrides for 256-color terminals. Dark colors auto-map badly.
+if !s:low_color
+  hi StatusLineNC ctermbg=235
+  hi Folded ctermbg=236
+  hi DiffText ctermfg=81
+  hi DbgBreakPt ctermbg=53
+  hi IndentGuidesOdd ctermbg=235
+  hi IndentGuidesEven ctermbg=234
+endif
+
+if !empty("s:overrides")
+  fun! s:current_attr(group)
+    let l:synid = synIDtrans(hlID(a:group))
+    let l:attrs = []
+    for l:attr in ["bold", "italic", "reverse", "standout", "underline", "undercurl"]
+      if synIDattr(l:synid, l:attr, "gui") == 1
+        call add(l:attrs, l:attr)
+      endif
+    endfor
+    return join(l:attrs, ",")
+  endfun
+  fun! s:current_color(group, what, mode)
+    let l:color = synIDattr(synIDtrans(hlID(a:group)), a:what, a:mode)
+    if l:color == -1
+      return ""
+    else
+      return substitute(l:color, "^#", "", "")
+    endif
+  endfun
+  fun! s:load_color_def(group, def)
+    call s:X(a:group, get(a:def, "guifg", s:current_color(a:group, "fg", "gui")),
+    \                 get(a:def, "guibg", s:current_color(a:group, "bg", "gui")),
+    \                 get(a:def, "attr", s:current_attr(a:group)),
+    \                 get(a:def, "ctermfg", s:current_color(a:group, "fg", "cterm")),
+    \                 get(a:def, "ctermbg", s:current_color(a:group, "bg", "cterm")))
+    if !s:low_color
+      for l:prop in ["ctermfg", "ctermbg"]
+        let l:override_key = "256".l:prop
+        if has_key(a:def, l:override_key)
+          exec "hi ".a:group." ".l:prop."=".a:def[l:override_key]
+        endif
+      endfor
+    endif
+  endfun
+  fun! s:load_colors(defs)
+    for [l:group, l:def] in items(a:defs)
+      if l:group == "background"
+        call s:load_color_def("LineNr", l:def)
+        call s:load_color_def("NonText", l:def)
+        call s:load_color_def("Normal", l:def)
+      else
+        call s:load_color_def(l:group, l:def)
+      endif
+      unlet l:group
+      unlet l:def
+    endfor
+  endfun
+  call s:load_colors(s:overrides)
+  delf s:load_colors
+  delf s:load_color_def
+  delf s:current_color
+  delf s:current_attr
+endif
+
+" delete functions {{{
+delf s:X
+delf s:remove_italic_attr
+delf s:prefix_highlight_value_with
+delf s:rgb
+delf s:is_empty_or_none
+delf s:color
+delf s:rgb_color
+delf s:rgb_level
+delf s:rgb_number
+delf s:grey_color
+delf s:grey_level
+delf s:grey_number
+" }}}
+```
+
+### assets/themes/macos-classic-LICENSE.txt
+
+Used by: macOS Classic
+
+```
+MIT License
+
+Copyright (c) 2023 Jason Lee.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/matrix-LICENSE.txt
+
+Used by: Matrix
+
+```
+MIT License
+
+Copyright (c) 2022 iruzo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/mellifluous-LICENSE.txt
+
+Used by: Mellifluous
+
+```
+MIT License
+
+Copyright (c) 2024 Ramojus Lapinskas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/solarized-LICENSE.txt
+
+Used by: Solarized
+
+```
+Copyright (c) 2011 Ethan Schoonover
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### assets/themes/spaceduck-LICENSE.txt
+
+Used by: Spaceduck
+
+```
+MIT License
+
+Copyright (c) 2020 pineapplegiant
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### assets/themes/tokyonight-LICENSE.txt
+
+Used by: Tokyo Night
+
+```
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -568,155 +2671,31 @@ Used by: gpui-component-assets, Asciinema, Tokyo Night
    limitations under the License.
 ```
 
-### assets/fonts/Pixeloid/LICENSE.txt
-
-Used by: Pixeloid Sans
-
-```
-﻿Copyright © 2020-2025 GGBotNet (https://ggbot.net/fonts/), with Reserved Font Name "Pixeloid".
-
-This Font Software is licensed under the SIL Open Font License, Version 1.1.
-This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
-
------------------------------------------------------------
-SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
------------------------------------------------------------
-
-PREAMBLE
-The goals of the Open Font License (OFL) are to stimulate worldwide
-development of collaborative font projects, to support the font creation
-efforts of academic and linguistic communities, and to provide a free and
-open framework in which fonts may be shared and improved in partnership
-with others.
-
-The OFL allows the licensed fonts to be used, studied, modified and
-redistributed freely as long as they are not sold by themselves. The
-fonts, including any derivative works, can be bundled, embedded, 
-redistributed and/or sold with any software provided that any reserved
-names are not used by derivative works. The fonts and derivatives,
-however, cannot be released under any other type of license. The
-requirement for fonts to remain under this license does not apply
-to any document created using the fonts or their derivatives.
-
-DEFINITIONS
-"Font Software" refers to the set of files released by the Copyright
-Holder(s) under this license and clearly marked as such. This may
-include source files, build scripts and documentation.
-
-"Reserved Font Name" refers to any names specified as such after the
-copyright statement(s).
-
-"Original Version" refers to the collection of Font Software components as
-distributed by the Copyright Holder(s).
-
-"Modified Version" refers to any derivative made by adding to, deleting,
-or substituting -- in part or in whole -- any of the components of the
-Original Version, by changing formats or by porting the Font Software to a
-new environment.
-
-"Author" refers to any designer, engineer, programmer, technical
-writer or other person who contributed to the Font Software.
-
-PERMISSION & CONDITIONS
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of the Font Software, to use, study, copy, merge, embed, modify,
-redistribute, and sell modified and unmodified copies of the Font
-Software, subject to the following conditions:
-
-1) Neither the Font Software nor any of its individual components,
-in Original or Modified Versions, may be sold by itself.
-
-2) Original or Modified Versions of the Font Software may be bundled,
-redistributed and/or sold with any software, provided that each copy
-contains the above copyright notice and this license. These can be
-included either as stand-alone text files, human-readable headers or
-in the appropriate machine-readable metadata fields within text or
-binary files as long as those fields can be easily viewed by the user.
-
-3) No Modified Version of the Font Software may use the Reserved Font
-Name(s) unless explicit written permission is granted by the corresponding
-Copyright Holder. This restriction only applies to the primary font name as
-presented to the users.
-
-4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
-Software shall not be used to promote, endorse or advertise any
-Modified Version, except to acknowledge the contribution(s) of the
-Copyright Holder(s) and the Author(s) or with their explicit written
-permission.
-
-5) The Font Software, modified or unmodified, in part or in whole,
-must be distributed entirely under this license, and must not be
-distributed under any other license. The requirement for fonts to
-remain under this license does not apply to any document created
-using the Font Software.
-
-TERMINATION
-This license becomes null and void if any of the above conditions are
-not met.
-
-DISCLAIMER
-THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
-OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
-COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
-DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
-OTHER DEALINGS IN THE FONT SOFTWARE.
-```
-
-### assets/licenses/texts/MIT.txt
-
-Used by: Ayu, Catppuccin, Everforest, Flexoki, Gruvbox, Hybrid, Jellybeans, macOS Classic, Matrix, Mellifluous, Solarized, Spaceduck
-
-```
-MIT License
-
-Copyright (c) the respective copyright holders, as identified in the notices
-where this text is referenced.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### assets/licenses/texts/LicenseRef-TextMateThemesBundle.txt
+### assets/themes/twilight-LICENSE.txt
 
 Used by: Twilight
 
 ```
-TextMate Themes Bundle license (applies to the Twilight theme)
+# Installation
 
-From https://github.com/textmate/themes.tmbundle (README.mdown, "License"):
+You can install this bundle in TextMate by opening the preferences and going to the bundles tab. After installation it will be automatically updated for you.
 
-    If not otherwise specified (see below), files in this repository fall under
-    the following license:
+# General
 
-        Permission to copy, use, modify, sell and distribute this
-        software is granted. This software is provided "as is" without
-        express or implied warranty, and with no claim as to its
-        suitability for any purpose.
+* [Bundle Styleguide](http://kb.textmate.org/bundle_styleguide) — _before you make changes_
+* [Commit Styleguide](http://kb.textmate.org/commit_styleguide) — _before you send a pull request_
+* [Writing Bug Reports](http://kb.textmate.org/writing_bug_reports) — _before you report an issue_
 
-    An exception is made for files in readable text which contain their own
-    license information, or files where an accompanying file exists (in the
-    same directory) with a "-license" suffix added to the base-name name of the
-    original file, and an extension of txt, html, or similar.
+# License
+
+If not otherwise specified (see below), files in this repository fall under the following license:
+
+	Permission to copy, use, modify, sell and distribute this
+	software is granted. This software is provided "as is" without
+	express or implied warranty, and with no claim as to its
+	suitability for any purpose.
+
+An exception is made for files in readable text which contain their own license information, or files where an accompanying file exists (in the same directory) with a “-license” suffix added to the base-name name of the original file, and an extension of txt, html, or similar. For example “tidy” is accompanied by “tidy-license.txt”.
 ```
 
 # Third-Party Notices — Rust dependencies
