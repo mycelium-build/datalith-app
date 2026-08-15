@@ -1,0 +1,112 @@
+name: Finalize v0.1.0-rc.4 hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/finalize-rc4-hotfix.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: v0.1.0-rc.4
+      VERSION: 0.1.0-rc.4
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.1.0-rc.4
+          fetch-depth: 0
+          persist-credentials: false
+          path: release-source
+
+      - name: Check out fixed validator
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: scripts/licenses/verify_sbom.py
+          path: hotfix-source
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@04151451f829cb881fd7b3250eccf4021433e14e
+        env:
+          SYFT_SOURCE_NAME: datalith
+          SYFT_SOURCE_VERSION: v0.1.0-rc.4
+        with:
+          path: release-source
+          format: spdx-json
+          output-file: datalith-0.1.0-rc.4.spdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate SBOM
+        run: python3 hotfix-source/scripts/licenses/verify_sbom.py datalith-0.1.0-rc.4.spdx.json "$VERSION"
+
+      - name: Resolve draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="$(
+            gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == "v0.1.0-rc.4") | .id' |
+              head -n 1
+          )"
+          test -n "$RELEASE_ID"
+          echo "RELEASE_ID=$RELEASE_ID" >>"$GITHUB_ENV"
+
+      - name: Download existing release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-artifacts
+          gh api "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv' |
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api \
+              -H "Accept: application/octet-stream" \
+              "/repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
+              >"release-artifacts/${asset_name}"
+          done
+
+      - name: Stage legal documents and SBOM
+        run: |
+          cp release-source/LICENSE release-artifacts/LICENSE
+          cp release-source/LICENSE-GPL-3.0 release-artifacts/LICENSE-GPL-3.0
+          cp release-source/LICENSING.md release-artifacts/LICENSING.md
+          cp release-source/THIRD-PARTY-NOTICES.md release-artifacts/THIRD-PARTY-NOTICES.md
+          cp datalith-0.1.0-rc.4.spdx.json release-artifacts/
+
+      - name: Generate SHA256SUMS
+        run: release-source/scripts/licenses/checksums.sh release-artifacts
+
+      - name: Upload SBOM, checksums and legal documents
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: v0.1.0-rc.4
+          draft: true
+          files: |
+            release-artifacts/SHA256SUMS
+            datalith-0.1.0-rc.4.spdx.json
+            release-source/LICENSE
+            release-source/LICENSE-GPL-3.0
+            release-source/LICENSING.md
+            release-source/THIRD-PARTY-NOTICES.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method PATCH \
+            "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -F prerelease=true
