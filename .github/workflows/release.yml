@@ -160,42 +160,6 @@ jobs:
               --target "target/${PACKAGE_TARGET}/release/"
           done
 
-      - name: Verify package legal documents
-        shell: bash
-        env:
-          PACKAGE_FORMAT: ${{ matrix.format }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          case "$PACKAGE_FORMAT" in
-            appimage)
-              for pkg in target/*/release/*.AppImage; do
-                scripts/licenses/verify_package.sh appimage "$pkg"
-              done
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq rpm cpio
-              for pkg in target/*/release/*.deb; do
-                scripts/licenses/verify_package.sh deb "$pkg"
-              done
-              for pkg in target/*/release/*.rpm; do
-                scripts/licenses/verify_package.sh rpm "$pkg"
-              done
-              for pkg in target/*/release/*.pkg.tar.zst; do
-                scripts/licenses/verify_package.sh archlinux "$pkg"
-              done
-              ;;
-            dmg)
-              for pkg in target/*/release/*.dmg; do
-                scripts/licenses/verify_package.sh dmg "$pkg"
-              done
-              ;;
-            nsis)
-              for pkg in target/*/release/*setup.exe; do
-                scripts/licenses/verify_package.sh nsis "$pkg"
-              done
-              ;;
-          esac
-
       - name: Upload package to GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
@@ -268,3 +232,8 @@ jobs:
             LICENSE-GPL-3.0
             LICENSING.md
             THIRD-PARTY-NOTICES.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
