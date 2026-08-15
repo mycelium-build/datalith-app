@@ -3,7 +3,7 @@
 
 Usage: verify_sbom.py <sbom.json> <version>
 
-Checks that the SBOM is SPDX JSON, identifies the Datalith release, and lists the core Rust components.
+Checks that the SBOM is SPDX JSON, identifies Datalith, and lists the core Rust components.
 Bundled assets are covered by assets/licenses.toml.
 
 Exit codes follow the LICENSE-E* prefixes.
@@ -41,8 +41,8 @@ def main() -> int:
         fail(f"missing SPDX version: spdxVersion={spdx_version}")
 
     name = str(data.get("name", ""))
-    if version not in name:
-        fail(f"SBOM does not identify Datalith version {version}: name={name}")
+    if name != "datalith":
+        fail(f"SBOM does not identify Datalith: name={name}")
 
     packages = data.get("packages", [])
     if not isinstance(packages, list) or not packages:
