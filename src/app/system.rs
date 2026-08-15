@@ -18,3 +18,18 @@ pub fn copy_path(target: &Path) -> anyhow::Result<()> {
     clipboard.set_text(target.to_string_lossy())?;
     Ok(())
 }
+
+pub fn open_url(url: &str) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(url).spawn()?;
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()?;
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    std::process::Command::new("xdg-open").arg(url).spawn()?;
+
+    Ok(())
+}

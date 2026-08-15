@@ -1,0 +1,372 @@
+# Canonical inventory of non-Cargo assets embedded in or distributed with Datalith.
+# The asset sections of THIRD-PARTY-NOTICES.md are derived from assets/licenses.toml,
+# which is validated by scripts/licenses/check_assets.py.
+#
+# Field notes:
+#   paths         repo-relative file/glob patterns covered by this entry
+#   source        upstream URL, or "first-party" for original Datalith assets
+#   revision      immutable upstream license-evidence identifier where available;
+#                 theme acquisition is recorded separately by adaptation_revision
+#   license       SPDX expression, or a LicenseRef-* for non-standard grants
+#   license_file  path to the retained, exact license text
+#   distribution  "embedded" (compiled into the binary)
+#                 or "packaged" (installed beside it)
+#                 or "dependency" (arrives via a Rust dependency)
+
+# gpui-component adaptation revision
+# (the point at which Datalith obtained the bundled themes and component assets).
+ADAPTATION_SOURCE = "https://github.com/longbridge/gpui-component"
+ADAPTATION_REVISION = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+
+[[asset]]
+id = "datalith-pixel-icons"
+kind = "icon"
+name = "Datalith pixel-art icons"
+author = "Datalith"
+copyright = "Copyright (c) 2026 mycelium-build"
+source = "first-party"
+revision = "first-party"
+license = "MIT"
+license_file = "LICENSE"
+distribution = "embedded"
+paths = ["assets/icons/*.svg", "assets/icons/*.txt"]
+notes = "Original 7x7 and 2 color levels pixel art icons. Inspired by Nucleo Arcade icon sets."
+
+[[asset]]
+id = "datalith-app-icons"
+kind = "artwork"
+name = "Datalith application icon"
+author = "Datalith"
+copyright = "Copyright (c) 2026 mycelium-build"
+source = "first-party"
+revision = "first-party"
+license = "MIT"
+license_file = "LICENSE"
+distribution = "packaged"
+paths = [
+    "assets/datalith.png",
+    "assets/datalith.ico",
+    "assets/datalith.icns",
+    "assets/datalith-macos.png",
+    "assets/datalith.svg",
+    "assets/datalith.txt",
+    "assets/datalith.rc",
+    "assets/icons/hicolor/**",
+]
+
+[[asset]]
+id = "theme-datalith"
+kind = "theme"
+name = "Datalith"
+author = "Datalith"
+copyright = "Copyright (c) 2026 mycelium-build"
+source = "first-party"
+revision = "first-party"
+license = "MIT"
+license_file = "assets/themes/datalith-LICENSE.txt"
+distribution = "embedded"
+paths = ["assets/themes/datalith.json"]
+
+[[asset]]
+id = "pixeloid"
+kind = "font"
+name = "Pixeloid Sans"
+author = "GGBotNet"
+copyright = "Copyright (c) 2020-2025 GGBotNet"
+source = "https://ggbot.net/fonts/"
+revision = "1.0 (embedded font metadata)"
+license = "OFL-1.1"
+license_file = "assets/fonts/Pixeloid/LICENSE.txt"
+reserved_names = ["Pixeloid"]
+notes = "The publisher does not expose a stable versioned archive. Exact bundled files are identified by SHA-256: regular 6c74e947e13eac61b3199cfe85ae78d3b27865aec4b9b4b39a05d34518d3bb3e; bold d8bc38413101440e2d68b8d886f82dae298e3d4550728b5c99f717377ed8a195; OFL text de7a71bd2d330c09aaadb38cd09eda3c62693a55350e288b43dac73f4a5e67a8."
+distribution = "embedded"
+paths = [
+    "assets/fonts/Pixeloid/PixeloidSans.ttf",
+    "assets/fonts/Pixeloid/PixeloidSans-Bold.ttf",
+    "assets/fonts/Pixeloid/LICENSE.txt",
+]
+
+# --- Bundled themes (adapted via gpui-component)
+
+[[asset]]
+id = "theme-asciinema"
+kind = "theme"
+name = "Asciinema"
+author = "Marcin Kulik"
+copyright = "Copyright 2011-2021 Marcin Kulik"
+source = "https://asciinema.org"
+revision = "4e056bee42703a88da5c97d99a5c58e6096a47bb"
+license = "Apache-2.0"
+license_file = "assets/themes/asciinema-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/asciinema/asciinema-player/4e056bee42703a88da5c97d99a5c58e6096a47bb/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/asciinema.json"]
+
+[[asset]]
+id = "theme-ayu"
+kind = "theme"
+name = "Ayu"
+author = "Ike Ku"
+copyright = "Copyright (c) 2016 Ike Ku"
+source = "https://github.com/dempfi/ayu"
+revision = "41e0098e8ce5014f1f90474a16bf31639f74fecf"
+license = "MIT"
+license_file = "assets/themes/ayu-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/dempfi/ayu/41e0098e8ce5014f1f90474a16bf31639f74fecf/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/ayu.json"]
+
+[[asset]]
+id = "theme-catppuccin"
+kind = "theme"
+name = "Catppuccin"
+author = "Catppuccin"
+copyright = "Copyright (c) 2021 Catppuccin"
+source = "https://github.com/catppuccin/catppuccin"
+revision = "d09787dd98ca6fba08af5ef2ae94a7e09f17daca"
+license = "MIT"
+license_file = "assets/themes/catppuccin-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/catppuccin/catppuccin/d09787dd98ca6fba08af5ef2ae94a7e09f17daca/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/catppuccin.json"]
+
+[[asset]]
+id = "theme-everforest"
+kind = "theme"
+name = "Everforest"
+author = "sainnhe"
+copyright = "Copyright (c) 2019 sainnhe"
+source = "https://github.com/sainnhe/everforest"
+revision = "85a86eb62409e3ec88713bff3d1b9d7374e112e4"
+license = "MIT"
+license_file = "assets/themes/everforest-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/sainnhe/everforest/85a86eb62409e3ec88713bff3d1b9d7374e112e4/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/everforest.json"]
+
+[[asset]]
+id = "theme-flexoki"
+kind = "theme"
+name = "Flexoki"
+author = "Steph Ango"
+copyright = "Copyright (c) 2023 Steph Ango"
+source = "https://github.com/kepano/flexoki"
+revision = "8d723bac4a9ac46adfdf99d42155286977aac72a"
+license = "MIT"
+license_file = "assets/themes/flexoki-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/kepano/flexoki/8d723bac4a9ac46adfdf99d42155286977aac72a/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/flexoki.json"]
+
+[[asset]]
+id = "theme-gruvbox"
+kind = "theme"
+name = "Gruvbox"
+author = "Pavel Pertsev (morhetz)"
+copyright = "Copyright (c) 2012-2023 Pavel Pertsev"
+source = "https://github.com/morhetz/gruvbox"
+revision = "5d15b2765f59754d7ac263c88a0f6e3e58124951"
+license = "MIT"
+license_file = "assets/themes/gruvbox-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/morhetz/gruvbox/5d15b2765f59754d7ac263c88a0f6e3e58124951/README.md"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/gruvbox.json"]
+notes = "No standalone LICENSE file; README declares MIT/X11 (MIT). Debian packages it as MIT."
+
+[[asset]]
+id = "theme-hybrid"
+kind = "theme"
+name = "Hybrid"
+author = "Andrew Wong (w0ng)"
+copyright = "Copyright (c) Andrew Wong (w0ng)"
+source = "https://github.com/w0ng/vim-hybrid"
+revision = "cc58baabeabc7b83768e25b852bf89c34756bf90"
+license = "MIT"
+license_file = "assets/themes/hybrid-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/w0ng/vim-hybrid/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/hybrid.json"]
+notes = "License declared in file header (no standalone LICENSE file)."
+
+[[asset]]
+id = "theme-jellybeans"
+kind = "theme"
+name = "Jellybeans"
+author = "nanotech"
+copyright = "Copyright (c) 2009-2019 NanoTech"
+source = "https://github.com/nanotech/jellybeans.vim"
+revision = "ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa"
+license = "MIT"
+license_file = "assets/themes/jellybeans-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/nanotech/jellybeans.vim/ef83bf4dc8b3eacffc97bf5c96ab2581b415c9fa/colors/jellybeans.vim"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/jellybeans.json"]
+notes = "License declared in file header (no standalone LICENSE file)."
+
+[[asset]]
+id = "theme-macos-classic"
+kind = "theme"
+name = "macOS Classic"
+author = "Jason Lee"
+copyright = "Copyright (c) 2023 Jason Lee"
+source = "https://github.com/huacnlee/zed-theme-macos-classic"
+revision = "22266e11c4b8962be2e259011251b4016ff00552"
+license = "MIT"
+license_file = "assets/themes/macos-classic-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/huacnlee/zed-theme-macos-classic/22266e11c4b8962be2e259011251b4016ff00552/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/macos-classic.json"]
+
+[[asset]]
+id = "theme-matrix"
+kind = "theme"
+name = "Matrix"
+author = "iruzo"
+copyright = "Copyright (c) 2022 iruzo"
+source = "https://github.com/iruzo/matrix-nvim"
+revision = "5fafe6b440d08c1070e3c4c4cb9d648436d5d867"
+license = "MIT"
+license_file = "assets/themes/matrix-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/iruzo/matrix-nvim/5fafe6b440d08c1070e3c4c4cb9d648436d5d867/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/matrix.json"]
+
+[[asset]]
+id = "theme-mellifluous"
+kind = "theme"
+name = "Mellifluous"
+author = "Ramojus Lapinskas"
+copyright = "Copyright (c) 2024 Ramojus Lapinskas"
+source = "https://github.com/ramojus/mellifluous.nvim"
+revision = "ec0575bdb63594c5e7fba6eb9607b009aa1fb74e"
+license = "MIT"
+license_file = "assets/themes/mellifluous-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/ramojus/mellifluous.nvim/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/mellifluous.json"]
+
+[[asset]]
+id = "theme-solarized"
+kind = "theme"
+name = "Solarized"
+author = "Ethan Schoonover"
+copyright = "Copyright (c) 2011 Ethan Schoonover"
+source = "https://ethanschoonover.com/solarized"
+revision = "62f656a02f93c5190a8753159e34b385588d5ff3"
+license = "MIT"
+license_file = "assets/themes/solarized-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/solarized.json"]
+
+[[asset]]
+id = "theme-spaceduck"
+kind = "theme"
+name = "Spaceduck"
+author = "Guillermo Rodriguez (pineapplegiant)"
+copyright = "Copyright (c) 2020 pineapplegiant"
+source = "https://github.com/pineapplegiant/spaceduck"
+revision = "350491f19343b24fa85809242089caa02d4dadce"
+license = "MIT"
+license_file = "assets/themes/spaceduck-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/pineapplegiant/spaceduck/350491f19343b24fa85809242089caa02d4dadce/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/spaceduck.json"]
+
+[[asset]]
+id = "theme-tokyonight"
+kind = "theme"
+name = "Tokyo Night"
+author = "Folke Lemaitre"
+copyright = "Copyright (c) Folke Lemaitre"
+source = "https://github.com/folke/tokyonight.nvim"
+revision = "cdc07ac78467a233fd62c493de29a17e0cf2b2b6"
+license = "Apache-2.0"
+license_file = "assets/themes/tokyonight-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/folke/tokyonight.nvim/cdc07ac78467a233fd62c493de29a17e0cf2b2b6/LICENSE"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/tokyonight.json"]
+
+[[asset]]
+id = "theme-twilight"
+kind = "theme"
+name = "Twilight"
+author = "Michael Sheets (TextMate themes bundle)"
+copyright = "No explicit copyright line (permissive grant; author Michael Sheets)"
+source = "https://macromates.com"
+revision = "e6e918506291b2dec178ad1b7e6f04653d25818c"
+license = "LicenseRef-TextMateThemesBundle"
+license_file = "assets/themes/twilight-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/textmate/themes.tmbundle/e6e918506291b2dec178ad1b7e6f04653d25818c/README.mdown"
+adaptation_source = "https://github.com/longbridge/gpui-component"
+adaptation_revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+distribution = "embedded"
+paths = ["assets/themes/twilight.json"]
+notes = "Custom permissive grant (copy/use/modify/sell/distribute); no standard SPDX id, so recorded as LicenseRef-TextMateThemesBundle."
+
+# --- Assets arriving via Rust dependencies
+
+[[asset]]
+id = "gpui-component-assets"
+kind = "dependency"
+name = "gpui-component-assets"
+author = "Longbridge"
+copyright = "Copyright 2024 - 2025 Longbridge"
+source = "https://github.com/longbridge/gpui-component"
+revision = "46576ae7aa63ab9db9923e5d8c32228ed330a259"
+license = "Apache-2.0"
+license_file = "assets/licenses/texts/gpui-component-assets-LICENSE.txt"
+license_evidence = "https://raw.githubusercontent.com/longbridge/gpui-component/46576ae7aa63ab9db9923e5d8c32228ed330a259/LICENSE-APACHE"
+distribution = "dependency"
+
+[[asset]]
+id = "lucide"
+kind = "dependency"
+name = "Lucide icons"
+author = "Lucide Icons and Contributors"
+copyright = "Copyright (c) Lucide Icons and Contributors"
+source = "https://github.com/lucide-icons/lucide"
+revision = "see gpui-component-assets revision"
+license = "ISC"
+license_file = "assets/licenses/texts/Lucide-LICENSE.txt"
+distribution = "dependency"
+
+[[asset]]
+id = "feather"
+kind = "dependency"
+name = "Feather icons (Lucide-derived subset)"
+author = "Cole Bemis"
+copyright = "Copyright (c) 2013-present Cole Bemis"
+source = "https://github.com/feathericons/feather"
+revision = "see gpui-component-assets revision"
+license = "MIT"
+license_file = "assets/licenses/texts/Lucide-LICENSE.txt"
+distribution = "dependency"

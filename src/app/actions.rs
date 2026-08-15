@@ -39,6 +39,8 @@ actions!(
         OpenSettings,
         OpenShortcuts,
         OpenAbout,
+        OpenLicenses,
+        OpenSource,
         SelectTab1,
         SelectTab2,
         SelectTab3,
@@ -93,6 +95,8 @@ pub fn register(cx: &mut App) {
     cx.on_action(open_settings);
     cx.on_action(open_shortcuts);
     cx.on_action(open_about);
+    cx.on_action(open_licenses);
+    cx.on_action(open_source);
     cx.on_action(toggle_editor_mode);
     cx.on_action(go_back);
     cx.on_action(go_forward);
@@ -377,6 +381,18 @@ pub fn open_about(_: &OpenAbout, cx: &mut App) {
         view.settings.open_about();
         cx.notify();
     });
+}
+
+pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.licenses.open();
+        cx.notify();
+    });
+}
+
+pub fn open_source(_: &OpenSource, _cx: &mut App) {
+    let url = crate::ui::licenses::corresponding_source_url();
+    let _ = system::open_url(&url);
 }
 
 fn select_tab_index(index: usize, cx: &mut App) {

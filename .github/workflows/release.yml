@@ -23,8 +23,55 @@ jobs:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
 
+  compliance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
+        with:
+          toolchain: 1.96.0
+
+      - name: Install cargo-about and cargo-deny
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        with:
+          tool: cargo-about@0.9.1,cargo-deny@0.18.9
+
+      - name: Run license-compliance checks
+        run: scripts/licenses/check.sh
+
+  source:
+    needs: [release, compliance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
+        with:
+          toolchain: 1.96.0
+
+      - name: Build corresponding-source archive
+        run: scripts/licenses/package_source.sh --tag "${GITHUB_REF_NAME}"
+
+      - name: Upload corresponding-source archive
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          draft: true
+          files: datalith-*-corresponding-source.tar.zst
+
   artifacts:
-    needs: release
+    needs: [release, compliance]
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -90,6 +137,8 @@ jobs:
           nfpm --version
 
       - name: Build release binary
+        env:
+          DATALITH_RELEASE_TAG: ${{ github.ref_name }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package desktop application
@@ -111,9 +160,111 @@ jobs:
               --target "target/${PACKAGE_TARGET}/release/"
           done
 
+      - name: Verify package legal documents
+        shell: bash
+        env:
+          PACKAGE_FORMAT: ${{ matrix.format }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          case "$PACKAGE_FORMAT" in
+            appimage)
+              for pkg in target/*/release/*.AppImage; do
+                scripts/licenses/verify_package.sh appimage "$pkg"
+              done
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq rpm cpio
+              for pkg in target/*/release/*.deb; do
+                scripts/licenses/verify_package.sh deb "$pkg"
+              done
+              for pkg in target/*/release/*.rpm; do
+                scripts/licenses/verify_package.sh rpm "$pkg"
+              done
+              for pkg in target/*/release/*.pkg.tar.zst; do
+                scripts/licenses/verify_package.sh archlinux "$pkg"
+              done
+              ;;
+            dmg)
+              for pkg in target/*/release/*.dmg; do
+                scripts/licenses/verify_package.sh dmg "$pkg"
+              done
+              ;;
+            nsis)
+              for pkg in target/*/release/*setup.exe; do
+                scripts/licenses/verify_package.sh nsis "$pkg"
+              done
+              ;;
+          esac
+
       - name: Upload package to GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           fail_on_unmatched_files: true
           draft: true
           files: ${{ matrix.artifact }}
+
+  finalize:
+    needs: [artifacts, source]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@04151451f829cb881fd7b3250eccf4021433e14e
+        env:
+          SYFT_SOURCE_NAME: datalith
+          SYFT_SOURCE_VERSION: ${{ github.ref_name }}
+        with:
+          path: .
+          format: spdx-json
+          output-file: datalith.sbom.spdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Rename SBOM with version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mv datalith.sbom.spdx.json "datalith-${VERSION}.spdx.json"
+
+      - name: Validate SBOM
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 scripts/licenses/verify_sbom.py "datalith-${VERSION}.spdx.json" "${VERSION}"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-artifacts
+          gh release download "$GITHUB_REF_NAME" --dir release-artifacts --clobber
+
+      - name: Stage legal documents and SBOM
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp LICENSE release-artifacts/LICENSE
+          cp LICENSE-GPL-3.0 release-artifacts/LICENSE-GPL-3.0
+          cp LICENSING.md release-artifacts/LICENSING.md
+          cp THIRD-PARTY-NOTICES.md release-artifacts/THIRD-PARTY-NOTICES.md
+          cp "datalith-${VERSION}.spdx.json" release-artifacts/
+
+      - name: Generate SHA256SUMS
+        run: scripts/licenses/checksums.sh release-artifacts
+
+      - name: Upload SBOM, checksums and legal documents
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          draft: true
+          files: |
+            release-artifacts/SHA256SUMS
+            datalith-*.spdx.json
+            LICENSE
+            LICENSE-GPL-3.0
+            LICENSING.md
+            THIRD-PARTY-NOTICES.md

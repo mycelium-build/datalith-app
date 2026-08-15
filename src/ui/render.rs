@@ -102,6 +102,10 @@ impl Render for DatalithView {
             layout = layout.child(self.settings.render_overlay(cx));
         }
 
+        if self.licenses.is_open() {
+            layout = layout.child(self.licenses.render_overlay(cx));
+        }
+
         layout
             .children(Root::render_notification_layer(window, cx))
             .children(self.startup.clone())

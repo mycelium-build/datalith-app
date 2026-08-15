@@ -1,5 +1,6 @@
 pub mod editors;
 pub mod icons;
+pub mod licenses;
 pub mod monolith;
 pub mod notifications;
 pub mod palette;
@@ -89,6 +90,7 @@ pub struct DatalithView {
     _palette_sub: Subscription,
     pub(crate) settings: SettingsView,
     _font_size_slider_sub: Subscription,
+    pub(crate) licenses: licenses::LicensesView,
     pub(crate) context_menu_target: Option<PathBuf>,
     pub(crate) suppress_sidebar_context_menu: bool,
     pub(crate) rename_target: Option<PathBuf>,
@@ -220,6 +222,7 @@ impl DatalithView {
             _palette_sub: palette_sub,
             settings,
             _font_size_slider_sub: font_size_slider_sub,
+            licenses: licenses::LicensesView::new(cx),
             rename_sub: None,
             _vault_select_sub: vault_select_sub,
             context_menu_target: None,

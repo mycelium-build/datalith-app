@@ -1,0 +1,72 @@
+# cargo-deny configuration
+# Enforces the accepted-license and source policy.
+# Run with `cargo deny check`.
+
+[graph]
+# The dependency graph is checked for the union of all production targets.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+# To prevent dependencies from GitHub from being incorrectly flagged
+unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch via zed (transitive)" },
+    { id = "RUSTSEC-2026-0221", reason = "event-listener via zed (transitive)" },
+    { id = "RUSTSEC-2026-0253", reason = "lru via zed (transitive)" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml via zed (transitive)" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml via zed (transitive)" },
+]
+
+[licenses]
+confidence-threshold = 0.8
+# Single source of truth for the accepted-license allowlist.
+# This order is significant: scripts/licenses/sync_allowlist.py mirrors it into scripts/licenses/about.toml,
+# where cargo-about treats it as a priority list.
+# Do not reorder without regenerating THIRD-PARTY-NOTICES.md.
+allow = [
+    "GPL-3.0-or-later",
+    "Apache-2.0",
+    "MIT",
+    "MIT-0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MPL-2.0",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "CC0-1.0",
+    "0BSD",
+    "NCSA",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Zlib",
+    "BSL-1.0",
+    "bzip2-1.0.6",
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/zed-industries/zed",
+    "https://github.com/zed-industries/wasm_thread",
+    "https://github.com/zed-industries/xim-rs",
+    "https://github.com/zed-industries/font-kit",
+    "https://github.com/zed-industries/reqwest",
+    "https://github.com/zed-industries/scap",
+    "https://github.com/longbridge/gpui-component",
+]
