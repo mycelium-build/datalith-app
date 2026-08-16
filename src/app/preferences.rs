@@ -1,11 +1,11 @@
 use std::ops::Mul;
 
 use conv::ConvAsUtil;
-use gpui::{App, px};
+use gpui::{App, WindowAppearance, px};
 use gpui_component::notification::Notification;
 use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 
-use crate::app::settings::{self, ColorMode};
+use crate::app::settings::{self, ThemeMode as AppThemeMode};
 use crate::ui::notifications;
 use crate::ui::settings::ThemeOptions;
 
@@ -50,10 +50,7 @@ fn registered_name<'a>(
 /// the user should know about once the first window is open.
 pub fn apply(cx: &mut App) -> Vec<Notification> {
     let settings = settings::snapshot();
-    let saved_mode = match settings.color_mode {
-        ColorMode::Light => ThemeMode::Light,
-        ColorMode::Dark => ThemeMode::Dark,
-    };
+    let preference = settings.theme_preference;
     let saved_light_name = settings.light_theme_name;
     let saved_dark_name = settings.dark_theme_name;
 
@@ -101,10 +98,19 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
         cx.global_mut::<ThemeOptions>().dark_theme_name = dark_name.into();
     }
 
-    Theme::change(saved_mode, None, cx);
-    Theme::global_mut(cx).mode = saved_mode;
+    let effective_mode = match preference.resolve(cx.window_appearance()) {
+        AppThemeMode::Light => ThemeMode::Light,
+        AppThemeMode::Dark => ThemeMode::Dark,
+    };
+    Theme::change(effective_mode, None, cx);
+    Theme::global_mut(cx).mode = effective_mode;
     Theme::global_mut(cx).font_size =
         px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale.approx().unwrap_or(1.0)));
+
+    cx.set_window_appearance(preference.explicit_mode().map(|mode| match mode {
+        AppThemeMode::Light => WindowAppearance::Light,
+        AppThemeMode::Dark => WindowAppearance::Dark,
+    }));
 
     cx.refresh_windows();
     pending

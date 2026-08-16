@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result, bail};
+use gpui::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -11,11 +12,61 @@ pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
 pub const MAX_FONT_SCALE: f64 = 3.0;
 
+/// The effective theme mode currently in use, derived from a [`ThemePreference`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ColorMode {
+pub enum ThemeMode {
     #[default]
     Light,
     Dark,
+}
+
+/// The user's theme preference. `System` follows the OS light/dark setting.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ThemePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemePreference {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "system" => Some(Self::System),
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+
+    /// The theme mode that `self` resolves to given the OS appearance.
+    pub const fn resolve(self, appearance: WindowAppearance) -> ThemeMode {
+        match self {
+            Self::Light => ThemeMode::Light,
+            Self::Dark => ThemeMode::Dark,
+            Self::System => match appearance {
+                WindowAppearance::Dark | WindowAppearance::VibrantDark => ThemeMode::Dark,
+                WindowAppearance::Light | WindowAppearance::VibrantLight => ThemeMode::Light,
+            },
+        }
+    }
+
+    /// The pinned mode for explicit preferences, or `None` for `System`.
+    pub const fn explicit_mode(self) -> Option<ThemeMode> {
+        match self {
+            Self::System => None,
+            Self::Light => Some(ThemeMode::Light),
+            Self::Dark => Some(ThemeMode::Dark),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,7 +79,7 @@ pub enum ThemeKind {
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
-    pub color_mode: ColorMode,
+    pub theme_preference: ThemePreference,
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
@@ -39,7 +90,7 @@ impl Default for ApplicationSettings {
         Self {
             last_vault: None,
             recent_vaults: Vec::new(),
-            color_mode: ColorMode::default(),
+            theme_preference: ThemePreference::default(),
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
@@ -56,7 +107,7 @@ struct StoredSettings {
     #[serde(default)]
     recent_vaults: Vec<String>,
     #[serde(default)]
-    theme_mode: Option<String>,
+    theme_preference: Option<String>,
     #[serde(default)]
     light_theme_name: Option<String>,
     #[serde(default)]
@@ -87,9 +138,10 @@ impl StoredSettings {
                 .map(PathBuf::from)
                 .filter(|path| path.is_dir()),
             recent_vaults,
-            color_mode: match self.theme_mode.as_deref() {
-                Some("dark") => ColorMode::Dark,
-                _ => ColorMode::Light,
+            theme_preference: match self.theme_preference.as_deref() {
+                Some("light") => ThemePreference::Light,
+                Some("dark") => ThemePreference::Dark,
+                _ => ThemePreference::System,
             },
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
@@ -109,13 +161,7 @@ impl StoredSettings {
                 .iter()
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect(),
-            theme_mode: Some(
-                match settings.color_mode {
-                    ColorMode::Light => "light",
-                    ColorMode::Dark => "dark",
-                }
-                .to_owned(),
-            ),
+            theme_preference: Some(settings.theme_preference.name().to_owned()),
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
@@ -206,8 +252,8 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
-pub fn set_color_mode(mode: ColorMode) -> Result<()> {
-    settings_lock().update(|settings| settings.color_mode = mode)
+pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
+    settings_lock().update(|settings| settings.theme_preference = preference)
 }
 
 pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
@@ -245,19 +291,103 @@ mod tests {
         let file = temp_settings_file("normalization");
         fs::write(
             &file,
-            r#"{"theme_mode":"sepia","light_theme_name":"  ","font_size_multiplier":99}"#,
+            r#"{"theme_preference":"sepia","light_theme_name":"  ","font_size_multiplier":99}"#,
         )
         .unwrap();
 
         let settings = SettingsStore::new(file.clone()).snapshot();
 
-        assert_eq!(settings.color_mode, ColorMode::Light);
+        assert_eq!(settings.theme_preference, ThemePreference::System);
         assert_eq!(settings.light_theme_name, None);
         assert!(
             (settings.font_scale - DEFAULT_FONT_SCALE).abs() <= f64::EPSILON,
             "font_scale should normalize to DEFAULT_FONT_SCALE"
         );
         let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn legacy_theme_mode_key_is_ignored_and_defaults_to_system() {
+        let file = temp_settings_file("legacy-theme-mode");
+        fs::write(&file, r#"{"theme_mode":"dark"}"#).unwrap();
+
+        let settings = SettingsStore::new(file.clone()).snapshot();
+
+        assert_eq!(settings.theme_preference, ThemePreference::System);
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn theme_preference_strings_map_to_preferences() {
+        let file = temp_settings_file("theme-pref-strings");
+
+        fs::write(&file, r#"{"theme_preference":"light"}"#).unwrap();
+        assert_eq!(
+            SettingsStore::new(file.clone()).snapshot().theme_preference,
+            ThemePreference::Light
+        );
+        fs::write(&file, r#"{"theme_preference":"dark"}"#).unwrap();
+        assert_eq!(
+            SettingsStore::new(file.clone()).snapshot().theme_preference,
+            ThemePreference::Dark
+        );
+        fs::write(&file, r#"{"theme_preference":"system"}"#).unwrap();
+        assert_eq!(
+            SettingsStore::new(file.clone()).snapshot().theme_preference,
+            ThemePreference::System
+        );
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn system_preference_round_trips_through_persistence() {
+        let file = temp_settings_file("system-round-trip");
+        let mut store = SettingsStore::new(file.clone());
+
+        store
+            .update(|settings| settings.theme_preference = ThemePreference::System)
+            .unwrap();
+
+        assert_eq!(store.snapshot().theme_preference, ThemePreference::System);
+        assert_eq!(
+            SettingsStore::new(file.clone()).snapshot().theme_preference,
+            ThemePreference::System
+        );
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn resolve_derives_theme_mode_from_preference_and_appearance() {
+        assert_eq!(
+            ThemePreference::Light.resolve(WindowAppearance::Dark),
+            ThemeMode::Light
+        );
+        assert_eq!(
+            ThemePreference::Dark.resolve(WindowAppearance::Light),
+            ThemeMode::Dark
+        );
+        assert_eq!(
+            ThemePreference::System.resolve(WindowAppearance::Dark),
+            ThemeMode::Dark
+        );
+        assert_eq!(
+            ThemePreference::System.resolve(WindowAppearance::VibrantDark),
+            ThemeMode::Dark
+        );
+        assert_eq!(
+            ThemePreference::System.resolve(WindowAppearance::Light),
+            ThemeMode::Light
+        );
+        assert_eq!(
+            ThemePreference::System.resolve(WindowAppearance::VibrantLight),
+            ThemeMode::Light
+        );
+        assert_eq!(
+            ThemePreference::Light.explicit_mode(),
+            Some(ThemeMode::Light)
+        );
+        assert_eq!(ThemePreference::Dark.explicit_mode(), Some(ThemeMode::Dark));
+        assert_eq!(ThemePreference::System.explicit_mode(), None);
     }
 
     #[test]
@@ -275,14 +405,14 @@ mod tests {
             .update(|settings| {
                 settings.last_vault = Some(directory.clone());
                 settings.recent_vaults = vec![directory.clone()];
-                settings.color_mode = ColorMode::Dark;
+                settings.theme_preference = ThemePreference::Dark;
             })
             .unwrap();
         let reloaded = SettingsStore::new(file.clone()).snapshot();
 
         assert_eq!(reloaded.last_vault, Some(directory.clone()));
         assert_eq!(reloaded.recent_vaults, vec![directory.clone()]);
-        assert_eq!(reloaded.color_mode, ColorMode::Dark);
+        assert_eq!(reloaded.theme_preference, ThemePreference::Dark);
         let _ = fs::remove_file(file);
         let _ = fs::remove_dir(directory);
     }

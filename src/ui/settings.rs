@@ -1,6 +1,7 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
+    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    WindowAppearance, div, px,
 };
 use gpui_component::{
     ActiveTheme, IconName, Sizable, Size,
@@ -13,7 +14,7 @@ use gpui_component::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::settings::{self, ThemeKind};
+use crate::app::settings::{self, ThemeKind, ThemeMode as AppThemeMode, ThemePreference};
 use crate::ui::monolith::monolith_mark;
 
 use super::{DatalithView, notifications};
@@ -25,6 +26,7 @@ pub struct ThemeOptions {
     pub(crate) light_options: Vec<(SharedString, SharedString)>,
     pub(crate) dark_options: Vec<(SharedString, SharedString)>,
     pub(crate) font_size_multiplier: f64,
+    pub(crate) theme_preference: SharedString,
 }
 
 impl Global for ThemeOptions {}
@@ -166,6 +168,7 @@ impl SettingsView {
             light_options,
             dark_options,
             font_size_multiplier,
+            theme_preference: settings.theme_preference.name().into(),
         });
     }
 
@@ -258,11 +261,53 @@ impl SettingsView {
             .collect()
     }
 
+    fn theme_mode_item() -> SettingItem {
+        let mode_options: Vec<(SharedString, SharedString)> = vec![
+            ("system".into(), "System".into()),
+            ("light".into(), "Light".into()),
+            ("dark".into(), "Dark".into()),
+        ];
+        SettingItem::new(
+            "Mode",
+            SettingField::scrollable_dropdown(
+                mode_options,
+                |cx| cx.global::<ThemeOptions>().theme_preference.clone(),
+                |val: SharedString, cx| Self::apply_theme_preference(val, cx),
+            ),
+        )
+        .description("Theme mode to be used.")
+    }
+
+    fn apply_theme_preference(val: SharedString, cx: &mut App) {
+        let Some(preference) = ThemePreference::from_name(val.as_str()) else {
+            return;
+        };
+        cx.global_mut::<ThemeOptions>().theme_preference = val;
+        let effective = match preference.resolve(cx.window_appearance()) {
+            AppThemeMode::Light => gpui_component::ThemeMode::Light,
+            AppThemeMode::Dark => gpui_component::ThemeMode::Dark,
+        };
+        gpui_component::Theme::change(effective, None, cx);
+        gpui_component::Theme::global_mut(cx).mode = effective;
+        cx.set_window_appearance(preference.explicit_mode().map(|mode| match mode {
+            AppThemeMode::Light => WindowAppearance::Light,
+            AppThemeMode::Dark => WindowAppearance::Dark,
+        }));
+        if let Err(error) = settings::set_theme_preference(preference) {
+            notifications::push_window_notification(
+                cx,
+                notifications::settings_save_failed("theme mode", &error),
+            );
+        }
+        cx.refresh_windows();
+    }
+
     fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
         let light_options = cx.global::<ThemeOptions>().light_options.clone();
         let dark_options = cx.global::<ThemeOptions>().dark_options.clone();
 
         SettingGroup::new().title("Theme").items(vec![
+            Self::theme_mode_item(),
             SettingItem::new(
                 "Light Theme",
                 SettingField::scrollable_dropdown(
