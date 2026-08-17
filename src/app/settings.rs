@@ -59,12 +59,30 @@ impl ThemePreference {
         }
     }
 
-    /// The pinned mode for explicit preferences, or `None` for `System`.
-    pub const fn explicit_mode(self) -> Option<ThemeMode> {
+    /// The window appearance to force for explicit preferences, or `None` for `System` (follow the OS appearance).
+    pub fn to_window_appearance(self) -> Option<WindowAppearance> {
         match self {
             Self::System => None,
-            Self::Light => Some(ThemeMode::Light),
-            Self::Dark => Some(ThemeMode::Dark),
+            Self::Light => Some(WindowAppearance::Light),
+            Self::Dark => Some(WindowAppearance::Dark),
+        }
+    }
+}
+
+impl ThemeMode {
+    pub const fn window_appearance(self) -> WindowAppearance {
+        match self {
+            Self::Light => WindowAppearance::Light,
+            Self::Dark => WindowAppearance::Dark,
+        }
+    }
+}
+
+impl From<ThemeMode> for gpui_component::ThemeMode {
+    fn from(mode: ThemeMode) -> Self {
+        match mode {
+            ThemeMode::Light => Self::Light,
+            ThemeMode::Dark => Self::Dark,
         }
     }
 }
@@ -383,11 +401,27 @@ mod tests {
             ThemeMode::Light
         );
         assert_eq!(
-            ThemePreference::Light.explicit_mode(),
-            Some(ThemeMode::Light)
+            ThemePreference::Light.to_window_appearance(),
+            Some(WindowAppearance::Light)
         );
-        assert_eq!(ThemePreference::Dark.explicit_mode(), Some(ThemeMode::Dark));
-        assert_eq!(ThemePreference::System.explicit_mode(), None);
+        assert_eq!(
+            ThemePreference::Dark.to_window_appearance(),
+            Some(WindowAppearance::Dark)
+        );
+        assert_eq!(ThemePreference::System.to_window_appearance(), None);
+        assert_eq!(
+            gpui_component::ThemeMode::from(ThemeMode::Light),
+            gpui_component::ThemeMode::Light
+        );
+        assert_eq!(
+            gpui_component::ThemeMode::from(ThemeMode::Dark),
+            gpui_component::ThemeMode::Dark
+        );
+        assert_eq!(
+            ThemeMode::Light.window_appearance(),
+            WindowAppearance::Light
+        );
+        assert_eq!(ThemeMode::Dark.window_appearance(), WindowAppearance::Dark);
     }
 
     #[test]
