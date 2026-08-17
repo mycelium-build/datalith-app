@@ -255,10 +255,7 @@ impl DatalithView {
         cx.observe_window_appearance(window, |_, window, cx| {
             let preference = app_settings::snapshot().theme_preference;
             if preference == app_settings::ThemePreference::System {
-                let effective = match preference.resolve(window.appearance()) {
-                    app_settings::ThemeMode::Light => gpui_component::ThemeMode::Light,
-                    app_settings::ThemeMode::Dark => gpui_component::ThemeMode::Dark,
-                };
+                let effective = preference.resolve(window.appearance()).into();
                 gpui_component::Theme::change(effective, Some(window), cx);
                 gpui_component::Theme::global_mut(cx).mode = effective;
             }
