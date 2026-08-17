@@ -2,12 +2,12 @@
 // that lint can only be suppressed here, not in the macro itself.
 #![allow(clippy::derive_partial_eq_without_eq)]
 
-use gpui::{App, AppContext, PathPromptOptions, SharedString, WindowAppearance, actions};
+use gpui::{App, AppContext, PathPromptOptions, SharedString, actions};
 use gpui_component::{Theme, ThemeMode};
 use std::path::{Path, PathBuf};
 
 use crate::app::{
-    AppState,
+    AppState, preferences,
     settings::{self, ThemePreference},
     system,
 };
@@ -356,14 +356,13 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemePreference::Light,
         ThemeMode::Dark => ThemePreference::Dark,
     };
-    let _ = settings::set_theme_preference(preference);
-    Theme::change(new_mode, None, cx);
-    Theme::global_mut(cx).mode = new_mode;
-    cx.set_window_appearance(Some(match new_mode {
-        ThemeMode::Light => WindowAppearance::Light,
-        ThemeMode::Dark => WindowAppearance::Dark,
-    }));
-    cx.refresh_windows();
+    if let Err(error) = settings::set_theme_preference(preference) {
+        notifications::push_window_notification(
+            cx,
+            notifications::settings_save_failed("theme mode", &error),
+        );
+    }
+    preferences::apply_theme_preference(preference, cx);
 }
 
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {
