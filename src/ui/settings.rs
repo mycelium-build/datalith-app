@@ -1,7 +1,6 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    WindowAppearance, div, px,
+    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 use gpui_component::{
     ActiveTheme, IconName, Sizable, Size,
@@ -14,7 +13,8 @@ use gpui_component::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::settings::{self, ThemeKind, ThemeMode as AppThemeMode, ThemePreference};
+use crate::app::preferences;
+use crate::app::settings::{self, ThemeKind, ThemePreference};
 use crate::ui::monolith::monolith_mark;
 
 use super::{DatalithView, notifications};
@@ -272,34 +272,23 @@ impl SettingsView {
             SettingField::scrollable_dropdown(
                 mode_options,
                 |cx| cx.global::<ThemeOptions>().theme_preference.clone(),
-                |val: SharedString, cx| Self::apply_theme_preference(val, cx),
+                |val: SharedString, cx| Self::apply_theme_preference(&val, cx),
             ),
         )
         .description("Theme mode to be used.")
     }
 
-    fn apply_theme_preference(val: SharedString, cx: &mut App) {
+    fn apply_theme_preference(val: &SharedString, cx: &mut App) {
         let Some(preference) = ThemePreference::from_name(val.as_str()) else {
             return;
         };
-        cx.global_mut::<ThemeOptions>().theme_preference = val;
-        let effective = match preference.resolve(cx.window_appearance()) {
-            AppThemeMode::Light => gpui_component::ThemeMode::Light,
-            AppThemeMode::Dark => gpui_component::ThemeMode::Dark,
-        };
-        gpui_component::Theme::change(effective, None, cx);
-        gpui_component::Theme::global_mut(cx).mode = effective;
-        cx.set_window_appearance(preference.explicit_mode().map(|mode| match mode {
-            AppThemeMode::Light => WindowAppearance::Light,
-            AppThemeMode::Dark => WindowAppearance::Dark,
-        }));
         if let Err(error) = settings::set_theme_preference(preference) {
             notifications::push_window_notification(
                 cx,
                 notifications::settings_save_failed("theme mode", &error),
             );
         }
-        cx.refresh_windows();
+        preferences::apply_theme_preference(preference, cx);
     }
 
     fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
