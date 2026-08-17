@@ -1,0 +1,7 @@
+  xxx
+ x   x
+ x   x
+xxxxxxx
+x  x  x
+x  s  x
+xxxxxxx
