@@ -1,11 +1,11 @@
 use std::ops::Mul;
 
 use conv::ConvAsUtil;
-use gpui::{App, WindowAppearance, px};
+use gpui::{App, px};
 use gpui_component::notification::Notification;
 use gpui_component::{Theme, ThemeMode, ThemeRegistry};
 
-use crate::app::settings::{self, ThemeMode as AppThemeMode};
+use crate::app::settings::{self, ThemePreference};
 use crate::ui::notifications;
 use crate::ui::settings::ThemeOptions;
 
@@ -98,20 +98,23 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
         cx.global_mut::<ThemeOptions>().dark_theme_name = dark_name.into();
     }
 
-    let effective_mode = match preference.resolve(cx.window_appearance()) {
-        AppThemeMode::Light => ThemeMode::Light,
-        AppThemeMode::Dark => ThemeMode::Dark,
-    };
-    Theme::change(effective_mode, None, cx);
-    Theme::global_mut(cx).mode = effective_mode;
+    apply_theme_preference(preference, cx);
     Theme::global_mut(cx).font_size =
         px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale.approx().unwrap_or(1.0)));
 
-    cx.set_window_appearance(preference.explicit_mode().map(|mode| match mode {
-        AppThemeMode::Light => WindowAppearance::Light,
-        AppThemeMode::Dark => WindowAppearance::Dark,
-    }));
-
-    cx.refresh_windows();
     pending
+}
+
+/// Applies a [`ThemePreference`] to the current session:
+/// syncs the settings UI,
+/// pins or clears the native window appearance,
+/// resolves the effective mode against the resulting system appearance,
+/// and repaints all windows.
+pub fn apply_theme_preference(preference: ThemePreference, cx: &mut App) {
+    cx.global_mut::<ThemeOptions>().theme_preference = preference.name().into();
+    cx.set_window_appearance(preference.to_window_appearance());
+    let effective = preference.resolve(cx.window_appearance()).into();
+    Theme::change(effective, None, cx);
+    Theme::global_mut(cx).mode = effective;
+    cx.refresh_windows();
 }
