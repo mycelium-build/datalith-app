@@ -90,6 +90,7 @@ pub struct DatalithView {
     _palette_sub: Subscription,
     pub(crate) settings: SettingsView,
     _font_size_slider_sub: Subscription,
+    _appearance_sub: Subscription,
     pub(crate) licenses: licenses::LicensesView,
     pub(crate) context_menu_target: Option<PathBuf>,
     pub(crate) suppress_sidebar_context_menu: bool,
@@ -196,6 +197,8 @@ impl DatalithView {
             },
         );
 
+        let appearance_sub = Self::observe_system_appearance(window, cx);
+
         let startup = cx.new(|cx| {
             let kind = if first_startup {
                 StartupType::First
@@ -222,6 +225,7 @@ impl DatalithView {
             _palette_sub: palette_sub,
             settings,
             _font_size_slider_sub: font_size_slider_sub,
+            _appearance_sub: appearance_sub,
             licenses: licenses::LicensesView::new(cx),
             rename_sub: None,
             _vault_select_sub: vault_select_sub,
@@ -245,6 +249,17 @@ impl DatalithView {
         };
         view.spawn_startup_driver(cx);
         view
+    }
+
+    fn observe_system_appearance(window: &mut Window, cx: &Context<Self>) -> Subscription {
+        cx.observe_window_appearance(window, |_, window, cx| {
+            let preference = app_settings::snapshot().theme_preference;
+            if preference == app_settings::ThemePreference::System {
+                let effective = preference.resolve(window.appearance()).into();
+                gpui_component::Theme::change(effective, Some(window), cx);
+                gpui_component::Theme::global_mut(cx).mode = effective;
+            }
+        })
     }
 
     pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {

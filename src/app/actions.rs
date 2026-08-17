@@ -7,8 +7,8 @@ use gpui_component::{Theme, ThemeMode};
 use std::path::{Path, PathBuf};
 
 use crate::app::{
-    AppState,
-    settings::{self, ColorMode},
+    AppState, preferences,
+    settings::{self, ThemePreference},
     system,
 };
 use crate::document::handler::FileHandlerEvent;
@@ -352,14 +352,17 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemeMode::Dark,
         ThemeMode::Dark => ThemeMode::Light,
     };
-    let color_mode = match new_mode {
-        ThemeMode::Light => ColorMode::Light,
-        ThemeMode::Dark => ColorMode::Dark,
+    let preference = match new_mode {
+        ThemeMode::Light => ThemePreference::Light,
+        ThemeMode::Dark => ThemePreference::Dark,
     };
-    let _ = settings::set_color_mode(color_mode);
-    Theme::change(new_mode, None, cx);
-    Theme::global_mut(cx).mode = new_mode;
-    cx.refresh_windows();
+    if let Err(error) = settings::set_theme_preference(preference) {
+        notifications::push_window_notification(
+            cx,
+            notifications::settings_save_failed("theme mode", &error),
+        );
+    }
+    preferences::apply_theme_preference(preference, cx);
 }
 
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {

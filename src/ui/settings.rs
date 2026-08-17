@@ -13,7 +13,8 @@ use gpui_component::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::settings::{self, ThemeKind};
+use crate::app::preferences;
+use crate::app::settings::{self, ThemeKind, ThemePreference};
 use crate::ui::monolith::monolith_mark;
 
 use super::{DatalithView, notifications};
@@ -25,6 +26,7 @@ pub struct ThemeOptions {
     pub(crate) light_options: Vec<(SharedString, SharedString)>,
     pub(crate) dark_options: Vec<(SharedString, SharedString)>,
     pub(crate) font_size_multiplier: f64,
+    pub(crate) theme_preference: SharedString,
 }
 
 impl Global for ThemeOptions {}
@@ -166,6 +168,7 @@ impl SettingsView {
             light_options,
             dark_options,
             font_size_multiplier,
+            theme_preference: settings.theme_preference.name().into(),
         });
     }
 
@@ -258,11 +261,42 @@ impl SettingsView {
             .collect()
     }
 
+    fn theme_mode_item() -> SettingItem {
+        let mode_options: Vec<(SharedString, SharedString)> = vec![
+            ("system".into(), "System".into()),
+            ("light".into(), "Light".into()),
+            ("dark".into(), "Dark".into()),
+        ];
+        SettingItem::new(
+            "Mode",
+            SettingField::scrollable_dropdown(
+                mode_options,
+                |cx| cx.global::<ThemeOptions>().theme_preference.clone(),
+                |val: SharedString, cx| Self::apply_theme_preference(&val, cx),
+            ),
+        )
+        .description("Theme mode to be used.")
+    }
+
+    fn apply_theme_preference(val: &SharedString, cx: &mut App) {
+        let Some(preference) = ThemePreference::from_name(val.as_str()) else {
+            return;
+        };
+        if let Err(error) = settings::set_theme_preference(preference) {
+            notifications::push_window_notification(
+                cx,
+                notifications::settings_save_failed("theme mode", &error),
+            );
+        }
+        preferences::apply_theme_preference(preference, cx);
+    }
+
     fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
         let light_options = cx.global::<ThemeOptions>().light_options.clone();
         let dark_options = cx.global::<ThemeOptions>().dark_options.clone();
 
         SettingGroup::new().title("Theme").items(vec![
+            Self::theme_mode_item(),
             SettingItem::new(
                 "Light Theme",
                 SettingField::scrollable_dropdown(
