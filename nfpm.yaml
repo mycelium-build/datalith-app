@@ -22,39 +22,39 @@ contents:
     dst: /usr/share/applications/datalith.desktop
     file_info:
       mode: 0644
-  - src: assets/datalith.svg
+  - src: assets/logo/datalith.svg
     dst: /usr/share/icons/hicolor/scalable/apps/datalith.svg
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/16x16/apps/datalith.png
+  - src: assets/logo/hicolor/16x16/apps/datalith.png
     dst: /usr/share/icons/hicolor/16x16/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/32x32/apps/datalith.png
+  - src: assets/logo/hicolor/32x32/apps/datalith.png
     dst: /usr/share/icons/hicolor/32x32/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/48x48/apps/datalith.png
+  - src: assets/logo/hicolor/48x48/apps/datalith.png
     dst: /usr/share/icons/hicolor/48x48/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/64x64/apps/datalith.png
+  - src: assets/logo/hicolor/64x64/apps/datalith.png
     dst: /usr/share/icons/hicolor/64x64/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/128x128/apps/datalith.png
+  - src: assets/logo/hicolor/128x128/apps/datalith.png
     dst: /usr/share/icons/hicolor/128x128/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/256x256/apps/datalith.png
+  - src: assets/logo/hicolor/256x256/apps/datalith.png
     dst: /usr/share/icons/hicolor/256x256/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/512x512/apps/datalith.png
+  - src: assets/logo/hicolor/512x512/apps/datalith.png
     dst: /usr/share/icons/hicolor/512x512/apps/datalith.png
     file_info:
       mode: 0644
-  - src: assets/icons/hicolor/1024x1024/apps/datalith.png
+  - src: assets/logo/hicolor/1024x1024/apps/datalith.png
     dst: /usr/share/icons/hicolor/1024x1024/apps/datalith.png
     file_info:
       mode: 0644

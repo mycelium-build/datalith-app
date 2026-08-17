@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Generate every Datalith app-icon format from the pixel-art logo.
 
-Reads `assets/datalith.txt`
+Reads `assets/logo/datalith.txt`
 (a 32×32 grid: `M` border, `1`/`2` sides, `0` top side and `I` inscriptions)
-and writes the app icons for every platform into `assets/`:
+and writes the app icons for every platform into `assets/logo/`:
 
-  assets/datalith.svg      32×32 vector source (Linux/SVG, icon source)
-  assets/datalith.png      1024×1024 (32× per logo pixel) — Linux / bundles
-  assets/datalith.ico      16/24/32/48/64/128/256 embedded PNGs — Windows
-  assets/datalith.icns     icp4/icp5/icp6/ic07/ic08/ic09/ic10 — macOS
-  assets/datalith-macos.png  1024×1024 viewable preview of the macOS icon
-  assets/datalith.rc       Windows resource file embedding the .ico
-  assets/icons/hicolor/<N>x<N>/apps/datalith.png 16/32/48/64/128/256/512/1024 — Linux icon theme
+  assets/logo/datalith.svg                       32×32 vector source (Linux/SVG, icon source)
+  assets/logo/datalith.png                       1024×1024 (32× per logo pixel) - Linux / bundles
+  assets/logo/datalith.ico                       16/24/32/48/64/128/256 embedded PNGs - Windows
+  assets/logo/datalith.icns                      icp4/icp5/icp6/ic07/ic08/ic09/ic10 - macOS
+  assets/logo/datalith-macos.png                 1024×1024 viewable preview of the macOS icon
+  assets/logo/datalith.rc                        Windows resource file embedding the .ico
+  assets/logo/hicolor/<N>x<N>/apps/datalith.png  16/32/48/64/128/256/512/1024 - Linux icon theme
 
 Linux and Windows get the bare monolith mark on a transparent background,
 so it floats with no chrome.
@@ -29,14 +29,14 @@ import sys
 import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-LOGO = ROOT / "assets" / "datalith.txt"
-SVG_OUT = ROOT / "assets" / "datalith.svg"
-PNG_OUT = ROOT / "assets" / "datalith.png"
-ICO_OUT = ROOT / "assets" / "datalith.ico"
-ICNS_OUT = ROOT / "assets" / "datalith.icns"
-MACOS_PNG_OUT = ROOT / "assets" / "datalith-macos.png"
-RC_OUT = ROOT / "assets" / "datalith.rc"
-HICOLOR_DIR = ROOT / "assets" / "icons" / "hicolor"
+LOGO = ROOT / "assets" / "logo" / "datalith.txt"
+SVG_OUT = ROOT / "assets" / "logo" / "datalith.svg"
+PNG_OUT = ROOT / "assets" / "logo" / "datalith.png"
+ICO_OUT = ROOT / "assets" / "logo" / "datalith.ico"
+ICNS_OUT = ROOT / "assets" / "logo" / "datalith.icns"
+MACOS_PNG_OUT = ROOT / "assets" / "logo" / "datalith-macos.png"
+RC_OUT = ROOT / "assets" / "logo" / "datalith.rc"
+HICOLOR_DIR = ROOT / "assets" / "logo" / "hicolor"
 HICOLOR_SIZES = [16, 32, 48, 64, 128, 256, 512, 1024]
 
 SIZE = 32
