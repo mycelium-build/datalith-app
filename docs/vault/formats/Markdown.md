@@ -22,7 +22,7 @@ There are two kinds of links:
 - `[[text]]` — a wiki link to another file in the Vault, for example `[[Welcome]]` or `[[formats/Graph]]`.
 - `[text](target)` — a normal link; external links open in your browser.
 
-Wiki links can add a label: `[[Welcome|home]]`. A name-only link resolves to the unique same-folder target; a path link is exact. Use **⌘↩** on a link to jump.
+Wiki links can add a label: `[[Welcome|home]]`. A name-only link resolves to the unique same-folder target; a path link is exact. Use **Cmd/Ctrl+Enter** on a link to jump.
 
 # Properties
 

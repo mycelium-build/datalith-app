@@ -2,13 +2,13 @@
 category: reference
 ---
 
-Open settings from the **Datalith** menu, or press **⌘,**.
+Open settings from the **Datalith** menu, or press **Cmd/Ctrl+,**.
 
 # Theme
 
 Pick a light theme and a dark theme independently. Both lists are pulled from Datalith's bundled themes, sorted by name.
 
-**⌘⇧D** toggles between light and dark mode using the themes you selected here.
+**Cmd/Ctrl+Shift+D** toggles between light and dark mode using the themes you selected here.
 
 # Font size
 

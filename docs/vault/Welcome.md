@@ -16,3 +16,5 @@ Start with the [[Tour.todotxt]] checklist in the tab bar, or read what you need:
 - [[formats/TodoTxt]]: manage tasks in todo.txt format
 
 Open [[Overview.graph]] to see a graph of this Vault colored by category, and [[Tour.todotxt]] for a checklist of things to explore.
+
+Visit the [Datalith website](https://mycelium-build.github.io/datalith/) for downloads, documentation, and updates.

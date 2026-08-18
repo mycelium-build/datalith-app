@@ -11,7 +11,7 @@ A **Vault** is a directory whose files are managed together. Datalith watches it
 
 # Create a new note
 
-Press **⌘N** to create a new file. It is created in the current Vault and immediately renamed, type a name and press **Enter**. The extension decides the file type:
+Press **Cmd/Ctrl+N** to create a new file. It is created in the current Vault and immediately renamed, type a name and press **Enter**. The extension decides the file type:
 
 - `My Note.md`: a Markdown file, opened in the editor.
 - `Tasks.todotxt`: a todo.txt file, opened in the task editor.
@@ -41,18 +41,18 @@ Links between Markdown files become the edges of a [[formats/Graph|graph]].
 
 # Navigate
 
-- **⌘P** opens the quick switcher to jump between open files by name.
-- **⌘⇧F** opens the search palette to find files by name or content.
+- **Cmd/Ctrl+P** opens the quick switcher to jump between open files by name.
+- **Cmd/Ctrl+Shift+F** opens the search palette to find files by name or content.
 
 # Edit or view
 
-The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **⌘E** to switch.
+The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **Cmd/Ctrl+E** to switch.
 
 Some files only have a viewer or only an editor. See [[FileTypes]].
 
 # What else
 
 - The **OS menu bar** has File and Navigate menus with all available actions.
-- **⌘⇧D** toggles between light and dark mode. See [[Settings]].
+- **Cmd/Ctrl+Shift+D** toggles between light and dark mode. See [[Settings]].
 - **Right-click** any file or folder in the sidebar for: New File, New Folder, Rename, Delete, Duplicate, Open in Explorer, and Copy Path.
 - See [[Shortcuts]] for the full keybinding reference.

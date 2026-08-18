@@ -4,58 +4,60 @@ category: reference
 
 # Files
 
+Use **Command** on macOS and **Ctrl** on Linux and Windows for the `Cmd/Ctrl` shortcuts below.
+
 | Shortcut | Action |
 | --- | --- |
-| `⌘N` | New note |
-| `⌘⇧N` | New folder |
+| `Cmd/Ctrl+N` | New note |
+| `Cmd/Ctrl+Shift+N` | New folder |
 | `F2` | Rename |
-| `⌘⌫` | Delete |
-| `⌘D` | Duplicate |
-| `⌘⇧E` | Open in your explorer |
-| `⌘L` | Copy path |
+| `Cmd/Ctrl+Backspace` | Delete |
+| `Cmd/Ctrl+D` | Duplicate |
+| `Cmd/Ctrl+Shift+E` | Open in your explorer |
+| `Cmd/Ctrl+L` | Copy path |
 
 # Sidebar
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘0` | Focus sidebar |
+| `Cmd/Ctrl+0` | Focus sidebar |
 | `↩` | Expand/collapse folder, or open file |
-| `⌘↩` | Open file in a new tab |
+| `Cmd/Ctrl+Enter` | Open file in a new tab |
 | `↑` / `↓` | Select file |
 
 # Navigation
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘P` | Quick switcher |
-| `⌘0` | Focus sidebar |
-| `⌘[` / `⌘]` | Go back / forward |
-| `⌘↩` | Open link at cursor |
-| `⌘Q` | Quit Datalith |
+| `Cmd/Ctrl+P` | Quick switcher |
+| `Cmd/Ctrl+0` | Focus sidebar |
+| `Cmd/Ctrl+[` / `Cmd/Ctrl+]` | Go back / forward |
+| `Cmd/Ctrl+Enter` | Open link at cursor |
+| `Cmd/Ctrl+Q` | Quit Datalith |
 
 # Tabs
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘T` | New tab |
-| `⌘W` | Close tab |
-| `⌘1`-`⌘8` | Select tab |
-| `⌘9` | Select last tab |
-| `⌘E` | Toggle edit/view mode |
+| `Cmd/Ctrl+T` | New tab |
+| `Cmd/Ctrl+W` | Close tab |
+| `Cmd/Ctrl+1`-`Cmd/Ctrl+8` | Select tab |
+| `Cmd/Ctrl+9` | Select last tab |
+| `Cmd/Ctrl+E` | Toggle edit/view mode |
 
 # View
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘⇧F` | Search files |
-| `⌘E` | Toggle edit / view |
-| `⌘⇧D` | Toggle between light and dark theme |
-| `⌘,` | Open settings |
+| `Cmd/Ctrl+Shift+F` | Search files |
+| `Cmd/Ctrl+E` | Toggle edit / view |
+| `Cmd/Ctrl+Shift+D` | Toggle between light and dark theme |
+| `Cmd/Ctrl+,` | Open settings |
 
 # Help
 
 | Shortcut | Action |
 | --- | --- |
-| `⌘/` | Show shortcuts |
+| `Cmd/Ctrl+/` | Show shortcuts |
 
 For the full set of options, see [[Settings]]. See [[Basics]] if you are new to the app.
