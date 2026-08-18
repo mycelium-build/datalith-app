@@ -1,7 +1,7 @@
 use gpui::{App, Menu, MenuItem};
 use gpui_component::GlobalState;
 
-use crate::app::actions::{OpenAbout, OpenLicenses, OpenSettings, OpenShortcuts, OpenSource};
+use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -65,8 +65,8 @@ fn navigate_menu() -> Menu {
 }
 
 fn help_menu() -> Menu {
-    Menu::new("Help").items([
-        MenuItem::action("View Dependency Licenses", OpenLicenses),
-        MenuItem::action("View Corresponding Source", OpenSource),
-    ])
+    Menu::new("Help").items([MenuItem::action(
+        "Datalith Documentation",
+        OpenDocumentation,
+    )])
 }

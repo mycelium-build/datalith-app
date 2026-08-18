@@ -38,6 +38,7 @@ actions!(
         ToggleTheme,
         OpenSettings,
         OpenShortcuts,
+        OpenDocumentation,
         OpenAbout,
         OpenLicenses,
         OpenSource,
@@ -94,6 +95,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
     cx.on_action(open_shortcuts);
+    cx.on_action(open_documentation);
     cx.on_action(open_about);
     cx.on_action(open_licenses);
     cx.on_action(open_source);
@@ -377,6 +379,10 @@ pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
         view.settings.open_shortcuts();
         cx.notify();
     });
+}
+
+pub fn open_documentation(_: &OpenDocumentation, _cx: &mut App) {
+    let _ = system::open_url("https://mycelium-build.github.io/datalith/docs/");
 }
 
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
