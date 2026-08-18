@@ -73,7 +73,7 @@ impl Render for DatalithView {
 
         let tree_state = self.tree_state.clone();
 
-        let mut layout = h_flex().flex_1().relative();
+        let mut layout = h_flex().flex_1().min_h_0().relative();
 
         layout = layout.child(
             h_resizable("datalith-main-layout")
@@ -210,6 +210,7 @@ impl DatalithView {
 
         v_flex()
             .size_full()
+            .min_h_0()
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
             .child(if is_empty {
@@ -217,6 +218,7 @@ impl DatalithView {
             } else {
                 div()
                     .flex_1()
+                    .min_h_0()
                     .overflow_hidden()
                     .child(active_tab.handler().clone())
                     .into_any_element()
