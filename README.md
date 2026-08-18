@@ -2,7 +2,7 @@
 
 A local-first Vault where notes, links, and tasks sharpen into a monolith that lasts.
 
-Datalith is a desktop application for building a private personal encyclopedia from files you own. Write notes, manage tasks, connect ideas, and search. Available on macOS, Windows, and Linux.
+Datalith is a desktop application for building a private personal encyclopedia from files you own. Write notes, manage tasks, connect ideas, and search inside. Available on macOS, Windows, and Linux.
 
 ## Features
 
