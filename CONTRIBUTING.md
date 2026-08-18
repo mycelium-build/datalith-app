@@ -29,6 +29,23 @@ Before submitting a pull request, please ensure that:
 5. The code follows the project guidelines
 6. New functionality includes appropriate tests
 
+## Third-Party Notices
+
+When adding a Rust dependency, update `Cargo.toml` and `Cargo.lock`. 
+When adding a bundled asset, add it to `assets/licenses.toml` and include its license file.
+Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
+
+```bash
+scripts/licenses/generate.sh
+```
+
+The generation script requires `cargo-about` version `0.9.1`. 
+Before submitting a pull request, verify the result with `cargo-deny` version `0.18.9` using:
+
+```bash
+scripts/licenses/check.sh
+```
+
 ## Development Setup
 
 ### Prerequisites
