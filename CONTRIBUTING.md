@@ -66,7 +66,7 @@ scripts/licenses/check.sh
     cargo build
     ```
 
-3. Run the projects:
+3. Run the project:
     ```bash
     cargo run
     ```
@@ -80,7 +80,7 @@ scripts/licenses/check.sh
     cargo test
     ```
 
-3. Check for lints:
+3. Check for lint issues:
     ```bash
     cargo clippy
     ```
