@@ -19,6 +19,9 @@ use crate::ui::monolith::monolith_mark;
 
 use super::{DatalithView, notifications};
 
+const PRIVACY_POLICY_URL: &str = "https://mycelium-build.github.io/datalith/privacy/";
+const TERMS_OF_SERVICE_URL: &str = "https://mycelium-build.github.io/datalith/terms/";
+
 #[derive(Clone)]
 pub struct ThemeOptions {
     pub(crate) light_theme_name: SharedString,
@@ -534,8 +537,26 @@ impl SettingsView {
                             ),
                     )
                     .child(
-                        h_flex()
+                        v_flex()
                             .gap_2()
+                            .child(
+                                Button::new("about-view-privacy-policy")
+                                    .outline()
+                                    .small()
+                                    .label("Privacy policy")
+                                    .on_click(|_, _, _cx| {
+                                        let _ = crate::app::system::open_url(PRIVACY_POLICY_URL);
+                                    }),
+                            )
+                            .child(
+                                Button::new("about-view-terms-of-service")
+                                    .outline()
+                                    .small()
+                                    .label("Terms of service")
+                                    .on_click(|_, _, _cx| {
+                                        let _ = crate::app::system::open_url(TERMS_OF_SERVICE_URL);
+                                    }),
+                            )
                             .child(
                                 Button::new("about-view-licenses")
                                     .outline()
