@@ -31,7 +31,7 @@ Provide test examples or describe the testing approach:
 
 ## Checklist
 
-- [ ] My code follows the project's guidelines in [CONTRIBUTING](CONTRIBUTING.md)
+- [ ] My code follows the project's guidelines in [CONTRIBUTING](../CONTRIBUTING.md)
 - [ ] I have performed a self-review of my own code
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
