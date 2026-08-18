@@ -16,6 +16,14 @@ use crate::ui::monolith::monolith_mark;
 const SIDEBAR_WIDTH: f32 = 260.0;
 const GLYPH_CELL: f32 = 4.0;
 
+const fn quick_start_shortcuts() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "⌘⇧F search  ·  ⌘T new tab  ·  ⌘0 focus sidebar"
+    } else {
+        "Ctrl+Shift+F search  ·  Ctrl+T new tab  ·  Ctrl+0 focus sidebar"
+    }
+}
+
 impl Render for DatalithView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.palette.needs_focus {
@@ -65,7 +73,7 @@ impl Render for DatalithView {
 
         let tree_state = self.tree_state.clone();
 
-        let mut layout = h_flex().size_full().relative();
+        let mut layout = h_flex().flex_1().relative();
 
         layout = layout.child(
             h_resizable("datalith-main-layout")
@@ -106,9 +114,22 @@ impl Render for DatalithView {
             layout = layout.child(self.licenses.render_overlay(cx));
         }
 
-        layout
-            .children(Root::render_notification_layer(window, cx))
-            .children(self.startup.clone())
+        let mut root = v_flex().size_full();
+        if !cfg!(target_os = "macos") {
+            root = root.child(
+                h_flex()
+                    .w_full()
+                    .h(px(34.))
+                    .items_center()
+                    .child(self.app_menu_bar.clone()),
+            );
+        }
+
+        root.child(
+            layout
+                .children(Root::render_notification_layer(window, cx))
+                .children(self.startup.clone()),
+        )
     }
 }
 
@@ -151,7 +172,7 @@ impl DatalithView {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground.opacity(0.7))
-                    .child("⌘⇧F search  ·  ⌘T new tab  ·  ⌘0 focus sidebar"),
+                    .child(quick_start_shortcuts()),
             )
     }
 

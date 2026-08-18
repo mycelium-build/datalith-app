@@ -26,38 +26,54 @@ macro_rules! shortcuts {
 }
 
 shortcuts!(
+    // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
     // File
-    ("File", "cmd-q", "Quit Datalith", Quit),
-    ("File", "cmd-n", "New note", NewFile),
-    ("File", "cmd-shift-n", "New folder", NewFolder),
+    ("File", "secondary-q", "Quit Datalith", Quit),
+    ("File", "secondary-n", "New note", NewFile),
+    ("File", "secondary-shift-n", "New folder", NewFolder),
     ("File", "f2", "Rename", Rename),
-    ("File", "cmd-backspace", "Delete", Delete),
-    ("File", "cmd-d", "Duplicate", Duplicate),
-    ("File", "cmd-shift-e", "Open in Explorer", OpenInExplorer),
-    ("File", "cmd-l", "Copy path", CopyPath),
+    ("File", "secondary-backspace", "Delete", Delete),
+    ("File", "secondary-d", "Duplicate", Duplicate),
+    (
+        "File",
+        "secondary-shift-e",
+        "Open in Explorer",
+        OpenInExplorer
+    ),
+    ("File", "secondary-l", "Copy path", CopyPath),
     // Navigation
-    ("Navigation", "cmd-p", "Quick switcher", ToggleQuickSwitcher),
-    ("Navigation", "cmd-0", "Focus sidebar", FocusSidebar),
-    ("Navigation", "cmd-[", "Navigate back", GoBack),
-    ("Navigation", "cmd-]", "Navigate forward", GoForward),
-    ("Navigation", "cmd-enter", "Open link", OpenLink),
+    (
+        "Navigation",
+        "secondary-p",
+        "Quick switcher",
+        ToggleQuickSwitcher
+    ),
+    ("Navigation", "secondary-0", "Focus sidebar", FocusSidebar),
+    ("Navigation", "secondary-[", "Navigate back", GoBack),
+    ("Navigation", "secondary-]", "Navigate forward", GoForward),
+    ("Navigation", "secondary-enter", "Open link", OpenLink),
     // Tabs
-    ("Tabs", "cmd-t", "New tab", NewTab),
-    ("Tabs", "cmd-w", "Close tab", CloseTab),
-    ("Tabs", "cmd-1", "Select tab", SelectTab1),
-    ("Tabs", "cmd-2", "Select tab", SelectTab2),
-    ("Tabs", "cmd-3", "Select tab", SelectTab3),
-    ("Tabs", "cmd-4", "Select tab", SelectTab4),
-    ("Tabs", "cmd-5", "Select tab", SelectTab5),
-    ("Tabs", "cmd-6", "Select tab", SelectTab6),
-    ("Tabs", "cmd-7", "Select tab", SelectTab7),
-    ("Tabs", "cmd-8", "Select tab", SelectTab8),
-    ("Tabs", "cmd-9", "Select last tab", SelectLastTab),
+    ("Tabs", "secondary-t", "New tab", NewTab),
+    ("Tabs", "secondary-w", "Close tab", CloseTab),
+    ("Tabs", "secondary-1", "Select tab", SelectTab1),
+    ("Tabs", "secondary-2", "Select tab", SelectTab2),
+    ("Tabs", "secondary-3", "Select tab", SelectTab3),
+    ("Tabs", "secondary-4", "Select tab", SelectTab4),
+    ("Tabs", "secondary-5", "Select tab", SelectTab5),
+    ("Tabs", "secondary-6", "Select tab", SelectTab6),
+    ("Tabs", "secondary-7", "Select tab", SelectTab7),
+    ("Tabs", "secondary-8", "Select tab", SelectTab8),
+    ("Tabs", "secondary-9", "Select last tab", SelectLastTab),
     // View
-    ("View", "cmd-shift-f", "Search files", ToggleSearch),
-    ("View", "cmd-e", "Toggle edit / view", ToggleEditorMode),
-    ("View", "cmd-shift-d", "Toggle theme", ToggleTheme),
-    ("View", "cmd-,", "Open settings", OpenSettings),
+    ("View", "secondary-shift-f", "Search files", ToggleSearch),
+    (
+        "View",
+        "secondary-e",
+        "Toggle edit / view",
+        ToggleEditorMode
+    ),
+    ("View", "secondary-shift-d", "Toggle theme", ToggleTheme),
+    ("View", "secondary-,", "Open settings", OpenSettings),
     // Help
-    ("Help", "cmd-/", "Show shortcuts", OpenShortcuts),
+    ("Help", "secondary-/", "Show shortcuts", OpenShortcuts),
 );

@@ -395,6 +395,14 @@ impl SettingsView {
         // Merge consecutive shortcuts that share a category and description into a range
         let mut runs: Vec<Run> = Vec::new();
         for (category, keys, description) in descriptions {
+            let keys = keys.replace(
+                "secondary-",
+                if cfg!(target_os = "macos") {
+                    "cmd-"
+                } else {
+                    "ctrl-"
+                },
+            );
             let extends = runs.last().is_some_and(|run| {
                 run.category.as_str() == category && run.description.as_str() == description
             });
@@ -404,7 +412,7 @@ impl SettingsView {
                 runs.push(Run {
                     category: category.into(),
                     description: description.into(),
-                    first_keys: keys.into(),
+                    first_keys: keys.clone().into(),
                     last_keys: keys.into(),
                 });
             }
