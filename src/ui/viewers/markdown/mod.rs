@@ -126,7 +126,7 @@ impl MarkdownViewer {
         div()
             .id("markdown-preview")
             .size_full()
-            .overflow_y_scroll()
+            .overflow_y_scrollbar()
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()
