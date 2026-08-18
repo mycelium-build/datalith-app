@@ -121,6 +121,9 @@ impl Render for DatalithView {
                     .w_full()
                     .h(px(34.))
                     .items_center()
+                    .bg(cx.theme().tab_bar)
+                    .border_b(px(2.0))
+                    .border_color(cx.theme().border)
                     .child(self.app_menu_bar.clone()),
             );
         }
