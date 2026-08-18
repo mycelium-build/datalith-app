@@ -23,10 +23,6 @@ The available packages support macOS, Windows, and Linux.
 
 Read the [Datalith documentation](https://mycelium-build.github.io/datalith/docs/) to learn how to create a Vault, write notes, link files, manage tasks, and build Graph Views.
 
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and project guidelines.
-
 ## Support
 
 For bug reports and feature requests, [open an issue on GitHub](https://github.com/mycelium-build/datalith/issues).
@@ -34,6 +30,10 @@ For bug reports and feature requests, [open an issue on GitHub](https://github.c
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for a list of changes in each version.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and project guidelines.
 
 ## Licensing
 
