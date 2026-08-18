@@ -1,4 +1,5 @@
 use gpui::{App, Menu, MenuItem};
+use gpui_component::GlobalState;
 
 use crate::app::actions::{OpenAbout, OpenLicenses, OpenSettings, OpenShortcuts, OpenSource};
 
@@ -8,13 +9,17 @@ use super::actions::{
     ToggleTheme,
 };
 
-pub fn install(cx: &App) {
+pub fn install(cx: &mut App) {
     cx.set_menus([
         application_menu(),
         file_menu(),
         navigate_menu(),
         help_menu(),
     ]);
+
+    if let Some(menus) = cx.get_menus() {
+        GlobalState::global_mut(cx).set_app_menus(menus);
+    }
 }
 
 fn application_menu() -> Menu {

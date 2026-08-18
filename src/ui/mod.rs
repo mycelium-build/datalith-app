@@ -25,6 +25,7 @@ use gpui::{
 };
 use gpui_component::{
     input::InputState,
+    menu::AppMenuBar,
     notification::Notification,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
@@ -106,6 +107,7 @@ pub struct DatalithView {
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
     pub(crate) registry: FileRegistry,
+    app_menu_bar: Entity<AppMenuBar>,
     pub(crate) startup: Option<Entity<StartupAnimation>>,
     startup_driver: Task<()>,
 }
@@ -151,6 +153,7 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let app_menu_bar = AppMenuBar::new(cx);
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
@@ -244,6 +247,7 @@ impl DatalithView {
             pending_navigation: None,
             pending_notifications: initial_notifications,
             registry: registry::default_registry(),
+            app_menu_bar,
             startup: Some(startup),
             startup_driver: Task::ready(()),
         };
