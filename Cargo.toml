@@ -3,7 +3,7 @@ name = "datalith"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/mycelium-build/datalith"
+repository = "https://github.com/mycelium-build/datalith-app"
 publish = false
 
 [package.metadata.packager]
@@ -11,7 +11,7 @@ product-name = "Datalith"
 identifier = "build.mycelium.datalith"
 publisher = "Mycelium Build"
 description = "A fast, local-first knowledge workspace."
-homepage = "https://github.com/mycelium-build/datalith"
+homepage = "https://github.com/mycelium-build/datalith-app"
 category = "Productivity"
 icons = ["assets/logo/datalith.png", "assets/logo/datalith.icns"]
 license-file = "LICENSING.md"

@@ -70,7 +70,7 @@ To find the exact source for an installed version, use the version shown in
 attached to the GitHub Release named `vX.Y.Z` at:
 
 ```text
-https://github.com/mycelium-build/datalith/releases/tag/vX.Y.Z
+https://github.com/mycelium-build/datalith-app/releases/tag/vX.Y.Z
 ```
 
 Pre-release versions (`vX.Y.Z-rc.N`) follow the same convention and use their
