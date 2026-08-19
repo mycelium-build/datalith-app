@@ -485,115 +485,123 @@ impl SettingsView {
             .to_string_lossy()
             .to_string();
         SettingGroup::new().title("Datalith").items(vec![
-            SettingItem::render(move |_options, _window, cx| {
-                v_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_2()
-                    .child(monolith_mark(3.0, cx.theme().primary))
-                    .child(div().font_weight(gpui::FontWeight::BOLD).child("Datalith"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("A fast, local-first knowledge workspace."),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Docs Vault: {docs_vault}")),
-                    )
-                    .into_any_element()
-            }),
-            SettingItem::render(move |_options, _window, cx| {
-                v_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Copyright (c) 2026 mycelium-build"),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Original Datalith source code: MIT License."),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "Distributed binaries include GPL-3.0-or-later components \
-                                 and are conveyed under GPL-3.0-or-later.",
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "This program comes with ABSOLUTELY NO WARRANTY; \
-                                 for details see the GNU GPL.",
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("about-view-privacy-policy")
-                                    .outline()
-                                    .small()
-                                    .label("Privacy policy")
-                                    .on_click(|_, _, cx| {
-                                        open_external_url(PRIVACY_POLICY_URL, cx);
-                                    }),
-                            )
-                            .child(
-                                Button::new("about-view-terms-of-service")
-                                    .outline()
-                                    .small()
-                                    .label("Terms of service")
-                                    .on_click(|_, _, cx| {
-                                        open_external_url(TERMS_OF_SERVICE_URL, cx);
-                                    }),
-                            )
-                            .child(
-                                Button::new("about-view-licenses")
-                                    .outline()
-                                    .small()
-                                    .label("View licenses")
-                                    .on_click(|_, window, cx| {
-                                        window.dispatch_action(
-                                            Box::new(crate::app::actions::OpenLicenses),
-                                            cx,
-                                        );
-                                    }),
-                            )
-                            .child(
-                                Button::new("about-view-source")
-                                    .outline()
-                                    .small()
-                                    .label("View corresponding source")
-                                    .on_click(|_, _, cx| {
-                                        let url = crate::ui::licenses::corresponding_source_url();
-                                        open_external_url(&url, cx);
-                                    }),
-                            ),
-                    )
-                    .into_any_element()
-            }),
+            Self::about_brand_item(docs_vault),
+            Self::about_legal_item(),
         ])
+    }
+
+    fn about_brand_item(docs_vault: String) -> SettingItem {
+        SettingItem::render(move |_options, _window, cx| {
+            v_flex()
+                .w_full()
+                .items_center()
+                .gap_2()
+                .child(monolith_mark(3.0, cx.theme().primary))
+                .child(div().font_weight(gpui::FontWeight::BOLD).child("Datalith"))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("A fast, local-first knowledge workspace."),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("Docs Vault: {docs_vault}")),
+                )
+                .into_any_element()
+        })
+    }
+
+    fn about_legal_item() -> SettingItem {
+        SettingItem::render(move |_options, _window, cx| {
+            v_flex()
+                .w_full()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Copyright (c) 2026 mycelium-build"),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Original Datalith source code: MIT License."),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            "Distributed binaries include GPL-3.0-or-later components \
+                             and are conveyed under GPL-3.0-or-later.",
+                        ),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            "This program comes with ABSOLUTELY NO WARRANTY; \
+                             for details see the GNU GPL.",
+                        ),
+                )
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("about-view-privacy-policy")
+                                .outline()
+                                .small()
+                                .label("Privacy policy")
+                                .on_click(|_, _, cx| {
+                                    open_external_url(PRIVACY_POLICY_URL, cx);
+                                }),
+                        )
+                        .child(
+                            Button::new("about-view-terms-of-service")
+                                .outline()
+                                .small()
+                                .label("Terms of service")
+                                .on_click(|_, _, cx| {
+                                    open_external_url(TERMS_OF_SERVICE_URL, cx);
+                                }),
+                        )
+                        .child(
+                            Button::new("about-view-licenses")
+                                .outline()
+                                .small()
+                                .label("View licenses")
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(
+                                        Box::new(crate::app::actions::OpenLicenses),
+                                        cx,
+                                    );
+                                }),
+                        )
+                        .child(
+                            Button::new("about-view-source")
+                                .outline()
+                                .small()
+                                .label("View corresponding source")
+                                .on_click(|_, _, cx| {
+                                    let url = crate::ui::licenses::corresponding_source_url();
+                                    open_external_url(&url, cx);
+                                }),
+                        ),
+                )
+                .into_any_element()
+        })
     }
 }
 
