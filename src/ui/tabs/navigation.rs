@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use gpui::{AppContext, Context, Window};
-use gpui_component::input::InputEvent;
+use gpui_component::{WindowExt, input::InputEvent};
 use percent_encoding::percent_decode_str;
 
 use super::Tab;
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
 use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
+use crate::ui::notifications;
 use crate::vault::file_ops;
 
 #[derive(Clone, Copy)]
@@ -75,10 +76,13 @@ impl DatalithView {
         });
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
-            cx.subscribe_in(&state, window, move |_view, state, event, _window, cx| {
+            cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
                 if matches!(event, InputEvent::Change) {
                     let content = state.read(cx).value();
-                    let _ = file_ops::update(&path, &content);
+                    if let Err(error) = file_ops::update(&path, &content) {
+                        window
+                            .push_notification(notifications::save_file_failed(&path, &error), cx);
+                    }
                 }
             })
         });

@@ -360,9 +360,7 @@ impl GraphViewState {
             .on_mouse_move(cx.listener(Self::handle_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
             .on_scroll_wheel(cx.listener(Self::handle_scroll))
-            .on_prepaint(move |bounds, _window, cx| {
-                let _ = entity.update(cx, |state, cx| state.set_canvas_bounds(bounds, cx));
-            })
+            .on_prepaint(move |bounds, _window, cx| update_canvas_bounds(&entity, bounds, cx))
             .child(
                 gpui::canvas(
                     move |bounds, _window, _cx| (bounds, snapshot_for_paint, camera_for_paint),

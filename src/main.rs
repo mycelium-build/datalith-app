@@ -27,7 +27,7 @@ fn main() {
         .run(|cx| {
             gpui_component::init(cx);
             let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
-            ui::themes::load_embedded_themes(cx);
+            pending_notifications.extend(ui::themes::load_embedded_themes(cx));
             ui::settings::SettingsView::init_theme_options(cx);
 
             pending_notifications.extend(app::preferences::apply(cx));

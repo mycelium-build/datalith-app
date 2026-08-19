@@ -23,6 +23,12 @@ const PRIVACY_POLICY_URL: &str = "https://mycelium-build.github.io/datalith/priv
 const TERMS_OF_SERVICE_URL: &str = "https://mycelium-build.github.io/datalith/terms/";
 pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 
+fn open_external_url(url: &str, cx: &mut App) {
+    if let Err(error) = crate::app::system::open_url(url) {
+        notifications::push_window_notification(cx, notifications::open_url_failed(url, &error));
+    }
+}
+
 #[derive(Clone)]
 pub struct ThemeOptions {
     pub(crate) light_theme_name: SharedString,
@@ -549,8 +555,8 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("Privacy policy")
-                                    .on_click(|_, _, _cx| {
-                                        let _ = crate::app::system::open_url(PRIVACY_POLICY_URL);
+                                    .on_click(|_, _, cx| {
+                                        open_external_url(PRIVACY_POLICY_URL, cx);
                                     }),
                             )
                             .child(
@@ -558,8 +564,8 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("Terms of service")
-                                    .on_click(|_, _, _cx| {
-                                        let _ = crate::app::system::open_url(TERMS_OF_SERVICE_URL);
+                                    .on_click(|_, _, cx| {
+                                        open_external_url(TERMS_OF_SERVICE_URL, cx);
                                     }),
                             )
                             .child(
@@ -579,9 +585,9 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("View corresponding source")
-                                    .on_click(|_, _, _cx| {
+                                    .on_click(|_, _, cx| {
                                         let url = crate::ui::licenses::corresponding_source_url();
-                                        let _ = crate::app::system::open_url(&url);
+                                        open_external_url(&url, cx);
                                     }),
                             ),
                     )
