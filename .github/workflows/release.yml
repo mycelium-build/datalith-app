@@ -210,12 +210,13 @@ jobs:
   finalize:
     needs: [artifacts, source]
     if: >-
-      (github.event_name == 'push'
-        && needs.artifacts.result == 'success'
-        && needs.source.result == 'success')
-      || (github.event_name == 'workflow_dispatch'
-        && needs.artifacts.result == 'skipped'
-        && needs.source.result == 'skipped')
+      always()
+      && ((github.event_name == 'push'
+          && needs.artifacts.result == 'success'
+          && needs.source.result == 'success')
+        || (github.event_name == 'workflow_dispatch'
+          && needs.artifacts.result == 'skipped'
+          && needs.source.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
