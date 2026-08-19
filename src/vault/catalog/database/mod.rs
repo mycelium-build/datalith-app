@@ -94,9 +94,21 @@ impl CatalogDatabase {
                 if let Ok(database) = turso::Builder::new_local(database_path_text).build().await {
                     database
                 } else {
-                    let _ = fs::remove_file(&database_path);
-                    let _ = fs::remove_file(database_path.with_extension("db-wal"));
-                    let _ = fs::remove_file(database_path.with_extension("db-shm"));
+                    for path in [
+                        database_path.clone(),
+                        database_path.with_extension("db-wal"),
+                        database_path.with_extension("db-shm"),
+                    ] {
+                        if let Err(error) = fs::remove_file(&path)
+                            && error.kind() != std::io::ErrorKind::NotFound
+                        {
+                            // Can utimately work if rebuilt succeeds
+                            eprintln!(
+                                "Failed to remove stale catalog file {}: {error}",
+                                path.display()
+                            );
+                        }
+                    }
                     turso::Builder::new_local(database_path_text)
                         .build()
                         .await

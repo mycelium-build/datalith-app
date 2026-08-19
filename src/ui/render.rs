@@ -11,10 +11,20 @@ use gpui_component::{
     v_flex,
 };
 
+use crate::app::keymap::display_binding;
 use crate::ui::monolith::monolith_mark;
 
 const SIDEBAR_WIDTH: f32 = 260.0;
 const GLYPH_CELL: f32 = 4.0;
+
+fn quick_start_shortcuts() -> String {
+    format!(
+        "{} search  ·  {} new tab  ·  {} focus sidebar",
+        display_binding("secondary-shift-f"),
+        display_binding("secondary-t"),
+        display_binding("secondary-0"),
+    )
+}
 
 impl Render for DatalithView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -65,7 +75,7 @@ impl Render for DatalithView {
 
         let tree_state = self.tree_state.clone();
 
-        let mut layout = h_flex().size_full().relative();
+        let mut layout = h_flex().flex_1().min_h_0().relative();
 
         layout = layout.child(
             h_resizable("datalith-main-layout")
@@ -106,9 +116,25 @@ impl Render for DatalithView {
             layout = layout.child(self.licenses.render_overlay(cx));
         }
 
-        layout
-            .children(Root::render_notification_layer(window, cx))
-            .children(self.startup.clone())
+        let mut root = v_flex().size_full();
+        if !cfg!(target_os = "macos") {
+            root = root.child(
+                h_flex()
+                    .w_full()
+                    .h(px(34.))
+                    .items_center()
+                    .bg(cx.theme().tab_bar)
+                    .border_b(px(2.0))
+                    .border_color(cx.theme().border)
+                    .child(self.app_menu_bar.clone()),
+            );
+        }
+
+        root.child(
+            layout
+                .children(Root::render_notification_layer(window, cx))
+                .children(self.startup.clone()),
+        )
     }
 }
 
@@ -151,7 +177,7 @@ impl DatalithView {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground.opacity(0.7))
-                    .child("⌘⇧F search  ·  ⌘T new tab  ·  ⌘0 focus sidebar"),
+                    .child(quick_start_shortcuts()),
             )
     }
 
@@ -186,6 +212,7 @@ impl DatalithView {
 
         v_flex()
             .size_full()
+            .min_h_0()
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
             .child(if is_empty {
@@ -193,6 +220,7 @@ impl DatalithView {
             } else {
                 div()
                     .flex_1()
+                    .min_h_0()
                     .overflow_hidden()
                     .child(active_tab.handler().clone())
                     .into_any_element()

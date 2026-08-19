@@ -9,7 +9,7 @@ priority: optional
 maintainer: lmandrelli <luca.mandrelli@icloud.com>
 description: A fast, local-first knowledge workspace.
 vendor: Mycelium Build
-homepage: https://github.com/mycelium-build/datalith
+homepage: https://github.com/mycelium-build/datalith-app
 license: GPL-3.0-or-later
 
 contents:

@@ -97,8 +97,8 @@ impl TodoTxtState {
         row = row.child(
             Checkbox::new(element_id("todo-check", fi))
                 .checked(completed)
-                .on_click(cx.listener(move |this, _checked, _window, cx| {
-                    this.toggle_complete(fi, cx);
+                .on_click(cx.listener(move |this, _checked, window, cx| {
+                    this.toggle_complete(fi, window, cx);
                 })),
         );
 
@@ -208,13 +208,13 @@ impl TodoTxtState {
                         this.add_subtask(fi, cx);
                     }
                     "enter" => {
-                        this.toggle_complete(fi, cx);
+                        this.toggle_complete(fi, window, cx);
                     }
                     "backspace"
                         if event.keystroke.modifiers.shift
                             && event.keystroke.modifiers.secondary() =>
                     {
-                        this.delete_task(fi, cx);
+                        this.delete_task(fi, window, cx);
                     }
                     "up" => {
                         let visible = this.workspace.visible_tasks();
@@ -281,8 +281,8 @@ impl TodoTxtState {
                             .size_3()
                             .text_color(cx.theme().danger),
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.delete_task(fi, cx);
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delete_task(fi, window, cx);
                     })),
             )
             .into_any_element()

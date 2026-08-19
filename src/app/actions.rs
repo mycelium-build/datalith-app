@@ -12,9 +12,9 @@ use crate::app::{
     system,
 };
 use crate::document::handler::FileHandlerEvent;
-use crate::ui::notifications;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
+use crate::ui::{notifications, settings::DOCS_URL};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -38,6 +38,7 @@ actions!(
         ToggleTheme,
         OpenSettings,
         OpenShortcuts,
+        OpenDocumentation,
         OpenAbout,
         OpenLicenses,
         OpenSource,
@@ -94,6 +95,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
     cx.on_action(open_shortcuts);
+    cx.on_action(open_documentation);
     cx.on_action(open_about);
     cx.on_action(open_licenses);
     cx.on_action(open_source);
@@ -292,8 +294,13 @@ pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
             .context_menu_target
             .take()
             .or_else(|| view.resolve_target(cx));
-        if let Some(target) = target {
-            let _ = system::reveal_in_file_manager(&target);
+        if let Some(target) = target
+            && let Err(error) = system::reveal_in_file_manager(&target)
+        {
+            notifications::push_window_notification(
+                cx,
+                notifications::reveal_in_file_manager_failed(&target, &error),
+            );
         }
         cx.notify();
     });
@@ -305,8 +312,13 @@ pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
             .context_menu_target
             .take()
             .or_else(|| view.resolve_target(cx));
-        if let Some(target) = target {
-            let _ = system::copy_path(&target);
+        if let Some(target) = target
+            && let Err(error) = system::copy_path(&target)
+        {
+            notifications::push_window_notification(
+                cx,
+                notifications::copy_path_failed(&target, &error),
+            );
         }
         cx.notify();
     });
@@ -379,6 +391,15 @@ pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
     });
 }
 
+pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
+    if let Err(error) = system::open_url(DOCS_URL) {
+        notifications::push_window_notification(
+            cx,
+            notifications::documentation_open_failed(&error),
+        );
+    }
+}
+
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
     with_view!(cx, |view, cx| {
         view.settings.open_about();
@@ -393,9 +414,11 @@ pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
     });
 }
 
-pub fn open_source(_: &OpenSource, _cx: &mut App) {
+pub fn open_source(_: &OpenSource, cx: &mut App) {
     let url = crate::ui::licenses::corresponding_source_url();
-    let _ = system::open_url(&url);
+    if let Err(error) = system::open_url(&url) {
+        notifications::push_window_notification(cx, notifications::open_url_failed(&url, &error));
+    }
 }
 
 fn select_tab_index(index: usize, cx: &mut App) {
@@ -454,15 +477,17 @@ pub fn go_forward(_: &GoForward, cx: &mut App) {
 pub fn handle_open_link(_: &OpenLink, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if let Some(file_handler) = view.tabs.active_handler().cloned() {
-            let handler = file_handler.read(cx);
-            let link_info = handler.editor.as_ref().and_then(|editor| {
-                let md = editor.as_markdown()?;
-                let input = md.input().read(cx);
-                let offset = input.cursor();
-                let text = input.value().to_string();
-                crate::document::markdown::find_link_at_offset(&text, offset).map(|url| (url, true))
-            });
-            let _ = handler;
+            let link_info = {
+                let handler = file_handler.read(cx);
+                handler.editor.as_ref().and_then(|editor| {
+                    let md = editor.as_markdown()?;
+                    let input = md.input().read(cx);
+                    let offset = input.cursor();
+                    let text = input.value().to_string();
+                    crate::document::markdown::find_link_at_offset(&text, offset)
+                        .map(|url| (url, true))
+                })
+            };
             if let Some((url, new_tab)) = link_info {
                 file_handler.update(cx, |_handler, cx| {
                     cx.emit(FileHandlerEvent::LinkClicked(url, new_tab));

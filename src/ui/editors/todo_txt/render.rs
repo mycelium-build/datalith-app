@@ -6,6 +6,7 @@ use gpui::{
 };
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::input::Input;
+use gpui_component::scroll::Scrollbar;
 use gpui_component::select::Select;
 use gpui_component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
 
@@ -76,6 +77,7 @@ impl Render for TodoTxtState {
 
         v_flex()
             .size_full()
+            .min_h_0()
             .overflow_hidden()
             .track_focus(&self.editor_focus)
             .child(header)
@@ -206,29 +208,36 @@ impl TodoTxtState {
         let selected = self.workspace.selected();
         let visible_owned = visible.to_vec();
 
-        v_virtual_list(
-            entity,
-            "todo-task-list",
-            sizes,
-            move |state, range, _window, cx| {
-                range
-                    .map(|i| {
-                        let Some(&(flat_index, _)) = visible_owned.get(i) else {
-                            return div().h(px(TODO_ROW_HEIGHT)).into_any();
-                        };
-                        let Some(task) = state.workspace.task(flat_index) else {
-                            return div().h(px(TODO_ROW_HEIGHT)).into_any();
-                        };
-                        let depth = task.indent_level;
-                        let is_selected = selected == Some(i);
-                        state.render_task_row(flat_index, task, depth, is_selected, cx)
-                    })
-                    .collect()
-            },
-        )
-        .track_scroll(&self.scroll_handle)
-        .flex_1()
-        .into_any_element()
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .relative()
+            .overflow_hidden()
+            .child(
+                v_virtual_list(
+                    entity,
+                    "todo-task-list",
+                    sizes,
+                    move |state, range, _window, cx| {
+                        range
+                            .map(|i| {
+                                let Some(&(flat_index, _)) = visible_owned.get(i) else {
+                                    return div().h(px(TODO_ROW_HEIGHT)).into_any();
+                                };
+                                let Some(task) = state.workspace.task(flat_index) else {
+                                    return div().h(px(TODO_ROW_HEIGHT)).into_any();
+                                };
+                                let depth = task.indent_level;
+                                let is_selected = selected == Some(i);
+                                state.render_task_row(flat_index, task, depth, is_selected, cx)
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(&self.scroll_handle),
+            )
+            .child(Scrollbar::vertical(&self.scroll_handle))
+            .into_any_element()
     }
 
     fn render_new_task_row(&self, cx: &Context<Self>) -> AnyElement {

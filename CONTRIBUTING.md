@@ -57,7 +57,7 @@ scripts/licenses/check.sh
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/mycelium-build/datalith.git
+    git clone https://github.com/mycelium-build/datalith-app.git
     cd datalith
     ```
 

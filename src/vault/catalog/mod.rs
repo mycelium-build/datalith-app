@@ -163,9 +163,12 @@ impl VaultCatalog {
             let sync_result =
                 pollster::block_on(inner.database.synchronize(&removed, &initial, file_types))?;
 
-            if let Ok(search) = inner.search.lock() {
-                let _ = search.indexer.synchronize(&sync_result.all);
-            }
+            let search = inner
+                .search
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock Vault Search Index"))?;
+            search.indexer.synchronize(&sync_result.all)?;
+            drop(search);
 
             let (notify_tx, notify_rx) = mpsc::channel();
             let observed_root = inner
@@ -182,7 +185,10 @@ impl VaultCatalog {
                             }
                         }
                     }
-                    let _ = notify_tx.send(event);
+                    if let Err(error) = notify_tx.send(event) {
+                        // Background task there can be no UI
+                        eprintln!("Vault Catalog watcher stopped: {error}");
+                    }
                 })?;
             watcher.watch(&inner.root, RecursiveMode::Recursive)?;
 
@@ -411,9 +417,14 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
     let structure_changed = sync_result.all.iter().any(|path| !known.contains(path))
         || removed_from_derived.iter().any(|path| known.contains(path));
     if let Ok(search) = inner.search.lock() {
-        let _ = search
+        let search = search;
+        if let Err(error) = search
             .indexer
-            .apply(&removed_from_derived, &sync_result.changed);
+            .apply(&removed_from_derived, &sync_result.changed)
+        {
+            // Background task there can be no UI
+            eprintln!("Failed to update Vault Search Index: {error}");
+        }
     }
     let mut paths = removed_from_derived;
     paths.extend(sync_result.changed);

@@ -237,3 +237,30 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      - name: Create website deployment token
+        id: website-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          owner: mycelium-build
+          repositories: datalith
+          permission-actions: write
+
+      - name: Trigger website deployment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          github-token: ${{ steps.website-token.outputs.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'mycelium-build',
+              repo: 'datalith',
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+              inputs: {
+                source_ref: process.env.RELEASE_TAG,
+              },
+            })
