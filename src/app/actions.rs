@@ -12,9 +12,9 @@ use crate::app::{
     system,
 };
 use crate::document::handler::FileHandlerEvent;
-use crate::ui::notifications;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
+use crate::ui::{notifications, settings::DOCS_URL};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -381,8 +381,13 @@ pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
     });
 }
 
-pub fn open_documentation(_: &OpenDocumentation, _cx: &mut App) {
-    let _ = system::open_url("https://mycelium-build.github.io/datalith/docs/");
+pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
+    if let Err(error) = system::open_url(DOCS_URL) {
+        notifications::push_window_notification(
+            cx,
+            notifications::documentation_open_failed(&error),
+        );
+    }
 }
 
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
