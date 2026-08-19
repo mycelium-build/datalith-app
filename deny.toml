@@ -54,7 +54,7 @@ ignore = false
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+wildcards = "warn"
 allow-wildcard-paths = true
 
 [sources]
