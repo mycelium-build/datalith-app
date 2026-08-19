@@ -1,3 +1,397 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0](https://github.com/mycelium-build/datalith-app/releases/tag/v0.1.0) - 2026-08-19
+
+### Added
+
+- add intel mac, arm windows and arm linux release targets
+- more eprint instead of dropping error
+- use eprint instead of dropping the error
+- open link in graph notification
+- replace dropping error to notification
+- *(benches)* eprint errors
+- notification documentation open failed
+- help app menu item actually forward to Datalith doc
+- bottom border to app menu
+- add link to privacy policy and ToS
+- use into in UI to convert theme type
+- use apply theme preference in setting
+- apply theme preference
+- convert from WindowAppearance to ThemeMode and inverse
+- notification if error on toggling the theme
+- *(theme)* system mode and mode parameter
+- *(licensing)* add scrollbar to licenses page
+- *(licensing)* sync cargo deny and cargo about
+- *(licensing)* now check assets use allowed licensing in cargo deny
+- *(licensing)* correct description for assets
+- *(licensing)* add license compliance pipeline and notices
+- *(packaging)* ship PNG icon sizes and StartupWMClass, assert icons in smoke test
+- *(packaging)* declare native package deps and add distrobox smoke
+- better icons
+- package native Linux formats with nFPM
+- change parameters icon
+- *(design)* notification if failed to open bundled font
+- *(design)* short startup faster, dissolve work with any phase
+- *(design)* change shading
+- *(design)* add depth to arrow and check
+- *(design)* settings button in header
+- *(design)* gear icon
+- *(design)* about item in OS menu
+- *(design)* tweak startup timing
+- *(design)* short and long startup (for first time)
+- *(design)* apply Pixeloid fonts to all MD title
+- *(design)* Pixeloid font files
+- *(design)* render file name as title
+- *(design)* import font
+- *(design)* tweak timing strat up
+- *(design)* new folder icon
+- *(design)* optimized start up
+- *(design)* notification when use fallback theme
+- *(design)* notification when failed to quick create file
+- *(design)* shortcuts to open settings and shortcuts list
+- *(design)* light ring pulsing with white, no mid start for falling
+- *(design)* smooth falling wave color on inscriptions
+- *(design)* tweaking border pulse cycle
+- *(design)* flash work in dark theme
+- *(design)* new text for empty state MD
+- *(design)* tweak folder open and layout icons
+- *(design)* skip start up if press any key or click
+- *(design)* inscriptions + glow turn to light before flashing user
+- *(design)* unify logo from monolith and startup + clearer comments
+- *(design)* new logo with correct whiten
+- *(design)* glue startup to UI
+- *(design)* render the datalith in app
+- *(design)* add inscription char
+- *(design)* start up animation
+- *(design)* add shortcuts and about in settings
+- *(design)* new keymaps logic
+- *(design)* create with name file ops
+- *(design)* quick start when tab empty
+- *(design)* use new icons in palette and display message if empty
+- *(design)* no node graph render
+- *(design)* use Datalith icon in app
+- *(design)* new path to app icon
+- *(design)* use new Datalith theme as default
+- *(design)* new theme Datalith
+- *(design)* register file icon
+- *(design)* Datalith icon script generator
+- *(design)* Datalith logo
+- *(design)* assets import new icons
+- *(design)* icons
+- *(design)* script to generate all icons
+- *(design)* app logo in ASCII
+- *(design)* pixel art icons
+- *(turso-db)* multiple read connection when needed
+- *(markdown)* correctly render **text [[link]] text**
+- *(graph)* now render even if exceed limit and put a notice to warm
+- *(welcome-docs)* always display Datalith Docs to vault list
+- *(welcome-docs)* cleaner and more realiable code for 1st start up
+- *(turso-db)* opti sync by only sync changed file
+- *(clippy)* display bail errors in notification
+- *(clippy)* enforce no panic code
+- *(clippy)* add clippy to tool chain
+- *(graph)* remove default limit and up hard limit
+- *(md-preview)* border on table
+- *(md-preview)* render table
+- *(md-preview)* render MD todo
+- *(opti-startup)* batch delete
+- *(opti-startup)* DB connection singleton, precise not need to have
+- *(opti-startup)* batch upsert, read meta only, filter link in SQL
+- *(opti-startup)* add deps rayon and dev deps criterion and rand for
+- *(turso-db)* optimistc catalog load
+- *(notification)* render
+- *(notification)* state and vault DB
+- *(notification)* rename
+- *(notification)* prebuild
+- rename style same as when no rename
+- *(turso-db)* only update link concerned by the change when updating
+- dont update file tree in side bar when file content change
+- *(turso-db)* load in background
+- *(turso-db)* now search use catalog paths instead walking the whole
+- *(turso-db)* palette now use catalog
+- *(turso-db)* reconcile fs events, public DB fn (resolve and
+- *(turso-db)* new db sync, links/baclinks resolver
+- *(turso-db)* simpler file ops and import/use of it
+- *(tuso-db)* links utils with new resolve fn
+- *(turso-db)* use new interface to interact with catalog
+- *(turso-db)* link utils
+- *(turso-db)* catalog strug with public functions
+- *(turso-db)* init, reconcile, upsert/remove file, query documents
+- *(turso-db)* accept any file extension
+- *(turso-db)* new link service with normalize and extract
+- *(turso-db)* rename service, now can update files with same link,
+- *(turso-db)* graph filter conversion to catalog compatible type
+- *(turso-db)* add yaml frontmatter file type capability
+- *(graph)* group now use same node style
+- *(graph)* different hover styling on outgoing, incoming and both edge
+- *(graph)* display node name when zoom in
+- *(grap)* hover styling node + border
+- *(graph)* hover and border style, custom forces
+- *(graph)* viewer
+- reload viewer for some viewer type
+- add a depedency viewer for optional extra params for viewer
+- now when file catalog finish loading
+- *(markdown)* use YAML serde in parser, display YAML error in preview
+- *(graph)* use Rust serde Deserialize struct to handle parsing
+- *(graph)* change link cache to wiki link index, now save edges
+- *(graph)* register render
+- *(graph)* .graph parser
+- *(graph)* editor
+- *(graph)* add YAML serde deps
+- *(markdown)* render adjacent images on same row
+- *(settings)* remove backward compatibility with last folder
+- *(live-update)* reload from disk interface and reloader for text,
+- *(live-update)* vault catalog handler for event on fs
+- *(live-update)* file type utils with capabilities and registered list
+- *(live-update)* add deps notify
+- *(todo-txt)* use txtodo lib logic to handle update and save
+- *(todo-txt)* simplify priority handling
+- *(todo-txt)* simplify styling task
+- *(todo-txt)* checkbox now a checkbox not a btn
+- *(todo-txt)* icon arrow up and down a to x, funnel
+- *(todo-txt)* add better icon for sort order, add icon for filter, add
+- *(todo-txt)* del task shortcut
+- *(todo-txt)* can move from search to add task if no task (and
+- *(todo-txt)* shift+enter to create subtask
+- *(todo-txt)* press enter to toggle complete
+- *(todo-txt)* move around with arrow key
+- *(todo-txt)* make expand, check box, priority button and sort order
+- *(todo-txt)* search shortcut
+- *(todo-txt)* all elements on task focusable
+- *(todo-txt)* empty display
+- *(todo-txt)* editor
+- reorg const
+- register todo txt editor
+- *(todo-txt)* map todo txt editor
+- simplify logic in MD view no need for events queue
+- allow dead code on events in md viewer
+- move path handle to editor
+- remove useless function
+- input state in editor
+- md viewer
+- image viewer
+- plain text editor
+- md editor
+- registry file handler
+- viewer struct
+- editor struct
+- file handler
+- simplify md preview logic
+- icon for preview and edit mode
+
+### Fixed
+
+- *(release)* remove publish=false so release-plz creates git tags
+- udpate Datalith repo link
+- todo scrollbar
+- scroll in content
+- scroll bar in render MD
+- app menu on Windows and Linux
+- shortcuts on Windows and Linux
+- *(ci)* recover SBOM finalization for rc.4
+- *(licensing)* pin Datalith license file
+- *(licensing)* typo in assets licenses file
+- *(release)* correct typing in nfpm yaml
+- *(licensing)* document alduin removal in bundled-theme review
+- *(ui)* licensing display in about
+- *(licensing)* complete release compliance artifacts
+- *(licensing)* harden release compliance gates
+- *(ci)* wait for release PR branch propagation before verify step
+- *(packaging)* regenerate transparent hicolor icons, add 512/1024 sizes
+- *(packaging)* use prebuilt icns for macOS so DMG packaging doesn't fail
+- *(design)* notification after start up
+- merge
+- *(design)* make one GPUI bug less visible in Datalith docs
+- *(graph)* color alpha parsed correctly
+- *(design)* RC icon path
+- *(design)* missing trailing space
+- *(design)* pen wrong pixel art
+- apply Windows application icon
+- *(test)* flakky because not retrying receiving the event
+- *(markdown)* correctly not convert link in code block
+- *(welcome-docs)* clean shortcut and more link
+- *(benches)* all file truly uniq and clear code
+- *(clippy)* display correctly error message on graph render canvas
+- *(clippy)* missing import viewer graph model
+- *(clippy)* rest of vault
+- *(clippy)* vault search
+- *(clippy)* catalog
+- *(clippy)* rest of UI
+- *(clippy)* rest of viewers
+- *(clippy)* forget one thing in viewer graph
+- *(clippy)* viewers markdown
+- *(clippy)* viewers graph
+- *(clippy)* ui themes
+- *(clippy)* ui tabs
+- *(clippy)* ui sidebar
+- *(clippy)* rest of editors
+- *(clippy)* use conv to remove clippy in app and document
+- *(clippy)* editor todo txt
+- *(clippy)* document
+- *(clippy)* document todo txt
+- *(clippy)* document markdown
+- *(clippy)* document graph
+- *(clippy)* app folder
+- *(clippy)* benches
+- *(notification)* only one vault db ready notification
+- *(md-preview)* display every styling in one line withou new line
+- *(md-preview)* dont edit in code block links
+- *(md-preview)* sub list dont have margin in addition
+- *(md-preview)* display [not this|but this]
+- *(md-preview)* tweak spacing, remove spacing between list item
+- *(todo-txt)* now after opening a todotxt file search shortcuts work
+- *(notification)* not link but sources, add tests
+- *(notification)* in render rename _window to window
+- *(turso-db)* not properties when missing include file, escape special
+- UI rename not at the right place can have dangling state
+- rename first then edit files with old link
+- *(turso-db)* remove useless multiple update links when reconcile DB
+- *(graph)* limit recursion
+- *(markdown)* image max size window
+- *(live-update)* hot reload only if external chage
+- *(live-update)* dont reload from disk if same content
+- render list, bool and text in yaml frontmatter better
+- nested block quote in md preview
+- block quote md preview
+- md preview coding block adding an empty line inside
+- *(todo-txt)* hover color on priority
+- *(todo-txt)* focus styling on btn priority
+- *(todo-txt)* use btn instead of custom div
+- *(todo-txt)* sub tree filtered, creation date save
+- *(todo-txt)* move cursor to upper task or search when del a task
+- *(todo-txt)* border when element focus dont push element around
+- upgrade txtodo deps
+- display toggle editor/viewer only when can toggle
+- link in list for MD viewer
+- linux support optional features
+- redo text wrap and link now work
+- text wrap md preview (in dev)
+- text wrapping on preview mode
+- pin gpui-components to latest version
+- *(sidebar)* restore compatible tree and context menus
+
+### Other
+
+- *(deny)* relax wildcard deps to warn
+- Revert "Merge pull request #27 from mycelium-build/release/2026-08-15T09-25-08Z"
+- release v0.1.0
+- run clippy in CI and fix too_many_lines lint
+- *(ci)* bump actions, Rust 1.97.1 and cargo-deny 0.20.2
+- wrong capitalisation
+- merge shortcut rows
+- shortcut display
+- update deploy doc
+- redeploy website on release
+- shortcuts updated
+- typo in CONTRIBUTING
+- tweak README
+- reorder README
+- fix link to contributing in PR template
+- proper README
+- mention how third party notice work in contributing
+- contributing
+- bug report template
+- feature request template
+- PR template
+- deny warning
+- clean up release hotfix
+- publish release after final validation
+- remove package legal document gate
+- apply rustfmt
+- *(licensing)* print difference in third party notice if one
+- *(licensing)* update third party notices
+- *(licensing)* gpui component assets license
+- *(licensing)* move themes to asset along side their real license
+- *(licensing)* clearer comment in cargo deny
+- *(licensing)* update third party notice
+- *(licensing)* clearer comment in cargo deny
+- *(licensing)* move bundled theme note to a dedicated file
+- readme fmt
+- correct app description
+- comments fmt
+- *(licensing)* adopt best-effort release policy
+- *(licensing)* resolve ambiguous bundled-theme licenses
+- fmt comment
+- apply rustfmt
+- remove useless test
+- *(design)* clarify where come from whiten value in app icon script
+- *(vault)* update shortcuts and setting access
+- update GPUI and GPUI component
+- Merge branch 'main' into feat/design
+- update gpui component
+- *(vault)* remove H1 since display file name as title and update all
+- *(design)* explicit setting page typing
+- *(design)* icon path cannot drift
+- create_with_name
+- apply rustfmt
+- package native desktop releases
+- fix error no branch on release plz
+- *(clippy)* simplify clippy allow for tests
+- *(clippy)* add deps conv
+- *(clippy)* future todo
+- *(clippy)* reorg import in editors
+- *(clippy)* more clear allow clippy in app preferences
+- *(clippy)* todo to fix
+- apply rustfmt
+- Merge branch 'main' into fix/md-preview
+- *(opti-startup)* benches
+- *(opti-startup)* import and use new DB connection method
+- *(notification)* plans folder
+- todotxt editor
+- graph viewer
+- DB catalog
+- todotxt document
+- MD document
+- graph document
+- *(turso-db)* adr
+- *(turso-db)* .datalith convert to a const
+- *(turso-db)* nuke old code
+- *(turso-db)* optimize rename and apply patch with more precise DB
+- *(turso-db)* import and use new catalog functions
+- *(turso-db)* remove now useless properties form MD
+- *(turso-db)* add pollster and turso deps
+- mark graph as done in todo
+- *(graph)* explain why no live update
+- *(graph)* move arrow to edge and rename orphan
+- *(graph)* clearer
+- *(graph)* tweak render cooling
+- *(graph)* tweak render values
+- *(graph)* Barnes-Hut ADR
+- *(graph)* format
+- update todo
+- gpui and gpui components skills
+- *(settings)* move config to settings, classify light and dark
+- *(markdown)* move all parser logic to document folder and only
+- *(tabs)* split tab logic and render
+- *(todo-txt)* split UI and logic
+- main code into app folder
+- move themes to ui
+- move const in dedicated files
+- code base
+- explain why refresh_item_sizes in todo txt editor
+- *(live-update)* note about full reload in todo txt view when reload
+- *(live-update)* use new file types utils and vault catalog
+- separate frontmatter logic and md rendering
+- *(todo-txt)* remove duplicated logic into a fn
+- todo update
+- update cargo deps
+- add txtodo and time deps
+- todo
+- move editor/viewer global logic to their folder
+- remove useless code
+- use new file handler with new viewer/editor struct
+- md preview wrap line, p, render list and flush inline
+- format
+- todo add base view cards
+- todo
+- Initial commit
+# Changelog
+
 All notable changes to Datalith will be documented in this file.
