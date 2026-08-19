@@ -85,6 +85,10 @@ pub fn todo_task_failed(action: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to {action}: {error}")).autohide(false)
 }
 
+pub fn graph_link_open_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to open Graph View link: {error}")).autohide(false)
+}
+
 pub fn theme_load_failed(theme: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to load the {theme} theme: {error}")).autohide(false)
 }

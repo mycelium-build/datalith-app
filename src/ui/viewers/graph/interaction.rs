@@ -244,7 +244,7 @@ impl GraphViewState {
     fn handle_mouse_up(
         &mut self,
         event: &MouseUpEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(interaction) = self.interaction.take() else {
@@ -269,9 +269,11 @@ impl GraphViewState {
             && let Some(target) = target
         {
             let new_tab = event.modifiers.platform;
-            let _ = self.handler.update(cx, |_handler, cx| {
+            if let Err(error) = self.handler.update(cx, |_handler, cx| {
                 cx.emit(FileHandlerEvent::LinkClicked(target, new_tab));
-            });
+            }) {
+                window.push_notification(notifications::graph_link_open_failed(&error), cx);
+            }
         }
         cx.notify();
     }
