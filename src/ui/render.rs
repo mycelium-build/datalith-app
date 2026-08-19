@@ -11,17 +11,19 @@ use gpui_component::{
     v_flex,
 };
 
+use crate::app::keymap::display_binding;
 use crate::ui::monolith::monolith_mark;
 
 const SIDEBAR_WIDTH: f32 = 260.0;
 const GLYPH_CELL: f32 = 4.0;
 
-const fn quick_start_shortcuts() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "⌘⇧F search  ·  ⌘T new tab  ·  ⌘0 focus sidebar"
-    } else {
-        "Ctrl+Shift+F search  ·  Ctrl+T new tab  ·  Ctrl+0 focus sidebar"
-    }
+fn quick_start_shortcuts() -> String {
+    format!(
+        "{} search  ·  {} new tab  ·  {} focus sidebar",
+        display_binding("secondary-shift-f"),
+        display_binding("secondary-t"),
+        display_binding("secondary-0"),
+    )
 }
 
 impl Render for DatalithView {

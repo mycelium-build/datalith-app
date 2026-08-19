@@ -1,4 +1,4 @@
-use gpui::{App, KeyBinding};
+use gpui::{App, KeyBinding, Keystroke};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -23,6 +23,10 @@ macro_rules! shortcuts {
             ]
         }
     };
+}
+
+pub fn display_binding(binding: &str) -> String {
+    Keystroke::parse(binding).map_or_else(|_| binding.to_owned(), |keystroke| keystroke.to_string())
 }
 
 shortcuts!(
@@ -77,3 +81,19 @@ shortcuts!(
     // Help
     ("Help", "secondary-/", "Show shortcuts", OpenShortcuts),
 );
+
+#[cfg(test)]
+mod tests {
+    use super::display_binding;
+
+    #[test]
+    fn displays_secondary_with_platform_conventions() {
+        let expected = if cfg!(target_os = "macos") {
+            "⌘⇧F"
+        } else {
+            "ctrl-shift-f"
+        };
+
+        assert_eq!(display_binding("secondary-shift-f"), expected);
+    }
+}
