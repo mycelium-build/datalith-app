@@ -3,12 +3,23 @@ name: Release
 on:
   push:
     tags: ["v[0-9]+.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Release tag to finalize. The tag must already exist and its draft
+          release must already contain all artifacts (e.g. after a failed or
+          intentionally interrupted run). Only the finalize job runs; the
+          build matrix is skipped.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -24,6 +35,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   compliance:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -45,6 +57,7 @@ jobs:
         run: scripts/licenses/check.sh
 
   source:
+    if: github.event_name == 'push'
     needs: [release, compliance]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -71,6 +84,7 @@ jobs:
           files: datalith-*-corresponding-source.tar.zst
 
   artifacts:
+    if: github.event_name == 'push'
     needs: [release, compliance]
     name: ${{ matrix.name }}
     strategy:
@@ -195,10 +209,19 @@ jobs:
 
   finalize:
     needs: [artifacts, source]
+    if: >-
+      (github.event_name == 'push'
+        && needs.artifacts.result == 'success'
+        && needs.source.result == 'success')
+      || (github.event_name == 'workflow_dispatch'
+        && needs.artifacts.result == 'skipped'
+        && needs.source.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -209,7 +232,7 @@ jobs:
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         env:
           SYFT_SOURCE_NAME: datalith
-          SYFT_SOURCE_VERSION: ${{ github.ref_name }}
+          SYFT_SOURCE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         with:
           path: .
           format: spdx-json
@@ -220,12 +243,12 @@ jobs:
 
       - name: Rename SBOM with version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           mv datalith.sbom.spdx.json "datalith-${VERSION}.spdx.json"
 
       - name: Validate SBOM
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           python3 scripts/licenses/verify_sbom.py "datalith-${VERSION}.spdx.json" "${VERSION}"
 
       - name: Download release assets
@@ -233,26 +256,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p release-artifacts
-          gh release download "$GITHUB_REF_NAME" --dir release-artifacts --clobber
+          gh release download "$RELEASE_TAG" --dir release-artifacts --clobber
 
       - name: Stage legal documents and SBOM
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           cp LICENSE release-artifacts/LICENSE
           cp LICENSE-GPL-3.0 release-artifacts/LICENSE-GPL-3.0
           cp LICENSING.md release-artifacts/LICENSING.md
           cp THIRD-PARTY-NOTICES.md release-artifacts/THIRD-PARTY-NOTICES.md
           cp "datalith-${VERSION}.spdx.json" release-artifacts/
 
-      - name: Generate SHA256SUMS
-        run: scripts/licenses/checksums.sh release-artifacts
-
-      - name: Upload SBOM, checksums and legal documents
+      - name: Upload SBOM and legal documents
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           draft: true
           files: |
-            release-artifacts/SHA256SUMS
             datalith-*.spdx.json
             LICENSE
             LICENSE-GPL-3.0
@@ -262,7 +281,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+        run: gh release edit "$RELEASE_TAG" --draft=false
 
       - name: Create website deployment token
         id: website-token
@@ -277,7 +296,7 @@ jobs:
       - name: Trigger website deployment
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         with:
           github-token: ${{ steps.website-token.outputs.token }}
           script: |
