@@ -91,7 +91,7 @@ mod tests {
         let expected = if cfg!(target_os = "macos") {
             "⌘⇧F"
         } else {
-            "ctrl-shift-f"
+            "ctrl-shift-F"
         };
 
         assert_eq!(display_binding("secondary-shift-f"), expected);
