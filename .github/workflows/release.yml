@@ -82,20 +82,41 @@ jobs:
             target: aarch64-apple-darwin
             format: dmg
             artifact: target/aarch64-apple-darwin/release/*.dmg
+          - name: macOS Intel DMG
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            format: dmg
+            artifact: target/x86_64-apple-darwin/release/*.dmg
           - name: Linux x86_64 packages
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             format: appimage
+            package-arch: x86_64
             artifact: |
               target/x86_64-unknown-linux-gnu/release/*.AppImage
               target/x86_64-unknown-linux-gnu/release/*.deb
               target/x86_64-unknown-linux-gnu/release/*.rpm
               target/x86_64-unknown-linux-gnu/release/*.pkg.tar.zst
+          - name: Linux aarch64 packages
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            format: appimage
+            package-arch: aarch64
+            artifact: |
+              target/aarch64-unknown-linux-gnu/release/*.AppImage
+              target/aarch64-unknown-linux-gnu/release/*.deb
+              target/aarch64-unknown-linux-gnu/release/*.rpm
+              target/aarch64-unknown-linux-gnu/release/*.pkg.tar.zst
           - name: Windows x86_64 installer
             os: windows-2025
             target: x86_64-pc-windows-msvc
             format: nsis
             artifact: target/x86_64-pc-windows-msvc/release/*setup.exe
+          - name: Windows ARM64 installer
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            format: nsis
+            artifact: target/aarch64-pc-windows-msvc/release/*setup.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -125,14 +146,19 @@ jobs:
         env:
           NFPM_VERSION: 2.47.0
         run: |
+          case "$(uname -m)" in
+            x86_64) NFPM_ARCH=x86_64 ;;
+            aarch64) NFPM_ARCH=arm64 ;;
+            *) echo "unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
           curl -fsSL \
-            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
-            -o "nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz" \
+            -o "nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz"
           curl -fsSL \
             "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/checksums.txt" \
             -o checksums.txt
           sha256sum --ignore-missing -c checksums.txt
-          tar xzf "nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" nfpm
+          tar xzf "nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz" nfpm
           sudo install -m 0755 nfpm /usr/local/bin/nfpm
           nfpm --version
 
@@ -149,8 +175,8 @@ jobs:
       - name: Package native Linux formats
         if: runner.os == 'Linux'
         env:
-          PACKAGE_ARCH: x86_64
-          PACKAGE_TARGET: x86_64-unknown-linux-gnu
+          PACKAGE_ARCH: ${{ matrix.package-arch }}
+          PACKAGE_TARGET: ${{ matrix.target }}
         run: |
           export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
           for packager in deb rpm archlinux; do
