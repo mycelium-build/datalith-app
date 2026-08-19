@@ -33,7 +33,19 @@ fn vault_root(name: &str) -> PathBuf {
 }
 
 fn reset_catalog_state(root: &Path) {
-    let _ = fs::remove_dir_all(root.join(".datalith"));
+    let path = root.join(".datalith");
+    remove_benchmark_dir(&path);
+}
+
+fn remove_benchmark_dir(path: &Path) {
+    if let Err(error) = fs::remove_dir_all(path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        eprintln!(
+            "Failed to remove benchmark directory {}: {error}",
+            path.display()
+        );
+    }
 }
 
 fn open_catalog(root: PathBuf) -> VaultCatalog {
@@ -55,7 +67,7 @@ fn bench_cold_start(c: &mut Criterion) {
             references: n / 10,
             seed: 42,
         };
-        let _ = fs::remove_dir_all(&root);
+        remove_benchmark_dir(&root);
         generate_vault(&root, &config);
 
         group.bench_function(format!("{n}_files"), |b| {
@@ -86,7 +98,7 @@ fn bench_warm_start(c: &mut Criterion) {
             references: n / 10,
             seed: 42,
         };
-        let _ = fs::remove_dir_all(&root);
+        remove_benchmark_dir(&root);
         generate_vault(&root, &config);
 
         {
