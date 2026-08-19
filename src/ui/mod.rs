@@ -299,7 +299,7 @@ impl DatalithView {
             cx.background_spawn(async move { VaultCatalog::open(catalog_root, file_types) });
         self.catalog_load_task = cx.spawn(async move |this, cx| {
             let result = catalog_task.await;
-            let _ = this.update(cx, |view, cx| {
+            if let Err(error) = this.update(cx, |view, cx| {
                 if !is_current_vault_load(
                     view.vault_load_generation,
                     view.root_path.as_deref(),
@@ -327,7 +327,9 @@ impl DatalithView {
                     }
                 }
                 cx.notify();
-            });
+            }) {
+                eprintln!("Failed to publish Vault load result to the UI: {error}");
+            }
         });
 
         cx.notify();

@@ -4,9 +4,10 @@ use gpui::{
     Point, ScrollDelta, ScrollWheelEvent, Styled, Task, WeakEntity, Window, div, point, px,
 };
 use gpui_component::input::InputState;
-use gpui_component::{ActiveTheme, ElementExt};
+use gpui_component::{ActiveTheme, ElementExt, WindowExt};
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
+use crate::ui::notifications;
 use crate::vault::VaultCatalog;
 
 use super::camera::Camera;
@@ -15,6 +16,13 @@ use super::physics::Simulation;
 use super::snapshot::{ViewerStatus, load_snapshot};
 
 use super::paint::HOVER_DIM_OPACITY;
+
+fn update_canvas_bounds(entity: &WeakEntity<GraphViewState>, bounds: Bounds<Pixels>, cx: &mut App) {
+    if let Err(error) = entity.update(cx, |state, cx| state.set_canvas_bounds(bounds, cx)) {
+        // Not notification because can be spam
+        eprintln!("Failed to update Graph View bounds: {error}");
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 struct PointerInteraction {
@@ -95,7 +103,7 @@ impl GraphViewState {
             let result = cx
                 .background_spawn(async move { load_snapshot(definition, catalog).await })
                 .await;
-            let _ = this.update(cx, |state, cx| {
+            if let Err(error) = this.update(cx, |state, cx| {
                 if state.generation != generation {
                     return;
                 }
@@ -107,7 +115,10 @@ impl GraphViewState {
                 state.simulation = Simulation::default();
                 state.camera_fitted = false;
                 cx.notify();
-            });
+            }) {
+                // Maybe new rebuild was already made
+                eprintln!("Failed to publish Graph View update to the UI: {error}");
+            }
         });
         cx.notify();
     }
