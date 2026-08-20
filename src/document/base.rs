@@ -33,6 +33,10 @@ pub struct BaseView {
     pub(crate) indent_properties: bool,
     pub(crate) separators: String,
     pub(crate) row_height: TableRowHeight,
+    pub(crate) image: Option<DisplayProperty>,
+    pub(crate) image_fit: CardImageFit,
+    pub(crate) image_aspect_ratio: f32,
+    pub(crate) card_size: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,6 +57,15 @@ pub struct SortRule {
 pub enum ViewType {
     List,
     Table,
+    Cards,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CardImageFit {
+    #[default]
+    Cover,
+    Contain,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -131,6 +144,13 @@ struct RawBaseView {
     separators: Option<String>,
     #[serde(rename = "rowHeight")]
     row_height: Option<TableRowHeight>,
+    image: Option<String>,
+    #[serde(rename = "imageFit")]
+    image_fit: Option<CardImageFit>,
+    #[serde(rename = "imageAspectRatio")]
+    image_aspect_ratio: Option<f32>,
+    #[serde(rename = "cardSize")]
+    card_size: Option<f32>,
     #[serde(rename = "groupBy")]
     group_by: Option<Value>,
     summaries: Option<Value>,
@@ -149,6 +169,10 @@ impl Default for RawBaseView {
             indent_properties: None,
             separators: None,
             row_height: None,
+            image: None,
+            image_fit: None,
+            image_aspect_ratio: None,
+            card_size: None,
             group_by: None,
             summaries: None,
         }
@@ -261,6 +285,16 @@ impl BaseDefinition {
                     bail!("view {name:?}.separators must not be empty");
                 }
                 let row_height = view.row_height.unwrap_or_default();
+                let image = view.image.as_deref().map(display_property).transpose()?;
+                let image_fit = view.image_fit.unwrap_or_default();
+                let image_aspect_ratio = view.image_aspect_ratio.unwrap_or(1.0);
+                if !image_aspect_ratio.is_finite() || image_aspect_ratio <= 0.0 {
+                    bail!("view {name:?}.imageAspectRatio must be greater than 0");
+                }
+                let card_size = view.card_size.unwrap_or(200.0);
+                if !card_size.is_finite() || card_size <= 0.0 {
+                    bail!("view {name:?}.cardSize must be greater than 0");
+                }
                 if view_type == ViewType::Table
                     && (view.markers.is_some()
                         || view.indent_properties.is_some()
@@ -270,6 +304,22 @@ impl BaseDefinition {
                 }
                 if view_type == ViewType::List && view.row_height.is_some() {
                     bail!("rowHeight is only supported by table views");
+                }
+                if view_type != ViewType::Cards
+                    && (view.image.is_some()
+                        || view.image_fit.is_some()
+                        || view.image_aspect_ratio.is_some()
+                        || view.card_size.is_some())
+                {
+                    bail!("card settings are only supported by card views");
+                }
+                if view_type == ViewType::Cards
+                    && (view.markers.is_some()
+                        || view.indent_properties.is_some()
+                        || has_separators
+                        || view.row_height.is_some())
+                {
+                    bail!("list and table settings are not supported by card views");
                 }
                 Ok(BaseView {
                     view_type,
@@ -282,6 +332,10 @@ impl BaseDefinition {
                     indent_properties,
                     separators,
                     row_height,
+                    image,
+                    image_fit,
+                    image_aspect_ratio,
+                    card_size,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -401,11 +455,38 @@ views:
         for source in [
             "filters: []",
             "views: []",
-            "views:\n  - type: cards\n    name: Cards",
             "views:\n  - type: list\n    name: List\n    limit: 0",
             "views:\n  - type: table\n    name: Table\n    markers: bullets",
         ] {
             assert!(BaseDefinition::parse(source).is_err(), "{source}");
         }
+    }
+
+    #[test]
+    fn parses_card_view_settings_and_rejects_them_on_other_views() {
+        let definition = BaseDefinition::parse(
+            r#"
+views:
+  - type: cards
+    name: Gallery
+    order: [file.name, cover, description]
+    image: cover
+    imageFit: contain
+    imageAspectRatio: 1.5
+    cardSize: 240
+"#,
+        )
+        .unwrap();
+
+        let view = &definition.views[0];
+        assert_eq!(view.view_type, ViewType::Cards);
+        assert_eq!(view.image.as_ref().unwrap().source, "cover");
+        assert_eq!(view.image_fit, CardImageFit::Contain);
+        assert_eq!(view.image_aspect_ratio, 1.5);
+        assert_eq!(view.card_size, 240.0);
+        assert!(
+            BaseDefinition::parse("views:\n  - type: table\n    name: Table\n    cardSize: 240")
+                .is_err()
+        );
     }
 }
