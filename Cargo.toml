@@ -37,11 +37,12 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
   "wayland",
   "x11",
 ] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "46576ae7aa63ab9db9923e5d8c32228ed330a259", features = [
+reqwest_client = { git = "https://github.com/zed-industries/zed" }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf", features = [
   "tree-sitter-markdown",
   "tree-sitter-yaml",
 ] }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "46576ae7aa63ab9db9923e5d8c32228ed330a259" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf" }
 anyhow = "1.0"
 dirs = "6"
 serde = { version = "1.0.228", features = ["derive"] }
