@@ -44,6 +44,24 @@ impl FilterCompiler {
                       WHERE {value_clause}))"
                 )
             }
+            CatalogFilter::HasTag(tag) => self.compile(&CatalogFilter::Or(vec![
+                CatalogFilter::Compare {
+                    property: CatalogProperty::Metadata(vec!["tags".into()]),
+                    comparison: CatalogComparison::Equal,
+                    value: CatalogScalar::String(tag.clone()),
+                },
+                CatalogFilter::Contains {
+                    property: CatalogProperty::Metadata(vec!["tags".into()]),
+                    value: CatalogScalar::String(tag.clone()),
+                },
+            ])),
+            CatalogFilter::HasLink(link) => {
+                self.parameters.push(Value::Text(link.clone()));
+                self.parameters.push(Value::Text(link.clone()));
+                "EXISTS (SELECT 1 FROM wiki_links WHERE source_path = documents.path \
+                 AND target_path IS NOT NULL AND (target = ? OR target_path = ?))"
+                    .into()
+            }
             CatalogFilter::Compare {
                 property,
                 comparison,
@@ -76,6 +94,8 @@ impl FilterCompiler {
                     CatalogFileField::Extension => "extension",
                     CatalogFileField::Path => "path",
                     CatalogFileField::Folder => "folder",
+                    CatalogFileField::Size => "size_bytes",
+                    CatalogFileField::Modified => "modified_ns",
                 };
                 self.file_compare(column, comparison, value)
             }
@@ -131,14 +151,18 @@ impl FilterCompiler {
         comparison: CatalogComparison,
         value: &CatalogScalar,
     ) -> String {
-        let CatalogScalar::String(value) = value else {
-            return match (comparison, value) {
-                (CatalogComparison::NotEqual, CatalogScalar::Null) => "1".into(),
-                _ => "0".into(),
-            };
-        };
-        self.parameters.push(Value::Text(value.clone()));
-        format!("{column} {} ?", comparison_sql(comparison))
+        match value {
+            CatalogScalar::String(value) => {
+                self.parameters.push(Value::Text(value.clone()));
+                format!("{column} {} ?", comparison_sql(comparison))
+            }
+            CatalogScalar::Number(value) => {
+                self.parameters.push(Value::Real(*value));
+                format!("{column} {} ?", comparison_sql(comparison))
+            }
+            CatalogScalar::Null if matches!(comparison, CatalogComparison::NotEqual) => "1".into(),
+            _ => "0".into(),
+        }
     }
 
     fn scalar_parameter(&mut self, scalar: &CatalogScalar) -> &'static str {
