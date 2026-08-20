@@ -1,11 +1,12 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use gpui::Point;
 
 use crate::document::graph::{
     DirectionalEdgeHoverStyle, GraphDefinition, GraphEdge, GraphNode, deduplicate_edges,
-    matching_group, select_nodes,
+    matching_group_with_links, select_nodes,
 };
 use crate::vault::{CatalogQuery, VaultCatalog};
 
@@ -34,7 +35,8 @@ fn view_node(
     let style = if orphan {
         definition.display.orphan.node.clone()
     } else {
-        let group = matching_group(definition, &node.path, &node.properties);
+        let group =
+            matching_group_with_links(definition, &node.path, &node.properties, &node.links);
         resolve_group_node_style(&definition.display.node, group.map(|group| &group.node))
     };
     let degree_scale = if style.propertional {
@@ -163,14 +165,18 @@ pub(super) async fn load_snapshot(
 ) -> Result<GraphSnapshot> {
     let root = catalog.root();
     let selection = catalog
-        .query_documents_with_links(CatalogQuery {
+        .query_documents_with_outgoing_links(CatalogQuery {
             extension: Some("md".into()),
             filter: definition.catalog_filter(),
             limit: None,
         })
         .await?;
-    let candidates = selection.documents.into_iter().filter_map(|document| {
-        let path = document.path.strip_prefix(&root).ok()?.to_path_buf();
+    let mut candidates = Vec::new();
+    let mut edges = Vec::new();
+    for document in selection.documents {
+        let Some(path) = document.path.strip_prefix(&root).ok().map(PathBuf::from) else {
+            continue;
+        };
         let properties = document.metadata.map_or_else(
             || yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
             |metadata| {
@@ -178,15 +184,28 @@ pub(super) async fn load_snapshot(
                     .unwrap_or_else(|_| yaml_serde::Value::Mapping(yaml_serde::Mapping::default()))
             },
         );
-        Some(GraphNode { path, properties })
-    });
-    let edges = selection.links.into_iter().filter_map(|edge| {
-        Some(GraphEdge {
-            source: edge.source.strip_prefix(&root).ok()?.to_path_buf(),
-            target: edge.target.strip_prefix(&root).ok()?.to_path_buf(),
-        })
-    });
+        let links = document
+            .links
+            .iter()
+            .filter_map(|link| link.strip_prefix(&root).ok().map(path_text))
+            .collect::<Vec<_>>();
+        for target in &links {
+            edges.push(GraphEdge {
+                source: path.clone(),
+                target: target.into(),
+            });
+        }
+        candidates.push(GraphNode {
+            path,
+            properties,
+            links,
+        });
+    }
     Ok(make_snapshot(&definition, candidates, edges))
+}
+
+fn path_text(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -208,6 +227,7 @@ mod tests {
         let nodes = node_paths.iter().map(|path| GraphNode {
             path: PathBuf::from(path),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         });
         let edges = edges.iter().map(|(source, target)| GraphEdge {
             source: PathBuf::from(*source),
@@ -225,6 +245,7 @@ mod tests {
         let nodes = ["a.md", "b.md", "c.md"].into_iter().map(|path| GraphNode {
             path: PathBuf::from(path),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         });
         let snapshot = make_snapshot(&definition, nodes, []);
         assert_eq!(snapshot.nodes.len(), 3);
@@ -241,6 +262,7 @@ mod tests {
             .map(|path| GraphNode {
                 path: PathBuf::from(path),
                 properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+                links: Vec::new(),
             });
         let snapshot = make_snapshot(&definition, nodes, []);
         assert_eq!(snapshot.nodes.len(), 2);
@@ -257,6 +279,7 @@ mod tests {
         let nodes = (0..HARD_NODE_LIMIT.saturating_add(1)).map(|index| GraphNode {
             path: PathBuf::from(format!("node-{index}.md")),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         });
         let snapshot = make_snapshot(&definition, nodes, []);
         assert_eq!(snapshot.nodes.len(), HARD_NODE_LIMIT);
@@ -317,6 +340,7 @@ mod tests {
             .map(|path| GraphNode {
                 path: path.into(),
                 properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+                links: Vec::new(),
             });
         let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(0.0, 0.0);
@@ -389,6 +413,7 @@ display:
         .map(|(path, properties)| GraphNode {
             path: PathBuf::from(path),
             properties: yaml_serde::from_str(properties).unwrap(),
+            links: Vec::new(),
         });
         let edges = [GraphEdge {
             source: PathBuf::from("two.md"),
@@ -439,6 +464,7 @@ display:
             .map(|path| GraphNode {
                 path: PathBuf::from(path),
                 properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+                links: Vec::new(),
             });
         let edges = [
             GraphEdge {
@@ -500,6 +526,7 @@ display:
             .map(|path| GraphNode {
                 path: path.into(),
                 properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+                links: Vec::new(),
             });
         let edges = [GraphEdge {
             source: "linked-a.md".into(),

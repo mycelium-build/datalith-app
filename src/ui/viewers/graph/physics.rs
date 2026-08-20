@@ -379,6 +379,7 @@ mod tests {
         let nodes = ["one.md", "two.md"].into_iter().map(|path| GraphNode {
             path: PathBuf::from(path),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         });
         let edges = [GraphEdge {
             source: PathBuf::from("one.md"),
@@ -413,6 +414,7 @@ mod tests {
         let nodes = (0..node_count).map(|index| GraphNode {
             path: format!("node-{index}.md").into(),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         });
         let edges = (1..node_count).map(|index| GraphEdge {
             source: format!("node-{index}.md").into(),
@@ -451,6 +453,7 @@ mod tests {
         let nodes = [GraphNode {
             path: "still.md".into(),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         }];
         let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);
@@ -469,6 +472,7 @@ mod tests {
         let nodes = [GraphNode {
             path: "moving.md".into(),
             properties: yaml_serde::Value::Mapping(yaml_serde::Mapping::default()),
+            links: Vec::new(),
         }];
         let mut snapshot = make_snapshot(&definition, nodes, []);
         snapshot.nodes[0].position = gpui::point(120.0, 0.0);
