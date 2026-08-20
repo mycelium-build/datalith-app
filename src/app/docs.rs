@@ -39,6 +39,10 @@ const SHIPPED_DOCS: &[(&str, &str)] = &[
         include_str!("../../docs/vault/formats/Graph.md"),
     ),
     (
+        "formats/Bases.md",
+        include_str!("../../docs/vault/formats/Bases.md"),
+    ),
+    (
         "formats/Markdown.md",
         include_str!("../../docs/vault/formats/Markdown.md"),
     ),
@@ -101,7 +105,7 @@ mod tests {
                 .and_then(|ext| ext.to_str())
                 .unwrap_or("");
             assert!(
-                ["md", "graph", "todotxt"].contains(&extension),
+                ["md", "graph", "base", "todotxt"].contains(&extension),
                 "unregistered extension for seeded doc: {relative}"
             );
         }

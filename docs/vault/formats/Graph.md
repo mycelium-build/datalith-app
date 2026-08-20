@@ -78,9 +78,9 @@ physics:
 
 Omitting `filters`, using `filters: []`, or using an empty `and` selects every Markdown file. An empty `or` selects none. Filters may recursively contain `and`, `or`, and a single `not` condition.
 
-Expressions support `==`, `!=`, `>`, `>=`, `<`, and `<=`. Values may be strings, numbers, booleans, or `null`. Lists support `.contains(...)`, and `file.inFolder(...)` includes descendant folders.
+Expressions support `==`, `!=`, `>`, `>=`, `<`, and `<=`. Values may be strings, numbers, booleans, or `null`. Lists support `.contains(...)`, `file.inFolder(...)` includes descendant folders, and `file.hasTag(...)` and `file.hasLink(...)` query catalog-backed frontmatter tags and resolved links.
 
-Properties use a shorthand such as `status`, an explicit path such as `note.project.status`, or bracket access such as `note["project status"]`. File properties are `file.name`, `file.ext`, `file.path`, and `file.folder`.
+Properties use a shorthand such as `status`, an explicit path such as `note.project.status`, or bracket access such as `note["project status"]`. File properties are `file.name`, `file.ext`, `file.path`, `file.folder`, `file.size`, and `file.mtime`.
 
 String comparisons are case-sensitive. Missing properties compare equal to `null`, unequal to non-null values, and false for ordering and containment operations.
 
