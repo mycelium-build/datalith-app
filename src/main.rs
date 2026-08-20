@@ -23,6 +23,7 @@ mod vault;
 
 fn main() {
     gpui_platform::application()
+        .with_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()))
         .with_assets(app::assets::DatalithAssets)
         .run(|cx| {
             gpui_component::init(cx);
