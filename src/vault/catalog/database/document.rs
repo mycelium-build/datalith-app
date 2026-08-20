@@ -239,7 +239,7 @@ impl CatalogDatabase {
         self.query_documents_on(&connection, query).await
     }
 
-    pub(crate) async fn query_documents_with_links(
+    pub(crate) async fn query_documents_with_outgoing_links(
         &self,
         query: CatalogQuery,
     ) -> Result<(DocumentSelection, Vec<StoredLink>)> {
@@ -259,40 +259,23 @@ impl CatalogDatabase {
                         .replace('\\', "/")
                 })
                 .collect();
-
             if selected_paths.is_empty() {
                 return Ok::<_, anyhow::Error>((selection, Vec::new()));
             }
-
-            // Optimization: push document filter into SQL instead of fetching all links
-            let placeholders: String = selected_paths
+            let placeholders = selected_paths
                 .iter()
                 .map(|_| "?")
                 .collect::<Vec<_>>()
                 .join(",");
-            #[allow(clippy::arithmetic_side_effects)]
-            // bounded by selected_paths.len(), far below usize::MAX
-            let target_placeholders: String = selected_paths
-                .iter()
-                .enumerate()
-                .map(|(i, _)| format!("?{}", selected_paths.len() + i + 1))
-                .collect::<Vec<_>>()
-                .join(",");
             let sql = format!(
-                "SELECT DISTINCT source_path, target_path \
-                 FROM wiki_links \
-                 WHERE target_path IS NOT NULL \
-                   AND source_path IN ({placeholders}) \
-                   AND target_path IN ({target_placeholders}) \
+                "SELECT source_path, target_path FROM wiki_links \
+                 WHERE target_path IS NOT NULL AND source_path IN ({placeholders}) \
                  ORDER BY source_path, target_path"
             );
-            let mut params: Vec<Value> = Vec::with_capacity(selected_paths.len().saturating_mul(2));
-            for path in &selected_paths {
-                params.push(Value::Text(path.clone()));
-            }
-            for path in &selected_paths {
-                params.push(Value::Text(path.clone()));
-            }
+            let params = selected_paths
+                .into_iter()
+                .map(Value::Text)
+                .collect::<Vec<_>>();
             let mut rows = connection
                 .query(sql, turso::params_from_iter(params))
                 .await?;
@@ -333,14 +316,18 @@ impl CatalogDatabase {
         let (sql, limit_param) = query.limit.map_or_else(
             || {
                 (
-                    format!("SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path"),
+                    format!(
+                        "SELECT path, json(metadata), size_bytes, modified_ns \
+                         FROM documents{where_clause} ORDER BY path"
+                    ),
                     None,
                 )
             },
             |limit| {
                 (
                     format!(
-                        "SELECT path, json(metadata) FROM documents{where_clause} ORDER BY path LIMIT ?"
+                        "SELECT path, json(metadata), size_bytes, modified_ns \
+                         FROM documents{where_clause} ORDER BY path LIMIT ?"
                     ),
                     Some(Value::Integer(
                         i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX),
@@ -364,6 +351,9 @@ impl CatalogDatabase {
             documents.push(CatalogDocument {
                 path: self.root.join(row.get::<String>(0)?),
                 metadata,
+                size_bytes: row.get(2)?,
+                modified_ns: row.get(3)?,
+                links: Vec::new(),
             });
         }
         if let Some(limit) = query.limit {
