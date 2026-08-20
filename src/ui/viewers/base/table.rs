@@ -2,6 +2,7 @@ use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
 use gpui_component::{ActiveTheme, h_flex, v_flex, v_virtual_list};
+use gpui_component::{scroll::Scrollbar, scroll::ScrollbarShow};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
@@ -39,7 +40,7 @@ impl BaseViewState {
                     .text_color(cx.theme().muted_foreground)
                     .child(definition.display_name(property).to_string())
             }));
-        let body = v_virtual_list(
+        let list = v_virtual_list(
             entity,
             "base-table",
             item_sizes.into(),
@@ -62,8 +63,12 @@ impl BaseViewState {
             },
         )
         .track_scroll(&self.scroll_handle)
-        .flex_1()
-        .min_h_0();
+        .size_full();
+        let body = div().relative().flex_1().min_h_0().child(list).child(
+            div().absolute().inset_0().child(
+                Scrollbar::vertical(&self.scroll_handle).scrollbar_show(ScrollbarShow::Always),
+            ),
+        );
         v_flex()
             .size_full()
             .flex_1()

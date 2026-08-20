@@ -2,6 +2,7 @@ use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
 use gpui_component::{h_flex, v_virtual_list};
+use gpui_component::{scroll::Scrollbar, scroll::ScrollbarShow};
 
 use crate::document::base::{BaseView, ListMarkers};
 
@@ -19,7 +20,7 @@ impl BaseViewState {
         let entity = cx.entity();
         let item_sizes = self.item_sizes.clone();
         let handler = self.handler.clone();
-        v_virtual_list(
+        let list = v_virtual_list(
             entity,
             "base-list",
             item_sizes.into(),
@@ -42,9 +43,16 @@ impl BaseViewState {
             },
         )
         .track_scroll(&self.scroll_handle)
-        .flex_1()
-        .min_h_0()
-        .into_any_element()
+        .size_full();
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(list)
+            .child(div().absolute().inset_0().child(
+                Scrollbar::vertical(&self.scroll_handle).scrollbar_show(ScrollbarShow::Always),
+            ))
+            .into_any_element()
     }
 }
 
