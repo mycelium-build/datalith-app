@@ -6,7 +6,7 @@ use gpui::Point;
 
 use crate::document::graph::{
     DirectionalEdgeHoverStyle, GraphDefinition, GraphEdge, GraphNode, deduplicate_edges,
-    matching_group_with_links, select_nodes,
+    matching_group, select_nodes,
 };
 use crate::vault::{CatalogQuery, VaultCatalog};
 
@@ -35,8 +35,7 @@ fn view_node(
     let style = if orphan {
         definition.display.orphan.node.clone()
     } else {
-        let group =
-            matching_group_with_links(definition, &node.path, &node.properties, &node.links);
+        let group = matching_group(definition, &node.path, &node.properties, &node.links);
         resolve_group_node_style(&definition.display.node, group.map(|group| &group.node))
     };
     let degree_scale = if style.propertional {
