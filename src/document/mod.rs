@@ -1,4 +1,6 @@
+pub mod base;
 pub mod file_types;
+pub mod filter;
 pub mod graph;
 pub mod handler;
 pub mod markdown;
