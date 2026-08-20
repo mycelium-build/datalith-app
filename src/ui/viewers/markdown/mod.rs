@@ -6,13 +6,13 @@ use std::path::PathBuf;
 
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, Entity, FocusHandle, Focusable, FontStyle, FontWeight,
-    HighlightStyle, InteractiveElement, IntoElement, ParentElement, SharedString,
+    HighlightStyle, InteractiveElement, IntoElement, ParentElement, SharedString, SharedUri,
     StatefulInteractiveElement, Styled, StyledText, div, img, px, relative,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::ChildElement;
 use gpui_component::checkbox::Checkbox;
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow};
 use percent_encoding::percent_decode_str;
@@ -31,7 +31,7 @@ use constants::{
 use frontmatter::render_frontmatter;
 
 pub struct MarkdownViewer {
-    input: Entity<InputState>,
+    input: Entity<EditorState>,
     file_path: PathBuf,
 }
 
@@ -49,7 +49,7 @@ struct BlockContext<'a> {
 }
 
 impl MarkdownViewer {
-    pub const fn new(input: Entity<InputState>, file_path: PathBuf) -> Self {
+    pub const fn new(input: Entity<EditorState>, file_path: PathBuf) -> Self {
         Self { input, file_path }
     }
 
@@ -63,17 +63,20 @@ impl MarkdownViewer {
         } else {
             div().w_full().my_2()
         };
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            let decoded = percent_decode_str(url).decode_utf8_lossy().to_string();
-            let path = self
-                .file_path
-                .parent()
-                .map_or_else(|| PathBuf::from(&decoded), |parent| parent.join(&decoded));
-            if path.exists() {
-                return container
-                    .child(img(path).max_w(relative(1.)))
-                    .into_any_element();
-            }
+        if url.starts_with("http://") || url.starts_with("https://") {
+            return container
+                .child(img(SharedUri::from(url.to_string())).max_w(relative(1.)))
+                .into_any_element();
+        }
+        let decoded = percent_decode_str(url).decode_utf8_lossy().to_string();
+        let path = self
+            .file_path
+            .parent()
+            .map_or_else(|| PathBuf::from(&decoded), |parent| parent.join(&decoded));
+        if path.exists() {
+            return container
+                .child(img(path).max_w(relative(1.)))
+                .into_any_element();
         }
 
         container
