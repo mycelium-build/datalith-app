@@ -7,12 +7,14 @@ use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
 use super::handler::{FileHandler, ReloadAdapter, ViewMode};
 use crate::ui::editors::EditorKind;
+use crate::ui::editors::base::BaseEditor;
 use crate::ui::editors::graph::GraphEditor;
 use crate::ui::editors::markdown::MarkdownEditor;
 use crate::ui::editors::plain_text::{PlainTextEditor, reload_text};
 use crate::ui::editors::todo_txt::{TodoTxtEditor, reload_todo_txt};
 use crate::ui::icons::DatalithIcon;
 use crate::ui::viewers::ViewerKind;
+use crate::ui::viewers::base::BaseViewer;
 use crate::ui::viewers::graph::GraphViewer;
 use crate::ui::viewers::image::ImageViewer;
 use crate::ui::viewers::markdown::MarkdownViewer;
@@ -119,6 +121,7 @@ impl FileRegistry {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn default_registry() -> FileRegistry {
     let mut registry = FileRegistry::new();
 
@@ -138,6 +141,32 @@ pub fn default_registry() -> FileRegistry {
             viewer_factory: Some(|_path, editor, dependencies, cx| {
                 let input = editor?.input()?.clone();
                 Some(ViewerKind::Graph(GraphViewer::new(
+                    input,
+                    dependencies.vault_catalog.clone(),
+                    cx,
+                )))
+            }),
+            reload_adapter: Some(reload_text),
+            default_mode: ViewMode::View,
+        },
+    );
+
+    // Base Definition: YAML editor + derived list/table View
+    registry.register(
+        "base",
+        FileTypeConfig {
+            capabilities: FileTypeCapabilities {
+                text_search: false,
+                wiki_links: false,
+                yaml_frontmatter: false,
+            },
+            icon: DatalithIcon::File,
+            editor_factory: Some(|path, window, cx| {
+                EditorKind::Base(BaseEditor::new(BaseEditor::new_state(path, window, cx)))
+            }),
+            viewer_factory: Some(|_path, editor, dependencies, cx| {
+                let input = editor?.input()?.clone();
+                Some(ViewerKind::Base(BaseViewer::new(
                     input,
                     dependencies.vault_catalog.clone(),
                     cx,
