@@ -2,7 +2,7 @@
 category: format
 ---
 
-A `.base` file is a YAML **Base Definition**. Opening it shows a read-only **List View** or **Table View**; use the Edit/View toggle to edit its YAML source.
+A `.base` file is a YAML **Base Definition**. Opening it shows a read-only **List View**, **Table View**, or **Cards View**; use the Edit/View toggle to edit its YAML source.
 
 ```yaml
 filters:
@@ -36,13 +36,23 @@ views:
     markers: bullets
     indentProperties: true
     separators: ", "
+  - type: cards
+    name: Gallery
+    image: cover
+    imageFit: cover
+    imageAspectRatio: 1.5
+    cardSize: 220
+    order:
+      - file.name
+      - cover
+      - author
 ```
 
 # Views
 
 Every Base must declare one or more named views. The first view is selected by default. Use the view switcher to change views without editing the file.
 
-The supported view types are `list` and `table`. View names must be non-empty and unique.
+The supported view types are `list`, `table`, and `cards`. View names must be non-empty and unique.
 
 Global `filters` and view `filters` are combined with `AND`.
 
@@ -118,7 +128,18 @@ List views support:
 
 Table views support `rowHeight` values of `short`, `medium`, `tall`, and `extra tall`.
 
-Both views are read-only. Link cells navigate to files; edit note properties in the Markdown editor.
+# Cards Settings
+
+Cards views support a responsive virtualized grid with these settings:
+
+- `image`: note or file property used for the card image. Local wikilinks, local paths, and HTTP(S) URLs are supported.
+- `imageFit`: `cover` or `contain`. The default is `cover`.
+- `imageAspectRatio`: positive numeric image aspect ratio. The default is `1`.
+- `cardSize`: target card width in pixels. The default is `200`.
+
+The configured `order` properties are shown below the image. `file.name` is an interactive link to the file. Press and hold a card image to show it fullscreen; releasing the mouse returns to the cards view.
+
+All views are read-only. Link cells navigate to files; edit note properties in the Markdown editor.
 
 # Deferred Syntax
 
@@ -128,6 +149,6 @@ The following Bases features are not implemented yet and cause a validation erro
 - Date arithmetic, durations, and the complete function library.
 - `groupBy` and summaries.
 - Embedded Base blocks.
-- Cards, maps, plugin-provided layouts, and other view types.
+- Maps, plugin-provided layouts, and other view types.
 - View-local search, inline property editing, copy/export actions, and creating
   files from a view.
