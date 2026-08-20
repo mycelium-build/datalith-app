@@ -2,7 +2,7 @@ use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
 use gpui_component::{ActiveTheme, h_flex, v_flex, v_virtual_list};
-use gpui_component::{scroll::Scrollbar, scroll::ScrollbarShow};
+use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
@@ -65,9 +65,10 @@ impl BaseViewState {
         .track_scroll(&self.scroll_handle)
         .size_full();
         let body = div().relative().flex_1().min_h_0().child(list).child(
-            div().absolute().inset_0().child(
-                Scrollbar::vertical(&self.scroll_handle).scrollbar_show(ScrollbarShow::Always),
-            ),
+            div()
+                .absolute()
+                .inset_0()
+                .child(Scrollbar::vertical(&self.scroll_handle).mode(ScrollbarMode::Always)),
         );
         v_flex()
             .size_full()
