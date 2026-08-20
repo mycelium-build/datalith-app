@@ -1,8 +1,9 @@
 use gpui::{
     AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, Size, Styled, Window, div, img, prelude::StyledImage, px, size,
+    ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img, prelude::StyledImage, px,
+    size,
 };
-use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarShow};
+use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
 use gpui_component::{ActiveTheme, ElementExt, h_flex, v_flex, v_virtual_list};
 
 use crate::document::base::{BaseView, CardImageFit};
@@ -87,9 +88,12 @@ impl BaseViewState {
                 });
             })
             .child(list)
-            .child(div().absolute().inset_0().child(
-                Scrollbar::vertical(&self.scroll_handle).scrollbar_show(ScrollbarShow::Always),
-            ))
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(Scrollbar::vertical(&self.scroll_handle).mode(ScrollbarMode::Always)),
+            )
             .into_any_element()
     }
 }
@@ -305,7 +309,7 @@ fn render_card_image(
             .size_full()
             .object_fit(object_fit)
             .into_any_element(),
-        CardImage::External(url) => img(url)
+        CardImage::External(url) => img(SharedUri::from(url))
             .size_full()
             .object_fit(object_fit)
             .into_any_element(),

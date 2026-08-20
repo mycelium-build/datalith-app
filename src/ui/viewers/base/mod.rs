@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, FocusHandle,
     InteractiveElement, IntoElement, MouseButton, MouseUpEvent, ObjectFit, ParentElement, Render,
-    Size, StatefulInteractiveElement, Styled, Task, Window, div, img,
+    SharedUri, Size, StatefulInteractiveElement, Styled, Task, Window, div, img,
     prelude::{FluentBuilder, StyledImage},
 };
+use gpui_component::input::EditorState;
 use gpui_component::{
     ActiveTheme, Sizable, VirtualListScrollHandle,
     button::{Button, ButtonVariants},
@@ -31,7 +32,7 @@ pub struct BaseViewer {
 
 impl BaseViewer {
     pub(crate) fn new(
-        input: Entity<gpui_component::input::InputState>,
+        input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
         cx: &mut Context<FileHandler>,
     ) -> Self {
@@ -94,7 +95,7 @@ enum BaseStatus {
 }
 
 pub struct BaseViewState {
-    input: Entity<gpui_component::input::InputState>,
+    input: Entity<EditorState>,
     pub(crate) catalog: Option<VaultCatalog>,
     handler: gpui::WeakEntity<FileHandler>,
     status: BaseStatus,
@@ -110,7 +111,7 @@ pub struct BaseViewState {
 
 impl BaseViewState {
     fn new(
-        input: Entity<gpui_component::input::InputState>,
+        input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
         handler: gpui::WeakEntity<FileHandler>,
         cx: &Context<Self>,
@@ -309,7 +310,7 @@ impl Render for BaseViewState {
                             .size_full()
                             .object_fit(ObjectFit::Contain)
                             .into_any_element(),
-                        CardImage::External(url) => img(url.clone())
+                        CardImage::External(url) => img(SharedUri::from(url.clone()))
                             .size_full()
                             .object_fit(ObjectFit::Contain)
                             .into_any_element(),
@@ -400,27 +401,15 @@ fn resolve_card_image(
     catalog: &VaultCatalog,
     root: &std::path::Path,
 ) -> Option<CardImage> {
-    let value = property_value(property, row)?.as_str()?.trim();
-    if value.starts_with("http://") || value.starts_with("https://") {
-        return Some(CardImage::External(value.to_string()));
-    }
-    let value = value
-        .strip_prefix("![[")
-        .and_then(|value| value.strip_suffix("]]"))
-        .or_else(|| {
-            value
-                .strip_prefix("[[")
-                .and_then(|value| value.strip_suffix("]]"))
-        })
-        .unwrap_or(value);
-    let target = value
-        .split_once('|')
-        .map_or(value, |(target, _)| target)
-        .trim();
+    let value = property_value(property, row)?.as_str()?;
+    let target = normalize_card_image_target(value);
     if target.is_empty() {
         return None;
     }
-    let target = percent_encoding::percent_decode_str(target)
+    if target.starts_with("http://") || target.starts_with("https://") {
+        return Some(CardImage::External(target));
+    }
+    let target = percent_encoding::percent_decode_str(&target)
         .decode_utf8_lossy()
         .to_string();
     let relative_candidate = row.path.parent().map_or_else(
@@ -434,6 +423,33 @@ fn resolve_card_image(
         .resolve(&target)
         .filter(|path| path.is_file())
         .map(CardImage::Local)
+}
+
+fn normalize_card_image_target(value: &str) -> String {
+    let value = value.trim();
+    let value = value
+        .strip_prefix("![[")
+        .and_then(|value| value.strip_suffix("]]"))
+        .or_else(|| {
+            value
+                .strip_prefix("[[")
+                .and_then(|value| value.strip_suffix("]]"))
+        })
+        .unwrap_or(value);
+    let value = if let Some(start) = value.find("](") {
+        value
+            .strip_suffix(')')
+            .map_or(value, |value| &value[start.saturating_add(2)..])
+    } else {
+        value
+    };
+    value
+        .split_once('|')
+        .map_or(value, |(target, _)| target)
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .to_string()
 }
 
 fn path_text(path: &std::path::Path) -> String {
@@ -688,4 +704,21 @@ fn centered_message(message: &str, cx: &Context<BaseViewState>) -> AnyElement {
         .text_color(cx.theme().muted_foreground)
         .child(message.to_string())
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_card_image_target;
+
+    #[test]
+    fn normalizes_card_image_targets() {
+        assert_eq!(
+            normalize_card_image_target("![](https://example.com/image.png)"),
+            "https://example.com/image.png"
+        );
+        assert_eq!(
+            normalize_card_image_target("![[folder/image.png|Preview]]"),
+            "folder/image.png"
+        );
+    }
 }
