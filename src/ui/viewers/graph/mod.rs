@@ -7,7 +7,7 @@ mod render;
 mod snapshot;
 
 use gpui::{AnyElement, App, AppContext, Context, Entity, FocusHandle, IntoElement};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 
 use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
@@ -20,7 +20,7 @@ pub struct GraphViewer {
 
 impl GraphViewer {
     pub(crate) fn new(
-        input: Entity<InputState>,
+        input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
         cx: &mut Context<FileHandler>,
     ) -> Self {

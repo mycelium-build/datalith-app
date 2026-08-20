@@ -5,7 +5,7 @@ pub mod plain_text;
 pub mod todo_txt;
 
 use gpui::{AnyElement, App, Entity, FocusHandle};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 
 use self::base::BaseEditor;
 use self::graph::GraphEditor;
@@ -40,7 +40,7 @@ impl EditorKind {
         }
     }
 
-    pub const fn input(&self) -> Option<&Entity<InputState>> {
+    pub const fn input(&self) -> Option<&Entity<EditorState>> {
         match self {
             Self::Base(editor) | Self::Graph(editor) => Some(editor.input()),
             Self::Markdown(editor) => Some(editor.input()),

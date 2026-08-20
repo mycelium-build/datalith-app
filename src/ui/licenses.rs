@@ -8,7 +8,7 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
-    scroll::{Scrollbar, ScrollbarShow},
+    scroll::{Scrollbar, ScrollbarMode},
     v_flex,
 };
 
@@ -191,7 +191,7 @@ impl LicensesView {
                                     .child(
                                         div().absolute().inset_0().child(
                                             Scrollbar::vertical(&self.scroll_handle)
-                                                .scrollbar_show(ScrollbarShow::Always),
+                                                .mode(ScrollbarMode::Always),
                                         ),
                                     ),
                             ),

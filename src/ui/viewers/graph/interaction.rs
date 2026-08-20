@@ -3,7 +3,7 @@ use gpui::{
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
     Point, ScrollDelta, ScrollWheelEvent, Styled, Task, WeakEntity, Window, div, point, px,
 };
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 use gpui_component::{ActiveTheme, ElementExt};
 
 use crate::document::handler::{FileHandler, FileHandlerEvent};
@@ -25,7 +25,7 @@ struct PointerInteraction {
 }
 
 pub(super) struct GraphViewState {
-    input: Entity<InputState>,
+    input: Entity<EditorState>,
     pub(super) catalog: Option<VaultCatalog>,
     handler: WeakEntity<FileHandler>,
     pub(super) status: ViewerStatus,
@@ -43,7 +43,7 @@ pub(super) struct GraphViewState {
 
 impl GraphViewState {
     pub(super) fn new(
-        input: Entity<InputState>,
+        input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
         handler: WeakEntity<FileHandler>,
         cx: &Context<Self>,
