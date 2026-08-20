@@ -423,6 +423,18 @@ impl DatalithView {
         let base_name = format!("New Note.{extension}");
         match crate::vault::file_ops::create_with_name(&root, &base_name) {
             Ok(path) => {
+                if extension == "base"
+                    && let Err(error) = crate::vault::file_ops::update(
+                        &path,
+                        "views:\n  - type: table\n    name: All files\n",
+                    )
+                {
+                    notifications::push_window_notification(
+                        cx,
+                        notifications::create_file_failed(&base_name, &error),
+                    );
+                    return;
+                }
                 self.pending_open = Some(path);
             }
             Err(error) => {

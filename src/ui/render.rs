@@ -145,7 +145,8 @@ impl DatalithView {
                     .gap_3()
                     .child(Self::quick_create_button("note", "New note", "md", cx))
                     .child(Self::quick_create_button("todo", "New todo", "todotxt", cx))
-                    .child(Self::quick_create_button("graph", "New graph", "graph", cx)),
+                    .child(Self::quick_create_button("graph", "New graph", "graph", cx))
+                    .child(Self::quick_create_button("base", "New base", "base", cx)),
             )
             .child(
                 div()
