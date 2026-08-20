@@ -116,7 +116,7 @@ fn render_table_row(
                 .min_w_0()
                 .px_2()
                 .child(super::render_property_cell(
-                    row, property, handler, index, column, cx,
+                    row, property, handler, index, column, true, cx,
                 ))
         }))
         .into_any_element()

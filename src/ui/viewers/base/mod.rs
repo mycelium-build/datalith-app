@@ -1,3 +1,4 @@
+mod cards;
 mod list;
 mod table;
 
@@ -6,8 +7,9 @@ use std::path::PathBuf;
 
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, FocusHandle,
-    InteractiveElement, IntoElement, ParentElement, Render, Size, StatefulInteractiveElement,
-    Styled, Task, Window, div, prelude::FluentBuilder,
+    InteractiveElement, IntoElement, MouseButton, MouseUpEvent, ObjectFit, ParentElement, Render,
+    Size, StatefulInteractiveElement, Styled, Task, Window, div, img,
+    prelude::{FluentBuilder, StyledImage},
 };
 use gpui_component::{
     ActiveTheme, Sizable, VirtualListScrollHandle,
@@ -66,6 +68,13 @@ struct BaseRow {
     size_bytes: i64,
     modified_ns: i64,
     links: Vec<String>,
+    image: Option<CardImage>,
+}
+
+#[derive(Clone, Debug)]
+enum CardImage {
+    Local(PathBuf),
+    External(String),
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +100,8 @@ pub struct BaseViewState {
     status: BaseStatus,
     pub(crate) focus_handle: FocusHandle,
     pub(crate) scroll_handle: VirtualListScrollHandle,
+    fullscreen_image: Option<CardImage>,
+    card_viewport_width: gpui::Pixels,
     selected_view: Option<String>,
     item_sizes: Vec<Size<gpui::Pixels>>,
     generation: u64,
@@ -111,6 +122,8 @@ impl BaseViewState {
             status: BaseStatus::Loading,
             focus_handle: cx.focus_handle(),
             scroll_handle: VirtualListScrollHandle::new(),
+            fullscreen_image: None,
+            card_viewport_width: gpui::px(0.),
             selected_view: None,
             item_sizes: Vec::new(),
             generation: 0,
@@ -175,6 +188,22 @@ impl BaseViewState {
         self.rebuild(cx);
     }
 
+    fn show_fullscreen_image(&mut self, image: CardImage, cx: &mut Context<Self>) {
+        self.fullscreen_image = Some(image);
+        cx.notify();
+    }
+
+    fn hide_fullscreen_image(
+        &mut self,
+        _event: &MouseUpEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.fullscreen_image.take().is_some() {
+            cx.notify();
+        }
+    }
+
     fn render_view_switcher(snapshot: &BaseSnapshot, cx: &Context<Self>) -> AnyElement {
         h_flex()
             .gap_1()
@@ -205,19 +234,25 @@ impl BaseViewState {
             .into_any_element()
     }
 
-    fn render_content(&self, snapshot: &BaseSnapshot, cx: &Context<Self>) -> AnyElement {
+    fn render_content(
+        &self,
+        snapshot: &BaseSnapshot,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
             return centered_message("Base view is missing", cx);
         };
         match view.view_type {
             ViewType::List => self.render_list(snapshot, view, cx),
             ViewType::Table => self.render_table(snapshot, view, cx),
+            ViewType::Cards => self.render_cards(snapshot, view, window, cx),
         }
     }
 }
 
 impl Render for BaseViewState {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match &self.status {
             BaseStatus::Loading => centered_message("Loading Base...", cx),
             BaseStatus::Error(error) => centered_message(error, cx),
@@ -231,7 +266,7 @@ impl Render for BaseViewState {
             }
             BaseStatus::Ready(snapshot) => {
                 let switcher = Self::render_view_switcher(snapshot, cx);
-                let content = self.render_content(snapshot, cx);
+                let content = self.render_content(snapshot, window, cx);
                 let notice = (snapshot.omitted > 0).then(|| {
                     div()
                         .px_2()
@@ -252,7 +287,36 @@ impl Render for BaseViewState {
                     .into_any_element()
             }
         };
-        div().size_full().overflow_hidden().child(content)
+        let mut root = div()
+            .size_full()
+            .relative()
+            .overflow_hidden()
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::hide_fullscreen_image))
+            .child(content);
+        if let Some(path) = &self.fullscreen_image {
+            root = root.child(
+                div()
+                    .id("base-image-fullscreen")
+                    .absolute()
+                    .inset_0()
+                    .bg(cx.theme().background)
+                    .p_4()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(match path {
+                        CardImage::Local(path) => img(path.clone())
+                            .size_full()
+                            .object_fit(ObjectFit::Contain)
+                            .into_any_element(),
+                        CardImage::External(url) => img(url.clone())
+                            .size_full()
+                            .object_fit(ObjectFit::Contain)
+                            .into_any_element(),
+                    }),
+            );
+        }
+        root
     }
 }
 
@@ -288,6 +352,14 @@ async fn load_snapshot(
         .unwrap_or(HARD_RESULT_LIMIT)
         .min(HARD_RESULT_LIMIT);
     rows.truncate(limit);
+    if view.view_type == ViewType::Cards
+        && let Some(image) = &view.image
+    {
+        let root = catalog.root();
+        for row in &mut rows {
+            row.image = resolve_card_image(&image.path, row, &catalog, &root);
+        }
+    }
     let omitted = total.saturating_sub(rows.len());
     Ok(BaseSnapshot {
         definition,
@@ -318,7 +390,50 @@ fn base_row(document: CatalogDocument, root: &std::path::Path) -> Option<BaseRow
         size_bytes: document.size_bytes,
         modified_ns: document.modified_ns,
         links,
+        image: None,
     })
+}
+
+fn resolve_card_image(
+    property: &PropertyPath,
+    row: &BaseRow,
+    catalog: &VaultCatalog,
+    root: &std::path::Path,
+) -> Option<CardImage> {
+    let value = property_value(property, row)?.as_str()?.trim();
+    if value.starts_with("http://") || value.starts_with("https://") {
+        return Some(CardImage::External(value.to_string()));
+    }
+    let value = value
+        .strip_prefix("![[")
+        .and_then(|value| value.strip_suffix("]]"))
+        .or_else(|| {
+            value
+                .strip_prefix("[[")
+                .and_then(|value| value.strip_suffix("]]"))
+        })
+        .unwrap_or(value);
+    let target = value
+        .split_once('|')
+        .map_or(value, |(target, _)| target)
+        .trim();
+    if target.is_empty() {
+        return None;
+    }
+    let target = percent_encoding::percent_decode_str(target)
+        .decode_utf8_lossy()
+        .to_string();
+    let relative_candidate = row.path.parent().map_or_else(
+        || root.join(&target),
+        |parent| root.join(parent).join(&target),
+    );
+    if relative_candidate.is_file() {
+        return Some(CardImage::Local(relative_candidate));
+    }
+    catalog
+        .resolve(&target)
+        .filter(|path| path.is_file())
+        .map(CardImage::Local)
 }
 
 fn path_text(path: &std::path::Path) -> String {
@@ -417,13 +532,15 @@ fn file_name(path: &std::path::Path) -> Option<&str> {
 }
 
 fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<gpui::Pixels>> {
-    match snapshot.definition.views.get(snapshot.view_index) {
-        Some(view) => match view.view_type {
+    snapshot
+        .definition
+        .views
+        .get(snapshot.view_index)
+        .map_or_else(Vec::new, |view| match view.view_type {
             ViewType::Table => table::row_sizes(snapshot),
             ViewType::List => list::row_sizes(snapshot),
-        },
-        None => Vec::new(),
-    }
+            ViewType::Cards => Vec::new(),
+        })
 }
 
 fn render_property_cell(
@@ -432,6 +549,7 @@ fn render_property_cell(
     handler: &gpui::WeakEntity<FileHandler>,
     row_index: usize,
     column_index: usize,
+    truncate: bool,
     cx: &App,
 ) -> AnyElement {
     let id = ElementId::Name(format!("base-cell-{row_index}-{column_index}").into());
@@ -464,16 +582,25 @@ fn render_property_cell(
         return render_link(id, &label, target, handler.clone(), cx);
     }
     let value = property_text(&property.path, row);
-    div().id(id).text_ellipsis().child(value).into_any_element()
+    div()
+        .id(id)
+        .when(truncate, Styled::text_ellipsis)
+        .whitespace_normal()
+        .child(value)
+        .into_any_element()
+}
+
+fn property_value<'a>(path: &PropertyPath, row: &'a BaseRow) -> Option<&'a yaml_serde::Value> {
+    match path {
+        PropertyPath::Note(parts) => parts
+            .iter()
+            .try_fold(&row.properties, |value, part| value.get(part)),
+        PropertyPath::File(_) => None,
+    }
 }
 
 fn property_link(path: &PropertyPath, row: &BaseRow) -> Option<(String, String)> {
-    let PropertyPath::Note(parts) = path else {
-        return None;
-    };
-    let value = parts
-        .iter()
-        .try_fold(&row.properties, |value, part| value.get(part))?;
+    let value = property_value(path, row)?;
     let value = value.as_str()?;
     let link = value.strip_prefix("[[")?.strip_suffix("]]")?;
     let (target, label) = link.split_once('|').unwrap_or((link, link));
@@ -537,7 +664,7 @@ fn render_link(
     div()
         .id(id)
         .text_color(cx.theme().primary)
-        .hover(|style| style.underline())
+        .hover(Styled::underline)
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
             if let Some(handler) = handler.upgrade() {

@@ -97,7 +97,7 @@ fn render_list_row(
                     .h(px(LIST_ROW_HEIGHT))
                     .child(marker)
                     .child(super::render_property_cell(
-                        row, property, handler, index, 0, cx,
+                        row, property, handler, index, 0, true, cx,
                     ))
                     .into_any_element(),
             );
@@ -115,7 +115,7 @@ fn render_list_row(
                         .child(definition.display_name(property).to_string())
                         .child(" ".to_string())
                         .child(super::render_property_cell(
-                            row, property, handler, index, column, cx,
+                            row, property, handler, index, column, true, cx,
                         ))
                         .into_any_element()
                 }),
@@ -127,7 +127,7 @@ fn render_list_row(
                 cells.push(div().child(view.separators.clone()).into_any_element());
             }
             cells.push(super::render_property_cell(
-                row, property, handler, index, column, cx,
+                row, property, handler, index, column, true, cx,
             ));
         }
         lines.push(
