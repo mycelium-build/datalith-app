@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -27,27 +27,18 @@ pub struct CatalogEvent {
     pub(crate) structure_changed: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WikiLinkEdge {
-    pub(crate) source: PathBuf,
-    pub(crate) target: PathBuf,
-}
-
 #[derive(Clone, Debug)]
 pub struct CatalogDocument {
     pub(crate) path: PathBuf,
     pub(crate) metadata: Option<serde_json::Value>,
+    pub(crate) size_bytes: i64,
+    pub(crate) modified_ns: i64,
+    pub(crate) links: Vec<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
 pub struct DocumentSelection {
     pub(crate) documents: Vec<CatalogDocument>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LinkedDocumentSelection {
-    pub(crate) documents: Vec<CatalogDocument>,
-    pub(crate) links: Vec<WikiLinkEdge>,
 }
 
 #[derive(Clone, Debug)]
@@ -69,6 +60,8 @@ pub enum CatalogFilter {
         property: CatalogProperty,
         value: CatalogScalar,
     },
+    HasTag(String),
+    HasLink(String),
     InFolder(String),
     And(Vec<Self>),
     Or(Vec<Self>),
@@ -87,6 +80,8 @@ pub enum CatalogFileField {
     Extension,
     Path,
     Folder,
+    Size,
+    Modified,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -280,9 +275,9 @@ impl VaultCatalog {
         })
     }
 
-    #[allow(dead_code)]
     // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
     // keep the async signature for that call site.
+    #[allow(dead_code)]
     #[allow(clippy::unused_async)]
     pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
         let database = self.inner.database.clone();
@@ -295,32 +290,32 @@ impl VaultCatalog {
             .map_err(|_| anyhow!("Catalog query thread panicked"))?
     }
 
-    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
-    // keep the async signature for that call site.
+    #[allow(dead_code)]
     #[allow(clippy::unused_async)]
-    pub(crate) async fn query_documents_with_links(
+    pub(crate) async fn query_documents_with_outgoing_links(
         &self,
         query: CatalogQuery,
-    ) -> Result<LinkedDocumentSelection> {
+    ) -> Result<DocumentSelection> {
         let database = self.inner.database.clone();
         let (selection, stored_links) = std::thread::Builder::new()
             .name("vault-catalog-query".into())
             .stack_size(8 * 1024 * 1024)
-            .spawn(move || pollster::block_on(database.query_documents_with_links(query)))
+            .spawn(move || pollster::block_on(database.query_documents_with_outgoing_links(query)))
             .context("Failed to start catalog query thread")?
             .join()
             .map_err(|_| anyhow!("Catalog query thread panicked"))??;
-        let links = stored_links
-            .into_iter()
-            .map(|link| WikiLinkEdge {
-                source: link.source,
-                target: link.target,
-            })
-            .collect();
-        Ok(LinkedDocumentSelection {
-            documents: selection.documents,
-            links,
-        })
+        let mut links_by_source: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        for link in stored_links {
+            links_by_source
+                .entry(link.source)
+                .or_default()
+                .push(link.target);
+        }
+        let mut documents = selection.documents;
+        for document in &mut documents {
+            document.links = links_by_source.remove(&document.path).unwrap_or_default();
+        }
+        Ok(DocumentSelection { documents })
     }
 }
 
