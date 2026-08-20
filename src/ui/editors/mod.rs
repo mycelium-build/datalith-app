@@ -1,3 +1,4 @@
+pub mod base;
 pub mod graph;
 pub mod markdown;
 pub mod plain_text;
@@ -6,12 +7,14 @@ pub mod todo_txt;
 use gpui::{AnyElement, App, Entity, FocusHandle};
 use gpui_component::input::InputState;
 
+use self::base::BaseEditor;
 use self::graph::GraphEditor;
 use self::markdown::MarkdownEditor;
 use self::plain_text::PlainTextEditor;
 use self::todo_txt::TodoTxtEditor;
 
 pub enum EditorKind {
+    Base(BaseEditor),
     Graph(GraphEditor),
     Markdown(MarkdownEditor),
     PlainText(PlainTextEditor),
@@ -21,7 +24,7 @@ pub enum EditorKind {
 impl EditorKind {
     pub fn render(&self, cx: &mut App) -> AnyElement {
         match self {
-            Self::Graph(editor) => editor.render(cx),
+            Self::Base(editor) | Self::Graph(editor) => editor.render(cx),
             Self::Markdown(editor) => editor.render(cx),
             Self::PlainText(editor) => editor.render(cx),
             Self::TodoTxt(editor) => editor.render(cx),
@@ -30,7 +33,7 @@ impl EditorKind {
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
-            Self::Graph(editor) => editor.focus_handle(cx),
+            Self::Base(editor) | Self::Graph(editor) => editor.focus_handle(cx),
             Self::Markdown(editor) => editor.focus_handle(cx),
             Self::PlainText(editor) => editor.focus_handle(cx),
             Self::TodoTxt(editor) => editor.focus_handle(cx),
@@ -39,7 +42,7 @@ impl EditorKind {
 
     pub const fn input(&self) -> Option<&Entity<InputState>> {
         match self {
-            Self::Graph(editor) => Some(editor.input()),
+            Self::Base(editor) | Self::Graph(editor) => Some(editor.input()),
             Self::Markdown(editor) => Some(editor.input()),
             Self::PlainText(editor) => Some(editor.input()),
             Self::TodoTxt(_) => None,
