@@ -278,6 +278,66 @@ mod tests {
     }
 
     #[test]
+    fn queries_resolved_links_and_projects_file_metadata() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-catalog-link-filter-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection();
+            connection
+                .execute(
+                    "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                     VALUES ('Source.md', 'md', '', 128, 256, jsonb('{}')), \
+                            ('Target.md', 'md', '', 512, 1024, jsonb('{}'))",
+                    (),
+                )
+                .await
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO wiki_links(source_path, ordinal, target, target_path) \
+                     VALUES ('Source.md', 0, 'Target', 'Target.md')",
+                    (),
+                )
+                .await
+                .unwrap();
+            let selection = database
+                .query_documents(CatalogQuery {
+                    extension: Some("md".into()),
+                    filter: CatalogFilter::HasLink("Target".into()),
+                    limit: None,
+                })
+                .await
+                .unwrap();
+            assert_eq!(selection.documents.len(), 1);
+            assert_eq!(selection.documents[0].size_bytes, 128);
+            assert_eq!(selection.documents[0].modified_ns, 256);
+            connection
+                .execute(
+                    "UPDATE documents SET metadata = jsonb('{\"tags\":\"reading\"}') \
+                     WHERE path = 'Source.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            let tagged = database
+                .query_documents(CatalogQuery {
+                    extension: Some("md".into()),
+                    filter: CatalogFilter::HasTag("reading".into()),
+                    limit: None,
+                })
+                .await
+                .unwrap();
+            assert_eq!(tagged.documents.len(), 1);
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn negated_comparison_includes_documents_with_missing_properties() {
         let root =
             std::env::temp_dir().join(format!("datalith-catalog-negation-{}", std::process::id()));
