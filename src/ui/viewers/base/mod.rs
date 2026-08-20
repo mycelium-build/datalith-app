@@ -10,7 +10,7 @@ use gpui::{
     Styled, Task, Window, div, prelude::FluentBuilder,
 };
 use gpui_component::{
-    ActiveTheme, Sizable,
+    ActiveTheme, Sizable, VirtualListScrollHandle,
     button::{Button, ButtonVariants},
     h_flex, v_flex,
 };
@@ -90,6 +90,7 @@ pub struct BaseViewState {
     handler: gpui::WeakEntity<FileHandler>,
     status: BaseStatus,
     pub(crate) focus_handle: FocusHandle,
+    pub(crate) scroll_handle: VirtualListScrollHandle,
     selected_view: Option<String>,
     item_sizes: Vec<Size<gpui::Pixels>>,
     generation: u64,
@@ -109,6 +110,7 @@ impl BaseViewState {
             handler,
             status: BaseStatus::Loading,
             focus_handle: cx.focus_handle(),
+            scroll_handle: VirtualListScrollHandle::new(),
             selected_view: None,
             item_sizes: Vec::new(),
             generation: 0,

@@ -41,6 +41,9 @@ impl BaseViewState {
                     .collect()
             },
         )
+        .track_scroll(&self.scroll_handle)
+        .flex_1()
+        .min_h_0()
         .into_any_element()
     }
 }

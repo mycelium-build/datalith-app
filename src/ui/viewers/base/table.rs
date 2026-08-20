@@ -60,9 +60,14 @@ impl BaseViewState {
                     })
                     .collect()
             },
-        );
+        )
+        .track_scroll(&self.scroll_handle)
+        .flex_1()
+        .min_h_0();
         v_flex()
             .size_full()
+            .flex_1()
+            .min_h_0()
             .child(header)
             .child(body)
             .into_any_element()
