@@ -535,7 +535,7 @@ fn render_link(
     div()
         .id(id)
         .text_color(cx.theme().primary)
-        .underline()
+        .hover(|style| style.underline())
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
             if let Some(handler) = handler.upgrade() {
