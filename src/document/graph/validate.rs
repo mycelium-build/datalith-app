@@ -178,7 +178,8 @@ display:
         assert!(matches_definition(
             &definition,
             Path::new("Inbox/Nested/Note.md"),
-            &properties
+            &properties,
+            &[]
         ));
         assert!(!definition.display.orphan.show);
         assert!(definition.display.edge.arrow);

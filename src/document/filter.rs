@@ -6,7 +6,15 @@ use crate::vault::{
     CatalogComparison, CatalogFileField, CatalogFilter, CatalogProperty, CatalogScalar,
 };
 
-use super::GraphFile;
+use std::path::Path;
+
+pub struct DocumentFile<'a> {
+    pub(crate) path: &'a Path,
+    pub(crate) properties: &'a Value,
+    pub(crate) size_bytes: Option<i64>,
+    pub(crate) modified_ns: Option<i64>,
+    pub(crate) links: &'a [String],
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Filter {
@@ -19,7 +27,7 @@ pub enum Filter {
 }
 
 impl Filter {
-    pub(super) fn to_catalog_filter(&self) -> CatalogFilter {
+    pub(crate) fn to_catalog_filter(&self) -> CatalogFilter {
         match self {
             Self::MatchAll => CatalogFilter::MatchAll,
             Self::Expression(expression) => expression.to_catalog_filter(),
@@ -30,6 +38,16 @@ impl Filter {
                 CatalogFilter::Or(filters.iter().map(Self::to_catalog_filter).collect())
             }
             Self::Not(filter) => CatalogFilter::Not(Box::new(filter.to_catalog_filter())),
+        }
+    }
+
+    pub(crate) fn matches(&self, file: &DocumentFile<'_>) -> bool {
+        match self {
+            Self::Expression(expression) => expression.matches(file),
+            Self::And(filters) => filters.iter().all(|filter| filter.matches(file)),
+            Self::Or(filters) => filters.iter().any(|filter| filter.matches(file)),
+            Self::Not(filter) => !filter.matches(file),
+            Self::MatchAll => true,
         }
     }
 }
@@ -55,6 +73,8 @@ pub(super) enum Operation {
     Compare(Comparison, Scalar),
     Contains(Scalar),
     InFolder(String),
+    HasTag(String),
+    HasLink(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,18 +87,21 @@ pub(super) enum Comparison {
     LessEqual,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) enum PropertyPath {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PropertyPath {
     Note(Vec<String>),
     File(FileField),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum FileField {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileField {
     Name,
     Ext,
     Path,
     Folder,
+    Size,
+    Mtime,
+    Links,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,12 +119,16 @@ impl Expression {
             PropertyPath::File(field) => CatalogProperty::File(match field {
                 FileField::Name => CatalogFileField::Name,
                 FileField::Ext => CatalogFileField::Extension,
-                FileField::Path => CatalogFileField::Path,
+                FileField::Path | FileField::Links => CatalogFileField::Path,
                 FileField::Folder => CatalogFileField::Folder,
+                FileField::Size => CatalogFileField::Size,
+                FileField::Mtime => CatalogFileField::Modified,
             }),
         };
         match &self.operation {
             Operation::InFolder(folder) => CatalogFilter::InFolder(folder.clone()),
+            Operation::HasTag(tag) => CatalogFilter::HasTag(tag.clone()),
+            Operation::HasLink(link) => CatalogFilter::HasLink(link.clone()),
             Operation::Compare(comparison, value) => CatalogFilter::Compare {
                 property,
                 comparison: match comparison {
@@ -121,7 +148,7 @@ impl Expression {
         }
     }
 
-    pub(super) fn matches(&self, file: &GraphFile<'_>) -> bool {
+    pub(crate) fn matches(&self, file: &DocumentFile<'_>) -> bool {
         match &self.operation {
             Operation::InFolder(folder) => {
                 let parent = file
@@ -137,9 +164,25 @@ impl Expression {
                     .as_sequence()
                     .is_some_and(|values| values.iter().any(|value| scalar_equals(value, expected)))
             }),
-            Operation::Compare(comparison, expected) => {
-                compare(value_at(&self.left, file), *comparison, expected)
+            Operation::HasTag(expected) => {
+                value_at(&PropertyPath::Note(vec!["tags".to_string()]), file).is_some_and(|value| {
+                    value.as_sequence().is_some_and(|values| {
+                        values
+                            .iter()
+                            .any(|value| scalar_equals(value, &Scalar::String(expected.clone())))
+                    }) || scalar_equals(value, &Scalar::String(expected.clone()))
+                })
             }
+            Operation::HasLink(expected) => file.links.iter().any(|link| {
+                link == expected
+                    || link
+                        .strip_suffix(".md")
+                        .is_some_and(|without_extension| without_extension == expected)
+            }),
+            Operation::Compare(comparison, expected) => file_scalar(&self.left, file).map_or_else(
+                || compare(value_at(&self.left, file), *comparison, expected),
+                |actual| compare_scalars(&actual, *comparison, expected),
+            ),
         }
     }
 }
@@ -155,7 +198,7 @@ impl Scalar {
     }
 }
 
-fn value_at<'a>(path: &PropertyPath, file: &'a GraphFile<'_>) -> Option<&'a Value> {
+fn value_at<'a>(path: &PropertyPath, file: &'a DocumentFile<'_>) -> Option<&'a Value> {
     match path {
         PropertyPath::Note(parts) => parts
             .iter()
@@ -164,7 +207,7 @@ fn value_at<'a>(path: &PropertyPath, file: &'a GraphFile<'_>) -> Option<&'a Valu
     }
 }
 
-pub(super) fn file_scalar(path: &PropertyPath, file: &GraphFile<'_>) -> Option<Scalar> {
+fn file_scalar(path: &PropertyPath, file: &DocumentFile<'_>) -> Option<Scalar> {
     let PropertyPath::File(field) = path else {
         return None;
     };
@@ -178,6 +221,19 @@ pub(super) fn file_scalar(path: &PropertyPath, file: &GraphFile<'_>) -> Option<S
             .unwrap_or_else(|| std::path::Path::new(""))
             .to_string_lossy()
             .replace('\\', "/"),
+        FileField::Size => {
+            return file
+                .size_bytes
+                .and_then(|value| value.to_string().parse().ok())
+                .map(Scalar::Number);
+        }
+        FileField::Mtime => {
+            return file
+                .modified_ns
+                .and_then(|value| value.to_string().parse().ok())
+                .map(Scalar::Number);
+        }
+        FileField::Links => return None,
     };
     Some(Scalar::String(string))
 }
@@ -211,6 +267,28 @@ fn compare(actual: Option<&Value>, comparison: Comparison, expected: &Scalar) ->
                 Comparison::GreaterEqual => actual >= *expected,
                 Comparison::Less => actual < *expected,
                 Comparison::LessEqual => actual <= *expected,
+                _ => false,
+            }
+        }
+    }
+}
+
+fn compare_scalars(actual: &Scalar, comparison: Comparison, expected: &Scalar) -> bool {
+    match comparison {
+        Comparison::Equal => actual == expected,
+        Comparison::NotEqual => actual != expected,
+        Comparison::Greater
+        | Comparison::GreaterEqual
+        | Comparison::Less
+        | Comparison::LessEqual => {
+            let (Scalar::Number(actual), Scalar::Number(expected)) = (actual, expected) else {
+                return false;
+            };
+            match comparison {
+                Comparison::Greater => actual > expected,
+                Comparison::GreaterEqual => actual >= expected,
+                Comparison::Less => actual < expected,
+                Comparison::LessEqual => actual <= expected,
                 _ => false,
             }
         }
@@ -263,6 +341,26 @@ pub(super) fn parse_filter(value: &Value) -> Result<Filter> {
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let source = source.trim();
+    for (function, operation) in [("file.hasTag(", true), ("file.hasLink(", false)] {
+        if let Some(argument) = source
+            .strip_prefix(function)
+            .and_then(|value| value.strip_suffix(')'))
+        {
+            let argument = parse_string(argument.trim())?;
+            return Ok(Expression {
+                left: if operation {
+                    PropertyPath::Note(vec!["tags".to_string()])
+                } else {
+                    PropertyPath::File(FileField::Links)
+                },
+                operation: if operation {
+                    Operation::HasTag(argument)
+                } else {
+                    Operation::HasLink(argument)
+                },
+            });
+        }
+    }
     if let Some(argument) = source
         .strip_prefix("file.inFolder(")
         .and_then(|value| value.strip_suffix(')'))
@@ -300,13 +398,16 @@ fn parse_expression(source: &str) -> Result<Expression> {
     bail!("unsupported filter expression {source:?}")
 }
 
-fn parse_property(source: &str) -> Result<PropertyPath> {
+pub fn parse_property(source: &str) -> Result<PropertyPath> {
     if let Some(field) = source.strip_prefix("file.") {
         return Ok(PropertyPath::File(match field {
             "name" => FileField::Name,
             "ext" => FileField::Ext,
             "path" => FileField::Path,
             "folder" => FileField::Folder,
+            "size" => FileField::Size,
+            "mtime" => FileField::Mtime,
+            "links" => FileField::Links,
             _ => bail!("unknown file property {field:?}"),
         }));
     }
@@ -375,8 +476,6 @@ fn parse_string(source: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::matches_definition;
-    use super::super::parse_definition;
     use super::*;
     use std::path::Path;
 
@@ -385,16 +484,41 @@ mod tests {
         let properties: Value =
             yaml_serde::from_str("project:\n  owner:\n    name: Romain\nproject status: done")
                 .unwrap();
-        for filter in [
+        for source in [
             "note.project.owner.name == \"Romain\"",
             "note[\"project status\"] == \"done\"",
             "missing != \"done\"",
             "missing == null",
         ] {
-            let definition = parse_definition(&format!("filters: '{filter}'")).unwrap();
+            let filter = parse_filter(&Value::String(source.into())).unwrap();
             assert!(
-                matches_definition(&definition, Path::new("Note.md"), &properties),
-                "{filter}"
+                filter.matches(&DocumentFile {
+                    path: Path::new("Note.md"),
+                    properties: &properties,
+                    size_bytes: None,
+                    modified_ns: None,
+                    links: &[],
+                }),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn matches_catalog_backed_tag_and_link_predicates() {
+        let properties: Value = yaml_serde::from_str("tags: [reading, rust]").unwrap();
+        let links = ["Index.md".to_string()];
+        for source in ["file.hasTag(\"reading\")", "file.hasLink(\"Index.md\")"] {
+            let filter = parse_filter(&Value::String(source.into())).unwrap();
+            assert!(
+                filter.matches(&DocumentFile {
+                    path: Path::new("Note.md"),
+                    properties: &properties,
+                    size_bytes: Some(128),
+                    modified_ns: Some(256),
+                    links: &links,
+                }),
+                "{source}"
             );
         }
     }

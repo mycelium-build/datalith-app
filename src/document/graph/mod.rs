@@ -1,9 +1,8 @@
 mod color;
-mod filter;
 mod types;
 mod validate;
 
-pub use filter::{Expression, Filter};
+pub use crate::document::filter::Filter;
 pub use types::*;
 pub use validate::parse_definition;
 
@@ -13,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use yaml_serde::Value;
 
+use crate::document::filter::DocumentFile;
 use crate::vault::CatalogFilter;
 
 pub const HARD_NODE_LIMIT: usize = 50_000;
@@ -57,15 +57,11 @@ pub struct GraphGroup {
     pub(crate) node: GroupNodeStyle,
 }
 
-pub struct GraphFile<'a> {
-    pub(crate) path: &'a Path,
-    pub(crate) properties: &'a Value,
-}
-
 #[derive(Clone, Debug)]
 pub struct GraphNode {
     pub(crate) path: PathBuf,
     pub(crate) properties: Value,
+    pub(crate) links: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -74,66 +70,38 @@ pub struct GraphEdge {
     pub(crate) target: PathBuf,
 }
 
-pub fn matches_definition(definition: &GraphDefinition, path: &Path, properties: &Value) -> bool {
-    let file = GraphFile { path, properties };
-    match &definition.filters {
-        Filter::Expression(expression)
-            if matches!(expression.left, filter::PropertyPath::File(_)) =>
-        {
-            expression_matches_with_file(expression, &file)
-        }
-        filter => filter_matches_with_file(filter, &file),
-    }
-}
-
-fn filter_matches_with_file(filter: &Filter, file: &GraphFile<'_>) -> bool {
-    match filter {
-        Filter::Expression(expression) => expression_matches_with_file(expression, file),
-        Filter::And(filters) => filters
-            .iter()
-            .all(|filter| filter_matches_with_file(filter, file)),
-        Filter::Or(filters) => filters
-            .iter()
-            .any(|filter| filter_matches_with_file(filter, file)),
-        Filter::Not(filter) => !filter_matches_with_file(filter, file),
-        Filter::MatchAll => true,
-    }
-}
-
-fn expression_matches_with_file(expression: &Expression, file: &GraphFile<'_>) -> bool {
-    if let filter::Operation::Compare(comparison, expected) = &expression.operation
-        && let Some(actual) = filter::file_scalar(&expression.left, file)
-    {
-        return match comparison {
-            filter::Comparison::Equal => actual == *expected,
-            filter::Comparison::NotEqual => actual != *expected,
-            _ => match (actual, expected) {
-                (filter::Scalar::Number(actual), filter::Scalar::Number(expected)) => {
-                    match comparison {
-                        filter::Comparison::Greater => actual > *expected,
-                        filter::Comparison::GreaterEqual => actual >= *expected,
-                        filter::Comparison::Less => actual < *expected,
-                        filter::Comparison::LessEqual => actual <= *expected,
-                        _ => false,
-                    }
-                }
-                _ => false,
-            },
-        };
-    }
-    expression.matches(file)
+pub fn matches_definition(
+    definition: &GraphDefinition,
+    path: &Path,
+    properties: &Value,
+    links: &[String],
+) -> bool {
+    definition.filters.matches(&DocumentFile {
+        path,
+        properties,
+        size_bytes: None,
+        modified_ns: None,
+        links,
+    })
 }
 
 pub fn matching_group<'a>(
     definition: &'a GraphDefinition,
     path: &Path,
     properties: &Value,
+    links: &[String],
 ) -> Option<&'a GraphGroup> {
-    let file = GraphFile { path, properties };
+    let file = DocumentFile {
+        path,
+        properties,
+        size_bytes: None,
+        modified_ns: None,
+        links,
+    };
     definition
         .groups
         .iter()
-        .find(|group| filter_matches_with_file(&group.filters, &file))
+        .find(|group| group.filters.matches(&file))
 }
 
 pub struct NodeSelection {
@@ -147,7 +115,7 @@ pub fn select_nodes(
 ) -> NodeSelection {
     let mut nodes: Vec<_> = candidates
         .into_iter()
-        .filter(|node| matches_definition(definition, &node.path, &node.properties))
+        .filter(|node| matches_definition(definition, &node.path, &node.properties, &node.links))
         .collect();
     let total = nodes.len();
     let effective_limit = definition.limit.unwrap_or(HARD_NODE_LIMIT);
@@ -181,17 +149,20 @@ mod tests {
         assert!(matches_definition(
             &parse_definition("filters: []").unwrap(),
             Path::new("A.md"),
-            &properties
+            &properties,
+            &[]
         ));
         assert!(matches_definition(
             &parse_definition("filters:\n  and: []").unwrap(),
             Path::new("A.md"),
-            &properties
+            &properties,
+            &[]
         ));
         assert!(!matches_definition(
             &parse_definition("filters:\n  or: []").unwrap(),
             Path::new("A.md"),
-            &properties
+            &properties,
+            &[]
         ));
     }
 
@@ -216,15 +187,21 @@ groups:
         let node = GraphNode {
             path: PathBuf::from("A.md"),
             properties,
+            links: Vec::new(),
         };
         let selection = select_nodes(&definition, [node]);
         let nodes = selection.nodes;
         assert_eq!(selection.total, 1);
         assert_eq!(nodes.len(), 1);
         assert_eq!(
-            matching_group(&definition, &nodes[0].path, &nodes[0].properties)
-                .unwrap()
-                .name,
+            matching_group(
+                &definition,
+                &nodes[0].path,
+                &nodes[0].properties,
+                &nodes[0].links
+            )
+            .unwrap()
+            .name,
             "First"
         );
 
