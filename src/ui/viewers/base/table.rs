@@ -2,13 +2,14 @@ use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
 use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
-use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
+use gpui_component::{scroll::ScrollableElement, scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
 use super::{BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const TABLE_HEADER_HEIGHT: f32 = 32.0;
+const TABLE_COLUMN_MIN_WIDTH: f32 = 256.0;
 const TABLE_SHORT_HEIGHT: f32 = 24.0;
 const TABLE_MEDIUM_HEIGHT: f32 = 32.0;
 const TABLE_TALL_HEIGHT: f32 = 48.0;
@@ -42,8 +43,12 @@ impl BaseViewState {
         let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
         let definition = snapshot.definition.clone();
+        let column_count = view.order.len().max(1);
+        let table_min_width =
+            px(TABLE_COLUMN_MIN_WIDTH * column_count.to_string().parse::<f32>().unwrap_or(1.0));
         let header = h_flex()
             .w_full()
+            .min_w(table_min_width)
             .h(px(TABLE_HEADER_HEIGHT))
             .bg(cx.theme().tab_bar)
             .border_b_1()
@@ -51,7 +56,7 @@ impl BaseViewState {
             .children(view.order.iter().map(|property| {
                 div()
                     .flex_1()
-                    .min_w_0()
+                    .min_w(px(TABLE_COLUMN_MIN_WIDTH))
                     .px_2()
                     .items_center()
                     .text_color(cx.theme().muted_foreground)
@@ -81,18 +86,29 @@ impl BaseViewState {
         )
         .track_scroll(&table_state.scroll_handle)
         .size_full();
-        let body = div().relative().flex_1().min_h_0().child(list).child(
-            div()
-                .absolute()
-                .inset_0()
-                .child(Scrollbar::vertical(&table_state.scroll_handle).mode(ScrollbarMode::Always)),
-        );
-        v_flex()
-            .size_full()
+        let body = div()
+            .relative()
+            .w_full()
+            .min_w(table_min_width)
             .flex_1()
             .min_h_0()
-            .child(header)
-            .child(body)
+            .child(list)
+            .child(div().absolute().inset_0().child(
+                Scrollbar::vertical(&table_state.scroll_handle).mode(ScrollbarMode::Always),
+            ));
+        div()
+            .size_full()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .overflow_x_scrollbar()
+            .child(
+                v_flex()
+                    .size_full()
+                    .min_w(table_min_width)
+                    .child(header)
+                    .child(body),
+            )
             .into_any_element()
     }
 }
@@ -123,6 +139,7 @@ fn render_table_row(
 ) -> AnyElement {
     div()
         .w_full()
+        .min_w(px(TABLE_COLUMN_MIN_WIDTH))
         .h(px(table_row_height(view.row_height)))
         .flex()
         .items_center()
@@ -131,7 +148,7 @@ fn render_table_row(
         .children(view.order.iter().enumerate().map(|(column, property)| {
             div()
                 .flex_1()
-                .min_w_0()
+                .min_w(px(TABLE_COLUMN_MIN_WIDTH))
                 .px_2()
                 .child(super::render_property_cell(
                     row, property, handler, index, column, true, cx,
