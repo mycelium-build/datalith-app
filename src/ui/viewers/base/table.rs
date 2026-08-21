@@ -35,8 +35,11 @@ impl BaseViewState {
         view: &BaseView,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let Some(table_state) = self.table.as_ref() else {
+            return super::centered_message("Table view state is missing", cx);
+        };
         let entity = cx.entity();
-        let item_sizes = self.table.item_sizes.clone();
+        let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
         let definition = snapshot.definition.clone();
         let header = h_flex()
@@ -76,13 +79,13 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.table.scroll_handle)
+        .track_scroll(&table_state.scroll_handle)
         .size_full();
         let body = div().relative().flex_1().min_h_0().child(list).child(
             div()
                 .absolute()
                 .inset_0()
-                .child(Scrollbar::vertical(&self.table.scroll_handle).mode(ScrollbarMode::Always)),
+                .child(Scrollbar::vertical(&table_state.scroll_handle).mode(ScrollbarMode::Always)),
         );
         v_flex()
             .size_full()

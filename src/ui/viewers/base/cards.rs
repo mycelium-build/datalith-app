@@ -53,7 +53,12 @@ pub(super) fn hide_fullscreen_image(
     _window: &mut Window,
     cx: &mut Context<BaseViewState>,
 ) {
-    if state.cards.fullscreen_image.take().is_some() {
+    if state
+        .cards
+        .as_mut()
+        .and_then(|cards| cards.fullscreen_image.take())
+        .is_some()
+    {
         cx.notify();
     }
 }
@@ -158,11 +163,14 @@ impl BaseViewState {
         window: &Window,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let Some(cards_state) = self.cards.as_ref() else {
+            return super::centered_message("Cards view state is missing", cx);
+        };
         let entity = cx.entity();
-        let viewport_width = if self.cards.viewport_width == px(0.) {
+        let viewport_width = if cards_state.viewport_width == px(0.) {
             content_width(window.bounds().size.width)
         } else {
-            self.cards.viewport_width
+            cards_state.viewport_width
         };
         let columns = columns_for(view.card_size, viewport_width);
         let card_width = card_width_for(view.card_size, viewport_width, columns);
@@ -194,7 +202,7 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.cards.scroll_handle)
+        .track_scroll(&cards_state.scroll_handle)
         .size_full();
         let viewport_entity = entity;
         div()
@@ -206,8 +214,10 @@ impl BaseViewState {
             .on_prepaint(move |bounds, _window, cx| {
                 let width = content_width(bounds.size.width);
                 viewport_entity.update(cx, |state, cx| {
-                    if state.cards.viewport_width != width {
-                        state.cards.viewport_width = width;
+                    if let Some(cards) = state.cards.as_mut()
+                        && cards.viewport_width != width
+                    {
+                        cards.viewport_width = width;
                         cx.notify();
                     }
                 });
@@ -215,7 +225,7 @@ impl BaseViewState {
             .child(list)
             .child(
                 div().absolute().inset_0().child(
-                    Scrollbar::vertical(&self.cards.scroll_handle).mode(ScrollbarMode::Always),
+                    Scrollbar::vertical(&cards_state.scroll_handle).mode(ScrollbarMode::Always),
                 ),
             )
             .into_any_element()
@@ -425,8 +435,10 @@ fn render_card_image(
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             fullscreen_entity.update(cx, |state, cx| {
-                state.cards.show_fullscreen_image(preview_image.clone());
-                cx.notify();
+                if let Some(cards) = state.cards.as_mut() {
+                    cards.show_fullscreen_image(preview_image.clone());
+                    cx.notify();
+                }
             });
         });
     let image_element = match image {

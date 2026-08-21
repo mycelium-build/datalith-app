@@ -31,8 +31,11 @@ impl BaseViewState {
         _view: &BaseView,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let Some(list_state) = self.list.as_ref() else {
+            return super::centered_message("List view state is missing", cx);
+        };
         let entity = cx.entity();
-        let item_sizes = self.list.item_sizes.clone();
+        let item_sizes = list_state.item_sizes.clone();
         let handler = self.handler.clone();
         let list = v_virtual_list(
             entity,
@@ -56,7 +59,7 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.list.scroll_handle)
+        .track_scroll(&list_state.scroll_handle)
         .size_full();
         div()
             .relative()
@@ -65,7 +68,7 @@ impl BaseViewState {
             .child(list)
             .child(
                 div().absolute().inset_0().child(
-                    Scrollbar::vertical(&self.list.scroll_handle).mode(ScrollbarMode::Always),
+                    Scrollbar::vertical(&list_state.scroll_handle).mode(ScrollbarMode::Always),
                 ),
             )
             .into_any_element()

@@ -93,9 +93,9 @@ pub struct BaseViewState {
     handler: gpui::WeakEntity<FileHandler>,
     status: BaseStatus,
     pub(crate) focus_handle: FocusHandle,
-    list: list::ListState,
-    table: table::TableState,
-    cards: cards::CardsState,
+    list: Option<list::ListState>,
+    table: Option<table::TableState>,
+    cards: Option<cards::CardsState>,
     selected_view: Option<String>,
     generation: u64,
     build_task: Task<()>,
@@ -114,9 +114,9 @@ impl BaseViewState {
             handler,
             status: BaseStatus::Loading,
             focus_handle: cx.focus_handle(),
-            list: list::ListState::new(),
-            table: table::TableState::new(),
-            cards: cards::CardsState::new(),
+            list: None,
+            table: None,
+            cards: None,
             selected_view: None,
             generation: 0,
             build_task: Task::ready(()),
@@ -127,8 +127,12 @@ impl BaseViewState {
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
         self.status = BaseStatus::Loading;
-        self.list.item_sizes.clear();
-        self.table.item_sizes.clear();
+        if let Some(list) = &mut self.list {
+            list.item_sizes.clear();
+        }
+        if let Some(table) = &mut self.table {
+            table.item_sizes.clear();
+        }
         let source = self.input.read(cx).value().to_string();
         let definition = match BaseDefinition::parse(&source) {
             Ok(definition) => definition,
@@ -163,10 +167,19 @@ impl BaseViewState {
                             .map(|view| view.name.clone());
                         match snapshot.definition.views.get(snapshot.view_index) {
                             Some(view) if view.view_type == ViewType::List => {
-                                state.list.item_sizes = list::row_sizes(&snapshot);
+                                state
+                                    .list
+                                    .get_or_insert_with(list::ListState::new)
+                                    .item_sizes = list::row_sizes(&snapshot);
                             }
                             Some(view) if view.view_type == ViewType::Table => {
-                                state.table.item_sizes = table::row_sizes(&snapshot);
+                                state
+                                    .table
+                                    .get_or_insert_with(table::TableState::new)
+                                    .item_sizes = table::row_sizes(&snapshot);
+                            }
+                            Some(view) if view.view_type == ViewType::Cards => {
+                                state.cards.get_or_insert_with(cards::CardsState::new);
                             }
                             _ => {}
                         }
@@ -278,7 +291,11 @@ impl Render for BaseViewState {
             .overflow_hidden()
             .on_mouse_up(MouseButton::Left, cx.listener(cards::hide_fullscreen_image))
             .child(content);
-        if let Some(preview) = self.cards.render_fullscreen_image(cx) {
+        if let Some(preview) = self
+            .cards
+            .as_ref()
+            .and_then(|cards| cards.render_fullscreen_image(cx))
+        {
             root = root.child(preview);
         }
         root
