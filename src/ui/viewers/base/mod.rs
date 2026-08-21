@@ -486,6 +486,7 @@ fn render_property_cell(
             id,
             file_name(&row.path).unwrap_or_default(),
             path_text(&row.path),
+            truncate,
             handler.clone(),
             cx,
         );
@@ -500,6 +501,7 @@ fn render_property_cell(
                 ),
                 file_name(std::path::Path::new(target)).unwrap_or(target),
                 target.clone(),
+                false,
                 handler.clone(),
                 cx,
             )
@@ -507,7 +509,7 @@ fn render_property_cell(
         return h_flex().gap_1().children(links).into_any_element();
     }
     if let Some((label, target)) = property_link(&property.path, row) {
-        return render_link(id, &label, target, handler.clone(), cx);
+        return render_link(id, &label, target, truncate, handler.clone(), cx);
     }
     let value = property_text(&property.path, row);
     div()
@@ -586,11 +588,13 @@ fn render_link(
     id: ElementId,
     label: &str,
     target: String,
+    truncate: bool,
     handler: gpui::WeakEntity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
     div()
         .id(id)
+        .when(truncate, Styled::text_ellipsis)
         .text_color(cx.theme().primary)
         .hover(Styled::underline)
         .cursor_pointer()
