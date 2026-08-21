@@ -100,28 +100,28 @@ impl BaseViewState {
         )
         .track_scroll(&table_state.scroll_handle)
         .size_full();
-        let body = div()
-            .relative()
-            .w_full()
-            .min_w(table_min_width)
-            .flex_1()
-            .min_h_0()
-            .child(list)
-            .child(div().absolute().inset_0().child(
-                Scrollbar::vertical(&table_state.scroll_handle).mode(ScrollbarMode::Always),
-            ));
+        let body = div().relative().w_full().flex_1().min_h_0().child(list);
         div()
+            .relative()
             .size_full()
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .overflow_x_scrollbar()
             .child(
-                v_flex()
-                    .size_full()
-                    .min_w(table_min_width)
-                    .child(header)
-                    .child(body),
+                div().size_full().overflow_x_scrollbar().child(
+                    v_flex()
+                        .size_full()
+                        .min_w(table_min_width)
+                        .child(header)
+                        .child(body),
+                ),
+            )
+            .child(
+                div().absolute().inset_0().child(
+                    Scrollbar::vertical(&table_state.scroll_handle)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
+                ),
             )
             .into_any_element()
     }
