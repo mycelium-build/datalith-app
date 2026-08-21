@@ -243,7 +243,7 @@ impl BaseViewState {
         };
         match view.view_type {
             ViewType::List => self.render_list(snapshot, view, cx),
-            ViewType::Table => self.render_table(snapshot, view, cx),
+            ViewType::Table => self.render_table(snapshot, view, window, cx),
             ViewType::Cards => self.render_cards(snapshot, view, window, cx),
         }
     }
