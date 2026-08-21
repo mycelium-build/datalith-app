@@ -210,7 +210,6 @@ impl BaseViewState {
             .relative()
             .flex_1()
             .min_h_0()
-            .p_4()
             .on_prepaint(move |bounds, _window, cx| {
                 let width = content_width(bounds.size.width);
                 viewport_entity.update(cx, |state, cx| {
@@ -222,10 +221,12 @@ impl BaseViewState {
                     }
                 });
             })
-            .child(list)
+            .child(div().size_full().p_4().child(list))
             .child(
                 div().absolute().inset_0().child(
-                    Scrollbar::vertical(&cards_state.scroll_handle).mode(ScrollbarMode::Always),
+                    Scrollbar::vertical(&cards_state.scroll_handle)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
                 ),
             )
             .into_any_element()

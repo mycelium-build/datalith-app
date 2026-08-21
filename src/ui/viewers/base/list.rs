@@ -65,12 +65,12 @@ impl BaseViewState {
             .relative()
             .flex_1()
             .min_h_0()
-            .px_2()
-            .py_1()
-            .child(list)
+            .child(div().size_full().px_2().py_1().child(list))
             .child(
                 div().absolute().inset_0().child(
-                    Scrollbar::vertical(&list_state.scroll_handle).mode(ScrollbarMode::Always),
+                    Scrollbar::vertical(&list_state.scroll_handle)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
                 ),
             )
             .into_any_element()
