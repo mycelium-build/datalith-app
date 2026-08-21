@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
-use gpui_component::{VirtualListScrollHandle, h_flex, v_virtual_list};
+use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, ListMarkers};
@@ -65,6 +65,8 @@ impl BaseViewState {
             .relative()
             .flex_1()
             .min_h_0()
+            .px_2()
+            .py_1()
             .child(list)
             .child(
                 div().absolute().inset_0().child(
@@ -121,23 +123,36 @@ fn render_list_row(
                     .into_any_element(),
             );
         }
-        lines.extend(
-            view.order
-                .iter()
-                .enumerate()
-                .skip(1)
-                .map(|(column, property)| {
-                    h_flex()
-                        .items_center()
-                        .h(px(LIST_ROW_HEIGHT))
-                        .pl_4()
-                        .child(definition.display_name(property).to_string())
-                        .child(" ".to_string())
-                        .child(super::render_property_cell(
-                            row, property, handler, index, column, true, cx,
-                        ))
-                        .into_any_element()
-                }),
+        let sub_marker = match view.markers {
+            ListMarkers::None => String::new(),
+            _ => "• ".to_string(),
+        };
+        let sub_items = view
+            .order
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(column, property)| {
+                h_flex()
+                    .items_center()
+                    .h(px(LIST_ROW_HEIGHT))
+                    .gap_1()
+                    .child(sub_marker.clone())
+                    .child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("{}:", definition.display_name(property))),
+                    )
+                    .child(super::render_property_cell(
+                        row, property, handler, index, column, true, cx,
+                    ))
+                    .into_any_element()
+            });
+        lines.push(
+            gpui_component::v_flex()
+                .pl_4()
+                .children(sub_items)
+                .into_any_element(),
         );
     } else {
         let mut cells = Vec::new();
