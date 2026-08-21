@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
-use gpui_component::{ActiveTheme, h_flex, v_flex, v_virtual_list};
+use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
@@ -14,6 +14,20 @@ const TABLE_MEDIUM_HEIGHT: f32 = 32.0;
 const TABLE_TALL_HEIGHT: f32 = 48.0;
 const TABLE_EXTRA_TALL_HEIGHT: f32 = 72.0;
 
+pub(super) struct TableState {
+    pub(super) scroll_handle: VirtualListScrollHandle,
+    pub(super) item_sizes: Vec<Size<Pixels>>,
+}
+
+impl TableState {
+    pub(super) fn new() -> Self {
+        Self {
+            scroll_handle: VirtualListScrollHandle::new(),
+            item_sizes: Vec::new(),
+        }
+    }
+}
+
 impl BaseViewState {
     pub(super) fn render_table(
         &self,
@@ -22,7 +36,7 @@ impl BaseViewState {
         cx: &Context<Self>,
     ) -> AnyElement {
         let entity = cx.entity();
-        let item_sizes = self.item_sizes.clone();
+        let item_sizes = self.table.item_sizes.clone();
         let handler = self.handler.clone();
         let definition = snapshot.definition.clone();
         let header = h_flex()
@@ -62,13 +76,13 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.scroll_handle)
+        .track_scroll(&self.table.scroll_handle)
         .size_full();
         let body = div().relative().flex_1().min_h_0().child(list).child(
             div()
                 .absolute()
                 .inset_0()
-                .child(Scrollbar::vertical(&self.scroll_handle).mode(ScrollbarMode::Always)),
+                .child(Scrollbar::vertical(&self.table.scroll_handle).mode(ScrollbarMode::Always)),
         );
         v_flex()
             .size_full()

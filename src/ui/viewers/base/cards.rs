@@ -1,14 +1,18 @@
 use gpui::{
     AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img, prelude::StyledImage, px,
-    size,
+    MouseUpEvent, ObjectFit, ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img,
+    prelude::StyledImage, px, size,
 };
 use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
-use gpui_component::{ActiveTheme, ElementExt, h_flex, v_flex, v_virtual_list};
+use gpui_component::{
+    ActiveTheme, ElementExt, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
+};
 
 use crate::document::base::{BaseView, CardImageFit};
+use crate::document::filter::PropertyPath;
+use crate::vault::VaultCatalog;
 
-use super::{BaseRow, BaseSnapshot, BaseStatus, BaseViewState, CardImage};
+use super::{BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const CARD_GAP: f32 = 16.0;
 const CARD_BODY_MIN_HEIGHT: f32 = 96.0;
@@ -16,6 +20,127 @@ const CARD_BODY_PADDING: f32 = 24.0;
 const CARD_PROPERTY_HEIGHT: f32 = 44.0;
 const CARD_MIN_WIDTH: f32 = 120.0;
 const GRID_PADDING: f32 = 16.0;
+
+#[derive(Clone, Debug)]
+pub(super) enum CardImage {
+    Local(std::path::PathBuf),
+    External(String),
+}
+
+pub(super) struct CardsState {
+    pub(super) scroll_handle: VirtualListScrollHandle,
+    pub(super) viewport_width: Pixels,
+    fullscreen_image: Option<CardImage>,
+}
+
+impl CardsState {
+    pub(super) fn new() -> Self {
+        Self {
+            scroll_handle: VirtualListScrollHandle::new(),
+            viewport_width: px(0.),
+            fullscreen_image: None,
+        }
+    }
+
+    fn show_fullscreen_image(&mut self, image: CardImage) {
+        self.fullscreen_image = Some(image);
+    }
+}
+
+pub(super) fn hide_fullscreen_image(
+    state: &mut BaseViewState,
+    _event: &MouseUpEvent,
+    _window: &mut Window,
+    cx: &mut Context<BaseViewState>,
+) {
+    if state.cards.fullscreen_image.take().is_some() {
+        cx.notify();
+    }
+}
+
+impl CardsState {
+    pub(super) fn render_fullscreen_image(
+        &self,
+        cx: &Context<BaseViewState>,
+    ) -> Option<AnyElement> {
+        self.fullscreen_image.as_ref().map(|image| {
+            let image = match image {
+                CardImage::Local(path) => img(path.clone())
+                    .size_full()
+                    .object_fit(ObjectFit::Contain)
+                    .into_any_element(),
+                CardImage::External(url) => img(SharedUri::from(url.clone()))
+                    .size_full()
+                    .object_fit(ObjectFit::Contain)
+                    .into_any_element(),
+            };
+            div()
+                .id("base-image-fullscreen")
+                .absolute()
+                .inset_0()
+                .bg(cx.theme().background)
+                .p_4()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(image)
+                .into_any_element()
+        })
+    }
+}
+
+pub(super) fn resolve_card_image(
+    property: &PropertyPath,
+    row: &BaseRow,
+    catalog: &VaultCatalog,
+    root: &std::path::Path,
+) -> Option<CardImage> {
+    let value = super::property_value(property, row)?.as_str()?;
+    let target = normalize_card_image_target(value);
+    if target.is_empty() {
+        return None;
+    }
+    if target.starts_with("http://") || target.starts_with("https://") {
+        return Some(CardImage::External(target));
+    }
+    let target = percent_encoding::percent_decode_str(&target)
+        .decode_utf8_lossy()
+        .to_string();
+    let relative_candidate = row.path.parent().map_or_else(
+        || root.join(&target),
+        |parent| root.join(parent).join(&target),
+    );
+    if relative_candidate.is_file() {
+        return Some(CardImage::Local(relative_candidate));
+    }
+    catalog
+        .resolve(&target)
+        .filter(|path| path.is_file())
+        .map(CardImage::Local)
+}
+
+fn normalize_card_image_target(value: &str) -> String {
+    let value = value.trim();
+    let value = value
+        .strip_prefix("![[")
+        .and_then(|value| value.strip_suffix("]]"))
+        .or_else(|| {
+            value
+                .strip_prefix("[[")
+                .and_then(|value| value.strip_suffix("]]"))
+        })
+        .unwrap_or(value);
+    let value = value
+        .split_once("](")
+        .map_or(value, |(_, value)| value.strip_suffix(')').unwrap_or(value));
+    value
+        .split_once('|')
+        .map_or(value, |(target, _)| target)
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .to_string()
+}
 
 struct CardRenderContext<'a> {
     snapshot: &'a BaseSnapshot,
@@ -34,10 +159,10 @@ impl BaseViewState {
         cx: &Context<Self>,
     ) -> AnyElement {
         let entity = cx.entity();
-        let viewport_width = if self.card_viewport_width == px(0.) {
+        let viewport_width = if self.cards.viewport_width == px(0.) {
             content_width(window.bounds().size.width)
         } else {
-            self.card_viewport_width
+            self.cards.viewport_width
         };
         let columns = columns_for(view.card_size, viewport_width);
         let card_width = card_width_for(view.card_size, viewport_width, columns);
@@ -69,7 +194,7 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.scroll_handle)
+        .track_scroll(&self.cards.scroll_handle)
         .size_full();
         let viewport_entity = entity;
         div()
@@ -81,18 +206,17 @@ impl BaseViewState {
             .on_prepaint(move |bounds, _window, cx| {
                 let width = content_width(bounds.size.width);
                 viewport_entity.update(cx, |state, cx| {
-                    if state.card_viewport_width != width {
-                        state.card_viewport_width = width;
+                    if state.cards.viewport_width != width {
+                        state.cards.viewport_width = width;
                         cx.notify();
                     }
                 });
             })
             .child(list)
             .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .child(Scrollbar::vertical(&self.scroll_handle).mode(ScrollbarMode::Always)),
+                div().absolute().inset_0().child(
+                    Scrollbar::vertical(&self.cards.scroll_handle).mode(ScrollbarMode::Always),
+                ),
             )
             .into_any_element()
     }
@@ -288,8 +412,8 @@ fn render_card_image(
 ) -> AnyElement {
     let image_height = card_width / view.image_aspect_ratio;
     let object_fit = match view.image_fit {
-        CardImageFit::Cover => gpui::ObjectFit::Cover,
-        CardImageFit::Contain => gpui::ObjectFit::Contain,
+        CardImageFit::Cover => ObjectFit::Cover,
+        CardImageFit::Contain => ObjectFit::Contain,
     };
     let mut container = div()
         .w_full()
@@ -301,7 +425,8 @@ fn render_card_image(
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             fullscreen_entity.update(cx, |state, cx| {
-                state.show_fullscreen_image(preview_image.clone(), cx);
+                state.cards.show_fullscreen_image(preview_image.clone());
+                cx.notify();
             });
         });
     let image_element = match image {
@@ -315,4 +440,21 @@ fn render_card_image(
             .into_any_element(),
     };
     container.child(image_element).into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_card_image_target;
+
+    #[test]
+    fn normalizes_card_image_targets() {
+        assert_eq!(
+            normalize_card_image_target("![](https://example.com/image.png)"),
+            "https://example.com/image.png"
+        );
+        assert_eq!(
+            normalize_card_image_target("![[folder/image.png|Preview]]"),
+            "folder/image.png"
+        );
+    }
 }

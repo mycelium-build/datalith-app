@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
 };
-use gpui_component::{h_flex, v_virtual_list};
+use gpui_component::{VirtualListScrollHandle, h_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, ListMarkers};
@@ -9,6 +9,20 @@ use crate::document::base::{BaseView, ListMarkers};
 use super::{BaseDefinition, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const LIST_ROW_HEIGHT: f32 = 28.0;
+
+pub(super) struct ListState {
+    pub(super) scroll_handle: VirtualListScrollHandle,
+    pub(super) item_sizes: Vec<Size<Pixels>>,
+}
+
+impl ListState {
+    pub(super) fn new() -> Self {
+        Self {
+            scroll_handle: VirtualListScrollHandle::new(),
+            item_sizes: Vec::new(),
+        }
+    }
+}
 
 impl BaseViewState {
     pub(super) fn render_list(
@@ -18,7 +32,7 @@ impl BaseViewState {
         cx: &Context<Self>,
     ) -> AnyElement {
         let entity = cx.entity();
-        let item_sizes = self.item_sizes.clone();
+        let item_sizes = self.list.item_sizes.clone();
         let handler = self.handler.clone();
         let list = v_virtual_list(
             entity,
@@ -42,7 +56,7 @@ impl BaseViewState {
                     .collect()
             },
         )
-        .track_scroll(&self.scroll_handle)
+        .track_scroll(&self.list.scroll_handle)
         .size_full();
         div()
             .relative()
@@ -50,10 +64,9 @@ impl BaseViewState {
             .min_h_0()
             .child(list)
             .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .child(Scrollbar::vertical(&self.scroll_handle).mode(ScrollbarMode::Always)),
+                div().absolute().inset_0().child(
+                    Scrollbar::vertical(&self.list.scroll_handle).mode(ScrollbarMode::Always),
+                ),
             )
             .into_any_element()
     }
