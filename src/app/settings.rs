@@ -60,7 +60,7 @@ impl ThemePreference {
     }
 
     /// The window appearance to force for explicit preferences, or `None` for `System` (follow the OS appearance).
-    pub fn to_window_appearance(self) -> Option<WindowAppearance> {
+    pub const fn to_window_appearance(self) -> Option<WindowAppearance> {
         match self {
             Self::System => None,
             Self::Light => Some(WindowAppearance::Light),
