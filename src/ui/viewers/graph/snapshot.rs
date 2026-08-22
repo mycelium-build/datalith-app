@@ -163,10 +163,11 @@ pub(super) async fn load_snapshot(
     catalog: VaultCatalog,
 ) -> Result<GraphSnapshot> {
     let root = catalog.root();
+    let filter = definition.catalog_filter()?;
     let selection = catalog
         .query_documents_with_outgoing_links(CatalogQuery {
             extension: Some("md".into()),
-            filter: definition.catalog_filter(),
+            filter,
             limit: None,
         })
         .await?;
