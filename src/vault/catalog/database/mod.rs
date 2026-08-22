@@ -7,11 +7,12 @@ use anyhow::{Context, Result, anyhow};
 
 use crate::vault::DATALITH_DIR_NAME;
 
+mod base_query;
 mod document;
 mod filter_compiler;
 mod link_resolution;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub(super) const FILE_NAME_SQL: &str = "substr(path, \
     CASE WHEN folder = '' THEN 1 ELSE length(folder) + 2 END, \
@@ -186,6 +187,7 @@ impl CatalogDatabase {
                     folder      TEXT NOT NULL,
                     size_bytes  INTEGER NOT NULL,
                     modified_ns INTEGER NOT NULL,
+                    created_ns  INTEGER NOT NULL DEFAULT 0,
                     metadata    BLOB
                 );
                 CREATE INDEX IF NOT EXISTS documents_extension_idx ON documents(extension);
@@ -196,11 +198,13 @@ impl CatalogDatabase {
                     ordinal     INTEGER NOT NULL,
                     target      TEXT NOT NULL,
                     target_path TEXT REFERENCES documents(path) ON DELETE SET NULL ON UPDATE CASCADE,
+                    is_embed    INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (source_path, ordinal)
                 );
                 CREATE INDEX IF NOT EXISTS wiki_links_target_nocase_idx ON wiki_links(target COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS wiki_links_target_path_idx ON wiki_links(target_path);
-                PRAGMA user_version = 3;
+
+                PRAGMA user_version = 4;
                 ",
             )
             .await?;

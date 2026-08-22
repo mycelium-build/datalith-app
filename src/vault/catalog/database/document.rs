@@ -15,20 +15,28 @@ use crate::vault::links;
 
 const BATCH_SIZE: usize = 64;
 
+#[derive(Clone, Debug)]
+pub(super) struct LinkTarget {
+    pub(super) target: String,
+    pub(super) is_embed: bool,
+}
+
 pub(super) struct TrackedDocument {
     pub(super) path: PathBuf,
     pub(super) extension: String,
     pub(super) folder: String,
     pub(super) size_bytes: i64,
     pub(super) modified_ns: i64,
+    pub(super) created_ns: i64,
     pub(super) metadata: Option<serde_json::Value>,
-    pub(super) links: Vec<String>,
+    pub(super) links: Vec<LinkTarget>,
 }
 
 #[derive(Clone, Copy)]
 struct StoredMeta {
     size_bytes: i64,
     modified_ns: i64,
+    created_ns: i64,
 }
 
 impl TrackedDocument {
@@ -53,7 +61,10 @@ impl TrackedDocument {
             .map(|content| {
                 links::occurrences(content)
                     .into_iter()
-                    .map(|occurrence| occurrence.target)
+                    .map(|occurrence| LinkTarget {
+                        target: occurrence.target,
+                        is_embed: occurrence.is_embed,
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -69,12 +80,19 @@ impl TrackedDocument {
             .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
             .unwrap_or_default();
+        let created_ns = metadata
+            .created()
+            .ok()
+            .and_then(|created| created.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
+            .unwrap_or_default();
         Some(Self {
             path: relative,
             extension,
             folder,
             size_bytes: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
             modified_ns,
+            created_ns,
             metadata: document_metadata,
             links: document_links,
         })
@@ -183,8 +201,8 @@ impl CatalogDatabase {
 
             let mut affected_targets = documents
                 .iter()
-                .flat_map(|document| document.links.iter().cloned())
-                .collect::<BTreeSet<_>>();
+                .flat_map(|document| document.links.iter().map(|link| link.target.clone()))
+                .collect::<BTreeSet<String>>();
             for path in &removed_affected_paths {
                 let mut rows = connection
                     .query(
@@ -365,7 +383,10 @@ impl CatalogDatabase {
 
 async fn load_stored_meta(connection: &turso::Connection) -> Result<HashMap<String, StoredMeta>> {
     let mut stored_rows = connection
-        .query("SELECT path, size_bytes, modified_ns FROM documents", ())
+        .query(
+            "SELECT path, size_bytes, modified_ns, created_ns FROM documents",
+            (),
+        )
         .await?;
     let mut map = HashMap::new();
     while let Some(row) = stored_rows.next().await? {
@@ -374,6 +395,7 @@ async fn load_stored_meta(connection: &turso::Connection) -> Result<HashMap<Stri
             StoredMeta {
                 size_bytes: row.get::<i64>(1)?,
                 modified_ns: row.get::<i64>(2)?,
+                created_ns: row.get::<i64>(3)?,
             },
         );
     }
@@ -431,6 +453,7 @@ fn reconstruct_unchanged(
             folder,
             size_bytes: stored.size_bytes,
             modified_ns: stored.modified_ns,
+            created_ns: stored.created_ns,
             metadata: None, // will be overwritten by existing DB row
             links: Vec::new(),
         });
@@ -493,23 +516,26 @@ async fn upsert_documents_and_links(
             // - once for the NULL test,
             // - once for the jsonb() conversion
             // so a single NULL maps to a NULL column value.
-            value_groups.push("(?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
+            value_groups
+                .push("(?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
             params.push(Value::Text(relative));
             params.push(Value::Text(document.extension.clone()));
             params.push(Value::Text(document.folder.clone()));
             params.push(Value::Integer(document.size_bytes));
             params.push(Value::Integer(document.modified_ns));
+            params.push(Value::Integer(document.created_ns));
             params.push(metadata_json.clone().map_or(Value::Null, Value::Text));
             params.push(metadata_json.map_or(Value::Null, Value::Text));
         }
         let sql = format!(
-            "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+            "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, created_ns, metadata) \
              VALUES {} \
              ON CONFLICT(path) DO UPDATE SET \
                 extension=excluded.extension, \
                 folder=excluded.folder, \
                 size_bytes=excluded.size_bytes, \
                 modified_ns=excluded.modified_ns, \
+                created_ns=excluded.created_ns, \
                 metadata=excluded.metadata",
             value_groups.join(", ")
         );
@@ -532,7 +558,7 @@ async fn upsert_documents_and_links(
         }
 
         // batch wiki link inserts
-        let all_links: Vec<(String, i64, String)> = chunk
+        let all_links: Vec<(String, i64, String, bool)> = chunk
             .iter()
             .flat_map(|document| {
                 let relative = path_text(&document.path);
@@ -540,11 +566,12 @@ async fn upsert_documents_and_links(
                     .links
                     .iter()
                     .enumerate()
-                    .map(move |(ordinal, target)| {
+                    .map(move |(ordinal, link)| {
                         (
                             relative.clone(),
                             i64::try_from(ordinal).unwrap_or(i64::MAX),
-                            target.clone(),
+                            link.target.clone(),
+                            link.is_embed,
                         )
                     })
             })
@@ -552,14 +579,15 @@ async fn upsert_documents_and_links(
         for link_chunk in all_links.chunks(BATCH_SIZE) {
             let mut link_values = Vec::new();
             let mut link_params: Vec<Value> = Vec::new();
-            for (source, ordinal, target) in link_chunk {
-                link_values.push("(?, ?, ?, NULL)");
+            for (source, ordinal, target, is_embed) in link_chunk {
+                link_values.push("(?, ?, ?, NULL, ?)");
                 link_params.push(Value::Text(source.clone()));
                 link_params.push(Value::Integer(*ordinal));
                 link_params.push(Value::Text(target.clone()));
+                link_params.push(Value::Integer(i64::from(*is_embed)));
             }
             let link_sql = format!(
-                "INSERT INTO wiki_links(source_path, ordinal, target, target_path) VALUES {}",
+                "INSERT INTO wiki_links(source_path, ordinal, target, target_path, is_embed) VALUES {}",
                 link_values.join(", ")
             );
             connection
