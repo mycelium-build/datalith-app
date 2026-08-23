@@ -45,8 +45,14 @@ impl CardsState {
     pub(super) fn render_fullscreen_image(&self, cx: &App) -> Option<AnyElement> {
         let image = self.fullscreen_image.as_ref()?;
         let content = match image {
-            CardImage::Local(path) => img(path.clone()).into_any_element(),
-            CardImage::External(url) => img(SharedUri::from(url.clone())).into_any_element(),
+            CardImage::Local(path) => img(path.clone())
+                .size_full()
+                .object_fit(ObjectFit::Contain)
+                .into_any_element(),
+            CardImage::External(url) => img(SharedUri::from(url.clone()))
+                .size_full()
+                .object_fit(ObjectFit::Contain)
+                .into_any_element(),
         };
         Some(
             div()
