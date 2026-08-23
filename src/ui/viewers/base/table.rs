@@ -1,13 +1,13 @@
 use gpui::{
-    AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, TextRun, Window,
-    div, px, size,
+    AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
+    Size, Styled, TextRun, Window, div, px, size,
 };
 use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_component::{scroll::ScrollableElement, scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
-use super::{BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
+use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const TABLE_HEADER_HEIGHT: f32 = 32.0;
 const TABLE_COLUMN_MIN_WIDTH: f32 = 128.0;
@@ -32,6 +32,81 @@ impl TableState {
     }
 }
 
+fn build_table_header(
+    snapshot: &BaseSnapshot,
+    view: &BaseView,
+    column_widths: &[Pixels],
+    table_min_width: Pixels,
+    cx: &App,
+) -> AnyElement {
+    h_flex()
+        .w_full()
+        .min_w(table_min_width)
+        .h(px(TABLE_HEADER_HEIGHT))
+        .bg(cx.theme().tab_bar)
+        .border_b_1()
+        .border_color(cx.theme().border)
+        .children(
+            view.order
+                .iter()
+                .zip(column_widths.iter())
+                .map(|(property, width)| {
+                    div()
+                        .w(*width)
+                        .min_w(*width)
+                        .max_w(px(TABLE_COLUMN_MAX_WIDTH))
+                        .flex_shrink_0()
+                        .px_2()
+                        .items_center()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(snapshot.definition.display_label(property).to_string())
+                }),
+        )
+        .into_any_element()
+}
+
+fn build_table_footer(
+    snapshot: &BaseSnapshot,
+    view: &BaseView,
+    column_widths: &[Pixels],
+    table_min_width: Pixels,
+    cx: &App,
+) -> Option<AnyElement> {
+    if snapshot.summaries.is_empty() {
+        return None;
+    }
+    Some(
+        h_flex()
+            .w_full()
+            .min_w(table_min_width)
+            .h(px(TABLE_HEADER_HEIGHT))
+            .bg(cx.theme().tab_bar)
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .children(
+                view.order
+                    .iter()
+                    .zip(column_widths.iter())
+                    .map(|(property, width)| {
+                        let summary_text = snapshot
+                            .summary_for(&property.source)
+                            .map(|display| display.text.clone())
+                            .unwrap_or_default();
+                        div()
+                            .w(*width)
+                            .min_w(*width)
+                            .max_w(px(TABLE_COLUMN_MAX_WIDTH))
+                            .flex_shrink_0()
+                            .px_2()
+                            .items_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(summary_text)
+                    }),
+            )
+            .into_any_element(),
+    )
+}
+
 impl BaseViewState {
     pub(super) fn render_table(
         &self,
@@ -46,28 +121,11 @@ impl BaseViewState {
         let entity = cx.entity();
         let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
-        let definition = snapshot.definition.clone();
         let column_widths = column_widths(snapshot, view, window);
         let table_min_width = table_width(&column_widths);
         let row_column_widths = column_widths.clone();
-        let header = h_flex()
-            .w_full()
-            .min_w(table_min_width)
-            .h(px(TABLE_HEADER_HEIGHT))
-            .bg(cx.theme().tab_bar)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .children(view.order.iter().enumerate().map(|(column, property)| {
-                div()
-                    .w(column_widths[column])
-                    .min_w(column_widths[column])
-                    .max_w(px(TABLE_COLUMN_MAX_WIDTH))
-                    .flex_shrink_0()
-                    .px_2()
-                    .items_center()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(definition.display_name(property).to_string())
-            }));
+        let footer = build_table_footer(snapshot, view, &column_widths, table_min_width, cx);
+        let header = build_table_header(snapshot, view, &column_widths, table_min_width, cx);
         let list = v_virtual_list(
             entity,
             "base-table",
@@ -82,18 +140,35 @@ impl BaseViewState {
                 };
                 visible_range
                     .map(|index| {
-                        let Some(row) = snapshot.rows.get(index) else {
+                        let Some(item) = snapshot.items.get(index) else {
                             return div().into_any_element();
                         };
-                        render_table_row(
-                            index,
-                            row,
-                            view,
-                            table_min_width,
-                            &row_column_widths,
-                            &handler,
-                            cx,
-                        )
+                        match item {
+                            BaseItem::Header { label, count } => render_group_header(
+                                format!("base-table-header-{index}"),
+                                label,
+                                *count,
+                                table_min_width,
+                                cx,
+                            ),
+                            BaseItem::Row {
+                                index: row_index, ..
+                            } => {
+                                let Some(row) = snapshot.rows.get(*row_index) else {
+                                    return div().into_any_element();
+                                };
+                                render_table_row(
+                                    *row_index,
+                                    snapshot,
+                                    row,
+                                    view,
+                                    table_min_width,
+                                    &row_column_widths,
+                                    &handler,
+                                    cx,
+                                )
+                            }
+                        }
                     })
                     .collect()
             },
@@ -108,13 +183,18 @@ impl BaseViewState {
             .min_w_0()
             .min_h_0()
             .child(
-                div().size_full().overflow_x_scrollbar().child(
-                    v_flex()
-                        .size_full()
-                        .min_w(table_min_width)
-                        .child(header)
-                        .child(body),
-                ),
+                v_flex()
+                    .size_full()
+                    .child(
+                        div().size_full().overflow_x_scrollbar().child(
+                            v_flex()
+                                .size_full()
+                                .min_w(table_min_width)
+                                .child(header)
+                                .child(body),
+                        ),
+                    )
+                    .children(footer),
             )
             .child(
                 div().absolute().inset_0().child(
@@ -131,8 +211,16 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
     let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
         return Vec::new();
     };
-    let height = table_row_height(view.row_height);
-    vec![size(px(1.), px(height)); snapshot.rows.len()]
+    let table = view.as_table().copied().unwrap_or_default();
+    let height = table_row_height(table.row_height);
+    snapshot
+        .items
+        .iter()
+        .map(|item| match item {
+            BaseItem::Header { .. } => size(px(1.), px(TABLE_HEADER_HEIGHT)),
+            BaseItem::Row { .. } => size(px(1.), px(height)),
+        })
+        .collect()
 }
 
 const fn table_row_height(height: TableRowHeight) -> f32 {
@@ -144,8 +232,32 @@ const fn table_row_height(height: TableRowHeight) -> f32 {
     }
 }
 
+fn render_group_header(
+    id: String,
+    label: &str,
+    count: usize,
+    min_width: Pixels,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .id(ElementId::Name(id.into()))
+        .w_full()
+        .min_w(min_width)
+        .h(px(TABLE_HEADER_HEIGHT))
+        .flex()
+        .items_center()
+        .gap_2()
+        .px_2()
+        .bg(cx.theme().secondary)
+        .text_color(cx.theme().muted_foreground)
+        .child(format!("{label} ({count})"))
+        .into_any_element()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn render_table_row(
     index: usize,
+    snapshot: &BaseSnapshot,
     row: &BaseRow,
     view: &BaseView,
     table_min_width: Pixels,
@@ -153,25 +265,41 @@ fn render_table_row(
     handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
     cx: &App,
 ) -> AnyElement {
+    let table = view.as_table().copied().unwrap_or_default();
     div()
+        .id(ElementId::Name(format!("base-table-row-{index}").into()))
         .w_full()
         .min_w(table_min_width)
-        .h(px(table_row_height(view.row_height)))
+        .h(px(table_row_height(table.row_height)))
         .flex()
         .items_center()
         .border_b_1()
         .border_color(cx.theme().border)
-        .children(view.order.iter().enumerate().map(|(column, property)| {
-            div()
-                .w(column_widths[column])
-                .min_w(column_widths[column])
-                .max_w(px(TABLE_COLUMN_MAX_WIDTH))
-                .flex_shrink_0()
-                .px_2()
-                .child(super::render_property_cell(
-                    row, property, handler, index, column, true, cx,
-                ))
-        }))
+        .children(
+            view.order
+                .iter()
+                .enumerate()
+                .filter_map(|(column, property)| {
+                    let width = column_widths.get(column)?;
+                    Some(
+                        div()
+                            .w(*width)
+                            .min_w(*width)
+                            .max_w(px(TABLE_COLUMN_MAX_WIDTH))
+                            .flex_shrink_0()
+                            .px_2()
+                            .child(super::render_property_cell(
+                                snapshot,
+                                row,
+                                property,
+                                handler,
+                                ElementId::Name(format!("base-cell-{index}-{column}").into()),
+                                true,
+                                cx,
+                            )),
+                    )
+                }),
+        )
         .into_any_element()
 }
 
@@ -182,7 +310,7 @@ fn column_widths(snapshot: &BaseSnapshot, view: &BaseView, window: &Window) -> V
         .iter()
         .map(|property| {
             let header_width = measure_text(
-                &snapshot.definition.display_name(property).to_string(),
+                &snapshot.definition.display_label(property),
                 window,
                 &text_style,
                 font_size,
@@ -192,7 +320,7 @@ fn column_widths(snapshot: &BaseSnapshot, view: &BaseView, window: &Window) -> V
                 .iter()
                 .map(|row| {
                     measure_text(
-                        &table_cell_text(property, row),
+                        &table_cell_text(snapshot, property, row),
                         window,
                         &text_style,
                         font_size,
@@ -217,7 +345,7 @@ fn measure_text(
     text_style: &gpui::TextStyle,
     font_size: Pixels,
 ) -> f32 {
-    text.split(|character| character == '\r' || character == '\n')
+    text.split(['\r', '\n'])
         .map(|line| {
             f32::from(
                 window
@@ -239,20 +367,19 @@ fn measure_text(
         .fold(0.0, f32::max)
 }
 
-fn table_cell_text(property: &crate::document::base::DisplayProperty, row: &BaseRow) -> String {
+fn table_cell_text(
+    snapshot: &BaseSnapshot,
+    property: &crate::document::base::DisplayProperty,
+    row: &BaseRow,
+) -> String {
     if property.source == "file.name" {
         return super::file_name(&row.path).unwrap_or_default().to_string();
     }
     if property.source == "file.links" {
-        return row
-            .links
-            .iter()
-            .map(|target| super::file_name(std::path::Path::new(target)).unwrap_or(target))
-            .collect::<Vec<_>>()
-            .join("  ");
+        return row.links.join("  ");
     }
-    if let Some((label, _)) = super::property_link(&property.path, row) {
-        return label;
-    }
-    super::property_text(&property.path, row)
+    snapshot
+        .projection_value(row, &property.source)
+        .map(super::format_scalar_text)
+        .unwrap_or_default()
 }
