@@ -1,6 +1,7 @@
 pub mod file_tree;
 mod header;
 mod navigation;
+mod tree_actions;
 
 use std::path::{Path, PathBuf};
 
