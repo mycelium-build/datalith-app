@@ -1,5 +1,14 @@
-//! Card image resolution for the cards view.
+//! Card image resolution and rendering for the cards view.
 
+use gpui::{
+    AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
+    ParentElement, SharedUri, Styled, div, img, prelude::StyledImage as _, px,
+};
+use gpui_component::ActiveTheme;
+
+use crate::document::base::{BaseView, CardImageFit};
+
+use super::super::BaseViewState;
 use super::super::snapshot::BaseRow;
 use crate::vault::VaultCatalog;
 
@@ -7,6 +16,48 @@ use crate::vault::VaultCatalog;
 pub(in crate::ui::viewers::base) enum CardImage {
     Local(std::path::PathBuf),
     External(String),
+}
+
+pub(super) fn render_card_image(
+    image: CardImage,
+    card_width: f32,
+    view: &BaseView,
+    fullscreen_entity: Entity<BaseViewState>,
+    cx: &App,
+) -> AnyElement {
+    let cards_config = view.as_cards().cloned().unwrap_or_default();
+    let image_height = card_width / cards_config.image_aspect_ratio;
+    let object_fit = match cards_config.image_fit {
+        CardImageFit::Cover => ObjectFit::Cover,
+        CardImageFit::Contain => ObjectFit::Contain,
+    };
+    let mut container = div()
+        .w_full()
+        .h(px(image_height))
+        .overflow_hidden()
+        .bg(cx.theme().background);
+    let preview_image = image.clone();
+    container = container
+        .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            fullscreen_entity.update(cx, |state, cx| {
+                if let Some(cards) = state.cards.as_mut() {
+                    cards.show_fullscreen_image(preview_image.clone());
+                    cx.notify();
+                }
+            });
+        });
+    let image_element = match image {
+        CardImage::Local(path) => img(path)
+            .size_full()
+            .object_fit(object_fit)
+            .into_any_element(),
+        CardImage::External(url) => img(SharedUri::from(url))
+            .size_full()
+            .object_fit(object_fit)
+            .into_any_element(),
+    };
+    container.child(image_element).into_any_element()
 }
 
 pub(in crate::ui::viewers::base) fn resolve_card_image(
@@ -62,4 +113,21 @@ pub(in crate::ui::viewers::base) fn normalize_card_image_target(value: &str) -> 
         .trim_start_matches('<')
         .trim_end_matches('>')
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_card_image_target;
+
+    #[test]
+    fn normalizes_card_image_targets() {
+        assert_eq!(
+            normalize_card_image_target("![](https://example.com/image.png)"),
+            "https://example.com/image.png"
+        );
+        assert_eq!(
+            normalize_card_image_target("![[folder/image.png|Preview]]"),
+            "folder/image.png"
+        );
+    }
 }

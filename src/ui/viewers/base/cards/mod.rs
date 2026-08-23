@@ -1,14 +1,14 @@
 use gpui::{
-    AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
-    ObjectFit, ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img,
-    prelude::StyledImage, px, size,
+    AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, ObjectFit,
+    ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img, prelude::StyledImage as _,
+    px, size,
 };
 use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
 use gpui_component::{
     ActiveTheme, ElementExt, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 
-use crate::document::base::{BaseView, CardImageFit};
+use crate::document::base::BaseView;
 
 use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
@@ -312,7 +312,7 @@ fn render_card(
     };
     let card_id = ElementId::Name(id.into());
     let image = row.image.clone().map(|image| {
-        render_card_image(
+        image::render_card_image(
             image,
             card_width,
             context.view,
@@ -417,63 +417,4 @@ fn card_body_height(view: &BaseView) -> f32 {
             CARD_BODY_PADDING + property_count * CARD_PROPERTY_HEIGHT,
         )
         .max(CARD_BODY_MIN_HEIGHT)
-}
-
-fn render_card_image(
-    image: CardImage,
-    card_width: f32,
-    view: &BaseView,
-    fullscreen_entity: Entity<BaseViewState>,
-    cx: &App,
-) -> AnyElement {
-    let cards_config = view.as_cards().cloned().unwrap_or_default();
-    let image_height = card_width / cards_config.image_aspect_ratio;
-    let object_fit = match cards_config.image_fit {
-        CardImageFit::Cover => ObjectFit::Cover,
-        CardImageFit::Contain => ObjectFit::Contain,
-    };
-    let mut container = div()
-        .w_full()
-        .h(px(image_height))
-        .overflow_hidden()
-        .bg(cx.theme().background);
-    let preview_image = image.clone();
-    container = container
-        .cursor_pointer()
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-            fullscreen_entity.update(cx, |state, cx| {
-                if let Some(cards) = state.cards.as_mut() {
-                    cards.show_fullscreen_image(preview_image.clone());
-                    cx.notify();
-                }
-            });
-        });
-    let image_element = match image {
-        CardImage::Local(path) => img(path)
-            .size_full()
-            .object_fit(object_fit)
-            .into_any_element(),
-        CardImage::External(url) => img(SharedUri::from(url))
-            .size_full()
-            .object_fit(object_fit)
-            .into_any_element(),
-    };
-    container.child(image_element).into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::image::normalize_card_image_target;
-
-    #[test]
-    fn normalizes_card_image_targets() {
-        assert_eq!(
-            normalize_card_image_target("![](https://example.com/image.png)"),
-            "https://example.com/image.png"
-        );
-        assert_eq!(
-            normalize_card_image_target("![[folder/image.png|Preview]]"),
-            "folder/image.png"
-        );
-    }
 }
