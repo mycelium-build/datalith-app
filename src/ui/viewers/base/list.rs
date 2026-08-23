@@ -1,14 +1,16 @@
 use gpui::{
-    AnyElement, App, Context, IntoElement, ParentElement, Pixels, Size, Styled, div, px, size,
+    AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
+    Size, Styled, div, px, size,
 };
 use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, ListMarkers};
 
-use super::{BaseDefinition, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
+use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const LIST_ROW_HEIGHT: f32 = 28.0;
+const GROUP_HEADER_HEIGHT: f32 = 28.0;
 
 pub(super) struct ListState {
     pub(super) scroll_handle: VirtualListScrollHandle,
@@ -27,7 +29,7 @@ impl ListState {
 impl BaseViewState {
     pub(super) fn render_list(
         &self,
-        _snapshot: &BaseSnapshot,
+        snapshot: &BaseSnapshot,
         _view: &BaseView,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -37,6 +39,7 @@ impl BaseViewState {
         let entity = cx.entity();
         let item_sizes = list_state.item_sizes.clone();
         let handler = self.handler.clone();
+        let summary_strip = Self::render_summary_strip(snapshot, cx);
         let list = v_virtual_list(
             entity,
             "base-list",
@@ -51,10 +54,35 @@ impl BaseViewState {
                 };
                 visible_range
                     .map(|index| {
-                        let Some(row) = snapshot.rows.get(index) else {
+                        let Some(item) = snapshot.items.get(index) else {
                             return div().into_any_element();
                         };
-                        render_list_row(index, row, &snapshot.definition, view, &handler, cx)
+                        match item {
+                            BaseItem::Header { label, count } => render_group_header(
+                                format!("base-list-header-{index}"),
+                                label,
+                                *count,
+                                cx,
+                            ),
+                            BaseItem::Row {
+                                index: row_index,
+                                ordinal,
+                                ..
+                            } => {
+                                let Some(row) = snapshot.rows.get(*row_index) else {
+                                    return div().into_any_element();
+                                };
+                                render_list_row(
+                                    *ordinal,
+                                    snapshot,
+                                    row,
+                                    &snapshot.definition,
+                                    view,
+                                    &handler,
+                                    cx,
+                                )
+                            }
+                        }
                     })
                     .collect()
             },
@@ -73,6 +101,7 @@ impl BaseViewState {
                         .viewport_from_layout(),
                 ),
             )
+            .children(summary_strip)
             .into_any_element()
     }
 }
@@ -81,49 +110,65 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
     let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
         return Vec::new();
     };
+    let height = list_row_height(view);
     snapshot
-        .rows
+        .items
         .iter()
-        .map(|_| size(px(1.), px(list_row_height(view))))
+        .map(|item| match item {
+            BaseItem::Header { .. } => size(px(1.), px(GROUP_HEADER_HEIGHT)),
+            BaseItem::Row { .. } => size(px(1.), px(height)),
+        })
         .collect()
 }
 
 fn list_row_height(view: &BaseView) -> f32 {
-    if !view.indent_properties {
+    let list = view.as_list().cloned().unwrap_or_default();
+    if !list.indent_properties {
         return LIST_ROW_HEIGHT;
     }
     let lines = u32::try_from(view.order.len().max(1)).unwrap_or(u32::MAX);
     LIST_ROW_HEIGHT * lines.to_string().parse::<f32>().unwrap_or(1.0)
 }
 
+fn render_group_header(id: String, label: &str, count: usize, cx: &App) -> AnyElement {
+    h_flex()
+        .id(ElementId::Name(id.into()))
+        .items_center()
+        .h(px(GROUP_HEADER_HEIGHT))
+        .gap_2()
+        .text_color(cx.theme().muted_foreground)
+        .child(format!("{label} ({count})"))
+        .into_any_element()
+}
+
 fn render_list_row(
-    index: usize,
+    ordinal: usize,
+    snapshot: &BaseSnapshot,
     row: &BaseRow,
-    definition: &BaseDefinition,
+    definition: &crate::document::base::BaseDefinition,
     view: &BaseView,
     handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
     cx: &App,
 ) -> AnyElement {
-    let marker = match view.markers {
+    let list = view.as_list().cloned().unwrap_or_default();
+    let marker = match list.markers {
         ListMarkers::Bullets => "• ".to_string(),
-        ListMarkers::Numbers => format!("{}. ", index.saturating_add(1)),
+        ListMarkers::Numbers => format!("{}. ", ordinal.saturating_add(1)),
         ListMarkers::None => String::new(),
     };
     let mut lines = Vec::new();
-    if view.indent_properties {
+    if list.indent_properties {
         if let Some(property) = view.order.first() {
             lines.push(
                 h_flex()
                     .items_center()
                     .h(px(LIST_ROW_HEIGHT))
                     .child(marker)
-                    .child(super::render_property_cell(
-                        row, property, handler, index, 0, true, cx,
-                    ))
+                    .child(cell(snapshot, row, property, handler, 0, 0, true, cx))
                     .into_any_element(),
             );
         }
-        let sub_marker = match view.markers {
+        let sub_marker = match list.markers {
             ListMarkers::None => String::new(),
             _ => "• ".to_string(),
         };
@@ -141,10 +186,10 @@ fn render_list_row(
                     .child(
                         div()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("{}:", definition.display_name(property))),
+                            .child(format!("{}:", definition.display_label(property))),
                     )
-                    .child(super::render_property_cell(
-                        row, property, handler, index, column, true, cx,
+                    .child(cell(
+                        snapshot, row, property, handler, ordinal, column, true, cx,
                     ))
                     .into_any_element()
             });
@@ -156,12 +201,15 @@ fn render_list_row(
         );
     } else {
         let mut cells = Vec::new();
-        for (column, property) in view.order.iter().enumerate() {
+        for column in 0..view.order.len() {
             if column > 0 {
-                cells.push(div().child(view.separators.clone()).into_any_element());
+                cells.push(div().child(list.separators.clone()).into_any_element());
             }
-            cells.push(super::render_property_cell(
-                row, property, handler, index, column, true, cx,
+            let Some(property) = view.order.get(column) else {
+                continue;
+            };
+            cells.push(cell(
+                snapshot, row, property, handler, ordinal, column, true, cx,
             ));
         }
         lines.push(
@@ -177,4 +225,26 @@ fn render_list_row(
         .w_full()
         .children(lines)
         .into_any_element()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cell(
+    snapshot: &BaseSnapshot,
+    row: &BaseRow,
+    property: &crate::document::base::DisplayProperty,
+    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    ordinal: usize,
+    column: usize,
+    truncate: bool,
+    cx: &App,
+) -> AnyElement {
+    super::render_property_cell(
+        snapshot,
+        row,
+        property,
+        handler,
+        ElementId::Name(format!("base-cell-{ordinal}-{column}").into()),
+        truncate,
+        cx,
+    )
 }
