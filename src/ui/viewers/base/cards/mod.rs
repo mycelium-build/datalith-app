@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
-    MouseUpEvent, ObjectFit, ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img,
+    ObjectFit, ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img,
     prelude::StyledImage, px, size,
 };
 use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
@@ -9,10 +9,8 @@ use gpui_component::{
 };
 
 use crate::document::base::{BaseView, CardImageFit};
-use crate::document::filter::PropertyPath;
-use crate::vault::VaultCatalog;
 
-use super::{BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
+use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const CARD_GAP: f32 = 16.0;
 const CARD_BODY_MIN_HEIGHT: f32 = 96.0;
@@ -21,11 +19,9 @@ const CARD_PROPERTY_HEIGHT: f32 = 44.0;
 const CARD_MIN_WIDTH: f32 = 120.0;
 const GRID_PADDING: f32 = 16.0;
 
-#[derive(Clone, Debug)]
-pub(super) enum CardImage {
-    Local(std::path::PathBuf),
-    External(String),
-}
+mod image;
+
+pub(super) use image::{CardImage, resolve_card_image};
 
 pub(super) struct CardsState {
     pub(super) scroll_handle: VirtualListScrollHandle,
@@ -45,106 +41,37 @@ impl CardsState {
     fn show_fullscreen_image(&mut self, image: CardImage) {
         self.fullscreen_image = Some(image);
     }
+
+    pub(super) fn render_fullscreen_image(&self, cx: &App) -> Option<AnyElement> {
+        let image = self.fullscreen_image.as_ref()?;
+        let content = match image {
+            CardImage::Local(path) => img(path.clone()).into_any_element(),
+            CardImage::External(url) => img(SharedUri::from(url.clone())).into_any_element(),
+        };
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .size_full()
+                .bg(cx.theme().background)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(content)
+                .into_any_element(),
+        )
+    }
 }
 
 pub(super) fn hide_fullscreen_image(
     state: &mut BaseViewState,
-    _event: &MouseUpEvent,
+    _event: &gpui::MouseUpEvent,
     _window: &mut Window,
-    cx: &mut Context<BaseViewState>,
+    _cx: &mut Context<BaseViewState>,
 ) {
-    if state
-        .cards
-        .as_mut()
-        .and_then(|cards| cards.fullscreen_image.take())
-        .is_some()
-    {
-        cx.notify();
+    if let Some(cards) = state.cards.as_mut() {
+        cards.fullscreen_image = None;
     }
-}
-
-impl CardsState {
-    pub(super) fn render_fullscreen_image(
-        &self,
-        cx: &Context<BaseViewState>,
-    ) -> Option<AnyElement> {
-        self.fullscreen_image.as_ref().map(|image| {
-            let image = match image {
-                CardImage::Local(path) => img(path.clone())
-                    .size_full()
-                    .object_fit(ObjectFit::Contain)
-                    .into_any_element(),
-                CardImage::External(url) => img(SharedUri::from(url.clone()))
-                    .size_full()
-                    .object_fit(ObjectFit::Contain)
-                    .into_any_element(),
-            };
-            div()
-                .id("base-image-fullscreen")
-                .absolute()
-                .inset_0()
-                .bg(cx.theme().background)
-                .p_4()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(image)
-                .into_any_element()
-        })
-    }
-}
-
-pub(super) fn resolve_card_image(
-    property: &PropertyPath,
-    row: &BaseRow,
-    catalog: &VaultCatalog,
-    root: &std::path::Path,
-) -> Option<CardImage> {
-    let value = super::property_value(property, row)?.as_str()?;
-    let target = normalize_card_image_target(value);
-    if target.is_empty() {
-        return None;
-    }
-    if target.starts_with("http://") || target.starts_with("https://") {
-        return Some(CardImage::External(target));
-    }
-    let target = percent_encoding::percent_decode_str(&target)
-        .decode_utf8_lossy()
-        .to_string();
-    let relative_candidate = row.path.parent().map_or_else(
-        || root.join(&target),
-        |parent| root.join(parent).join(&target),
-    );
-    if relative_candidate.is_file() {
-        return Some(CardImage::Local(relative_candidate));
-    }
-    catalog
-        .resolve(&target)
-        .filter(|path| path.is_file())
-        .map(CardImage::Local)
-}
-
-fn normalize_card_image_target(value: &str) -> String {
-    let value = value.trim();
-    let value = value
-        .strip_prefix("![[")
-        .and_then(|value| value.strip_suffix("]]"))
-        .or_else(|| {
-            value
-                .strip_prefix("[[")
-                .and_then(|value| value.strip_suffix("]]"))
-        })
-        .unwrap_or(value);
-    let value = value
-        .split_once("](")
-        .map_or(value, |(_, value)| value.strip_suffix(')').unwrap_or(value));
-    value
-        .split_once('|')
-        .map_or(value, |(target, _)| target)
-        .trim()
-        .trim_start_matches('<')
-        .trim_end_matches('>')
-        .to_string()
 }
 
 struct CardRenderContext<'a> {
@@ -163,6 +90,7 @@ impl BaseViewState {
         window: &Window,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let cards_config = view.as_cards().cloned().unwrap_or_default();
         let Some(cards_state) = self.cards.as_ref() else {
             return super::centered_message("Cards view state is missing", cx);
         };
@@ -172,9 +100,9 @@ impl BaseViewState {
         } else {
             cards_state.viewport_width
         };
-        let columns = columns_for(view.card_size, viewport_width);
-        let card_width = card_width_for(view.card_size, viewport_width, columns);
-        let item_sizes = card_row_sizes(snapshot, view, columns, card_width);
+        let columns = columns_for(cards_config.card_size, viewport_width);
+        let card_width = card_width_for(cards_config.card_size, viewport_width, columns);
+        let item_sizes = card_row_sizes(snapshot, columns, card_width);
         let handler = self.handler.clone();
         let fullscreen_entity = entity.clone();
         let list_entity = entity.clone();
@@ -197,8 +125,19 @@ impl BaseViewState {
                     fullscreen_entity: &fullscreen_entity,
                     cx,
                 };
+                let items = flatten_card_items(snapshot, columns);
                 visible_range
-                    .map(|row_index| render_card_row(row_index, columns, card_width, &context))
+                    .filter_map(|item_index| {
+                        let item = items.get(item_index)?;
+                        Some(match item {
+                            CardItem::Header { label, count } => {
+                                render_group_header(label, *count, cx)
+                            }
+                            CardItem::GridRow(indices) => {
+                                render_card_row(indices, item_index, card_width, &context)
+                            }
+                        })
+                    })
                     .collect()
             },
         )
@@ -231,6 +170,40 @@ impl BaseViewState {
             )
             .into_any_element()
     }
+}
+
+/// One virtualized line of the cards layout: a group header or a grid row.
+enum CardItem {
+    Header { label: String, count: usize },
+    GridRow(Vec<usize>),
+}
+
+fn flatten_card_items(snapshot: &BaseSnapshot, columns: usize) -> Vec<CardItem> {
+    let mut items = Vec::new();
+    let mut pending: Vec<usize> = Vec::new();
+    for item in &snapshot.items {
+        match item {
+            BaseItem::Header { label, count } => {
+                if !pending.is_empty() {
+                    items.push(CardItem::GridRow(std::mem::take(&mut pending)));
+                }
+                items.push(CardItem::Header {
+                    label: label.clone(),
+                    count: *count,
+                });
+            }
+            BaseItem::Row { index, .. } => {
+                pending.push(*index);
+                if pending.len() >= columns {
+                    items.push(CardItem::GridRow(std::mem::take(&mut pending)));
+                }
+            }
+        }
+    }
+    if !pending.is_empty() {
+        items.push(CardItem::GridRow(pending));
+    }
+    items
 }
 
 #[allow(clippy::arithmetic_side_effects)]
@@ -268,33 +241,52 @@ fn card_width_for(card_size: f32, viewport_width: Pixels, columns: usize) -> f32
     ((width - gaps) / columns.to_string().parse::<f32>().unwrap_or(1.0)).max(CARD_MIN_WIDTH)
 }
 
-fn card_row_sizes(
-    snapshot: &BaseSnapshot,
-    view: &BaseView,
-    columns: usize,
-    card_width: f32,
-) -> Vec<Size<Pixels>> {
-    let row_count = snapshot.rows.len().div_ceil(columns);
+fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> Vec<Size<Pixels>> {
+    let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
+        return Vec::new();
+    };
     let image_height = view
-        .image
-        .as_ref()
-        .map_or(0.0, |_| card_width / view.image_aspect_ratio);
+        .as_cards()
+        .and_then(|cards| Some((cards, cards.image.as_ref()?)))
+        .map_or(0.0, |(cards, _)| card_width / cards.image_aspect_ratio);
     let row_height = image_height + card_body_height(view) + CARD_GAP;
-    vec![size(px(1.0), px(row_height)); row_count]
+    flatten_card_items(snapshot, columns)
+        .iter()
+        .map(|item| match item {
+            CardItem::Header { .. } => size(px(1.0), px(GROUP_HEADER_HEIGHT)),
+            CardItem::GridRow(_) => size(px(1.0), px(row_height)),
+        })
+        .collect()
+}
+
+const GROUP_HEADER_HEIGHT: f32 = 36.0;
+
+fn render_group_header(label: &str, count: usize, cx: &App) -> AnyElement {
+    h_flex()
+        .id(ElementId::Name("base-cards-group-header".into()))
+        .items_center()
+        .h(px(GROUP_HEADER_HEIGHT))
+        .gap_2()
+        .text_color(cx.theme().muted_foreground)
+        .child(format!("{label} ({count})"))
+        .into_any_element()
 }
 
 fn render_card_row(
-    row_index: usize,
-    columns: usize,
+    indices: &[usize],
+    grid_row_index: usize,
     card_width: f32,
     context: &CardRenderContext<'_>,
 ) -> AnyElement {
-    let first = row_index.saturating_mul(columns);
-    let end = first
-        .saturating_add(columns)
-        .min(context.snapshot.rows.len());
-    let cards = (first..end)
-        .map(|index| render_card(index, card_width, context.snapshot.rows.get(index), context));
+    let cards = indices.iter().enumerate().map(|(slot, index)| {
+        render_card(
+            format!("base-card-{grid_row_index}-{slot}"),
+            *index,
+            card_width,
+            context.snapshot.rows.get(*index),
+            context,
+        )
+    });
     h_flex()
         .w_full()
         .gap(px(CARD_GAP))
@@ -303,6 +295,7 @@ fn render_card_row(
 }
 
 fn render_card(
+    id: String,
     index: usize,
     card_width: f32,
     row: Option<&BaseRow>,
@@ -311,8 +304,7 @@ fn render_card(
     let Some(row) = row else {
         return div().w(px(card_width)).into_any_element();
     };
-    let card_id =
-        ElementId::NamedInteger("base-card".into(), u64::try_from(index).unwrap_or_default());
+    let card_id = ElementId::Name(id.into());
     let image = row.image.clone().map(|image| {
         render_card_image(
             image,
@@ -324,8 +316,8 @@ fn render_card(
     });
     let image_source = context
         .view
-        .image
-        .as_ref()
+        .as_cards()
+        .and_then(|cards| cards.image.as_ref())
         .map(|property| property.source.as_str());
     let properties = context
         .view
@@ -333,13 +325,15 @@ fn render_card(
         .iter()
         .enumerate()
         .filter(|(_, property)| image_source != Some(property.source.as_str()))
+        .enumerate()
         .map(|(column, property)| {
+            let property = property.1;
             let cell = super::render_property_cell(
+                context.snapshot,
                 row,
                 property,
                 context.handler,
-                index,
-                column,
+                ElementId::Name(format!("base-card-cell-{index}-{column}").into()),
                 false,
                 context.cx,
             );
@@ -358,7 +352,7 @@ fn render_card(
                                 context
                                     .snapshot
                                     .definition
-                                    .display_name(property)
+                                    .display_label(property)
                                     .to_string(),
                             ),
                     )
@@ -390,15 +384,20 @@ fn render_card(
 }
 
 fn card_height(view: &BaseView, card_width: f32) -> f32 {
+    let body = card_body_height(view);
     let image_height = view
-        .image
-        .as_ref()
-        .map_or(0.0, |_| card_width / view.image_aspect_ratio);
-    image_height + card_body_height(view)
+        .as_cards()
+        .and_then(|cards| Some((cards, cards.image.as_ref()?)))
+        .map_or(0.0, |(cards, _)| card_width / cards.image_aspect_ratio);
+    image_height + body
 }
 
 fn card_body_height(view: &BaseView) -> f32 {
-    let image_source = view.image.as_ref().map(|property| property.source.as_str());
+    let cards_config = view.as_cards().cloned().unwrap_or_default();
+    let image_source = cards_config
+        .image
+        .as_ref()
+        .map(|property| property.source.as_str());
     let property_count = view
         .order
         .iter()
@@ -421,8 +420,9 @@ fn render_card_image(
     fullscreen_entity: Entity<BaseViewState>,
     cx: &App,
 ) -> AnyElement {
-    let image_height = card_width / view.image_aspect_ratio;
-    let object_fit = match view.image_fit {
+    let cards_config = view.as_cards().cloned().unwrap_or_default();
+    let image_height = card_width / cards_config.image_aspect_ratio;
+    let object_fit = match cards_config.image_fit {
         CardImageFit::Cover => ObjectFit::Cover,
         CardImageFit::Contain => ObjectFit::Contain,
     };
@@ -457,7 +457,7 @@ fn render_card_image(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_card_image_target;
+    use super::image::normalize_card_image_target;
 
     #[test]
     fn normalizes_card_image_targets() {
