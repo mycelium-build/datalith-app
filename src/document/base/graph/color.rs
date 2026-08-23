@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use super::types::GraphColor;
 
-pub(super) fn parse_color(source: &str) -> Result<GraphColor> {
+pub fn parse_color(source: &str) -> Result<GraphColor> {
     let source = source.trim();
     if let Some(hex) = source.strip_prefix('#') {
         return parse_hex(hex);
