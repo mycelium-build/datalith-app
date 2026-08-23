@@ -1,0 +1,141 @@
+//! About settings page: version, licensing, and legal links.
+
+use gpui::{IntoElement, ParentElement, Styled, div};
+use gpui_component::{
+    ActiveTheme, Sizable as _,
+    button::Button,
+    setting::{SettingGroup, SettingItem},
+    v_flex,
+};
+
+use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
+use crate::ui::monolith::monolith_mark;
+
+const PRIVACY_POLICY_URL: &str = "https://mycelium-build.github.io/datalith/privacy/";
+const TERMS_OF_SERVICE_URL: &str = "https://mycelium-build.github.io/datalith/terms/";
+
+pub(super) fn about_page_index() -> usize {
+    SETTINGS_PAGES
+        .iter()
+        .position(|page| *page == SettingsPage::About)
+        .unwrap_or(0)
+}
+
+impl SettingsView {
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn about_group() -> SettingGroup {
+        let docs_vault = crate::app::docs::docs_vault_path()
+            .to_string_lossy()
+            .to_string();
+        SettingGroup::new().title("Datalith").items(vec![
+            SettingItem::render(move |_options, _window, cx| {
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(monolith_mark(3.0, cx.theme().primary))
+                    .child(div().font_weight(gpui::FontWeight::BOLD).child("Datalith"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("A fast, local-first knowledge workspace."),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Docs Vault: {docs_vault}")),
+                    )
+                    .into_any_element()
+            }),
+            SettingItem::render(move |_options, _window, cx| {
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Copyright (c) 2026 mycelium-build"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Original Datalith source code: MIT License."),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "Distributed binaries include GPL-3.0-or-later components \
+                                 and are conveyed under GPL-3.0-or-later.",
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "This program comes with ABSOLUTELY NO WARRANTY; \
+                                 for details see the GNU GPL.",
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("about-view-privacy-policy")
+                                    .outline()
+                                    .small()
+                                    .label("Privacy policy")
+                                    .on_click(|_, _, _cx| {
+                                        let _ = crate::app::system::open_url(PRIVACY_POLICY_URL);
+                                    }),
+                            )
+                            .child(
+                                Button::new("about-view-terms-of-service")
+                                    .outline()
+                                    .small()
+                                    .label("Terms of service")
+                                    .on_click(|_, _, _cx| {
+                                        let _ = crate::app::system::open_url(TERMS_OF_SERVICE_URL);
+                                    }),
+                            )
+                            .child(
+                                Button::new("about-view-licenses")
+                                    .outline()
+                                    .small()
+                                    .label("View licenses")
+                                    .on_click(|_, window, cx| {
+                                        window.dispatch_action(
+                                            Box::new(crate::app::actions::OpenLicenses),
+                                            cx,
+                                        );
+                                    }),
+                            )
+                            .child(
+                                Button::new("about-view-source")
+                                    .outline()
+                                    .small()
+                                    .label("View corresponding source")
+                                    .on_click(|_, _, _cx| {
+                                        let url = crate::ui::licenses::corresponding_source_url();
+                                        let _ = crate::app::system::open_url(&url);
+                                    }),
+                            ),
+                    )
+                    .into_any_element()
+            }),
+        ])
+    }
+}
