@@ -73,6 +73,9 @@ impl FileHandler {
         };
         let outcome = reload(path, self, window, cx)?;
         if outcome == ReloadOutcome::Reloaded {
+            if let Some(viewer) = &self.viewer {
+                viewer.refresh(cx);
+            }
             cx.notify();
         }
         Ok(outcome)
