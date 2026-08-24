@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -12,95 +12,11 @@ use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::search::SearchEngine;
 
+mod types;
+
 const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CatalogState {
-    Syncing,
-    Ready,
-    Failed,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogEvent {
-    pub(crate) paths: Vec<PathBuf>,
-    pub(crate) structure_changed: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogDocument {
-    pub(crate) path: PathBuf,
-    pub(crate) metadata: Option<serde_json::Value>,
-    pub(crate) size_bytes: i64,
-    pub(crate) modified_ns: i64,
-    pub(crate) links: Vec<PathBuf>,
-}
-
-#[derive(Clone, Debug)]
-pub struct DocumentSelection {
-    pub(crate) documents: Vec<CatalogDocument>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogQuery {
-    pub(crate) extension: Option<String>,
-    pub(crate) filter: CatalogFilter,
-    pub(crate) limit: Option<usize>,
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogFilter {
-    MatchAll,
-    Compare {
-        property: CatalogProperty,
-        comparison: CatalogComparison,
-        value: CatalogScalar,
-    },
-    Contains {
-        property: CatalogProperty,
-        value: CatalogScalar,
-    },
-    HasTag(String),
-    HasLink(String),
-    InFolder(String),
-    And(Vec<Self>),
-    Or(Vec<Self>),
-    Not(Box<Self>),
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogProperty {
-    Metadata(Vec<String>),
-    File(CatalogFileField),
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum CatalogFileField {
-    Name,
-    Extension,
-    Path,
-    Folder,
-    Size,
-    Modified,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum CatalogComparison {
-    Equal,
-    NotEqual,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogScalar {
-    Null,
-    Bool(bool),
-    Number(f64),
-    String(String),
-}
+pub use types::*;
 
 struct CatalogInner {
     root: PathBuf,
@@ -275,47 +191,17 @@ impl VaultCatalog {
         })
     }
 
-    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
-    // keep the async signature for that call site.
-    #[allow(dead_code)]
+    // Callers await from UI code even though the body runs on a blocking thread.
     #[allow(clippy::unused_async)]
-    pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
+    pub(crate) async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
         let database = self.inner.database.clone();
         std::thread::Builder::new()
             .name("vault-catalog-query".into())
             .stack_size(8 * 1024 * 1024)
-            .spawn(move || pollster::block_on(database.query_documents(query)))
+            .spawn(move || pollster::block_on(database.query_base(query)))
             .context("Failed to start catalog query thread")?
             .join()
             .map_err(|_| anyhow!("Catalog query thread panicked"))?
-    }
-
-    #[allow(dead_code)]
-    #[allow(clippy::unused_async)]
-    pub(crate) async fn query_documents_with_outgoing_links(
-        &self,
-        query: CatalogQuery,
-    ) -> Result<DocumentSelection> {
-        let database = self.inner.database.clone();
-        let (selection, stored_links) = std::thread::Builder::new()
-            .name("vault-catalog-query".into())
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || pollster::block_on(database.query_documents_with_outgoing_links(query)))
-            .context("Failed to start catalog query thread")?
-            .join()
-            .map_err(|_| anyhow!("Catalog query thread panicked"))??;
-        let mut links_by_source: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
-        for link in stored_links {
-            links_by_source
-                .entry(link.source)
-                .or_default()
-                .push(link.target);
-        }
-        let mut documents = selection.documents;
-        for document in &mut documents {
-            document.links = links_by_source.remove(&document.path).unwrap_or_default();
-        }
-        Ok(DocumentSelection { documents })
     }
 }
 
