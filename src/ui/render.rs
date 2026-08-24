@@ -73,6 +73,7 @@ impl Render for DatalithView {
                     resizable_panel()
                         .size(px(SIDEBAR_WIDTH))
                         .size_range(px(180.)..px(500.))
+                        .flex_none()
                         .child(self.render_sidebar(window, cx)),
                 )
                 .child(
