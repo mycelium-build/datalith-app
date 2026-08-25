@@ -15,7 +15,7 @@ Press **⌘N** to create a new file. It is created in the current Vault and imme
 
 - `My Note.md`: a Markdown file, opened in the editor.
 - `Tasks.todotxt`: a todo.txt file, opened in the task editor.
-- `My Graph.graph`: a Graph Definition, opened as a Graph View.
+- `Library.base`: a Base Definition, opened as list, table, cards, or graph views.
 
 You can also right-click in the sidebar and choose **New File** or **New Folder**.
 
@@ -37,7 +37,7 @@ See [[formats/Properties]] for the details.
 
 Wiki links are what make a Vault feel connected. In a Markdown file, write `[[My Other Note]]` to create a link. Datalith resolves it automatically. Use `[[My Other Note|display text]]` to set a custom label.
 
-Links between Markdown files become the edges of a [[formats/Graph|graph]].
+Links between Markdown files become the edges of a [[formats/bases/Graph|graph view]].
 
 # Navigate
 

@@ -12,7 +12,7 @@ Start with the [[Tour.todotxt]] checklist in the tab bar, or read what you need:
 - [[Settings]]: themes and display options
 - [[formats/Properties]]: structured properties at the top of a file
 - [[formats/Markdown]]: the Markdown flavour used here
-- [[formats/Graph]]: visualize how your notes link together
+- [[formats/bases/Overview]]: data-driven views; see [[formats/bases/Graph|graphs]] in particular
 - [[formats/TodoTxt]]: manage tasks in todo.txt format
 
-Open [[Overview.graph]] to see a graph of this Vault colored by category, and [[Tour.todotxt]] for a checklist of things to explore.
+Open [[Overview.base]] to see a graph of this Vault colored by category, and [[Tour.todotxt]] for a checklist of things to explore.

@@ -17,8 +17,8 @@ const SHIPPED_DOCS: &[(&str, &str)] = &[
         include_str!("../../docs/vault/FileTypes.md"),
     ),
     (
-        "Overview.graph",
-        include_str!("../../docs/vault/Overview.graph"),
+        "Overview.base",
+        include_str!("../../docs/vault/Overview.base"),
     ),
     ("Search.md", include_str!("../../docs/vault/Search.md")),
     (
@@ -35,12 +35,24 @@ const SHIPPED_DOCS: &[(&str, &str)] = &[
         include_str!("../../docs/vault/formats/Properties.md"),
     ),
     (
-        "formats/Graph.md",
-        include_str!("../../docs/vault/formats/Graph.md"),
+        "formats/bases/Overview.md",
+        include_str!("../../docs/vault/formats/bases/Overview.md"),
     ),
     (
-        "formats/Bases.md",
-        include_str!("../../docs/vault/formats/Bases.md"),
+        "formats/bases/List.md",
+        include_str!("../../docs/vault/formats/bases/List.md"),
+    ),
+    (
+        "formats/bases/Table.md",
+        include_str!("../../docs/vault/formats/bases/Table.md"),
+    ),
+    (
+        "formats/bases/Cards.md",
+        include_str!("../../docs/vault/formats/bases/Cards.md"),
+    ),
+    (
+        "formats/bases/Graph.md",
+        include_str!("../../docs/vault/formats/bases/Graph.md"),
     ),
     (
         "formats/Markdown.md",

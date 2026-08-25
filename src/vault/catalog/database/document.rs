@@ -2,15 +2,13 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use rayon::prelude::*;
 use turso::Value;
 
-use super::filter_compiler::FilterCompiler;
 use super::link_resolution::{collect_matching_targets, link_target_candidates, resolve_links};
-use super::{CatalogDatabase, StoredLink, SynchronizedFiles, path_text};
+use super::{CatalogDatabase, SynchronizedFiles, path_text};
 use crate::document::file_types::RegisteredFileTypes;
-use crate::vault::catalog::{CatalogDocument, CatalogQuery, DocumentSelection};
 use crate::vault::links;
 
 const BATCH_SIZE: usize = 64;
@@ -251,155 +249,6 @@ impl CatalogDatabase {
             }
         }
     }
-
-    pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
-        let connection = self.read_connection()?;
-        self.query_documents_on(&connection, query).await
-    }
-
-    pub(crate) async fn query_documents_with_outgoing_links(
-        &self,
-        query: CatalogQuery,
-    ) -> Result<(DocumentSelection, Vec<StoredLink>)> {
-        let connection = self.read_connection()?;
-        connection.execute("BEGIN DEFERRED", ()).await?;
-        let result = async {
-            let selection = self.query_documents_on(&connection, query).await?;
-            let selected_paths: Vec<String> = selection
-                .documents
-                .iter()
-                .map(|document| {
-                    document
-                        .path
-                        .strip_prefix(&self.root)
-                        .unwrap_or(&document.path)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                })
-                .collect();
-            if selected_paths.is_empty() {
-                return Ok::<_, anyhow::Error>((selection, Vec::new()));
-            }
-            let placeholders = selected_paths
-                .iter()
-                .map(|_| "?")
-                .collect::<Vec<_>>()
-                .join(",");
-            let sql = format!(
-                "SELECT source_path, target_path FROM wiki_links \
-                 WHERE target_path IS NOT NULL AND source_path IN ({placeholders}) \
-                 ORDER BY source_path, target_path"
-            );
-            let params = selected_paths
-                .into_iter()
-                .map(Value::Text)
-                .collect::<Vec<_>>();
-            let mut rows = connection
-                .query(sql, turso::params_from_iter(params))
-                .await?;
-            let mut links = Vec::new();
-            while let Some(row) = rows.next().await? {
-                links.push(StoredLink {
-                    source: self.root.join(row.get::<String>(0)?),
-                    target: self.root.join(row.get::<String>(1)?),
-                });
-            }
-            Ok((selection, links))
-        }
-        .await;
-        let _ = connection.execute("ROLLBACK", ()).await;
-        result
-    }
-
-    async fn query_documents_on(
-        &self,
-        connection: &turso::Connection,
-        query: CatalogQuery,
-    ) -> Result<DocumentSelection> {
-        let mut compiler = FilterCompiler::default();
-        let filter = compiler.compile(&query.filter);
-        let mut clauses = Vec::new();
-        if filter != "1" {
-            clauses.push(filter);
-        }
-        if let Some(extension) = query.extension {
-            clauses.push("extension = ?".to_string());
-            compiler.parameters.push(Value::Text(extension));
-        }
-        let where_clause = if clauses.is_empty() {
-            String::new()
-        } else {
-            format!(" WHERE {}", clauses.join(" AND "))
-        };
-        let (sql, limit_param) = query.limit.map_or_else(
-            || {
-                (
-                    format!(
-                        "SELECT path, json(metadata), size_bytes, modified_ns \
-                         FROM documents{where_clause} ORDER BY path"
-                    ),
-                    None,
-                )
-            },
-            |limit| {
-                (
-                    format!(
-                        "SELECT path, json(metadata), size_bytes, modified_ns \
-                         FROM documents{where_clause} ORDER BY path LIMIT ?"
-                    ),
-                    Some(Value::Integer(
-                        i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX),
-                    )),
-                )
-            },
-        );
-        if let Some(limit_param) = limit_param {
-            compiler.parameters.push(limit_param);
-        }
-        let mut rows = connection
-            .query(sql, turso::params_from_iter(compiler.parameters))
-            .await?;
-        let mut documents = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let metadata = match row.get_value(1)? {
-                Value::Null => None,
-                Value::Text(json) => Some(serde_json::from_str(&json)?),
-                value => bail!("Unexpected metadata value {value:?}"),
-            };
-            documents.push(CatalogDocument {
-                path: self.root.join(row.get::<String>(0)?),
-                metadata,
-                size_bytes: row.get(2)?,
-                modified_ns: row.get(3)?,
-                links: Vec::new(),
-            });
-        }
-        if let Some(limit) = query.limit {
-            documents.truncate(limit);
-        }
-        Ok(DocumentSelection { documents })
-    }
-}
-
-async fn load_stored_meta(connection: &turso::Connection) -> Result<HashMap<String, StoredMeta>> {
-    let mut stored_rows = connection
-        .query(
-            "SELECT path, size_bytes, modified_ns, created_ns FROM documents",
-            (),
-        )
-        .await?;
-    let mut map = HashMap::new();
-    while let Some(row) = stored_rows.next().await? {
-        map.insert(
-            row.get::<String>(0)?,
-            StoredMeta {
-                size_bytes: row.get::<i64>(1)?,
-                modified_ns: row.get::<i64>(2)?,
-                created_ns: row.get::<i64>(3)?,
-            },
-        );
-    }
-    Ok(map)
 }
 
 fn partition_changed(
@@ -596,4 +445,260 @@ async fn upsert_documents_and_links(
         }
     }
     Ok(())
+}
+
+async fn load_stored_meta(connection: &turso::Connection) -> Result<HashMap<String, StoredMeta>> {
+    let mut stored_rows = connection
+        .query(
+            "SELECT path, size_bytes, modified_ns, created_ns FROM documents",
+            (),
+        )
+        .await?;
+    let mut map = HashMap::new();
+    while let Some(row) = stored_rows.next().await? {
+        map.insert(
+            row.get::<String>(0)?,
+            StoredMeta {
+                size_bytes: row.get::<i64>(1)?,
+                modified_ns: row.get::<i64>(2)?,
+                created_ns: row.get::<i64>(3)?,
+            },
+        );
+    }
+    Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::file_types::FileTypeCapabilities;
+
+    fn markdown_file_types() -> RegisteredFileTypes {
+        RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )])
+    }
+
+    #[test]
+    fn source_edit_does_not_update_unrelated_link_resolutions() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-incremental-link-resolution-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source_a = root.join("SourceA.md");
+        let source_b = root.join("SourceB.md");
+        let target_a = root.join("TargetA.md");
+        let target_b = root.join("TargetB.md");
+        fs::write(&source_a, "[[TargetA]]").unwrap();
+        fs::write(&source_b, "[[TargetB]]").unwrap();
+        fs::write(&target_a, "").unwrap();
+        fs::write(&target_b, "").unwrap();
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let file_types = markdown_file_types();
+            database
+                .synchronize(
+                    &[],
+                    &[
+                        source_a.clone(),
+                        source_b.clone(),
+                        target_a,
+                        target_b.clone(),
+                    ],
+                    &file_types,
+                )
+                .await
+                .unwrap();
+            let connection = database.connection();
+            connection
+                .execute_batch(
+                    "CREATE TABLE resolution_updates(source_path TEXT NOT NULL);
+                         CREATE TRIGGER record_resolution_update
+                         AFTER UPDATE OF target_path ON wiki_links
+                         BEGIN
+                             INSERT INTO resolution_updates(source_path) VALUES (NEW.source_path);
+                         END;",
+                )
+                .await
+                .unwrap();
+
+            fs::write(&source_a, "edited [[TargetA]]").unwrap();
+            database
+                .synchronize(&[], std::slice::from_ref(&source_a), &file_types)
+                .await
+                .unwrap();
+
+            let unrelated_updates: i64 = connection
+                .query(
+                    "SELECT count(*) FROM resolution_updates WHERE source_path = 'SourceB.md'",
+                    (),
+                )
+                .await
+                .unwrap()
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .get(0)
+                .unwrap();
+            assert_eq!(unrelated_updates, 0);
+
+            let mut rows = connection
+                .query(
+                    "SELECT target_path FROM wiki_links WHERE source_path = 'SourceA.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                rows.next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap(),
+                "TargetA.md"
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn link_resolution_tracks_added_and_removed_candidates() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-incremental-link-candidates-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("Source.md");
+        let markdown_target = root.join("Target.md");
+        let text_target = root.join("Target.txt");
+        fs::write(&source, "[[Target]]").unwrap();
+        fs::write(&text_target, "").unwrap();
+        let capabilities = FileTypeCapabilities {
+            text_search: true,
+            wiki_links: true,
+            yaml_frontmatter: true,
+        };
+        let file_types =
+            RegisteredFileTypes::new([("md".into(), capabilities), ("txt".into(), capabilities)]);
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            database
+                .synchronize(&[], &[source.clone(), text_target.clone()], &file_types)
+                .await
+                .unwrap();
+            let connection = database.connection();
+
+            let resolved_target = async || {
+                connection
+                    .query(
+                        "SELECT target_path FROM wiki_links WHERE source_path = 'Source.md'",
+                        (),
+                    )
+                    .await
+                    .unwrap()
+                    .next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap()
+            };
+            assert_eq!(resolved_target().await, "Target.txt");
+
+            fs::write(&markdown_target, "").unwrap();
+            database
+                .synchronize(&[], std::slice::from_ref(&markdown_target), &file_types)
+                .await
+                .unwrap();
+            assert_eq!(resolved_target().await, "Target.md");
+
+            fs::remove_file(&markdown_target).unwrap();
+            database
+                .synchronize(std::slice::from_ref(&markdown_target), &[], &file_types)
+                .await
+                .unwrap();
+            assert_eq!(resolved_target().await, "Target.txt");
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn warm_resync_preserves_unchanged_document_metadata_and_links() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-warm-resync-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("Source.md");
+        let target = root.join("Target.md");
+        fs::write(&source, "---\ntitle: \"Keep me\"\n---\n\n[[Target]]").unwrap();
+        fs::write(&target, "").unwrap();
+
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let file_types = markdown_file_types();
+            database
+                .synchronize(&[], &[source.clone(), target.clone()], &file_types)
+                .await
+                .unwrap();
+
+            // Re-sync the same files: the metadata fast pass classifies them unchanged,
+            // and the batch upsert must not rewrite them.
+            let result = database
+                .synchronize(&[], &[source.clone(), target.clone()], &file_types)
+                .await
+                .unwrap();
+            assert!(result.changed.is_empty());
+            assert_eq!(result.all.len(), 2);
+
+            let connection = database.connection();
+            let mut rows = connection
+                .query(
+                    "SELECT metadata FROM documents WHERE path = 'Source.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            let row = rows.next().await.unwrap().unwrap();
+            let metadata = match row.get_value(0).unwrap() {
+                turso::Value::Text(json) => json,
+                turso::Value::Blob(json) => String::from_utf8_lossy(&json).into_owned(),
+                value => panic!("unexpected metadata value {value:?}"),
+            };
+            assert!(
+                metadata.contains("Keep me"),
+                "metadata must survive re-sync"
+            );
+
+            let connection = database.connection();
+            let mut rows = connection
+                .query(
+                    "SELECT target_path FROM wiki_links WHERE source_path = 'Source.md'",
+                    (),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                rows.next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .get::<String>(0)
+                    .unwrap(),
+                "Target.md"
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
 }
