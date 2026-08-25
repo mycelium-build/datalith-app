@@ -132,3 +132,102 @@ pub(super) async fn collect_matching_targets(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use turso::params;
+
+    use super::*;
+
+    #[test]
+    fn resolves_links_from_catalogued_paths_using_ambiguity_order() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-resolve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection();
+            for (path, extension, folder) in [
+                ("Note.txt", "txt", ""),
+                ("a/Note.md", "md", "a"),
+                ("b/Other.txt", "txt", "b"),
+                ("c/Other.md", "md", "c"),
+                ("a/Same.md", "md", "a"),
+                ("b/Same.md", "md", "b"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, ?, ?, 0, 0, NULL)",
+                        params![path, extension, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            assert_eq!(
+                database.resolve_path("Note").await.unwrap(),
+                Some(root.join("Note.txt"))
+            );
+            assert_eq!(
+                database.resolve_path("Other").await.unwrap(),
+                Some(root.join("c/Other.md"))
+            );
+            assert_eq!(
+                database.resolve_path("Same").await.unwrap(),
+                Some(root.join("a/Same.md"))
+            );
+            assert_eq!(
+                database.resolve_path("a/Same").await.unwrap(),
+                Some(root.join("a/Same.md"))
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backlink_descendant_query_treats_like_wildcards_as_path_text() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-backlinks-like-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection();
+            for (path, folder) in [
+                ("Source.md", ""),
+                ("Other.md", ""),
+                ("%_/Target.md", "%_"),
+                ("ab/Target.md", "ab"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, 'md', ?, 0, 0, NULL)",
+                        params![path, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+            connection
+                .execute(
+                    "INSERT INTO wiki_links(source_path, ordinal, target, target_path) \
+                     VALUES ('Source.md', 0, '%_/Target', '%_/Target.md'), \
+                            ('Other.md', 0, 'ab/Target', 'ab/Target.md')",
+                    (),
+                )
+                .await
+                .unwrap();
+
+            let backlinks = database.backlinks_under(&root.join("%_")).await.unwrap();
+
+            assert_eq!(backlinks.len(), 1);
+            assert_eq!(backlinks[0].source, PathBuf::from("Source.md"));
+            assert_eq!(backlinks[0].target_path, PathBuf::from("%_/Target.md"));
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+}
