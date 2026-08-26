@@ -6,12 +6,12 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use turso::Value;
 
-use crate::document::base::HARD_RESULT_LIMIT;
+use crate::document::base::{HARD_RESULT_LIMIT, SortDirection};
 use crate::vault::catalog::{BaseDocument, BaseQuery, BaseSelection};
 
 use super::CatalogDatabase;
 use super::compiler::BaseQueryCompiler;
-use super::helpers::{direction_sql, frozen_now, turso_to_json};
+use super::turso_to_json;
 
 impl CatalogDatabase {
     #[allow(clippy::too_many_lines)]
@@ -20,7 +20,6 @@ impl CatalogDatabase {
         connection: &turso::Connection,
         query: BaseQuery,
     ) -> Result<BaseSelection> {
-        // Projection SQL
         let mut projection_compiler = BaseQueryCompiler::new(0);
         let mut projection_sql: BTreeMap<String, String> = BTreeMap::new();
         for source in &query.projections {
@@ -265,4 +264,34 @@ impl CatalogDatabase {
         }
         Ok(())
     }
+}
+
+const fn direction_sql(direction: SortDirection) -> &'static str {
+    match direction {
+        SortDirection::Asc => "ASC",
+        SortDirection::Desc => "DESC",
+    }
+}
+
+/// Freezes `now()`/`today()` to one canonical ISO-8601 UTC timestamp per refresh,
+/// matching the projection format used by file.mtime/file.ctime.
+fn frozen_now() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(0))
+        .unwrap_or_default();
+    time::OffsetDateTime::from_unix_timestamp(seconds).map_or_else(
+        |_| "1970-01-01 00:00:00".to_string(),
+        |datetime| {
+            format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                datetime.year(),
+                u8::from(datetime.month()),
+                datetime.day(),
+                datetime.hour(),
+                datetime.minute(),
+                datetime.second()
+            )
+        },
+    )
 }
