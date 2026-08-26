@@ -6,7 +6,4 @@ pub mod search;
 
 pub const DATALITH_DIR_NAME: &str = ".datalith";
 
-pub use catalog::{
-    CatalogComparison, CatalogEvent, CatalogFileField, CatalogFilter, CatalogProperty,
-    CatalogQuery, CatalogScalar, CatalogState, VaultCatalog,
-};
+pub use catalog::{BaseDocument, BaseQuery, CatalogEvent, CatalogState, SummaryRef, VaultCatalog};

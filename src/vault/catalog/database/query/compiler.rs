@@ -11,7 +11,7 @@ use crate::document::expr::{
 use crate::document::filter::Filter;
 
 use super::super::{FILE_NAME_SQL, escape_like_pattern};
-use super::helpers::parenthesize;
+use super::parenthesize;
 
 const FORMULA_SUBSTITUTION_DEPTH: u32 = 32;
 

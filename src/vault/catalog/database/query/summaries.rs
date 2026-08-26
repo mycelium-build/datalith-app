@@ -11,7 +11,7 @@ use crate::vault::catalog::{BaseQuery, SummaryRef};
 
 use super::CatalogDatabase;
 use super::compiler::BaseQueryCompiler;
-use super::helpers::{parenthesize, turso_to_json};
+use super::{parenthesize, turso_to_json};
 
 pub(super) enum SummaryComputation {
     OutOfSql, // like median, it reserves the slot so results stay aligned with `query.summaries`
