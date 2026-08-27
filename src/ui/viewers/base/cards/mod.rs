@@ -189,7 +189,7 @@ fn flatten_card_items(snapshot: &BaseSnapshot, columns: usize) -> Vec<CardItem> 
     let mut pending: Vec<usize> = Vec::new();
     for item in &snapshot.items {
         match item {
-            BaseItem::Header { label, count } => {
+            BaseItem::Header { label, count, .. } => {
                 if !pending.is_empty() {
                     items.push(CardItem::GridRow(std::mem::take(&mut pending)));
                 }

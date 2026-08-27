@@ -58,12 +58,17 @@ impl BaseViewState {
                             return div().into_any_element();
                         };
                         match item {
-                            BaseItem::Header { label, count } => render_group_header(
-                                format!("base-list-header-{index}"),
-                                label,
-                                *count,
-                                cx,
-                            ),
+                            BaseItem::Header { label, ordinal, .. } => {
+                                let markers =
+                                    view.as_list().map_or(ListMarkers::Bullets, |l| l.markers);
+                                render_group_header(
+                                    format!("base-list-header-{index}"),
+                                    label,
+                                    *ordinal,
+                                    markers,
+                                    cx,
+                                )
+                            }
                             BaseItem::Row {
                                 index: row_index,
                                 ordinal,
@@ -130,14 +135,24 @@ fn list_row_height(view: &BaseView) -> f32 {
     LIST_ROW_HEIGHT * lines.to_string().parse::<f32>().unwrap_or(1.0)
 }
 
-fn render_group_header(id: String, label: &str, count: usize, cx: &App) -> AnyElement {
+fn render_group_header(
+    id: String,
+    label: &str,
+    ordinal: usize,
+    markers: ListMarkers,
+    _cx: &App,
+) -> AnyElement {
+    let marker = match markers {
+        ListMarkers::Bullets => "• ".to_string(),
+        ListMarkers::Numbers => format!("{}. ", ordinal.saturating_add(1)),
+        ListMarkers::None => String::new(),
+    };
     h_flex()
         .id(ElementId::Name(id.into()))
         .items_center()
         .h(px(GROUP_HEADER_HEIGHT))
-        .gap_2()
-        .text_color(cx.theme().muted_foreground)
-        .child(format!("{label} ({count})"))
+        .child(marker)
+        .child(label.to_string())
         .into_any_element()
 }
 
@@ -221,10 +236,11 @@ fn render_list_row(
                 .into_any_element(),
         );
     }
-    gpui_component::v_flex()
-        .w_full()
-        .children(lines)
-        .into_any_element()
+    let mut container = gpui_component::v_flex().w_full();
+    if view.group_by.is_some() {
+        container = container.pl_4();
+    }
+    container.children(lines).into_any_element()
 }
 
 #[allow(clippy::too_many_arguments)]

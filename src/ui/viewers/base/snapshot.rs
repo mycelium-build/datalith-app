@@ -26,8 +26,15 @@ pub(super) struct BaseRow {
 /// One entry of the flattened display sequence: a group header or a row.
 #[derive(Clone, Debug)]
 pub(super) enum BaseItem {
-    Header { label: String, count: usize },
-    Row { index: usize, ordinal: usize },
+    Header {
+        label: String,
+        count: usize,
+        ordinal: usize,
+    },
+    Row {
+        index: usize,
+        ordinal: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -166,6 +173,7 @@ pub(super) fn build_group_items(
     let mut items = Vec::new();
     let mut current: Option<String> = None;
     let mut header_position: Option<usize> = None;
+    let mut header_ordinal = 0usize;
     let mut count = 0usize;
     for (index, row) in rows.iter().enumerate() {
         let label = group_position
@@ -176,7 +184,12 @@ pub(super) fn build_group_items(
             );
         if current.as_ref() != Some(&label) {
             current = Some(label.clone());
-            items.push(BaseItem::Header { label, count: 0 });
+            items.push(BaseItem::Header {
+                label,
+                count: 0,
+                ordinal: header_ordinal,
+            });
+            header_ordinal = header_ordinal.saturating_add(1);
             header_position = Some(items.len().saturating_sub(1));
             count = 0;
         }

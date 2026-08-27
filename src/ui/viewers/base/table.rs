@@ -144,7 +144,7 @@ impl BaseViewState {
                             return div().into_any_element();
                         };
                         match item {
-                            BaseItem::Header { label, count } => render_group_header(
+                            BaseItem::Header { label, count, .. } => render_group_header(
                                 format!("base-table-header-{index}"),
                                 label,
                                 *count,
