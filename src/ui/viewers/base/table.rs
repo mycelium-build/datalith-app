@@ -12,7 +12,7 @@ use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 const TABLE_HEADER_HEIGHT: f32 = 32.0;
 const TABLE_COLUMN_MIN_WIDTH: f32 = 128.0;
 const TABLE_COLUMN_MAX_WIDTH: f32 = 512.0;
-const TABLE_COLUMN_HORIZONTAL_PADDING: f32 = 16.0;
+const TABLE_COLUMN_HORIZONTAL_PADDING: f32 = 32.0;
 const TABLE_SHORT_HEIGHT: f32 = 24.0;
 const TABLE_MEDIUM_HEIGHT: f32 = 32.0;
 const TABLE_TALL_HEIGHT: f32 = 48.0;
