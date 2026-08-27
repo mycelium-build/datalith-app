@@ -63,7 +63,11 @@ impl CatalogDatabase {
         }
 
         // Class SQL ride along as boolean SELECT columns; like filter SQL.
-        let mut class_compiler = BaseQueryCompiler::new(filter_compiler.parameters.len());
+        let class_offset = projection_compiler
+            .parameters
+            .len()
+            .saturating_add(filter_compiler.parameters.len());
+        let mut class_compiler = BaseQueryCompiler::new(class_offset);
         let mut class_sql = Vec::with_capacity(query.classes.len());
         for class in &query.classes {
             class_sql.push(format!("({})", class_compiler.compile_filter(class)?));

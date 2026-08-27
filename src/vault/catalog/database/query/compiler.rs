@@ -11,12 +11,75 @@ use crate::document::expr::{
 use crate::document::filter::Filter;
 
 use super::super::{FILE_NAME_SQL, escape_like_pattern};
-use super::parenthesize;
 
 const FORMULA_SUBSTITUTION_DEPTH: u32 = 32;
 
-fn truthy(sql: &str) -> String {
-    format!("COALESCE(({}), 0) <> 0", parenthesize(sql))
+/// SQL binding strength of a fragment's top-level operator,
+/// following `SQLite` operator precedence.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Precedence {
+    Or = 1,
+    And = 2,
+    Not = 3,
+    Comparison = 4,
+    Additive = 5,
+    Multiplicative = 6,
+    Unary = 7,
+    Atom = 9,
+}
+
+/// A compiled SQL fragment plus the precedence of its top-level operator,
+/// so parents parenthesize children only when binding requires it.
+struct Sql {
+    text: String,
+    precedence: Precedence,
+}
+
+impl Sql {
+    fn atom(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            precedence: Precedence::Atom,
+        }
+    }
+
+    /// Renders as a left operand binding at least `min`.
+    fn emit(&self, min: Precedence) -> String {
+        if self.precedence < min {
+            format!("({})", self.text)
+        } else {
+            self.text.clone()
+        }
+    }
+
+    /// Renders as a right operand: left-associative chains must stay grouped.
+    fn emit_strict(&self, min: Precedence) -> String {
+        if self.precedence <= min {
+            format!("({})", self.text)
+        } else {
+            self.text.clone()
+        }
+    }
+}
+
+/// Folds fragments into a left-associative chain of `operator`.
+fn fold_binary(parts: Vec<Sql>, operator: &str, precedence: Precedence) -> Option<Sql> {
+    let mut parts = parts.into_iter();
+    let first = parts.next()?;
+    let mut text = first.emit(precedence);
+    for part in parts {
+        text = format!("{text} {operator} {}", part.emit_strict(precedence));
+    }
+    Some(Sql { text, precedence })
+}
+
+/// Coerces a fragment to the filter truth domain:
+/// NULL (a missing property) counts as false even under NOT.
+fn truthy(fragment: &Sql) -> Sql {
+    Sql {
+        text: format!("COALESCE({}, 0) <> 0", fragment.emit(Precedence::Or)),
+        precedence: Precedence::Comparison,
+    }
 }
 
 pub(super) struct BaseQueryCompiler {
@@ -41,56 +104,75 @@ impl BaseQueryCompiler {
     }
 
     pub(super) fn compile_filter(&mut self, filter: &Filter) -> Result<String> {
+        Ok(self.compile_filter_fragment(filter)?.text)
+    }
+
+    fn compile_filter_fragment(&mut self, filter: &Filter) -> Result<Sql> {
         match filter {
-            Filter::MatchAll => Ok("1".into()),
-            Filter::And(filters) => self.join(filters.iter(), "AND", "1"),
-            Filter::Or(filters) => self.join(filters.iter(), "OR", "0"),
+            Filter::MatchAll => Ok(Sql::atom("1")),
+            Filter::And(filters) => {
+                let parts = filters
+                    .iter()
+                    // A match-all conjunct is a no-op.
+                    .filter(|filter| !matches!(filter, Filter::MatchAll))
+                    .map(|filter| self.compile_filter_fragment(filter))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(fold_binary(parts, "AND", Precedence::And).unwrap_or_else(|| Sql::atom("1")))
+            }
+            Filter::Or(filters) => {
+                // One true disjunct makes the whole OR true.
+                if filters
+                    .iter()
+                    .any(|filter| matches!(filter, Filter::MatchAll))
+                {
+                    return Ok(Sql::atom("1"));
+                }
+                let parts = filters
+                    .iter()
+                    .map(|filter| self.compile_filter_fragment(filter))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(fold_binary(parts, "OR", Precedence::Or).unwrap_or_else(|| Sql::atom("0")))
+            }
             Filter::Not(filter) => {
-                let inner = self.compile_filter(filter)?;
-                Ok(format!("NOT {}", truthy(&inner)))
+                let inner = truthy(&self.compile_filter_fragment(filter)?);
+                Ok(Sql {
+                    text: format!("NOT {}", inner.emit(Precedence::Comparison)),
+                    precedence: Precedence::Not,
+                })
             }
-            Filter::Expression(expression) => {
-                let sql = self.compile_expr(&expression.expr)?;
-                Ok(truthy(&sql))
-            }
+            Filter::Expression(expression) => Ok(truthy(&self.compile_expr(&expression.expr)?)),
         }
     }
 
-    fn join<'a>(
-        &mut self,
-        filters: impl Iterator<Item = &'a Filter>,
-        operator: &str,
-        empty: &str,
-    ) -> Result<String> {
-        let parts = filters
-            .map(|filter| Ok(format!("({})", self.compile_filter(filter)?)))
-            .collect::<Result<Vec<_>>>()?;
-        if parts.is_empty() {
-            return Ok(empty.into());
-        }
-        Ok(parts.join(&format!(" {operator} ")))
-    }
-
-    fn compile_expr(&mut self, expression: &Expr) -> Result<String> {
+    fn compile_expr(&mut self, expression: &Expr) -> Result<Sql> {
         match expression {
-            Expr::Null => Ok("NULL".into()),
-            Expr::Bool(value) => Ok(if *value { "1" } else { "0" }.into()),
-            Expr::Number(value) => {
-                let placeholder = self.bind(Value::Real(*value));
-                Ok(placeholder)
-            }
-            Expr::Text(text) => {
-                let placeholder = self.bind(Value::Text(text.clone()));
-                Ok(placeholder)
-            }
+            Expr::Null => Ok(Sql::atom("NULL")),
+            Expr::Bool(value) => Ok(Sql::atom(if *value { "1" } else { "0" })),
+            Expr::Number(value) => Ok(Sql::atom(self.bind(Value::Real(*value)))),
+            Expr::Text(text) => Ok(Sql::atom(self.bind(Value::Text(text.clone())))),
             // Duration literals are consumed by date arithmetic at the
             // Arithmetic node below and never reach this arm in valid trees. => bail!("misplaced duration literal"),
-            Expr::Property(reference) => self.compile_property(reference),
+            Expr::Property(reference) => Ok(Sql::atom(self.compile_property(reference)?)),
             Expr::Not(inner) => {
-                let sql = self.compile_expr(inner)?;
-                Ok(format!("(NOT {})", parenthesize(&sql)))
+                let operand = self.compile_expr(inner)?;
+                Ok(Sql {
+                    text: format!("NOT {}", operand.emit(Precedence::Comparison)),
+                    precedence: Precedence::Not,
+                })
             }
-            Expr::Neg(inner) => Ok(format!("(-{})", parenthesize(&self.compile_expr(inner)?))),
+            Expr::Neg(inner) => {
+                let operand = self.compile_expr(inner)?;
+                // Unary minus binds tightest; nested unary needs explicit grouping.
+                let text = if operand.precedence >= Precedence::Unary {
+                    format!("-({})", operand.text)
+                } else {
+                    format!("-{}", operand.text)
+                };
+                Ok(Sql {
+                    text,
+                    precedence: Precedence::Unary,
+                })
+            }
             Expr::Arithmetic { op, left, right } => self.compile_arithmetic(*op, left, right),
             Expr::Compare { op, left, right } => self.compile_compare(*op, left, right),
             Expr::Logic { op, left, right } => {
@@ -98,9 +180,14 @@ impl BaseQueryCompiler {
                     LogicOp::And => "AND",
                     LogicOp::Or => "OR",
                 };
+                let precedence = match op {
+                    LogicOp::And => Precedence::And,
+                    LogicOp::Or => Precedence::Or,
+                };
                 let left_sql = truthy(&self.compile_expr(left)?);
                 let right_sql = truthy(&self.compile_expr(right)?);
-                Ok(format!("({left_sql} {operator} {right_sql})"))
+                Ok(fold_binary(vec![left_sql, right_sql], operator, precedence)
+                    .unwrap_or_else(|| Sql::atom("1")))
             }
             Expr::Call(name, args) => self.compile_call(name, args),
             Expr::Method {
@@ -111,7 +198,7 @@ impl BaseQueryCompiler {
         }
     }
 
-    fn compile_arithmetic(&mut self, op: ArithOp, left: &Expr, right: &Expr) -> Result<String> {
+    fn compile_arithmetic(&mut self, op: ArithOp, left: &Expr, right: &Expr) -> Result<Sql> {
         let left_type = left.infer();
         let right_type = right.infer();
         if matches!(op, ArithOp::Add | ArithOp::Subtract)
@@ -125,10 +212,10 @@ impl BaseQueryCompiler {
                 let modifier = duration_modifier(duration, op == ArithOp::Subtract)?;
                 let left_sql = self.compile_expr(left)?;
                 let placeholder = self.bind(Value::Text(modifier));
-                return Ok(format!(
+                return Ok(Sql::atom(format!(
                     "datetime({}, {placeholder})",
-                    parenthesize(&left_sql)
-                ));
+                    left_sql.emit(Precedence::Or)
+                )));
             }
             if op == ArithOp::Add
                 && let Some(duration) = expr::coerce_duration(left)
@@ -137,20 +224,30 @@ impl BaseQueryCompiler {
                 let modifier = duration_modifier(duration, false)?;
                 let right_sql = self.compile_expr(right)?;
                 let placeholder = self.bind(Value::Text(modifier));
-                return Ok(format!(
+                return Ok(Sql::atom(format!(
                     "datetime({}, {placeholder})",
-                    parenthesize(&right_sql)
-                ));
+                    right_sql.emit(Precedence::Or)
+                )));
             }
             if op == ArithOp::Subtract && left_type == ValType::Date && right_type == ValType::Date
             {
                 let left_sql = self.compile_expr(left)?;
                 let right_sql = self.compile_expr(right)?;
-                return Ok(format!(
-                    "((julianday({}) - julianday({})) * 86400000.0)",
-                    parenthesize(&left_sql),
-                    parenthesize(&right_sql)
-                ));
+                let difference = Sql {
+                    text: format!(
+                        "julianday({}) - julianday({})",
+                        left_sql.emit(Precedence::Or),
+                        right_sql.emit(Precedence::Or)
+                    ),
+                    precedence: Precedence::Additive,
+                };
+                return Ok(Sql {
+                    text: format!(
+                        "{} * 86400000.0",
+                        difference.emit(Precedence::Multiplicative)
+                    ),
+                    precedence: Precedence::Multiplicative,
+                });
             }
         }
         let left_sql = self.compile_expr(left)?;
@@ -158,36 +255,40 @@ impl BaseQueryCompiler {
         // SQLite divides integers with truncation,
         // but the documented expression semantics are real-valued.
         if op == ArithOp::Divide {
-            return Ok(format!(
-                "((CAST({} AS REAL)) / (CAST({} AS REAL)))",
-                parenthesize(&left_sql),
-                parenthesize(&right_sql)
-            ));
+            return Ok(Sql {
+                text: format!(
+                    "CAST({} AS REAL) / CAST({} AS REAL)",
+                    left_sql.emit(Precedence::Or),
+                    right_sql.emit(Precedence::Or)
+                ),
+                precedence: Precedence::Multiplicative,
+            });
         }
-        let operator = match op {
-            ArithOp::Add => "+",
-            ArithOp::Subtract => "-",
-            ArithOp::Multiply => "*",
-            ArithOp::Divide => "/",
-            ArithOp::Modulo => "%",
+        // Divide already returned above, so its arm here is a formality.
+        let (operator, precedence) = match op {
+            ArithOp::Add => ("+", Precedence::Additive),
+            ArithOp::Subtract => ("-", Precedence::Additive),
+            ArithOp::Multiply | ArithOp::Divide => ("*", Precedence::Multiplicative),
+            ArithOp::Modulo => ("%", Precedence::Multiplicative),
         };
-        Ok(format!(
-            "({} {operator} {})",
-            parenthesize(&left_sql),
-            parenthesize(&right_sql)
-        ))
+        Ok(fold_binary(vec![left_sql, right_sql], operator, precedence)
+            .unwrap_or_else(|| Sql::atom("0")))
     }
 
-    fn compile_compare(&mut self, op: CmpOp, left: &Expr, right: &Expr) -> Result<String> {
+    fn compile_compare(&mut self, op: CmpOp, left: &Expr, right: &Expr) -> Result<Sql> {
         // Missing properties are SQL NULL;
         // comparisons against the null literal follow the documented missing-value semantics.
         if matches!(right, Expr::Null) {
             let left_sql = self.compile_expr(left)?;
-            return match op {
-                CmpOp::Equal => Ok(format!("({}) IS NULL", parenthesize(&left_sql))),
-                CmpOp::NotEqual => Ok(format!("({}) IS NOT NULL", parenthesize(&left_sql))),
+            let suffix = match op {
+                CmpOp::Equal => "IS NULL",
+                CmpOp::NotEqual => "IS NOT NULL",
                 _ => bail!("null only supports equality comparisons"),
             };
+            return Ok(Sql {
+                text: format!("{} {suffix}", left_sql.emit(Precedence::Comparison)),
+                precedence: Precedence::Comparison,
+            });
         }
         if matches!(left, Expr::Null) {
             let swapped = match op {
@@ -207,14 +308,13 @@ impl BaseQueryCompiler {
         };
         let left_sql = self.compile_expr(left)?;
         let right_sql = self.compile_expr(right)?;
-        Ok(format!(
-            "({} {operator} {})",
-            parenthesize(&left_sql),
-            parenthesize(&right_sql)
-        ))
+        Ok(
+            fold_binary(vec![left_sql, right_sql], operator, Precedence::Comparison)
+                .unwrap_or_else(|| Sql::atom("0")),
+        )
     }
 
-    fn compile_call(&mut self, name: &str, args: &[Expr]) -> Result<String> {
+    fn compile_call(&mut self, name: &str, args: &[Expr]) -> Result<Sql> {
         match name {
             "file.hasTag" => {
                 let [Expr::Text(tag)] = args else {
@@ -233,10 +333,10 @@ impl BaseQueryCompiler {
                 };
                 let target = self.bind(Value::Text(link.clone()));
                 let target_path = self.bind(Value::Text(link.clone()));
-                Ok(format!(
+                Ok(Sql::atom(format!(
                     "EXISTS (SELECT 1 FROM wiki_links WHERE source_path = documents.path \
                      AND target_path IS NOT NULL AND (target = {target} OR target_path = {target_path}))"
-                ))
+                )))
             }
             "file.inFolder" => {
                 let [Expr::Text(folder)] = args else {
@@ -244,13 +344,14 @@ impl BaseQueryCompiler {
                 };
                 let exact = self.bind(Value::Text(folder.clone()));
                 let prefix = self.bind(Value::Text(format!("{}/%", escape_like_pattern(folder))));
-                Ok(format!(
-                    "(folder = {exact} OR folder LIKE {prefix} ESCAPE '\\')"
-                ))
+                Ok(Sql {
+                    text: format!("folder = {exact} OR folder LIKE {prefix} ESCAPE '\\'"),
+                    precedence: Precedence::Or,
+                })
             }
             "today" | "now" => {
                 // Frozen per refresh: the executor overwrites this payload once.
-                Ok(self.bind(Value::Text(String::new())))
+                Ok(Sql::atom(self.bind(Value::Text(String::new()))))
             }
 
             "if" => {
@@ -260,18 +361,19 @@ impl BaseQueryCompiler {
                 let condition_sql = truthy(&self.compile_expr(condition)?);
                 let then_sql = self.compile_expr(then)?;
                 let otherwise_sql = self.compile_expr(otherwise)?;
-                Ok(format!(
-                    "(CASE WHEN {condition_sql} THEN {} ELSE {} END)",
-                    parenthesize(&then_sql),
-                    parenthesize(&otherwise_sql)
-                ))
+                Ok(Sql::atom(format!(
+                    "CASE WHEN {} THEN {} ELSE {} END",
+                    condition_sql.emit(Precedence::Or),
+                    then_sql.emit(Precedence::Or),
+                    otherwise_sql.emit(Precedence::Or)
+                )))
             }
             "min" | "max" => {
                 let sqls = args
                     .iter()
-                    .map(|arg| Ok(parenthesize(&self.compile_expr(arg)?)))
+                    .map(|arg| Ok(self.compile_expr(arg)?.emit(Precedence::Or)))
                     .collect::<Result<Vec<_>>>()?;
-                Ok(format!("{name}({})", sqls.join(", ")))
+                Ok(Sql::atom(format!("{name}({})", sqls.join(", "))))
             }
             "date" | "datetime" | "time" | "julianday" | "abs" | "round" | "length" | "lower"
             | "upper" | "trim" | "ltrim" | "rtrim" | "instr" => {
@@ -279,21 +381,24 @@ impl BaseQueryCompiler {
                     bail!("{name} takes one argument")
                 };
                 let inner_sql = self.compile_expr(inner)?;
-                Ok(format!("{name}({})", parenthesize(&inner_sql)))
+                Ok(Sql::atom(format!(
+                    "{name}({})",
+                    inner_sql.emit(Precedence::Or)
+                )))
             }
             "replace" | "substr" => {
                 let sqls = args
                     .iter()
-                    .map(|arg| Ok(parenthesize(&self.compile_expr(arg)?)))
+                    .map(|arg| Ok(self.compile_expr(arg)?.emit(Precedence::Or)))
                     .collect::<Result<Vec<_>>>()?;
-                Ok(format!("{name}({})", sqls.join(", ")))
+                Ok(Sql::atom(format!("{name}({})", sqls.join(", "))))
             }
             _ => bail!("unsupported function {name:?}"),
         }
     }
 
     #[allow(clippy::too_many_lines)]
-    fn compile_method(&mut self, subject: &Expr, name: &str, args: &[Expr]) -> Result<String> {
+    fn compile_method(&mut self, subject: &Expr, name: &str, args: &[Expr]) -> Result<Sql> {
         match name {
             "contains" => {
                 // Lists check element membership; strings check substrings.
@@ -302,30 +407,32 @@ impl BaseQueryCompiler {
                     bail!(".contains takes one argument")
                 };
                 let arg_sql = self.compile_expr(arg)?;
-                Ok(format!(
-                    "(CASE WHEN json_type({}) = 'array' \
-                     THEN EXISTS (SELECT 1 FROM json_each({}) AS each \
-                     WHERE ({arg_sql}) = each.atom) \
-                     ELSE instr(COALESCE({}, ''), ({arg_sql})) > 0 END)",
-                    parenthesize(&subject_sql),
-                    parenthesize(&subject_sql),
-                    parenthesize(&subject_sql)
-                ))
+                let subject = subject_sql.emit(Precedence::Or);
+                let arg = arg_sql.emit(Precedence::Comparison);
+                Ok(Sql::atom(format!(
+                    "CASE WHEN json_type({subject}) = 'array' \
+                     THEN EXISTS (SELECT 1 FROM json_each({subject}) AS each \
+                     WHERE {arg} = each.atom) \
+                     ELSE instr(COALESCE({subject}, ''), {arg}) > 0 END"
+                )))
             }
             "toFixed" => {
                 let subject_sql = self.compile_expr(subject)?;
                 let digits = integer_argument(args.first(), ".toFixed")?;
                 self.parameters.push(Value::Text(format!("%.{digits}f")));
-                Ok(format!("format(?, {})", parenthesize(&subject_sql)))
+                Ok(Sql::atom(format!(
+                    "format(?, {})",
+                    subject_sql.emit(Precedence::Or)
+                )))
             }
             "round" => {
                 let subject_sql = self.compile_expr(subject)?;
                 let digits = integer_argument(args.first(), ".round")?;
                 let placeholder = self.bind(Value::Integer(i64::from(digits)));
-                Ok(format!(
+                Ok(Sql::atom(format!(
                     "round({}, {placeholder})",
-                    parenthesize(&subject_sql)
-                ))
+                    subject_sql.emit(Precedence::Or)
+                )))
             }
             "startsWith" | "endsWith" => {
                 let subject_sql = self.compile_expr(subject)?;
@@ -337,18 +444,27 @@ impl BaseQueryCompiler {
                     _ => format!("*{}", escape_glob(pattern)),
                 };
                 let placeholder = self.bind(Value::Text(glob));
-                Ok(format!(
-                    "({} GLOB {placeholder})",
-                    parenthesize(&subject_sql)
-                ))
+                Ok(Sql {
+                    text: format!(
+                        "{} GLOB {placeholder}",
+                        subject_sql.emit(Precedence::Comparison)
+                    ),
+                    precedence: Precedence::Comparison,
+                })
             }
             "lower" | "upper" | "trim" => {
                 let subject_sql = self.compile_expr(subject)?;
-                Ok(format!("{name}({})", parenthesize(&subject_sql)))
+                Ok(Sql::atom(format!(
+                    "{name}({})",
+                    subject_sql.emit(Precedence::Or)
+                )))
             }
             "date" => {
                 let subject_sql = self.compile_expr(subject)?;
-                Ok(format!("date({})", parenthesize(&subject_sql)))
+                Ok(Sql::atom(format!(
+                    "date({})",
+                    subject_sql.emit(Precedence::Or)
+                )))
             }
             "format" => {
                 let Some(Expr::Text(pattern)) = args.first() else {
@@ -357,10 +473,10 @@ impl BaseQueryCompiler {
                 let strftime_pattern = moment_to_strftime(pattern);
                 let subject_sql = self.compile_expr(subject)?;
                 let placeholder = self.bind(Value::Text(strftime_pattern));
-                Ok(format!(
+                Ok(Sql::atom(format!(
                     "strftime({placeholder}, {})",
-                    parenthesize(&subject_sql)
-                ))
+                    subject_sql.emit(Precedence::Or)
+                )))
             }
             _ => bail!("unsupported method .{name}"),
         }
@@ -417,7 +533,7 @@ impl BaseQueryCompiler {
             PropertyRef::Note(parts) => Expr::Property(PropertyRef::Note(parts.clone())),
             PropertyRef::File(field) => Expr::Property(PropertyRef::File(*field)),
         };
-        self.compile_expr(&resolved)
+        Ok(self.compile_expr(&resolved)?.text)
     }
 }
 
@@ -572,6 +688,49 @@ mod tests {
 
     fn source(text: &str) -> String {
         text.to_string()
+    }
+
+    #[test]
+    fn filters_compile_with_minimal_parenthesization() {
+        let mut compiler = BaseQueryCompiler::new(0);
+        let sql = compiler
+            .compile_filter(&expression("file.inFolder(\"Notes\")"))
+            .unwrap();
+        assert_eq!(
+            sql,
+            "COALESCE(folder = ?1 OR folder LIKE ?2 ESCAPE '\\', 0) <> 0"
+        );
+
+        // MatchAll conjuncts vanish; parameters keep numbering across filters.
+        let filter = Filter::And(vec![
+            expression("price > 5"),
+            expression("!title.startsWith(\"Draft\")"),
+            Filter::MatchAll,
+        ]);
+        let sql = compiler.compile_filter(&filter).unwrap();
+        assert_eq!(
+            sql,
+            "COALESCE(json_extract(metadata, ?3) > ?4, 0) <> 0 \
+             AND COALESCE(NOT json_extract(metadata, ?5) GLOB ?6, 0) <> 0"
+        );
+    }
+
+    #[test]
+    fn arithmetic_compiles_as_minimal_precedence_chains() {
+        let mut formulas = BTreeMap::new();
+        formulas.insert(
+            "completion".to_string(),
+            Expr::parse("progress / pages * 100").unwrap(),
+        );
+        let mut compiler = BaseQueryCompiler::new(0);
+        let sql = compiler
+            .compile_source("formula.completion", &formulas)
+            .unwrap();
+        assert_eq!(
+            sql,
+            "CAST(json_extract(metadata, ?1) AS REAL) \
+             / CAST(json_extract(metadata, ?2) AS REAL) * ?3"
+        );
     }
 
     #[test]
