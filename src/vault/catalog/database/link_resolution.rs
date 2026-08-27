@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -16,6 +16,18 @@ impl CatalogDatabase {
         Ok(resolve_path_on(&connection, authored)
             .await?
             .map(|path| self.root.join(path)))
+    }
+
+    pub(crate) async fn resolve_paths(
+        &self,
+        targets: BTreeSet<String>,
+    ) -> Result<BTreeMap<String, Option<PathBuf>>> {
+        let connection = self.read_connection()?;
+        Ok(resolve_paths_on(&connection, targets)
+            .await?
+            .into_iter()
+            .map(|(target, path)| (target, path.map(|path| self.root.join(path))))
+            .collect())
     }
 
     pub(crate) async fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
@@ -56,15 +68,79 @@ pub(super) async fn resolve_path_on(
     if target.is_empty() {
         return Ok(None);
     }
-    let qualified = target.contains('/');
-    let target_has_extension = Path::new(&target).extension().is_some();
+    let sql = resolve_sql(
+        target.contains('/'),
+        Path::new(&target).extension().is_some(),
+    );
+    let mut rows = connection.query(sql, [target]).await?;
+    rows.next()
+        .await?
+        .map(|row| row.get::<String>(0).map(PathBuf::from))
+        .transpose()
+        .map_err(Into::into)
+}
+
+/// Resolves every normalized target with one compile per statement shape
+/// (path/basename x extension), instead of one per target.
+async fn resolve_paths_on(
+    connection: &turso::Connection,
+    targets: BTreeSet<String>,
+) -> Result<BTreeMap<String, Option<PathBuf>>> {
+    // Two authored spellings may normalize to the same catalog entry.
+    let mut unique: BTreeMap<String, Option<PathBuf>> = targets
+        .iter()
+        .map(|authored| (links::normalized_target(authored), None))
+        .filter(|(normalized, _)| !normalized.is_empty())
+        .collect();
+
+    let mut shapes: BTreeMap<(bool, bool), Vec<String>> = BTreeMap::new();
+    for target in unique.keys() {
+        shapes
+            .entry((
+                target.contains('/'),
+                Path::new(target).extension().is_some(),
+            ))
+            .or_default()
+            .push(target.clone());
+    }
+    for ((qualified, has_extension), bucket) in shapes {
+        let mut statement = connection
+            .prepare(resolve_sql(qualified, has_extension))
+            .await?;
+        for target in bucket {
+            let mut rows = statement.query([target.as_str()]).await?;
+            let path = match rows.next().await? {
+                Some(row) => Some(PathBuf::from(row.get::<String>(0)?)),
+                None => None,
+            };
+            drop(rows);
+            if let Some(entry) = unique.get_mut(&target) {
+                *entry = path;
+            }
+        }
+    }
+    Ok(targets
+        .into_iter()
+        .map(|authored| {
+            let normalized = links::normalized_target(&authored);
+            let answer = if normalized.is_empty() {
+                None
+            } else {
+                unique.get(&normalized).cloned().flatten()
+            };
+            (authored, answer)
+        })
+        .collect())
+}
+
+fn resolve_sql(qualified: bool, target_has_extension: bool) -> String {
     let compared_field = match (qualified, target_has_extension) {
         (true, true) => "path",
         (true, false) => PATH_WITHOUT_EXTENSION_SQL,
         (false, true) => FILE_BASENAME_SQL,
         (false, false) => FILE_NAME_SQL,
     };
-    let sql = format!(
+    format!(
         "SELECT path FROM documents \
          WHERE lower({compared_field}) = lower(?) \
          ORDER BY \
@@ -73,13 +149,7 @@ pub(super) async fn resolve_path_on(
             lower(path) ASC, \
             path ASC \
          LIMIT 1"
-    );
-    let mut rows = connection.query(sql, [target]).await?;
-    rows.next()
-        .await?
-        .map(|row| row.get::<String>(0).map(PathBuf::from))
-        .transpose()
-        .map_err(Into::into)
+    )
 }
 
 pub(super) async fn resolve_links(

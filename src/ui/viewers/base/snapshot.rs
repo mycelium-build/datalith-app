@@ -1,6 +1,6 @@
 //! Snapshot model and query pipeline for the Base viewer.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::document::base::{
@@ -73,14 +73,6 @@ impl BaseSnapshot {
         let index = self.projection_index.get(source)?;
         row.values.get(*index)
     }
-}
-
-pub(super) fn projection_index_for(projections: &[String]) -> HashMap<String, usize> {
-    projections
-        .iter()
-        .enumerate()
-        .map(|(index, source)| (source.clone(), index))
-        .collect()
 }
 
 /// Collects every property source the view needs projected; this list is the
@@ -298,25 +290,28 @@ pub(super) async fn load_snapshot(
         .into_iter()
         .map(|document| base_row(document, &root))
         .collect::<Vec<_>>();
-    if view.view_type == ViewType::Cards
-        && let Some(cards_config) = view.as_cards()
-        && let Some(image) = &cards_config.image
-    {
-        for row in &mut rows {
-            row.image = cards::resolve_card_image(
-                &image.source,
-                row,
-                &projection_index_for(&projections),
-                &catalog,
-                &root,
-            );
-        }
-    }
 
     let mut projection_index = HashMap::new();
     for (index, source) in projections.iter().enumerate() {
         projection_index.insert(source.clone(), index);
     }
+
+    if view.view_type == ViewType::Cards
+        && let Some(cards_config) = view.as_cards()
+        && let Some(image) = &cards_config.image
+    {
+        let pending = cards::collect_card_image_targets(&image.source, &rows, &projection_index);
+        let resolved = if pending.is_empty() {
+            BTreeMap::new()
+        } else {
+            catalog.resolve_paths(pending)
+        };
+        for row in &mut rows {
+            row.image =
+                cards::resolve_card_image(&image.source, row, &projection_index, &root, &resolved);
+        }
+    }
+
     let group_source = view
         .group_by
         .as_ref()

@@ -187,6 +187,18 @@ impl VaultCatalog {
         .unwrap_or_default()
     }
 
+    #[must_use]
+    pub(crate) fn resolve_paths(
+        &self,
+        targets: std::collections::BTreeSet<String>,
+    ) -> std::collections::BTreeMap<String, Option<PathBuf>> {
+        let database = self.inner.database.clone();
+        run_blocking("resolve", move || {
+            pollster::block_on(database.resolve_paths(targets)).unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
     pub(crate) fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
         let root = self.root();
         let database = self.inner.database.clone();

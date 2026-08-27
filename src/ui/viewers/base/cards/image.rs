@@ -10,7 +10,6 @@ use crate::document::base::{BaseView, CardImageFit};
 
 use super::super::BaseViewState;
 use super::super::snapshot::BaseRow;
-use crate::vault::VaultCatalog;
 
 #[derive(Clone, Debug)]
 pub(in crate::ui::viewers::base) enum CardImage {
@@ -60,13 +59,18 @@ pub(super) fn render_card_image(
     container.child(image_element).into_any_element()
 }
 
-pub(in crate::ui::viewers::base) fn resolve_card_image(
+/// A card image target after normalization:
+/// either a remote URL or a vault-relative local reference awaiting resolution.
+pub(in crate::ui::viewers::base) enum CardImageTarget {
+    External(String),
+    Local(String),
+}
+
+pub(in crate::ui::viewers::base) fn card_image_target(
     source: &str,
     row: &BaseRow,
     projection_index: &std::collections::HashMap<String, usize>,
-    catalog: &VaultCatalog,
-    root: &std::path::Path,
-) -> Option<CardImage> {
+) -> Option<CardImageTarget> {
     let position = projection_index.get(source)?;
     let value = row.values.get(*position)?.as_str()?;
     let target = normalize_card_image_target(value);
@@ -74,22 +78,55 @@ pub(in crate::ui::viewers::base) fn resolve_card_image(
         return None;
     }
     if target.starts_with("http://") || target.starts_with("https://") {
-        return Some(CardImage::External(target));
+        return Some(CardImageTarget::External(target));
     }
-    let target = percent_encoding::percent_decode_str(&target)
-        .decode_utf8_lossy()
-        .to_string();
-    let relative_candidate = row.path.parent().map_or_else(
-        || root.join(&target),
-        |parent| root.join(parent).join(&target),
-    );
-    if relative_candidate.is_file() {
-        return Some(CardImage::Local(relative_candidate));
+    Some(CardImageTarget::Local(
+        percent_encoding::percent_decode_str(&target)
+            .decode_utf8_lossy()
+            .to_string(),
+    ))
+}
+
+/// Every distinct local target across the snapshot needing catalog lookup.
+pub(in crate::ui::viewers::base) fn collect_card_image_targets(
+    source: &str,
+    rows: &[BaseRow],
+    projection_index: &std::collections::HashMap<String, usize>,
+) -> std::collections::BTreeSet<String> {
+    rows.iter()
+        .filter_map(
+            |row| match card_image_target(source, row, projection_index)? {
+                CardImageTarget::External(_) => None,
+                CardImageTarget::Local(target) => Some(target),
+            },
+        )
+        .collect()
+}
+
+pub(in crate::ui::viewers::base) fn resolve_card_image(
+    source: &str,
+    row: &BaseRow,
+    projection_index: &std::collections::HashMap<String, usize>,
+    root: &std::path::Path,
+    resolved: &std::collections::BTreeMap<String, Option<std::path::PathBuf>>,
+) -> Option<CardImage> {
+    match card_image_target(source, row, projection_index)? {
+        CardImageTarget::External(url) => Some(CardImage::External(url)),
+        CardImageTarget::Local(target) => {
+            let relative_candidate = row.path.parent().map_or_else(
+                || root.join(&target),
+                |parent| root.join(parent).join(&target),
+            );
+            if relative_candidate.is_file() {
+                return Some(CardImage::Local(relative_candidate));
+            }
+            resolved
+                .get(&target)?
+                .clone()
+                .filter(|path| path.is_file())
+                .map(CardImage::Local)
+        }
     }
-    catalog
-        .resolve(&target)
-        .filter(|path| path.is_file())
-        .map(CardImage::Local)
 }
 
 pub(in crate::ui::viewers::base) fn normalize_card_image_target(value: &str) -> String {

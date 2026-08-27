@@ -21,7 +21,7 @@ const GRID_PADDING: f32 = 16.0;
 
 mod image;
 
-pub(super) use image::{CardImage, resolve_card_image};
+pub(super) use image::{CardImage, collect_card_image_targets, resolve_card_image};
 
 pub(super) struct CardsState {
     pub(super) scroll_handle: VirtualListScrollHandle,
