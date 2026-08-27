@@ -133,12 +133,155 @@ mod tests {
     use super::*;
     use crate::document::base::SortDirection;
     use crate::document::filter::Filter;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
 
     #[allow(dead_code)]
     fn source(text: &str) -> String {
         text.to_string()
+    }
+
+    /// The kitchen-sink plan exercising every compiler arm at once:
+    /// folder/text/NOT/GLOB/modulo filters, formulas, grouping, all summary families, and graph classes.
+    fn worst_case_query() -> BaseQuery {
+        let mut formulas = BTreeMap::new();
+        formulas.insert(
+            "completion".to_string(),
+            crate::document::expr::Expr::parse("(progress / pages * 100).round(0)").unwrap(),
+        );
+        BaseQuery {
+            filters: Filter::And(vec![
+                expression("file.inFolder(\"Notes\")"),
+                expression("price > 5"),
+                expression("status == \"done\" || !title.startsWith(\"Draft\")"),
+                expression("!file.hasTag(\"hidden\")"),
+                expression("rating % 2 == 1"),
+            ]),
+            formulas,
+            projections: vec![
+                source("title"),
+                source("author"),
+                source("status"),
+                source("rating"),
+                source("formula.completion"),
+                source("file.tags"),
+                source("file.links"),
+            ],
+            sort: vec![(source("rating"), SortDirection::Desc)],
+            group_by: Some((source("status"), SortDirection::Asc)),
+            summaries: vec![
+                (
+                    source("pages"),
+                    crate::vault::catalog::SummaryRef::Default(crate::document::base::Summary::Sum),
+                ),
+                (
+                    source("rating"),
+                    crate::vault::catalog::SummaryRef::Default(
+                        crate::document::base::Summary::Median,
+                    ),
+                ),
+                (
+                    source("rating"),
+                    crate::vault::catalog::SummaryRef::Default(
+                        crate::document::base::Summary::Average,
+                    ),
+                ),
+                (
+                    source("rating"),
+                    crate::vault::catalog::SummaryRef::Default(
+                        crate::document::base::Summary::Stddev,
+                    ),
+                ),
+            ],
+            classes: vec![expression("file.hasTag(\"x\")")],
+            limit: Some(100),
+        }
+    }
+
+    /// batch path resolution is the statement shape that crashed the app
+    #[test]
+    fn batch_resolution_compiles_on_a_2mib_stack() {
+        let (database, root) = pollster::block_on(catalog_with(&[
+            ("Notes/A.md", "---\n---\n"),
+            ("Notes/B.md", "---\n---\n"),
+        ]));
+        let expected_root = root.clone();
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                pollster::block_on(async {
+                    let targets: BTreeSet<String> =
+                        ["A", "Notes/A.md", "Missing.png", "Notes/Missing", "B"]
+                            .iter()
+                            .map(|target| (*target).to_string())
+                            .collect();
+                    let resolved = database
+                        .resolve_paths(targets)
+                        .await
+                        .expect("batch resolve must compile on a 2 MiB stack");
+                    assert_eq!(
+                        resolved.get("A"),
+                        Some(&Some(expected_root.join("Notes/A.md"))),
+                        "unqualified stem resolves to the note"
+                    );
+                    assert_eq!(
+                        resolved.get("Notes/A.md"),
+                        Some(&Some(expected_root.join("Notes/A.md"))),
+                        "qualified path resolves directly"
+                    );
+                    assert_eq!(resolved.get("Missing.png"), Some(&None));
+                    assert_eq!(resolved.get("Notes/Missing"), Some(&None));
+                    assert_eq!(
+                        resolved.get("B"),
+                        Some(&Some(expected_root.join("Notes/B.md")))
+                    );
+                    drop(database);
+                    let _ = fs::remove_dir_all(root);
+                });
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    /// turso's debug-frame footprint makes this the tightest workable bound.
+    #[test]
+    fn worst_case_queries_compile_on_a_small_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                pollster::block_on(async {
+                    let (database, root) = catalog_with(&[
+                        (
+                            "Notes/A.md",
+                            "---\ntitle: Alpha\nprice: 7\nstatus: done\nrating: 1\nprogress: 50\npages: 100\ntags: [x]\n---\n",
+                        ),
+                        (
+                            "Notes/B.md",
+                            "---\ntitle: Draft B\nprice: 30\nstatus: open\nrating: 2\nprogress: 80\npages: 300\n---\n",
+                        ),
+                        (
+                            "Notes/C.md",
+                            "---\nprice: 9\nstatus: done\nrating: 3\nprogress: 25\npages: 200\n---\n",
+                        ),
+                    ])
+                    .await;
+                    let selection = database
+                        .query_base(worst_case_query())
+                        .await
+                        .expect("query must compile on a 2 MiB stack");
+                    assert_eq!(selection.total_matched, 2, "A and C match; Draft B is excluded");
+                    assert!(selection.documents[0].path.ends_with("C.md"));
+                    assert!(selection.documents[1].path.ends_with("A.md"));
+                    assert_eq!(selection.documents[1].values[4].as_f64(), Some(50.0));
+                    assert_eq!(selection.summaries[0].as_i64(), Some(300));
+                    assert_eq!(selection.summaries[1].as_f64(), Some(2.0));
+                    assert_eq!(selection.documents[0].class_hits, vec![false]);
+                    (database, root)
+                })
+            })
+            .unwrap();
+        let (_database, root) = handle.join().unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
