@@ -24,6 +24,7 @@ views:
           size: 1.25
 
     display:
+      legend: true
       node:
         color: '#7c8cff'
         size: 1.0
@@ -81,6 +82,12 @@ Classes classify selected nodes after the filter has run. The **first** class wh
 Every class requires a unique `name`, a `filters` expression, and a non-empty `node` object. `node` accepts `color`, `size`, `border`, and `hover`. Class node fields override the corresponding regular node fields individually; omitted fields inherit from `display.node`.
 
 Unlike `groupBy`, classes do not partition rows into sections — they are conditional styles for a link map.
+
+# Legend
+
+Graph views with at least one class show a legend overlay in the top-right corner: one color dot and class name per class, in declaration order. A class without its own `color` shows the resolved `display.node.color`, or the application theme color when both are unset.
+
+`display.legend` defaults to `true`; set it to `false` to hide the legend. Views without classes never show one.
 
 # Orphan nodes
 
