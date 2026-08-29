@@ -91,6 +91,8 @@ pub(in crate::ui) struct GraphSnapshot {
     pub(super) arrow: bool,
     pub(super) physics: GraphPhysics,
     pub(super) legend: Vec<LegendEntry>,
+    /// Display-ready summary lines ("Pages Sum: 350") for the summary box.
+    pub(super) summaries: Vec<String>,
 }
 
 /// One legend row: a class name plus its resolved node color,

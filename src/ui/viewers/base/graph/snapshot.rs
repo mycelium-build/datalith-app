@@ -18,6 +18,7 @@ pub(super) fn build(
     config: &GraphConfig,
     root: &Path,
     rows: impl IntoIterator<Item = (PathBuf, Vec<String>, Vec<bool>)>,
+    summary_lines: Vec<String>,
 ) -> GraphSnapshot {
     let mut nodes: Vec<GraphCandidate> = Vec::new();
     let mut raw_edges: Vec<(PathBuf, PathBuf)> = Vec::new();
@@ -106,6 +107,7 @@ pub(super) fn build(
         arrow: config.display.edge.arrow,
         physics: config.physics,
         legend,
+        summaries: summary_lines,
     }
 }
 
@@ -240,7 +242,24 @@ mod tests {
             &config,
             Path::new(""),
             rows_with_links(node_paths, links, &hits),
+            Vec::new(),
         )
+    }
+
+    #[test]
+    fn summary_lines_fill_the_summary_box() {
+        let config = graph_config(
+            "views:\n  - type: graph\n    name: G\n    display:\n      legend: false\n",
+        );
+        let hits = Vec::new();
+        let snapshot = build(
+            &config,
+            Path::new(""),
+            rows_with_links(&["a.md"], &[], &hits),
+            vec!["Pages Sum: 350".to_string(), "Rating Sum: 8".to_string()],
+        );
+        assert!(snapshot.legend.is_empty());
+        assert_eq!(snapshot.summaries, ["Pages Sum: 350", "Rating Sum: 8"]);
     }
 
     #[test]
@@ -352,7 +371,7 @@ views:
             (PathBuf::from("two.md"), vec![], vec![false, true]),
             (PathBuf::from("three.md"), vec![], vec![false, false]),
         ];
-        let snapshot = build(&graph_config(source), Path::new(""), rows);
+        let snapshot = build(&graph_config(source), Path::new(""), rows, Vec::new());
 
         let first = snapshot
             .nodes
@@ -481,7 +500,12 @@ views:
             ),
             ("orphan.md".into(), vec![], vec![false, false]),
         ];
-        let snapshot = build(&graph_config(source), std::path::Path::new(""), rows);
+        let snapshot = build(
+            &graph_config(source),
+            std::path::Path::new(""),
+            rows,
+            Vec::new(),
+        );
 
         assert_eq!(snapshot.nodes.len(), 2);
         let done = snapshot

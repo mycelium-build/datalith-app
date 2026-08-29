@@ -362,12 +362,50 @@ impl GraphState {
             }
         }
 
-        if !snapshot.legend.is_empty() {
-            root = root.child(render_legend(&snapshot.legend, cx));
+        if let Some(overlay) = render_overlay(&snapshot.legend, &snapshot.summaries, cx) {
+            root = root.child(overlay);
         }
 
         root.into_any_element()
     }
+}
+
+/// Top-right column stacking the legend and the summary box.
+fn render_overlay(legend: &[LegendEntry], summaries: &[String], cx: &App) -> Option<AnyElement> {
+    if legend.is_empty() && summaries.is_empty() {
+        return None;
+    }
+    Some(
+        gpui_component::v_flex()
+            .absolute()
+            .top_2()
+            .right_2()
+            .items_end()
+            .gap_2()
+            .children((!legend.is_empty()).then(|| render_legend(legend, cx)))
+            .children((!summaries.is_empty()).then(|| render_summary_box(summaries, cx)))
+            .into_any_element(),
+    )
+}
+
+/// One "Pages Sum: 350" line per entry, boxed like the legend.
+fn render_summary_box(summaries: &[String], cx: &App) -> AnyElement {
+    let lines = summaries.iter().map(|line| {
+        div()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(line.clone())
+            .into_any_element()
+    });
+    gpui_component::v_flex()
+        .gap_1()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background)
+        .children(lines)
+        .into_any_element()
 }
 
 fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
@@ -386,9 +424,6 @@ fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
             .into_any_element()
     });
     gpui_component::v_flex()
-        .absolute()
-        .top_2()
-        .right_2()
         .gap_1()
         .p_2()
         .rounded_md()
@@ -402,13 +437,14 @@ fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
 /// Builds a `GraphSnapshot` from query rows for the given view configuration.
 ///
 /// `rows` are `(relative_path, links, class_hits)` triples already stripped of the vault root;
-/// class membership comes straight from SQL boolean columns.
+/// class membership comes straight from SQL boolean columns. `summary_lines` feed the summary box.
 pub(super) fn build_graph_snapshot(
     config: &GraphConfig,
     root: &std::path::Path,
     rows: impl IntoIterator<Item = (PathBuf, Vec<String>, Vec<bool>)>,
+    summary_lines: Vec<String>,
 ) -> GraphSnapshot {
-    snapshot::build(config, root, rows)
+    snapshot::build(config, root, rows, summary_lines)
 }
 
 impl Render for GraphState {
@@ -430,5 +466,5 @@ pub(in crate::ui) fn test_snapshot(
         crate::document::base::BaseDefinition::parse(base_source).expect("valid base source");
     let view = definition.views.first().expect("at least one view");
     let config = view.as_graph().expect("graph view").clone();
-    snapshot::build(&config, std::path::Path::new(""), rows)
+    snapshot::build(&config, std::path::Path::new(""), rows, Vec::new())
 }
