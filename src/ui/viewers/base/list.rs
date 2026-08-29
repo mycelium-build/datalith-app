@@ -4,6 +4,7 @@ use gpui::{
 };
 use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
+use std::collections::HashMap;
 
 use crate::document::base::{BaseView, ListMarkers};
 
@@ -11,6 +12,49 @@ use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const LIST_ROW_HEIGHT: f32 = 28.0;
 const GROUP_HEADER_HEIGHT: f32 = 28.0;
+
+/// One line of the list view: a group header, a row, or a Summary pseudo-row.
+#[derive(Clone, Debug)]
+pub(super) enum ListItem {
+    Header { label: String, ordinal: usize },
+    Row { index: usize, ordinal: usize },
+    Summary { group: Option<String> },
+}
+
+pub(super) fn list_items(
+    items: &[BaseItem],
+    whole_set: &[super::snapshot::SummaryDisplay],
+    group_summaries: &HashMap<String, Vec<super::snapshot::SummaryDisplay>>,
+    grouped: bool,
+) -> Vec<ListItem> {
+    let mut result = Vec::with_capacity(items.len());
+    if !grouped && !whole_set.is_empty() {
+        result.push(ListItem::Summary { group: None });
+    }
+    for item in items {
+        match item {
+            BaseItem::Header { label, ordinal, .. } => {
+                let has_entries = group_summaries
+                    .get(label)
+                    .is_some_and(|entries| !entries.is_empty());
+                result.push(ListItem::Header {
+                    label: label.clone(),
+                    ordinal: *ordinal,
+                });
+                if has_entries {
+                    result.push(ListItem::Summary {
+                        group: Some(label.clone()),
+                    });
+                }
+            }
+            BaseItem::Row { index, ordinal } => result.push(ListItem::Row {
+                index: *index,
+                ordinal: *ordinal,
+            }),
+        }
+    }
+    result
+}
 
 pub(super) struct ListState {
     pub(super) scroll_handle: VirtualListScrollHandle,
@@ -53,22 +97,21 @@ impl BaseViewState {
                 };
                 visible_range
                     .map(|index| {
-                        let Some(item) = snapshot.items.get(index) else {
+                        let Some(item) = snapshot.list_items.get(index) else {
                             return div().into_any_element();
                         };
                         let markers = view.as_list().map_or(ListMarkers::Bullets, |l| l.markers);
                         match item {
-                            BaseItem::Header { label, ordinal, .. } => render_group_header(
+                            ListItem::Header { label, ordinal } => render_group_header(
                                 format!("base-list-header-{index}"),
                                 label,
                                 *ordinal,
                                 markers,
                                 cx,
                             ),
-                            BaseItem::Row {
+                            ListItem::Row {
                                 index: row_index,
                                 ordinal,
-                                ..
                             } => {
                                 let Some(row) = snapshot.rows.get(*row_index) else {
                                     return div().into_any_element();
@@ -83,7 +126,7 @@ impl BaseViewState {
                                     cx,
                                 )
                             }
-                            BaseItem::Summary { group } => render_summary_item(
+                            ListItem::Summary { group } => render_summary_item(
                                 format!("base-list-summary-{index}"),
                                 group.as_deref(),
                                 snapshot,
@@ -119,12 +162,12 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
     };
     let height = list_row_height(view);
     snapshot
-        .items
+        .list_items
         .iter()
         .map(|item| match item {
-            BaseItem::Header { .. } => size(px(1.), px(GROUP_HEADER_HEIGHT)),
-            BaseItem::Row { .. } => size(px(1.), px(height)),
-            BaseItem::Summary { group } => {
+            ListItem::Header { .. } => size(px(1.), px(GROUP_HEADER_HEIGHT)),
+            ListItem::Row { .. } => size(px(1.), px(height)),
+            ListItem::Summary { group } => {
                 let entries = summary_item_entries(group.as_deref(), snapshot);
                 let lines = entries.len().saturating_add(1);
                 size(
@@ -332,4 +375,68 @@ fn cell(
         truncate,
         cx,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::snapshot::SummaryDisplay;
+    use super::{BaseItem, ListItem, list_items};
+    use std::collections::HashMap;
+
+    fn display(label: &str) -> SummaryDisplay {
+        SummaryDisplay {
+            source: String::new(),
+            label: label.to_string(),
+            title: "Sum".to_string(),
+            text: "1".to_string(),
+        }
+    }
+
+    fn header(label: &str) -> BaseItem {
+        BaseItem::Header {
+            label: label.to_string(),
+            count: 1,
+            ordinal: 0,
+        }
+    }
+
+    fn row(index: usize) -> BaseItem {
+        BaseItem::Row {
+            index,
+            ordinal: index,
+        }
+    }
+
+    #[test]
+    fn ungrouped_lists_get_one_whole_set_summary_item() {
+        let items = vec![row(0), row(1)];
+        let whole = vec![display("Pages")];
+        let items = list_items(&items, &whole, &HashMap::new(), false);
+        assert!(matches!(&items[0], ListItem::Summary { group: None }));
+        assert!(matches!(&items[1], ListItem::Row { index: 0, .. }));
+
+        let items = vec![row(0)];
+        let items = list_items(&items, &[], &HashMap::new(), false);
+        assert!(
+            matches!(&items[0], ListItem::Row { .. }),
+            "no summaries, no item"
+        );
+    }
+
+    #[test]
+    fn grouped_lists_nest_a_summary_item_after_each_header() {
+        let items = vec![header("done"), row(0), header("reading"), row(1), row(2)];
+        let mut groups = HashMap::new();
+        groups.insert("done".to_string(), vec![display("Pages")]);
+        // "reading" has only null values, so it gets no map entry and no item.
+        let items = list_items(&items, &[], &groups, true);
+        assert!(matches!(&items[0], ListItem::Header { label, .. } if label == "done"));
+        assert!(matches!(&items[1], ListItem::Summary { group: Some(label) } if label == "done"));
+        assert!(matches!(&items[2], ListItem::Row { .. }));
+        assert!(matches!(&items[3], ListItem::Header { label, .. } if label == "reading"));
+        assert!(
+            matches!(&items[4], ListItem::Row { .. }),
+            "empty group has no summary item"
+        );
+    }
 }

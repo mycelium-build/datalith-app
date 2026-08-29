@@ -35,10 +35,6 @@ pub(super) enum BaseItem {
         index: usize,
         ordinal: usize,
     },
-    /// Pseudo-row rendering summaries; `None` is the whole set, `Some(label)` a group.
-    Summary {
-        group: Option<String>,
-    },
 }
 
 #[derive(Clone, Debug)]
@@ -46,7 +42,10 @@ pub(super) struct BaseSnapshot {
     pub(super) definition: BaseDefinition,
     pub(super) view_index: usize,
     pub(super) rows: Vec<BaseRow>,
+    /// Shared row/header sequence; list views additionally build `list_items`.
     pub(super) items: Vec<BaseItem>,
+    /// List-view display sequence: rows and headers interleaved with Summary pseudo-rows.
+    pub(super) list_items: Vec<super::list::ListItem>,
     pub(super) projection_index: HashMap<String, usize>,
     /// Rendered summary values aligned with the view's `summaries` mapping.
     pub(super) summaries: Vec<SummaryDisplay>,
@@ -244,48 +243,6 @@ pub(super) fn build_group_items(
     items
 }
 
-/// Inserts list Summary pseudo-rows:
-/// the whole set at the top when ungrouped,
-/// one after each group header when grouped;
-/// only entries with values get an item.
-fn insert_summary_items(
-    items: &mut Vec<BaseItem>,
-    whole_set: &[SummaryDisplay],
-    group_summaries: &HashMap<String, Vec<SummaryDisplay>>,
-    grouped: bool,
-) {
-    if !grouped {
-        if !whole_set.is_empty() {
-            items.insert(0, BaseItem::Summary { group: None });
-        }
-        return;
-    }
-    let mut result = Vec::with_capacity(items.len());
-    for item in std::mem::take(items) {
-        match item {
-            BaseItem::Header {
-                label,
-                count,
-                ordinal,
-            } => {
-                let has_entries = group_summaries
-                    .get(&label)
-                    .is_some_and(|entries| !entries.is_empty());
-                result.push(BaseItem::Header {
-                    label: label.clone(),
-                    count,
-                    ordinal,
-                });
-                if has_entries {
-                    result.push(BaseItem::Summary { group: Some(label) });
-                }
-            }
-            other => result.push(other),
-        }
-    }
-    *items = result;
-}
-
 fn snapshot_group_key_label(value: Option<&serde_json::Value>) -> String {
     match value {
         None | Some(serde_json::Value::Null) => "Empty".to_string(),
@@ -401,7 +358,7 @@ pub(super) async fn load_snapshot(
         .group_by
         .as_ref()
         .map(|group| group.property.source.clone());
-    let mut items = build_group_items(&rows, &projection_index, group_source.as_ref());
+    let items = build_group_items(&rows, &projection_index, group_source.as_ref());
 
     // The None-keyed entry aggregates the whole set (footer); Some-keyed ones are groups.
     let whole_set = selection
@@ -431,14 +388,16 @@ pub(super) async fn load_snapshot(
     }
 
     // Summary pseudo-rows exist only for list views; other views render summaries themselves.
-    if view.view_type == ViewType::List {
-        insert_summary_items(
-            &mut items,
+    let list_items = if view.view_type == ViewType::List {
+        super::list::list_items(
+            &items,
             &summary_labels,
             &group_summary_map,
             view.group_by.is_some(),
-        );
-    }
+        )
+    } else {
+        Vec::new()
+    };
 
     let rows_len = rows.len();
     Ok(BaseSnapshot {
@@ -446,6 +405,7 @@ pub(super) async fn load_snapshot(
         view_index,
         projection_index,
         items,
+        list_items,
         summaries: summary_labels,
         group_summaries: group_summary_map,
         rows,
@@ -480,10 +440,7 @@ fn summary_display(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        BaseItem, SummaryDisplay, insert_summary_items, summary_entry_text, summary_inline_line,
-    };
-    use std::collections::HashMap;
+    use super::{SummaryDisplay, summary_entry_text, summary_inline_line};
 
     fn display(label: &str, title: &str, text: &str) -> SummaryDisplay {
         SummaryDisplay {
@@ -491,21 +448,6 @@ mod tests {
             label: label.to_string(),
             title: title.to_string(),
             text: text.to_string(),
-        }
-    }
-
-    fn header(label: &str) -> BaseItem {
-        BaseItem::Header {
-            label: label.to_string(),
-            count: 0,
-            ordinal: 0,
-        }
-    }
-
-    fn row(index: usize) -> BaseItem {
-        BaseItem::Row {
-            index,
-            ordinal: index,
         }
     }
 
@@ -528,38 +470,5 @@ mod tests {
             Some("Pages Sum: 350 · Rating Sum: 8")
         );
         assert_eq!(summary_inline_line(&[]), None);
-    }
-
-    #[test]
-    fn ungrouped_lists_get_one_whole_set_summary_item() {
-        let mut items = vec![row(0), row(1)];
-        let whole = vec![display("Pages", "Sum", "350")];
-        insert_summary_items(&mut items, &whole, &HashMap::new(), false);
-        assert!(matches!(&items[0], BaseItem::Summary { group: None }));
-        assert!(matches!(&items[1], BaseItem::Row { index: 0, .. }));
-
-        let mut items = vec![row(0)];
-        insert_summary_items(&mut items, &[], &HashMap::new(), false);
-        assert!(
-            matches!(&items[0], BaseItem::Row { .. }),
-            "no summaries, no item"
-        );
-    }
-
-    #[test]
-    fn grouped_lists_nest_a_summary_item_after_each_header() {
-        let mut items = vec![header("done"), row(0), header("reading"), row(1), row(2)];
-        let mut groups = HashMap::new();
-        groups.insert("done".to_string(), vec![display("Pages", "Sum", "100")]);
-        // "reading" has only null values, so it gets no map entry and no item.
-        insert_summary_items(&mut items, &[], &groups, true);
-        assert!(matches!(&items[0], BaseItem::Header { label, .. } if label == "done"));
-        assert!(matches!(&items[1], BaseItem::Summary { group: Some(label) } if label == "done"));
-        assert!(matches!(&items[2], BaseItem::Row { .. }));
-        assert!(matches!(&items[3], BaseItem::Header { label, .. } if label == "reading"));
-        assert!(
-            matches!(&items[4], BaseItem::Row { .. }),
-            "empty group has no summary item"
-        );
     }
 }

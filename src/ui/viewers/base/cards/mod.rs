@@ -215,7 +215,6 @@ fn flatten_card_items(items: &[BaseItem], has_summaries: bool, columns: usize) -
                     result.push(CardItem::GridRow(std::mem::take(&mut pending)));
                 }
             }
-            BaseItem::Summary { .. } => {}
         }
     }
     if !pending.is_empty() {
@@ -507,23 +506,5 @@ mod tests {
             !matches!(flat[0], CardItem::GlobalSummary),
             "no summaries, no header"
         );
-    }
-
-    #[test]
-    fn list_summary_items_are_ignored_by_the_card_grid() {
-        let items = [
-            header("done"),
-            BaseItem::Summary {
-                group: Some("done".to_string()),
-            },
-            BaseItem::Row {
-                index: 0,
-                ordinal: 0,
-            },
-        ];
-        let flat = flatten_card_items(&items, false, 3);
-        assert_eq!(flat.len(), 2, "summary pseudo-rows produce no card item");
-        assert!(matches!(flat[0], CardItem::Header { .. }));
-        assert!(matches!(flat[1], CardItem::GridRow(_)));
     }
 }
