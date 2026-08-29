@@ -101,6 +101,7 @@ impl CatalogDatabase {
     /// Aggregates one summary pass:
     /// - `None`-keyed entry covers the whole result set (the view footer);
     /// - `Some(key)` entries cover one group each (the group headers) when the view groups.
+    ///
     /// Every entry reuses the same compiled expressions, plus a median pass per entry.
     pub(super) async fn compute_summaries(
         &self,
