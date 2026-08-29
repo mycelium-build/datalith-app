@@ -131,11 +131,15 @@ impl BaseViewState {
                     fullscreen_entity: &fullscreen_entity,
                     cx,
                 };
-                let items = flatten_card_items(snapshot, columns);
+                let items =
+                    flatten_card_items(&snapshot.items, !snapshot.summaries.is_empty(), columns);
                 visible_range
                     .filter_map(|item_index| {
                         let item = items.get(item_index)?;
                         Some(match item {
+                            CardItem::GlobalSummary => {
+                                render_global_summary(&snapshot.summaries, cx)
+                            }
                             CardItem::Header { label, count } => render_group_header(
                                 label,
                                 *count,
@@ -181,22 +185,26 @@ impl BaseViewState {
     }
 }
 
-/// One virtualized line of the cards layout: a group header or a grid row.
+/// One virtualized line of the cards layout: the global summary, a group header, or a grid row.
 enum CardItem {
+    GlobalSummary,
     Header { label: String, count: usize },
     GridRow(Vec<usize>),
 }
 
-fn flatten_card_items(snapshot: &BaseSnapshot, columns: usize) -> Vec<CardItem> {
-    let mut items = Vec::new();
+fn flatten_card_items(items: &[BaseItem], has_summaries: bool, columns: usize) -> Vec<CardItem> {
+    let mut result = Vec::new();
+    if has_summaries {
+        result.push(CardItem::GlobalSummary);
+    }
     let mut pending: Vec<usize> = Vec::new();
-    for item in &snapshot.items {
+    for item in items {
         match item {
             BaseItem::Header { label, count, .. } => {
                 if !pending.is_empty() {
-                    items.push(CardItem::GridRow(std::mem::take(&mut pending)));
+                    result.push(CardItem::GridRow(std::mem::take(&mut pending)));
                 }
-                items.push(CardItem::Header {
+                result.push(CardItem::Header {
                     label: label.clone(),
                     count: *count,
                 });
@@ -204,15 +212,16 @@ fn flatten_card_items(snapshot: &BaseSnapshot, columns: usize) -> Vec<CardItem> 
             BaseItem::Row { index, .. } => {
                 pending.push(*index);
                 if pending.len() >= columns {
-                    items.push(CardItem::GridRow(std::mem::take(&mut pending)));
+                    result.push(CardItem::GridRow(std::mem::take(&mut pending)));
                 }
             }
+            BaseItem::Summary { .. } => {}
         }
     }
     if !pending.is_empty() {
-        items.push(CardItem::GridRow(pending));
+        result.push(CardItem::GridRow(pending));
     }
-    items
+    result
 }
 
 #[allow(clippy::arithmetic_side_effects)]
@@ -259,9 +268,10 @@ fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> V
         .and_then(|cards| Some((cards, cards.image.as_ref()?)))
         .map_or(0.0, |(cards, _)| card_width / cards.image_aspect_ratio);
     let row_height = image_height + card_body_height(view) + CARD_GAP;
-    flatten_card_items(snapshot, columns)
+    flatten_card_items(&snapshot.items, !snapshot.summaries.is_empty(), columns)
         .iter()
         .map(|item| match item {
+            CardItem::GlobalSummary => size(px(1.0), px(GLOBAL_SUMMARY_HEIGHT)),
             CardItem::Header { label, .. } => size(
                 px(1.0),
                 px(if snapshot.group_summaries_for(label).is_empty() {
@@ -275,8 +285,23 @@ fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> V
         .collect()
 }
 
+const GLOBAL_SUMMARY_HEIGHT: f32 = 32.0;
 const GROUP_HEADER_HEIGHT: f32 = 36.0;
 const GROUP_HEADER_WITH_SUMMARIES_HEIGHT: f32 = 52.0;
+
+/// The whole-set summary header above the grid, scrolling with the content.
+fn render_global_summary(summaries: &[super::snapshot::SummaryDisplay], cx: &App) -> AnyElement {
+    let Some(line) = super::snapshot::summary_inline_line(summaries) else {
+        return div().into_any_element();
+    };
+    h_flex()
+        .id(ElementId::Name("base-cards-global-summary".into()))
+        .h(px(GLOBAL_SUMMARY_HEIGHT))
+        .items_center()
+        .text_color(cx.theme().muted_foreground)
+        .child(line)
+        .into_any_element()
+}
 
 fn render_group_header(
     label: &str,
@@ -299,7 +324,7 @@ fn render_group_header(
                 .text_color(cx.theme().muted_foreground)
                 .child(format!("{label} ({count})")),
         );
-    if let Some(line) = super::snapshot::group_summary_line(summaries) {
+    if let Some(line) = super::snapshot::summary_inline_line(summaries) {
         header = header.child(
             div()
                 .text_xs()
@@ -449,4 +474,56 @@ fn card_body_height(view: &BaseView) -> f32 {
             CARD_BODY_PADDING + property_count * CARD_PROPERTY_HEIGHT,
         )
         .max(CARD_BODY_MIN_HEIGHT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BaseItem, CardItem, flatten_card_items};
+
+    fn header(label: &str) -> BaseItem {
+        BaseItem::Header {
+            label: label.to_string(),
+            count: 1,
+            ordinal: 0,
+        }
+    }
+
+    #[test]
+    fn global_summary_leads_the_card_items_when_present() {
+        let items = [
+            header("done"),
+            BaseItem::Row {
+                index: 0,
+                ordinal: 0,
+            },
+        ];
+        let flat = flatten_card_items(&items, true, 3);
+        assert!(matches!(flat[0], CardItem::GlobalSummary));
+        assert!(matches!(flat[1], CardItem::Header { .. }));
+        assert!(matches!(flat[2], CardItem::GridRow(_)));
+
+        let flat = flatten_card_items(&items, false, 3);
+        assert!(
+            !matches!(flat[0], CardItem::GlobalSummary),
+            "no summaries, no header"
+        );
+    }
+
+    #[test]
+    fn list_summary_items_are_ignored_by_the_card_grid() {
+        let items = [
+            header("done"),
+            BaseItem::Summary {
+                group: Some("done".to_string()),
+            },
+            BaseItem::Row {
+                index: 0,
+                ordinal: 0,
+            },
+        ];
+        let flat = flatten_card_items(&items, false, 3);
+        assert_eq!(flat.len(), 2, "summary pseudo-rows produce no card item");
+        assert!(matches!(flat[0], CardItem::Header { .. }));
+        assert!(matches!(flat[1], CardItem::GridRow(_)));
+    }
 }
