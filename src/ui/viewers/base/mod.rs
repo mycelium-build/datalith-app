@@ -226,7 +226,12 @@ impl BaseViewState {
             .rows
             .iter()
             .map(|row| (row.path.clone(), row.links.clone(), row.class_hits.clone()));
-        let built = graph::build_graph_snapshot(config, &root, rows);
+        let summary_lines: Vec<String> = snapshot
+            .summaries
+            .iter()
+            .map(snapshot::summary_entry_text)
+            .collect();
+        let built = graph::build_graph_snapshot(config, &root, rows, summary_lines);
         let has_nodes = !snapshot.rows.is_empty();
         let entity = self.graph.get_or_insert_with(|| {
             let handler = self.handler.clone();
@@ -289,29 +294,6 @@ impl BaseViewState {
             ViewType::Cards => self.render_cards(snapshot, view, window, cx),
             ViewType::Graph => self.render_graph(),
         }
-    }
-
-    fn render_summary_strip(snapshot: &BaseSnapshot, cx: &App) -> Option<AnyElement> {
-        if snapshot.summaries.is_empty() {
-            return None;
-        }
-        Some(
-            h_flex()
-                .flex_wrap()
-                .gap_x_4()
-                .gap_y_0p5()
-                .px_2()
-                .py_1()
-                .border_t_1()
-                .border_color(cx.theme().border)
-                .text_color(cx.theme().muted_foreground)
-                .children(snapshot.summaries.iter().map(|display| {
-                    div()
-                        .child(format!("{}: {}", display.label, display.text))
-                        .into_any_element()
-                }))
-                .into_any_element(),
-        )
     }
 }
 
