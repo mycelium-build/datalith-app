@@ -90,6 +90,15 @@ pub(in crate::ui) struct GraphSnapshot {
     pub(super) edge_hover_both: ViewEdgeStyle,
     pub(super) arrow: bool,
     pub(super) physics: GraphPhysics,
+    pub(super) legend: Vec<LegendEntry>,
+}
+
+/// One legend row: a class name plus its resolved node color,
+/// where `None` renders with the application theme's default node color.
+#[derive(Clone, Debug)]
+pub(in crate::ui) struct LegendEntry {
+    pub(super) name: String,
+    pub(super) color: Option<GraphColor>,
 }
 
 pub(super) struct GraphFocus {

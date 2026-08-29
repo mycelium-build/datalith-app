@@ -7,7 +7,7 @@ use gpui::Point;
 
 use crate::document::base::{ClassStyle, DirectionalEdgeHoverStyle, GraphClass, GraphConfig};
 use crate::ui::viewers::base::graph::model::{
-    BASE_NODE_RADIUS, GraphSnapshot, ViewEdge, ViewEdgeStyle, ViewNode, border_width,
+    BASE_NODE_RADIUS, GraphSnapshot, LegendEntry, ViewEdge, ViewEdgeStyle, ViewNode, border_width,
     deterministic_position, hover_border_width, incoming_link_scale, resolve_class_node_style,
 };
 
@@ -83,6 +83,18 @@ pub(super) fn build(
 
     let edge_width = config.display.edge.width.unwrap_or(1.0);
     let hover = &config.display.edge.hover.direction;
+    let legend = if config.display.legend {
+        config
+            .classes
+            .iter()
+            .map(|class| LegendEntry {
+                name: class.name.clone(),
+                color: class.node.color.or(config.display.node.color),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     GraphSnapshot {
         nodes,
         edges: view_edges,
@@ -93,6 +105,7 @@ pub(super) fn build(
         edge_hover_both: edge_hover_style(&hover.both, edge_width),
         arrow: config.display.edge.arrow,
         physics: config.physics,
+        legend,
     }
 }
 
@@ -228,6 +241,45 @@ mod tests {
             Path::new(""),
             rows_with_links(node_paths, links, &hits),
         )
+    }
+
+    #[test]
+    fn legend_lists_classes_with_resolved_colors_and_respects_the_toggle() {
+        let source = r"
+views:
+  - type: graph
+    name: Wiki
+    display:
+      node:
+        color: '#112233'
+    classes:
+      - name: Explicit
+        filters: 'true'
+        node:
+          color: '#ff0000'
+          size: 1.5
+      - name: Inherited
+        filters: 'true'
+        node:
+          size: 1.5
+";
+        let snapshot = make(source, &["a.md"], &[]);
+        let names: Vec<_> = snapshot.legend.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["Explicit", "Inherited"]);
+        let explicit = &snapshot.legend[0];
+        assert!((explicit.color.unwrap().red - 1.0).abs() < 1e-6);
+        let inherited = &snapshot.legend[1];
+        assert!((inherited.color.unwrap().blue - 0.2).abs() < 1e-6);
+
+        let hidden = make(
+            "views:\n  - type: graph\n    name: G\n    display:\n      legend: false\n    classes:\n      - name: A\n        filters: 'true'\n        node:\n          size: 1.5",
+            &["a.md"],
+            &[],
+        );
+        assert!(hidden.legend.is_empty());
+
+        let unclassified = make("views:\n  - type: graph\n    name: G", &["a.md"], &[]);
+        assert!(unclassified.legend.is_empty());
     }
 
     #[test]

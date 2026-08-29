@@ -16,12 +16,25 @@ pub struct GraphConfig {
     pub classes: Vec<GraphClass>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct RawGraphDisplay {
     node: NodeStyle,
     edge: EdgeStyle,
     orphan: OrphanStyle,
+    #[serde(default = "types::default_true")]
+    legend: bool,
+}
+
+impl Default for RawGraphDisplay {
+    fn default() -> Self {
+        Self {
+            node: NodeStyle::default(),
+            edge: EdgeStyle::default(),
+            orphan: OrphanStyle::default(),
+            legend: true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
@@ -38,6 +51,7 @@ impl From<RawGraphDisplay> for GraphDisplay {
             node: raw.node,
             edge: raw.edge,
             orphan: raw.orphan,
+            legend: raw.legend,
         }
     }
 }
@@ -232,6 +246,22 @@ views:
         assert!(config.display.edge.arrow);
         assert!(!config.display.orphan.show);
         assert!((config.physics.repulsion.strength - 512.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn graph_legend_defaults_on_and_can_be_disabled() {
+        let enabled = parse_view("views:\n  - type: graph\n    name: G").unwrap();
+        let crate::document::base::ViewKind::Graph(config) = &enabled.views[0].kind else {
+            panic!("expected graph kind");
+        };
+        assert!(config.display.legend);
+        let disabled =
+            parse_view("views:\n  - type: graph\n    name: G\n    display:\n      legend: false")
+                .unwrap();
+        let crate::document::base::ViewKind::Graph(config) = &disabled.views[0].kind else {
+            panic!("expected graph kind");
+        };
+        assert!(!config.display.legend);
     }
 
     #[test]

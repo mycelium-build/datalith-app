@@ -5,12 +5,29 @@ use serde::Deserialize;
 use super::parse_color;
 use crate::document::filter::Filter;
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct GraphDisplay {
     pub node: NodeStyle,
     pub edge: EdgeStyle,
     pub orphan: OrphanStyle,
+    #[serde(default = "default_true")]
+    pub legend: bool,
+}
+
+impl Default for GraphDisplay {
+    fn default() -> Self {
+        Self {
+            node: NodeStyle::default(),
+            edge: EdgeStyle::default(),
+            orphan: OrphanStyle::default(),
+            legend: true,
+        }
+    }
+}
+
+pub(super) const fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]

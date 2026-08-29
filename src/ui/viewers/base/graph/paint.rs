@@ -11,7 +11,7 @@ use super::model::{GraphFocus, GraphSnapshot, IncidentDirection};
 
 pub(super) const HOVER_DIM_OPACITY: f32 = 0.16;
 
-fn graph_color(color: GraphColor) -> Hsla {
+pub(super) fn graph_color(color: GraphColor) -> Hsla {
     Rgba {
         r: color.red,
         g: color.green,

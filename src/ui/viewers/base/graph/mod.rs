@@ -9,18 +9,18 @@ mod snapshot;
 use std::path::PathBuf;
 
 use gpui::{
-    AnyElement, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
+    AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
     ScrollDelta, ScrollWheelEvent, Styled, WeakEntity, Window, div, point, px,
 };
-use gpui_component::{ActiveTheme, ElementExt};
+use gpui_component::{ActiveTheme, ElementExt, h_flex};
 
 use crate::document::base::GraphConfig;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 
 use self::camera::Camera;
 use self::model::{
-    GraphFocus, GraphSnapshot, NODE_LABEL_WIDTH, hit_test_nodes, label_node_indices,
+    GraphFocus, GraphSnapshot, LegendEntry, NODE_LABEL_WIDTH, hit_test_nodes, label_node_indices,
 };
 use self::physics::Simulation;
 
@@ -362,8 +362,41 @@ impl GraphState {
             }
         }
 
+        if !snapshot.legend.is_empty() {
+            root = root.child(render_legend(&snapshot.legend, cx));
+        }
+
         root.into_any_element()
     }
+}
+
+fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
+    let rows = legend.iter().map(|entry| {
+        let color = entry.color.map_or(cx.theme().info, paint::graph_color);
+        h_flex()
+            .items_center()
+            .gap_2()
+            .child(div().size_2().rounded_full().bg(color))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(entry.name.clone()),
+            )
+            .into_any_element()
+    });
+    gpui_component::v_flex()
+        .absolute()
+        .top_2()
+        .right_2()
+        .gap_1()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background)
+        .children(rows)
+        .into_any_element()
 }
 
 /// Builds a `GraphSnapshot` from query rows for the given view configuration.
