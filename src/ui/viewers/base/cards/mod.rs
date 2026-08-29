@@ -93,7 +93,7 @@ impl BaseViewState {
         &self,
         snapshot: &BaseSnapshot,
         view: &BaseView,
-        window: &Window,
+        _window: &Window,
         cx: &Context<Self>,
     ) -> AnyElement {
         let cards_config = view.as_cards().cloned().unwrap_or_default();
@@ -101,63 +101,70 @@ impl BaseViewState {
             return super::centered_message("Cards view state is missing", cx);
         };
         let entity = cx.entity();
-        let viewport_width = if cards_state.viewport_width == px(0.) {
-            content_width(window.bounds().size.width)
+        // Empty until on_prepaint measures the viewport width.
+        let viewport_width = cards_state.viewport_width;
+        let list = if viewport_width == px(0.) {
+            None
         } else {
-            cards_state.viewport_width
+            let columns = columns_for(cards_config.card_size, viewport_width);
+            let card_width = card_width_for(cards_config.card_size, viewport_width, columns);
+            let item_sizes = card_row_sizes(snapshot, columns, card_width);
+            let handler = self.handler.clone();
+            let fullscreen_entity = entity.clone();
+            let list_entity = entity.clone();
+            Some(
+                v_virtual_list(
+                    list_entity,
+                    "base-cards",
+                    item_sizes.into(),
+                    move |state, visible_range, _, cx| {
+                        let (BaseStatus::Ready(snapshot) | BaseStatus::Empty(snapshot)) =
+                            &state.status
+                        else {
+                            return Vec::new();
+                        };
+                        let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
+                            return Vec::new();
+                        };
+                        let context = CardRenderContext {
+                            snapshot,
+                            view,
+                            handler: &handler,
+                            fullscreen_entity: &fullscreen_entity,
+                            cx,
+                        };
+                        let items = flatten_card_items(
+                            &snapshot.items,
+                            !snapshot.summaries.is_empty(),
+                            columns,
+                        );
+                        visible_range
+                            .filter_map(|item_index| {
+                                let item = items.get(item_index)?;
+                                Some(match item {
+                                    CardItem::GlobalSummary => {
+                                        render_global_summary(&snapshot.summaries, cx)
+                                    }
+                                    CardItem::Header { label, count } => render_group_header(
+                                        label,
+                                        *count,
+                                        snapshot.group_summaries_for(label),
+                                        cx,
+                                    ),
+                                    CardItem::GridRow(indices) => {
+                                        render_card_row(indices, item_index, card_width, &context)
+                                    }
+                                })
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(&cards_state.scroll_handle)
+                .size_full(),
+            )
         };
-        let columns = columns_for(cards_config.card_size, viewport_width);
-        let card_width = card_width_for(cards_config.card_size, viewport_width, columns);
-        let item_sizes = card_row_sizes(snapshot, columns, card_width);
-        let handler = self.handler.clone();
-        let fullscreen_entity = entity.clone();
-        let list_entity = entity.clone();
-        let list = v_virtual_list(
-            list_entity,
-            "base-cards",
-            item_sizes.into(),
-            move |state, visible_range, _, cx| {
-                let (BaseStatus::Ready(snapshot) | BaseStatus::Empty(snapshot)) = &state.status
-                else {
-                    return Vec::new();
-                };
-                let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
-                    return Vec::new();
-                };
-                let context = CardRenderContext {
-                    snapshot,
-                    view,
-                    handler: &handler,
-                    fullscreen_entity: &fullscreen_entity,
-                    cx,
-                };
-                let items =
-                    flatten_card_items(&snapshot.items, !snapshot.summaries.is_empty(), columns);
-                visible_range
-                    .filter_map(|item_index| {
-                        let item = items.get(item_index)?;
-                        Some(match item {
-                            CardItem::GlobalSummary => {
-                                render_global_summary(&snapshot.summaries, cx)
-                            }
-                            CardItem::Header { label, count } => render_group_header(
-                                label,
-                                *count,
-                                snapshot.group_summaries_for(label),
-                                cx,
-                            ),
-                            CardItem::GridRow(indices) => {
-                                render_card_row(indices, item_index, card_width, &context)
-                            }
-                        })
-                    })
-                    .collect()
-            },
-        )
-        .track_scroll(&cards_state.scroll_handle)
-        .size_full();
         let viewport_entity = entity;
-        div()
+        let mut viewport = div()
             .id("base-cards-viewport")
             .relative()
             .flex_1()
@@ -172,16 +179,17 @@ impl BaseViewState {
                         cx.notify();
                     }
                 });
-            })
-            .child(div().size_full().p_4().child(list))
-            .child(
+            });
+        if let Some(list) = list {
+            viewport = viewport.child(div().size_full().p_4().child(list)).child(
                 div().absolute().inset_0().child(
                     Scrollbar::vertical(&cards_state.scroll_handle)
                         .mode(ScrollbarMode::Always)
                         .viewport_from_layout(),
                 ),
-            )
-            .into_any_element()
+            );
+        }
+        viewport.into_any_element()
     }
 }
 
