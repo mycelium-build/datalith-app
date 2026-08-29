@@ -27,6 +27,10 @@ views:
 
 The configured `order` properties are shown below the image. `file.name` is an interactive link to the file. Press and hold a card image to show it fullscreen; releasing the mouse returns to the cards view.
 
+# Summaries
+
+When the view declares `summaries`, a one-line header above the grid shows the whole-set aggregates (`Pages Sum: 350 · Rating roundedAverage: 4.0`), and each grouped section shows its own aggregates under the group title.
+
 All views are read-only. Link cells navigate to files; edit note properties in the Markdown editor.
 
 Shared syntax — filters, ordering, grouping, summaries, and limits — is documented in [[formats/bases/Overview|the Base overview]].

@@ -89,6 +89,10 @@ Graph views with at least one class show a legend overlay in the top-right corne
 
 `display.legend` defaults to `true`; set it to `false` to hide the legend. Views without classes never show one.
 
+# Summaries
+
+When the view declares `summaries`, a box appears under the legend in the top-right corner with one `Pages Sum: 350` line per summary. Graph views without summaries show nothing.
+
 # Orphan nodes
 
 An orphan node has no edge to another selected node. `display.orphan.show` defaults to `true`; setting it to `false` removes orphan nodes from the Graph View.

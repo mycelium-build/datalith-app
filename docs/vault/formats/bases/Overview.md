@@ -171,7 +171,14 @@ views:
       score: roundedAverage
 ```
 
-Summaries aggregate every matching row, before `limit`. Tables render a footer under the summarized columns; lists and cards render a compact summary strip beneath the content. Summaries always aggregate the whole result set, not per-group.
+Summaries aggregate every matching row, before `limit`. Each view places them differently:
+
+- **Table**: a footer under the summarized columns, plus a per-group strip in each group header.
+- **List**: a `Summary` entry at the top of the list, or one inside each group when grouped; each entry reads `Pages Sum: 350`.
+- **Cards**: a header above the grid for the whole set, plus a per-group line under each group title.
+- **Graph**: a box under the legend, one entry per line.
+
+Whole-set summaries aggregate every matching row; grouped views additionally show one summary per group, computed over that group's rows only.
 
 # Sorting And Limits
 
@@ -195,7 +202,6 @@ The following Bases features cause a validation error rather than being silently
 - Map layouts and plugin-provided view types.
 - Dynamic durations stored in properties (duration literals work).
 - Custom summaries beyond aggregate-plus-rounding chains.
-- Per-group summary footers.
 - Fan-out of list-valued group keys into multiple groups.
 - The `this` context for bases opened from another file or sidebar.
 - View-local search, inline property editing, copy/export actions, and creating files from a view.
