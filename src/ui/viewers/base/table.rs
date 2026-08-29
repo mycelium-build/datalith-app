@@ -10,6 +10,7 @@ use crate::document::base::{BaseView, TableRowHeight};
 use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const TABLE_HEADER_HEIGHT: f32 = 32.0;
+const TABLE_FOOTER_HEIGHT: f32 = 44.0;
 const TABLE_COLUMN_MIN_WIDTH: f32 = 128.0;
 const TABLE_COLUMN_MAX_WIDTH: f32 = 512.0;
 const TABLE_COLUMN_HORIZONTAL_PADDING: f32 = 32.0;
@@ -79,7 +80,7 @@ fn build_table_footer(
         h_flex()
             .w_full()
             .min_w(table_min_width)
-            .h(px(TABLE_HEADER_HEIGHT))
+            .h(px(TABLE_FOOTER_HEIGHT))
             .bg(cx.theme().tab_bar)
             .border_t_1()
             .border_color(cx.theme().border)
@@ -88,19 +89,32 @@ fn build_table_footer(
                     .iter()
                     .zip(column_widths.iter())
                     .map(|(property, width)| {
-                        let summary_text = snapshot
-                            .summary_for(&property.source)
+                        let display = snapshot.summary_for(&property.source);
+                        let title = display
+                            .map(|display| display.title.clone())
+                            .unwrap_or_default();
+                        let summary_text = display
                             .map(|display| display.text.clone())
                             .unwrap_or_default();
-                        div()
+                        v_flex()
                             .w(*width)
                             .min_w(*width)
                             .max_w(px(TABLE_COLUMN_MAX_WIDTH))
                             .flex_shrink_0()
                             .px_2()
-                            .items_center()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(summary_text)
+                            .justify_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(summary_text),
+                            )
                     }),
             )
             .into_any_element(),
@@ -183,18 +197,16 @@ impl BaseViewState {
             .min_w_0()
             .min_h_0()
             .child(
-                v_flex()
-                    .size_full()
-                    .child(
-                        div().size_full().overflow_x_scrollbar().child(
-                            v_flex()
-                                .size_full()
-                                .min_w(table_min_width)
-                                .child(header)
-                                .child(body),
-                        ),
-                    )
-                    .children(footer),
+                v_flex().size_full().child(
+                    div().size_full().overflow_x_scrollbar().child(
+                        v_flex()
+                            .size_full()
+                            .min_w(table_min_width)
+                            .child(header)
+                            .child(body)
+                            .children(footer),
+                    ),
+                ),
             )
             .child(
                 div().absolute().inset_0().child(

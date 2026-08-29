@@ -54,6 +54,7 @@ pub(super) struct BaseSnapshot {
 pub(super) struct SummaryDisplay {
     pub(super) source: String,
     pub(super) label: String,
+    pub(super) title: String,
     pub(super) text: String,
 }
 
@@ -336,7 +337,7 @@ pub(super) async fn load_snapshot(
         .iter()
         .zip(selection.summaries.iter())
         .filter(|(_, value)| !value.is_null())
-        .filter_map(|((source, _name), value)| {
+        .filter_map(|((source, name), value)| {
             let path = crate::document::filter::parse_property(source).ok()?;
             let label = definition
                 .display_label(&DisplayProperty {
@@ -347,6 +348,7 @@ pub(super) async fn load_snapshot(
             Some(SummaryDisplay {
                 source: source.clone(),
                 label,
+                title: name.clone(),
                 text: format_scalar_text(value),
             })
         })
