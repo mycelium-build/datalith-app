@@ -169,16 +169,24 @@ impl BaseViewState {
             .relative()
             .flex_1()
             .min_h_0()
-            .on_prepaint(move |bounds, _window, cx| {
+            .on_prepaint(move |bounds, window, cx| {
                 let width = content_width(bounds.size.width);
-                viewport_entity.update(cx, |state, cx| {
+                let mut changed = false;
+                viewport_entity.update(cx, |state, _| {
                     if let Some(cards) = state.cards.as_mut()
                         && cards.viewport_width != width
                     {
                         cards.viewport_width = width;
-                        cx.notify();
+                        changed = true;
                     }
                 });
+                if changed {
+                    // Notifications during prepaint are discarded; defer past the frame.
+                    window.defer(cx, {
+                        let viewport_entity = viewport_entity.clone();
+                        move |_, cx| viewport_entity.update(cx, |_, cx| cx.notify())
+                    });
+                }
             });
         if let Some(list) = list {
             viewport = viewport.child(div().size_full().p_4().child(list)).child(
