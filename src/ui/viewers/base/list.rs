@@ -11,7 +11,6 @@ use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const LIST_ROW_HEIGHT: f32 = 28.0;
 const GROUP_HEADER_HEIGHT: f32 = 28.0;
-const GROUP_HEADER_WITH_SUMMARIES_HEIGHT: f32 = 44.0;
 
 pub(super) struct ListState {
     pub(super) scroll_handle: VirtualListScrollHandle,
@@ -30,7 +29,7 @@ impl ListState {
 impl BaseViewState {
     pub(super) fn render_list(
         &self,
-        snapshot: &BaseSnapshot,
+        _snapshot: &BaseSnapshot,
         _view: &BaseView,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -40,7 +39,6 @@ impl BaseViewState {
         let entity = cx.entity();
         let item_sizes = list_state.item_sizes.clone();
         let handler = self.handler.clone();
-        let summary_strip = Self::render_summary_strip(snapshot, cx);
         let list = v_virtual_list(
             entity,
             "base-list",
@@ -58,19 +56,15 @@ impl BaseViewState {
                         let Some(item) = snapshot.items.get(index) else {
                             return div().into_any_element();
                         };
+                        let markers = view.as_list().map_or(ListMarkers::Bullets, |l| l.markers);
                         match item {
-                            BaseItem::Header { label, ordinal, .. } => {
-                                let markers =
-                                    view.as_list().map_or(ListMarkers::Bullets, |l| l.markers);
-                                render_group_header(
-                                    format!("base-list-header-{index}"),
-                                    label,
-                                    *ordinal,
-                                    markers,
-                                    snapshot.group_summaries_for(label),
-                                    cx,
-                                )
-                            }
+                            BaseItem::Header { label, ordinal, .. } => render_group_header(
+                                format!("base-list-header-{index}"),
+                                label,
+                                *ordinal,
+                                markers,
+                                cx,
+                            ),
                             BaseItem::Row {
                                 index: row_index,
                                 ordinal,
@@ -89,6 +83,13 @@ impl BaseViewState {
                                     cx,
                                 )
                             }
+                            BaseItem::Summary { group } => render_summary_item(
+                                format!("base-list-summary-{index}"),
+                                group.as_deref(),
+                                snapshot,
+                                markers,
+                                cx,
+                            ),
                         }
                     })
                     .collect()
@@ -108,7 +109,6 @@ impl BaseViewState {
                         .viewport_from_layout(),
                 ),
             )
-            .children(summary_strip)
             .into_any_element()
     }
 }
@@ -122,17 +122,28 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
         .items
         .iter()
         .map(|item| match item {
-            BaseItem::Header { label, .. } => size(
-                px(1.),
-                px(if snapshot.group_summaries_for(label).is_empty() {
-                    GROUP_HEADER_HEIGHT
-                } else {
-                    GROUP_HEADER_WITH_SUMMARIES_HEIGHT
-                }),
-            ),
+            BaseItem::Header { .. } => size(px(1.), px(GROUP_HEADER_HEIGHT)),
             BaseItem::Row { .. } => size(px(1.), px(height)),
+            BaseItem::Summary { group } => {
+                let entries = summary_item_entries(group.as_deref(), snapshot);
+                let lines = entries.len().saturating_add(1);
+                size(
+                    px(1.),
+                    px(LIST_ROW_HEIGHT * lines.to_string().parse::<f32>().unwrap_or(1.0)),
+                )
+            }
         })
         .collect()
+}
+
+/// Summary displays for a Summary pseudo-row: the whole set, or one group's.
+fn summary_item_entries<'a>(
+    group: Option<&str>,
+    snapshot: &'a BaseSnapshot,
+) -> &'a [super::snapshot::SummaryDisplay] {
+    group.map_or(&snapshot.summaries[..], |label| {
+        snapshot.group_summaries_for(label)
+    })
 }
 
 fn list_row_height(view: &BaseView) -> f32 {
@@ -149,37 +160,69 @@ fn render_group_header(
     label: &str,
     ordinal: usize,
     markers: ListMarkers,
-    summaries: &[super::snapshot::SummaryDisplay],
-    cx: &App,
+    _cx: &App,
 ) -> AnyElement {
     let marker = match markers {
         ListMarkers::Bullets => "• ".to_string(),
         ListMarkers::Numbers => format!("{}. ", ordinal.saturating_add(1)),
         ListMarkers::None => String::new(),
     };
-    let mut header = v_flex()
+    v_flex()
         .id(ElementId::Name(id.into()))
-        .h(px(if summaries.is_empty() {
-            GROUP_HEADER_HEIGHT
-        } else {
-            GROUP_HEADER_WITH_SUMMARIES_HEIGHT
-        }))
+        .h(px(GROUP_HEADER_HEIGHT))
         .justify_center()
         .child(
             h_flex()
                 .items_center()
                 .child(marker)
                 .child(label.to_string()),
-        );
-    if let Some(line) = super::snapshot::group_summary_line(summaries) {
-        header = header.child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(line),
-        );
+        )
+        .into_any_element()
+}
+
+/// The "Summary" pseudo-row: one bullet line, then one nested line per entry.
+fn render_summary_item(
+    id: String,
+    group: Option<&str>,
+    snapshot: &BaseSnapshot,
+    markers: ListMarkers,
+    _cx: &App,
+) -> AnyElement {
+    let entries = summary_item_entries(group, snapshot);
+    let top_marker = match markers {
+        ListMarkers::Bullets => "• ".to_string(),
+        ListMarkers::Numbers | ListMarkers::None => String::new(),
+    };
+    let sub_marker = match markers {
+        ListMarkers::None => String::new(),
+        _ => "• ".to_string(),
+    };
+    let entry_lines = entries
+        .iter()
+        .map(|display| {
+            h_flex()
+                .items_center()
+                .h(px(LIST_ROW_HEIGHT))
+                .child(sub_marker.clone())
+                .child(super::snapshot::summary_entry_text(display))
+                .into_any_element()
+        })
+        .collect::<Vec<_>>();
+    let mut column = gpui_component::v_flex()
+        .id(ElementId::Name(id.into()))
+        .w_full()
+        .child(
+            h_flex()
+                .items_center()
+                .h(px(LIST_ROW_HEIGHT))
+                .child(top_marker)
+                .child("Summary"),
+        )
+        .child(gpui_component::v_flex().pl_4().children(entry_lines));
+    if group.is_some() {
+        column = column.pl_4();
     }
-    header.into_any_element()
+    column.into_any_element()
 }
 
 fn render_list_row(
