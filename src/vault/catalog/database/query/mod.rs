@@ -273,8 +273,13 @@ mod tests {
                     assert!(selection.documents[0].path.ends_with("C.md"));
                     assert!(selection.documents[1].path.ends_with("A.md"));
                     assert_eq!(selection.documents[1].values[4].as_f64(), Some(50.0));
-                    assert_eq!(selection.summaries[0].as_i64(), Some(300));
-                    assert_eq!(selection.summaries[1].as_f64(), Some(2.0));
+                    let whole_set = selection
+                        .summaries
+                        .iter()
+                        .find(|(key, _)| key.is_none())
+                        .expect("whole-set summary entry");
+                    assert_eq!(whole_set.1[0].as_i64(), Some(300));
+                    assert_eq!(whole_set.1[1].as_f64(), Some(2.0));
                     assert_eq!(selection.documents[0].class_hits, vec![false]);
                     (database, root)
                 })

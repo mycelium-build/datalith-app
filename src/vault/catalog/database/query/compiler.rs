@@ -802,7 +802,12 @@ mod tests {
             let last = selection.documents.last().unwrap();
             assert!(last.path.ends_with("C.md"));
             assert_eq!(last.values[0].as_f64(), Some(0.2));
-            let average = selection.summaries[0].as_f64().unwrap();
+            let whole_set = selection
+                .summaries
+                .iter()
+                .find(|(key, _)| key.is_none())
+                .expect("whole-set summary entry");
+            let average = whole_set.1[0].as_f64().unwrap();
             assert!((average - 2.066_666_7).abs() < 1e-4, "{average}");
             drop(database);
             let _ = std::fs::remove_dir_all(root);

@@ -46,6 +46,8 @@ pub(super) struct BaseSnapshot {
     pub(super) projection_index: HashMap<String, usize>,
     /// Rendered summary values aligned with the view's `summaries` mapping.
     pub(super) summaries: Vec<SummaryDisplay>,
+    /// Per-group summaries keyed by the group label, mirroring `summaries`.
+    pub(super) group_summaries: HashMap<String, Vec<SummaryDisplay>>,
     pub(super) total: usize,
     pub(super) omitted: usize,
 }
@@ -71,6 +73,28 @@ impl BaseSnapshot {
             .iter()
             .find(|display| display.source == source)
     }
+
+    /// Summaries for a group header, by its label; empty when ungrouped.
+    pub(super) fn group_summaries_for(&self, label: &str) -> &[SummaryDisplay] {
+        match self.group_summaries.get(label) {
+            Some(entries) => entries,
+            None => &[],
+        }
+    }
+}
+
+/// One "label: value" line for a group header, or `None` when the group has no summaries.
+pub(super) fn group_summary_line(summaries: &[SummaryDisplay]) -> Option<String> {
+    if summaries.is_empty() {
+        return None;
+    }
+    Some(
+        summaries
+            .iter()
+            .map(|display| format!("{}: {}", display.label, display.text))
+            .collect::<Vec<_>>()
+            .join(" · "),
+    )
 }
 impl BaseSnapshot {
     pub(super) fn projection_value<'a>(
@@ -332,27 +356,32 @@ pub(super) async fn load_snapshot(
         .map(|group| group.property.source.clone());
     let items = build_group_items(&rows, &projection_index, group_source.as_ref());
 
+    // The None-keyed entry aggregates the whole set (footer); Some-keyed ones are groups.
+    let whole_set = selection
+        .summaries
+        .iter()
+        .find(|(key, _)| key.is_none())
+        .map(|(_, values)| values);
     let summary_labels = view
         .summaries
         .iter()
-        .zip(selection.summaries.iter())
-        .filter(|(_, value)| !value.is_null())
-        .filter_map(|((source, name), value)| {
-            let path = crate::document::filter::parse_property(source).ok()?;
-            let label = definition
-                .display_label(&DisplayProperty {
-                    source: source.clone(),
-                    path,
-                })
-                .to_string();
-            Some(SummaryDisplay {
-                source: source.clone(),
-                label,
-                title: name.clone(),
-                text: format_scalar_text(value),
-            })
-        })
+        .zip(whole_set.into_iter().flatten())
+        .filter_map(|((source, name), value)| summary_display(&definition, source, name, value))
         .collect::<Vec<_>>();
+
+    let mut group_summary_map: HashMap<String, Vec<SummaryDisplay>> = HashMap::new();
+    for (key, values) in &selection.summaries {
+        let Some(key) = key else { continue };
+        let displays = view
+            .summaries
+            .iter()
+            .zip(values.iter())
+            .filter_map(|((source, name), value)| summary_display(&definition, source, name, value))
+            .collect::<Vec<_>>();
+        if !displays.is_empty() {
+            group_summary_map.insert(snapshot_group_key_label(Some(key)), displays);
+        }
+    }
 
     let rows_len = rows.len();
     Ok(BaseSnapshot {
@@ -361,8 +390,33 @@ pub(super) async fn load_snapshot(
         projection_index,
         items,
         summaries: summary_labels,
+        group_summaries: group_summary_map,
         rows,
         total: selection.total_matched,
         omitted: selection.total_matched.saturating_sub(rows_len),
+    })
+}
+
+fn summary_display(
+    definition: &BaseDefinition,
+    source: &str,
+    name: &str,
+    value: &serde_json::Value,
+) -> Option<SummaryDisplay> {
+    if value.is_null() {
+        return None;
+    }
+    let path = crate::document::filter::parse_property(source).ok()?;
+    let label = definition
+        .display_label(&DisplayProperty {
+            source: source.to_string(),
+            path,
+        })
+        .to_string();
+    Some(SummaryDisplay {
+        source: source.to_string(),
+        label,
+        title: name.to_string(),
+        text: format_scalar_text(value),
     })
 }

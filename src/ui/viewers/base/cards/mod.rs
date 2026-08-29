@@ -136,9 +136,12 @@ impl BaseViewState {
                     .filter_map(|item_index| {
                         let item = items.get(item_index)?;
                         Some(match item {
-                            CardItem::Header { label, count } => {
-                                render_group_header(label, *count, cx)
-                            }
+                            CardItem::Header { label, count } => render_group_header(
+                                label,
+                                *count,
+                                snapshot.group_summaries_for(label),
+                                cx,
+                            ),
                             CardItem::GridRow(indices) => {
                                 render_card_row(indices, item_index, card_width, &context)
                             }
@@ -259,23 +262,52 @@ fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> V
     flatten_card_items(snapshot, columns)
         .iter()
         .map(|item| match item {
-            CardItem::Header { .. } => size(px(1.0), px(GROUP_HEADER_HEIGHT)),
+            CardItem::Header { label, .. } => size(
+                px(1.0),
+                px(if snapshot.group_summaries_for(label).is_empty() {
+                    GROUP_HEADER_HEIGHT
+                } else {
+                    GROUP_HEADER_WITH_SUMMARIES_HEIGHT
+                }),
+            ),
             CardItem::GridRow(_) => size(px(1.0), px(row_height)),
         })
         .collect()
 }
 
 const GROUP_HEADER_HEIGHT: f32 = 36.0;
+const GROUP_HEADER_WITH_SUMMARIES_HEIGHT: f32 = 52.0;
 
-fn render_group_header(label: &str, count: usize, cx: &App) -> AnyElement {
-    h_flex()
+fn render_group_header(
+    label: &str,
+    count: usize,
+    summaries: &[super::snapshot::SummaryDisplay],
+    cx: &App,
+) -> AnyElement {
+    let mut header = v_flex()
         .id(ElementId::Name("base-cards-group-header".into()))
-        .items_center()
-        .h(px(GROUP_HEADER_HEIGHT))
-        .gap_2()
-        .text_color(cx.theme().muted_foreground)
-        .child(format!("{label} ({count})"))
-        .into_any_element()
+        .h(px(if summaries.is_empty() {
+            GROUP_HEADER_HEIGHT
+        } else {
+            GROUP_HEADER_WITH_SUMMARIES_HEIGHT
+        }))
+        .justify_center()
+        .child(
+            h_flex()
+                .items_center()
+                .gap_2()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{label} ({count})")),
+        );
+    if let Some(line) = super::snapshot::group_summary_line(summaries) {
+        header = header.child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(line),
+        );
+    }
+    header.into_any_element()
 }
 
 fn render_card_row(

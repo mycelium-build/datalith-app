@@ -61,6 +61,8 @@ pub struct BaseDocument {
 pub struct BaseSelection {
     pub(crate) documents: Vec<BaseDocument>,
     pub(crate) total_matched: usize,
-    /// Aggregate values aligned with `BaseQuery::summaries`.
-    pub(crate) summaries: Vec<serde_json::Value>,
+    /// Aggregate values aligned with `BaseQuery::summaries`:
+    /// - `None`-keyed entry covers the whole result set (the view footer);
+    /// - `Some(key)` entries cover one group each (the group headers).
+    pub(crate) summaries: Vec<(Option<serde_json::Value>, Vec<serde_json::Value>)>,
 }

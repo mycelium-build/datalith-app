@@ -2,7 +2,7 @@ use gpui::{
     AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
     Size, Styled, div, px, size,
 };
-use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_virtual_list};
+use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, ListMarkers};
@@ -11,6 +11,7 @@ use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const LIST_ROW_HEIGHT: f32 = 28.0;
 const GROUP_HEADER_HEIGHT: f32 = 28.0;
+const GROUP_HEADER_WITH_SUMMARIES_HEIGHT: f32 = 44.0;
 
 pub(super) struct ListState {
     pub(super) scroll_handle: VirtualListScrollHandle,
@@ -66,6 +67,7 @@ impl BaseViewState {
                                     label,
                                     *ordinal,
                                     markers,
+                                    snapshot.group_summaries_for(label),
                                     cx,
                                 )
                             }
@@ -120,7 +122,14 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
         .items
         .iter()
         .map(|item| match item {
-            BaseItem::Header { .. } => size(px(1.), px(GROUP_HEADER_HEIGHT)),
+            BaseItem::Header { label, .. } => size(
+                px(1.),
+                px(if snapshot.group_summaries_for(label).is_empty() {
+                    GROUP_HEADER_HEIGHT
+                } else {
+                    GROUP_HEADER_WITH_SUMMARIES_HEIGHT
+                }),
+            ),
             BaseItem::Row { .. } => size(px(1.), px(height)),
         })
         .collect()
@@ -140,20 +149,37 @@ fn render_group_header(
     label: &str,
     ordinal: usize,
     markers: ListMarkers,
-    _cx: &App,
+    summaries: &[super::snapshot::SummaryDisplay],
+    cx: &App,
 ) -> AnyElement {
     let marker = match markers {
         ListMarkers::Bullets => "• ".to_string(),
         ListMarkers::Numbers => format!("{}. ", ordinal.saturating_add(1)),
         ListMarkers::None => String::new(),
     };
-    h_flex()
+    let mut header = v_flex()
         .id(ElementId::Name(id.into()))
-        .items_center()
-        .h(px(GROUP_HEADER_HEIGHT))
-        .child(marker)
-        .child(label.to_string())
-        .into_any_element()
+        .h(px(if summaries.is_empty() {
+            GROUP_HEADER_HEIGHT
+        } else {
+            GROUP_HEADER_WITH_SUMMARIES_HEIGHT
+        }))
+        .justify_center()
+        .child(
+            h_flex()
+                .items_center()
+                .child(marker)
+                .child(label.to_string()),
+        );
+    if let Some(line) = super::snapshot::group_summary_line(summaries) {
+        header = header.child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(line),
+        );
+    }
+    header.into_any_element()
 }
 
 fn render_list_row(

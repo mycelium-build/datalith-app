@@ -10,6 +10,7 @@ use crate::document::base::{BaseView, TableRowHeight};
 use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const TABLE_HEADER_HEIGHT: f32 = 32.0;
+const TABLE_GROUP_HEADER_WITH_SUMMARIES_HEIGHT: f32 = TABLE_HEADER_HEIGHT + TABLE_FOOTER_HEIGHT;
 const TABLE_FOOTER_HEIGHT: f32 = 44.0;
 const TABLE_COLUMN_MIN_WIDTH: f32 = 128.0;
 const TABLE_COLUMN_MAX_WIDTH: f32 = 512.0;
@@ -163,6 +164,9 @@ impl BaseViewState {
                                 label,
                                 *count,
                                 table_min_width,
+                                &row_column_widths,
+                                view,
+                                snapshot.group_summaries_for(label),
                                 cx,
                             ),
                             BaseItem::Row {
@@ -229,7 +233,14 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
         .items
         .iter()
         .map(|item| match item {
-            BaseItem::Header { .. } => size(px(1.), px(TABLE_HEADER_HEIGHT)),
+            BaseItem::Header { label, .. } => size(
+                px(1.),
+                px(if snapshot.group_summaries_for(label).is_empty() {
+                    TABLE_HEADER_HEIGHT
+                } else {
+                    TABLE_GROUP_HEADER_WITH_SUMMARIES_HEIGHT
+                }),
+            ),
             BaseItem::Row { .. } => size(px(1.), px(height)),
         })
         .collect()
@@ -244,26 +255,80 @@ const fn table_row_height(height: TableRowHeight) -> f32 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_group_header(
     id: String,
     label: &str,
     count: usize,
     min_width: Pixels,
+    column_widths: &[Pixels],
+    view: &BaseView,
+    summaries: &[super::snapshot::SummaryDisplay],
     cx: &App,
 ) -> AnyElement {
-    div()
+    let mut header = div()
         .id(ElementId::Name(id.into()))
         .w_full()
         .min_w(min_width)
-        .h(px(TABLE_HEADER_HEIGHT))
+        .h(if summaries.is_empty() {
+            px(TABLE_HEADER_HEIGHT)
+        } else {
+            px(TABLE_GROUP_HEADER_WITH_SUMMARIES_HEIGHT)
+        })
         .flex()
-        .items_center()
-        .gap_2()
-        .px_2()
+        .flex_col()
         .bg(cx.theme().secondary)
-        .text_color(cx.theme().muted_foreground)
-        .child(format!("{label} ({count})"))
-        .into_any_element()
+        .child(
+            h_flex()
+                .h(px(TABLE_HEADER_HEIGHT))
+                .items_center()
+                .px_2()
+                .gap_2()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{label} ({count})")),
+        );
+    if !summaries.is_empty() {
+        header =
+            header.child(
+                h_flex()
+                    .h(px(TABLE_FOOTER_HEIGHT))
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .children(view.order.iter().zip(column_widths.iter()).map(
+                        |(property, width)| {
+                            let display = summaries
+                                .iter()
+                                .find(|display| display.source == property.source);
+                            let title = display
+                                .map(|display| display.title.clone())
+                                .unwrap_or_default();
+                            let text = display
+                                .map(|display| display.text.clone())
+                                .unwrap_or_default();
+                            v_flex()
+                                .w(*width)
+                                .min_w(*width)
+                                .max_w(px(TABLE_COLUMN_MAX_WIDTH))
+                                .flex_shrink_0()
+                                .px_2()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(title),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(text),
+                                )
+                        },
+                    )),
+            );
+    }
+    header.into_any_element()
 }
 
 #[allow(clippy::too_many_arguments)]
