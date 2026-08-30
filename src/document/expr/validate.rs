@@ -126,9 +126,8 @@ impl Validator {
             "contains" | "toFixed" | "round" | "startsWith" | "endsWith" | "format" => {
                 args.len() == 1
             }
-            "lower" | "upper" | "trim" | "date" | "mean" | "min" | "max" | "sum" | "count" => {
-                args.is_empty()
-            }
+            "lower" | "upper" | "trim" | "abs" | "date" | "mean" | "min" | "max" | "sum"
+            | "count" => args.is_empty(),
             _ => false,
         };
         if !arity_ok {
