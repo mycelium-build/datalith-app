@@ -28,7 +28,7 @@ views:
       node:
         color: '#7c8cff'
         size: 1.0
-        propertional: true
+        proportional: true
         border:
           color: '#ffffff80'
           width: 1.0
@@ -103,7 +103,7 @@ When an orphan is displayed, `display.orphan.node` replaces both the regular nod
 
 `display.node.size` and `display.orphan.node.size` are relative multipliers from `0.5` through `3.0`. `classes[].node.size` uses the same range and is an additional multiplier on the regular node size.
 
-`display.node.propertional` defaults to `true`. When enabled, incoming link count adds damped logarithmic growth capped at 4 times the base radius. The display and class size multipliers are applied to that derived radius. Larger nodes also receive proportionally stronger center gravity. Set `propertional: false` to disable link-derived growth for regular and classified nodes.
+`display.node.proportional` defaults to `true`. When enabled, incoming link count adds damped logarithmic growth capped at 4 times the base radius. The display and class size multipliers are applied to that derived radius. Larger nodes also receive proportionally stronger center gravity. Set `proportional: false` to disable link-derived growth for regular and classified nodes.
 
 # Styling
 
