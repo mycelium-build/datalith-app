@@ -452,7 +452,7 @@ impl BaseQueryCompiler {
                     precedence: Precedence::Comparison,
                 })
             }
-            "lower" | "upper" | "trim" => {
+            "lower" | "upper" | "trim" | "abs" => {
                 let subject_sql = self.compile_expr(subject)?;
                 Ok(Sql::atom(format!(
                     "{name}({})",
