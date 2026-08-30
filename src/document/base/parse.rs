@@ -461,7 +461,7 @@ mod tests {
         let source = include_str!("../../../docs/vault/Overview.base");
         let definition = parse(source).expect("shipped Overview.base must parse");
         assert_eq!(definition.views.len(), 2);
-        assert!(definition.filters == Filter::MatchAll);
+        assert_eq!(definition.filters, Filter::MatchAll);
     }
 
     #[test]

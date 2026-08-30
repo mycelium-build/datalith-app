@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn rejects_misplaced_durations_and_unknown_functions() {
         // A duration-shaped string is plain text outside date arithmetic.
-        assert!(parse_ok("\"1M\"").infer() == ValType::Text);
+        assert_eq!(parse_ok("\"1M\"").infer(), ValType::Text);
         let message = parse_err("price + \"1M\"");
         assert!(message.contains("duration"), "{message}");
         let message = parse_err("price.toFixed(price)");
