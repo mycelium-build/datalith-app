@@ -36,7 +36,7 @@ pub(super) fn render_card_image(
         .h(px(image_height))
         .overflow_hidden()
         .rounded(px(CARD_RADIUS))
-        .bg(cx.theme().secondary);
+        .bg(cx.theme().background);
     let preview_image = image.clone();
     container = container
         .cursor_pointer()
