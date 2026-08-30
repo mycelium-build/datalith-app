@@ -60,7 +60,10 @@ pub fn parse_property(source: &str) -> Result<PropertyPath> {
 fn parse_filter(value: &Value) -> Result<Filter> {
     match value {
         Value::Null => Ok(Filter::MatchAll),
-        Value::String(expression) => Ok(Filter::Expression(Expression::parse(expression)?)),
+        Value::String(expression) => Ok(Filter::Expression(
+            Expression::parse(expression)
+                .map_err(|error| anyhow!("invalid filter {expression:?}: {error}"))?,
+        )),
         Value::Sequence(filters) if filters.is_empty() => Ok(Filter::MatchAll),
         Value::Mapping(map) if map.len() == 1 => {
             let Some((key, value)) = map.iter().next() else {
