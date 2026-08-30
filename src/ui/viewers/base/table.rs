@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use gpui::{
     AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
     Size, Styled, TextRun, Window, div, px, size,
@@ -20,9 +22,16 @@ const TABLE_MEDIUM_HEIGHT: f32 = 32.0;
 const TABLE_TALL_HEIGHT: f32 = 48.0;
 const TABLE_EXTRA_TALL_HEIGHT: f32 = 72.0;
 
+#[derive(Default)]
+struct ColumnWidths {
+    key: Option<(u64, f32)>,
+    widths: Vec<Pixels>,
+}
+
 pub(super) struct TableState {
     pub(super) scroll_handle: VirtualListScrollHandle,
     pub(super) item_sizes: Vec<Size<Pixels>>,
+    column_widths: RefCell<ColumnWidths>,
 }
 
 impl TableState {
@@ -30,6 +39,7 @@ impl TableState {
         Self {
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Vec::new(),
+            column_widths: RefCell::default(),
         }
     }
 }
@@ -67,6 +77,35 @@ fn build_table_header(
         .into_any_element()
 }
 
+fn render_summary_column(
+    display: Option<&super::snapshot::SummaryDisplay>,
+    width: Pixels,
+    cx: &App,
+) -> AnyElement {
+    let title = display.map_or(String::new(), |display| display.title.clone());
+    let text = display.map_or(String::new(), |display| display.text.clone());
+    v_flex()
+        .w(width)
+        .min_w(width)
+        .max_w(px(TABLE_COLUMN_MAX_WIDTH))
+        .flex_shrink_0()
+        .px_2()
+        .justify_center()
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(title),
+        )
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().foreground)
+                .child(text),
+        )
+        .into_any_element()
+}
+
 fn build_table_footer(
     snapshot: &BaseSnapshot,
     view: &BaseView,
@@ -90,32 +129,7 @@ fn build_table_footer(
                     .iter()
                     .zip(column_widths.iter())
                     .map(|(property, width)| {
-                        let display = snapshot.summary_for(&property.source);
-                        let title = display
-                            .map(|display| display.title.clone())
-                            .unwrap_or_default();
-                        let summary_text = display
-                            .map(|display| display.text.clone())
-                            .unwrap_or_default();
-                        v_flex()
-                            .w(*width)
-                            .min_w(*width)
-                            .max_w(px(TABLE_COLUMN_MAX_WIDTH))
-                            .flex_shrink_0()
-                            .px_2()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(summary_text),
-                            )
+                        render_summary_column(snapshot.summary_for(&property.source), *width, cx)
                     }),
             )
             .into_any_element(),
@@ -136,7 +150,16 @@ impl BaseViewState {
         let entity = cx.entity();
         let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
-        let column_widths = column_widths(snapshot, view, window);
+        let font_size = f32::from(window.text_style().font_size.to_pixels(window.rem_size()));
+        let width_key = (snapshot.id, font_size);
+        {
+            let mut cache = table_state.column_widths.borrow_mut();
+            if cache.key != Some(width_key) {
+                cache.widths = column_widths(snapshot, view, window);
+                cache.key = Some(width_key);
+            }
+        }
+        let column_widths = table_state.column_widths.borrow().widths.clone();
         let table_min_width = table_width(&column_widths);
         let row_column_widths = column_widths.clone();
         let footer = build_table_footer(snapshot, view, &column_widths, table_min_width, cx);
@@ -299,31 +322,7 @@ fn render_group_header(
                             let display = summaries
                                 .iter()
                                 .find(|display| display.source == property.source);
-                            let title = display
-                                .map(|display| display.title.clone())
-                                .unwrap_or_default();
-                            let text = display
-                                .map(|display| display.text.clone())
-                                .unwrap_or_default();
-                            v_flex()
-                                .w(*width)
-                                .min_w(*width)
-                                .max_w(px(TABLE_COLUMN_MAX_WIDTH))
-                                .flex_shrink_0()
-                                .px_2()
-                                .justify_center()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(title),
-                                )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().foreground)
-                                        .child(text),
-                                )
+                            render_summary_column(display, *width, cx)
                         },
                     )),
             );
