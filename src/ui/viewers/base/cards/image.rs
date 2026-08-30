@@ -52,11 +52,13 @@ pub(super) fn render_card_image(
         CardImage::Local(path) => img(path)
             .size_full()
             .object_fit(object_fit)
+            .aspect_ratio(cards_config.image_aspect_ratio)
             .rounded(px(CARD_RADIUS))
             .into_any_element(),
         CardImage::External(url) => img(SharedUri::from(url))
             .size_full()
             .object_fit(object_fit)
+            .aspect_ratio(cards_config.image_aspect_ratio)
             .rounded(px(CARD_RADIUS))
             .into_any_element(),
     };
