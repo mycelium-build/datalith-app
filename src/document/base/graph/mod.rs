@@ -1,7 +1,6 @@
 //! Graph view payload: display styles, physics forces, and classes.
 
 use anyhow::{Result, bail};
-use serde::Deserialize;
 
 pub const DEFAULT_CENTER_STRENGTH: f32 = 0.002;
 pub const DEFAULT_REPULSION_STRENGTH: f32 = 1_024.0;
@@ -16,66 +15,16 @@ pub struct GraphConfig {
     pub classes: Vec<GraphClass>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-pub struct RawGraphDisplay {
-    node: NodeStyle,
-    edge: EdgeStyle,
-    orphan: OrphanStyle,
-    #[serde(default = "types::default_true")]
-    legend: bool,
-}
-
-impl Default for RawGraphDisplay {
-    fn default() -> Self {
-        Self {
-            node: NodeStyle::default(),
-            edge: EdgeStyle::default(),
-            orphan: OrphanStyle::default(),
-            legend: true,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-pub struct RawGraphPhysics {
-    center: CenterForce,
-    repulsion: RepulsionForce,
-    link: LinkForce,
-}
-
-impl From<RawGraphDisplay> for GraphDisplay {
-    fn from(raw: RawGraphDisplay) -> Self {
-        Self {
-            node: raw.node,
-            edge: raw.edge,
-            orphan: raw.orphan,
-            legend: raw.legend,
-        }
-    }
-}
-
-impl From<RawGraphPhysics> for GraphPhysics {
-    fn from(raw: RawGraphPhysics) -> Self {
-        Self {
-            center: raw.center,
-            repulsion: raw.repulsion,
-            link: raw.link,
-        }
-    }
-}
-
 /// Validates and assembles the graph payload of one view.
 pub fn build(
     view_name: &str,
-    display: Option<RawGraphDisplay>,
-    physics: Option<RawGraphPhysics>,
+    display: Option<GraphDisplay>,
+    physics: Option<GraphPhysics>,
     classes: Option<Vec<RawGraphClass>>,
 ) -> Result<crate::document::base::ViewKind> {
     let prefix = format!("view {view_name:?}");
-    let display = display.map_or_else(GraphDisplay::default, GraphDisplay::from);
-    let physics = physics.map_or_else(GraphPhysics::default, GraphPhysics::from);
+    let display = display.unwrap_or_default();
+    let physics = physics.unwrap_or_default();
     let mut class_names = std::collections::HashSet::new();
     let mut built = Vec::new();
     for class in classes.unwrap_or_default() {
