@@ -158,7 +158,7 @@ Graph views do not use `groupBy`; they classify nodes with [[formats/bases/Graph
 
 Default summaries are selected by name in a view's `summaries` mapping: `Average`, `Min`, `Max`, `Sum`, `Range`, `Median`, `Stddev`, `Earliest`, `Latest`, `Checked`, `Unchecked`, `Empty`, `Filled`, and `Unique`. `Range` uses days for date-typed sources like `file.mtime`.
 
-Custom summaries are declared globally from the `values` keyword and must reduce to one aggregate plus optional rounding:
+Custom summaries are declared globally from the `values` keyword and must reduce to one aggregate (`values.mean()`, `.min()`, `.max()`, `.sum()`, or `.count()`) followed by optional `.round(n)` and `.abs()` calls in any order:
 
 ```yaml
 summaries:
