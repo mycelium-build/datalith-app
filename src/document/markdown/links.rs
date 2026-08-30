@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::iter::Peekable;
 use std::str::CharIndices;
 
@@ -201,11 +200,11 @@ fn consume_wiki_link(chars: &mut Peekable<CharIndices<'_>>, is_image: bool, resu
         .split_once('|')
         .unwrap_or((link_text.as_str(), link_text.as_str()));
     let encoded = utf8_percent_encode(wiki_link_target(target), ENCODE_IN_LINK);
-    if is_image {
-        let _ = write!(result, "![{display}]({encoded})");
-    } else {
-        let _ = write!(result, "[{display}]({encoded})");
-    }
+    result.push_str(if is_image { "![" } else { "[" });
+    result.push_str(display);
+    result.push_str("](");
+    result.push_str(&encoded.to_string());
+    result.push(')');
 }
 
 /// Finds the URL of the link covering `offset` in `text`, if any.

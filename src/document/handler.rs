@@ -160,6 +160,6 @@ impl Render for FileHandler {
             }
         };
 
-        div().size_full().overflow_hidden().child(content)
+        div().size_full().min_h_0().overflow_hidden().child(content)
     }
 }

@@ -1,6 +1,6 @@
 //! About settings page: version, licensing, and legal links.
 
-use gpui::{IntoElement, ParentElement, Styled, div};
+use gpui::{App, IntoElement, ParentElement, Styled, div};
 use gpui_component::{
     ActiveTheme, Sizable as _,
     button::Button,
@@ -10,9 +10,16 @@ use gpui_component::{
 
 use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
 use crate::ui::monolith::monolith_mark;
+use crate::ui::notifications;
 
 const PRIVACY_POLICY_URL: &str = "https://mycelium-build.github.io/datalith/privacy/";
 const TERMS_OF_SERVICE_URL: &str = "https://mycelium-build.github.io/datalith/terms/";
+
+fn open_external_url(url: &str, cx: &mut App) {
+    if let Err(error) = crate::app::system::open_url(url) {
+        notifications::push_window_notification(cx, notifications::open_url_failed(url, &error));
+    }
+}
 
 pub(super) fn about_page_index() -> usize {
     SETTINGS_PAGES
@@ -98,8 +105,8 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("Privacy policy")
-                                    .on_click(|_, _, _cx| {
-                                        let _ = crate::app::system::open_url(PRIVACY_POLICY_URL);
+                                    .on_click(|_, _, cx| {
+                                        open_external_url(PRIVACY_POLICY_URL, cx);
                                     }),
                             )
                             .child(
@@ -107,8 +114,8 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("Terms of service")
-                                    .on_click(|_, _, _cx| {
-                                        let _ = crate::app::system::open_url(TERMS_OF_SERVICE_URL);
+                                    .on_click(|_, _, cx| {
+                                        open_external_url(TERMS_OF_SERVICE_URL, cx);
                                     }),
                             )
                             .child(
@@ -128,9 +135,9 @@ impl SettingsView {
                                     .outline()
                                     .small()
                                     .label("View corresponding source")
-                                    .on_click(|_, _, _cx| {
+                                    .on_click(|_, _, cx| {
                                         let url = crate::ui::licenses::corresponding_source_url();
-                                        let _ = crate::app::system::open_url(&url);
+                                        open_external_url(&url, cx);
                                     }),
                             ),
                     )

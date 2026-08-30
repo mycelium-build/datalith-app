@@ -1,6 +1,7 @@
 use gpui::{App, Menu, MenuItem};
+use gpui_component::GlobalState;
 
-use crate::app::actions::{OpenAbout, OpenLicenses, OpenSettings, OpenShortcuts, OpenSource};
+use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -8,13 +9,17 @@ use super::actions::{
     ToggleTheme,
 };
 
-pub fn install(cx: &App) {
+pub fn install(cx: &mut App) {
     cx.set_menus([
         application_menu(),
         file_menu(),
         navigate_menu(),
         help_menu(),
     ]);
+
+    if let Some(menus) = cx.get_menus() {
+        GlobalState::global_mut(cx).set_app_menus(menus);
+    }
 }
 
 fn application_menu() -> Menu {
@@ -60,8 +65,8 @@ fn navigate_menu() -> Menu {
 }
 
 fn help_menu() -> Menu {
-    Menu::new("Help").items([
-        MenuItem::action("View Dependency Licenses", OpenLicenses),
-        MenuItem::action("View Corresponding Source", OpenSource),
-    ])
+    Menu::new("Help").items([MenuItem::action(
+        "Datalith Documentation",
+        OpenDocumentation,
+    )])
 }

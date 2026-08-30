@@ -180,14 +180,20 @@ fn generate_frontmatter(name: &str, rng: &mut StdRng) -> String {
         "---\ntitle: \"{name}\"\ncreated: {year}-{month:02}-{day:02}\ntags: [{tags_str}]\nstatus: {status}\npriority: {priority}"
     );
 
-    if rng.random_bool(0.4) {
-        let _ = write!(fm, "\naliases: [\"{name}-v2\", \"{name}-draft\"]");
+    if rng.random_bool(0.4)
+        && let Err(error) = write!(fm, "\naliases: [\"{name}-v2\", \"{name}-draft\"]")
+    {
+        eprintln!("Failed to write fixture frontmatter: {error}");
     }
-    if rng.random_bool(0.3) {
-        let _ = write!(fm, "\nsource: \"https://example.com/{name}\"");
+    if rng.random_bool(0.3)
+        && let Err(error) = write!(fm, "\nsource: \"https://example.com/{name}\"")
+    {
+        eprintln!("Failed to write fixture frontmatter: {error}");
     }
-    if rng.random_bool(0.3) {
-        let _ = write!(fm, "\nreviewed: {}", rng.random_bool(0.5));
+    if rng.random_bool(0.3)
+        && let Err(error) = write!(fm, "\nreviewed: {}", rng.random_bool(0.5))
+    {
+        eprintln!("Failed to write fixture frontmatter: {error}");
     }
 
     fm.push_str("\n---");

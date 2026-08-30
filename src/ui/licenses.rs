@@ -19,7 +19,7 @@ const GPL_LICENSE: &str = include_str!("../../LICENSE-GPL-3.0");
 const LICENSING: &str = include_str!("../../LICENSING.md");
 const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 
-const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith";
+const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith-app";
 const RELEASE_TAG: Option<&str> = option_env!("DATALITH_RELEASE_TAG");
 
 const ROW_HEIGHT: f32 = 20.0;

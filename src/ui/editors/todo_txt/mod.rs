@@ -221,6 +221,7 @@ impl TodoTxtEditor {
     pub fn render(&self, _cx: &mut App) -> AnyElement {
         div()
             .size_full()
+            .min_h_0()
             .child(self.state.clone())
             .into_any_element()
     }

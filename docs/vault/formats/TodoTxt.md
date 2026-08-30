@@ -33,7 +33,7 @@ Marking a task complete prefixes it with `x`. You can filter them out, or sort t
 - Press `⇧↩` on a task to add a subtask.
 - Press `⇧⌫` on a task to delete it.
 - Press `↑` and `↓` to move from one task to another.
-- Press `⌘F` to search a file.
+- Press `Cmd/Ctrl+F` to search a file.
 - **Filter** to view all, active, or completed tasks.
 - **Sort** by created date and toggle the direction.
 - The inline search box matches descriptions, priorities, dates, projects, contexts, and extensions.

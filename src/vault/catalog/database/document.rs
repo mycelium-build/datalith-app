@@ -244,7 +244,10 @@ impl CatalogDatabase {
                 Ok(result)
             }
             Err(error) => {
-                let _ = connection.execute("ROLLBACK", ()).await;
+                if let Err(rollback_error) = connection.execute("ROLLBACK", ()).await {
+                    // UI notification already sent
+                    eprintln!("Failed to roll back catalog transaction: {rollback_error}");
+                }
                 Err(error)
             }
         }

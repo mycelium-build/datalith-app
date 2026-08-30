@@ -5,12 +5,13 @@ use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Size,
     Subscription, Window, px,
 };
-use gpui_component::VirtualListScrollHandle;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::select::SelectState;
+use gpui_component::{VirtualListScrollHandle, WindowExt};
 
 use crate::document::handler::ReloadOutcome;
 use crate::document::todo_txt::{FocusTarget, TodoTxtWorkspace, parse_date};
+use crate::ui::notifications;
 
 use super::constants::TODO_ROW_HEIGHT;
 
@@ -81,8 +82,16 @@ impl TodoTxtState {
         );
     }
 
-    pub(super) fn toggle_complete(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.workspace.toggle_complete(index);
+    pub(super) fn toggle_complete(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(error) = self.workspace.toggle_complete(index) {
+            window.push_notification(notifications::todo_task_failed("complete task", &error), cx);
+            return;
+        }
         self.refresh_item_sizes();
         cx.notify();
     }
@@ -103,8 +112,20 @@ impl TodoTxtState {
         cx.notify();
     }
 
-    pub(super) fn delete_task(&mut self, index: usize, cx: &mut Context<Self>) {
-        let outcome = self.workspace.delete_task(index);
+    pub(super) fn delete_task(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let outcome = match self.workspace.delete_task(index) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                window
+                    .push_notification(notifications::todo_task_failed("delete task", &error), cx);
+                return;
+            }
+        };
         self.clear_row_inputs();
         match outcome.focus {
             Some(FocusTarget::Task(index)) => self.pending_focus_desc = Some(index),

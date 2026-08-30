@@ -14,6 +14,7 @@ use gpui::{
 };
 use gpui_component::ActiveTheme;
 use gpui_component::input::EditorState;
+use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
 
 use crate::app::fonts::PIXELOID_FONT;
@@ -126,7 +127,8 @@ impl MarkdownViewer {
         div()
             .id("markdown-preview")
             .size_full()
-            .overflow_y_scroll()
+            .min_h_0()
+            .overflow_y_scrollbar()
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()

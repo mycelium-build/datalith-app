@@ -144,14 +144,15 @@ impl TodoTxtWorkspace {
         }
     }
 
-    pub fn toggle_complete(&mut self, index: usize) {
+    pub fn toggle_complete(&mut self, index: usize) -> anyhow::Result<()> {
         if let Some(task) = self.task(index) {
             if task.completed {
-                let _ = self.todo.unmark([index_as_i64(index)]);
+                self.todo.unmark([index_as_i64(index)])?;
             } else {
-                let _ = self.todo.mark([index_as_i64(index)]);
+                self.todo.mark([index_as_i64(index)])?;
             }
         }
+        Ok(())
     }
 
     pub fn add_subtask(&mut self, parent_index: usize) -> MutationOutcome {
@@ -180,9 +181,9 @@ impl TodoTxtWorkspace {
         }
     }
 
-    pub fn delete_task(&mut self, index: usize) -> MutationOutcome {
+    pub fn delete_task(&mut self, index: usize) -> anyhow::Result<MutationOutcome> {
         let old_len = self.task_count();
-        let _ = self.todo.remove([index_as_i64(index)]);
+        self.todo.remove([index_as_i64(index)])?;
         let new_len = self.task_count();
         let removed = old_len.saturating_sub(new_len);
 
@@ -210,7 +211,7 @@ impl TodoTxtWorkspace {
         } else {
             Some(FocusTarget::Task(0))
         };
-        MutationOutcome { focus }
+        Ok(MutationOutcome { focus })
     }
 
     pub fn update_description(&mut self, index: usize, value: &str) {
@@ -400,7 +401,7 @@ mod tests {
     #[test]
     fn deleting_parent_repairs_expansion_and_focus() {
         let (mut workspace, path) = workspace("Parent\n    Child\nNext\n");
-        let outcome = workspace.delete_task(0);
+        let outcome = workspace.delete_task(0).unwrap();
         assert_eq!(workspace.task_count(), 1);
         assert_eq!(outcome.focus, Some(FocusTarget::Task(0)));
         assert!(!workspace.is_expanded(0));

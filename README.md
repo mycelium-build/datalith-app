@@ -16,7 +16,7 @@ Datalith is a desktop application for building a private personal encyclopedia f
 
 ## Download
 
-Download Datalith from the [website](https://mycelium-build.github.io/datalith/) or from [GitHub Releases](https://github.com/mycelium-build/datalith/releases).
+Download Datalith from the [website](https://mycelium-build.github.io/datalith/) or from [GitHub Releases](https://github.com/mycelium-build/datalith-app/releases).
 The available packages support macOS, Windows, and Linux.
 
 ## Documentation
@@ -25,7 +25,7 @@ Read the [Datalith documentation](https://mycelium-build.github.io/datalith/docs
 
 ## Support
 
-For bug reports and feature requests, [open an issue on GitHub](https://github.com/mycelium-build/datalith/issues).
+For bug reports and feature requests, [open an issue on GitHub](https://github.com/mycelium-build/datalith-app/issues).
 
 ## Changelog
 
