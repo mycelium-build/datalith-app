@@ -1,6 +1,6 @@
 //! Execution of compiled Base query plans.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
@@ -12,6 +12,8 @@ use crate::vault::catalog::{BaseDocument, BaseQuery, BaseSelection};
 use super::CatalogDatabase;
 use super::compiler::BaseQueryCompiler;
 use super::turso_to_json;
+
+const LINK_QUERY_BATCH: usize = 512;
 
 impl CatalogDatabase {
     #[allow(clippy::too_many_lines)]
@@ -235,30 +237,34 @@ impl CatalogDatabase {
                     .replace('\\', "/")
             })
             .collect();
-        let placeholders = selected_paths
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT DISTINCT source_path, target_path FROM wiki_links \
-             WHERE target_path IS NOT NULL AND source_path IN ({placeholders})"
-        );
-        let params = selected_paths
-            .iter()
-            .map(|path| Value::Text(path.clone()))
-            .collect::<Vec<_>>();
-        let mut rows = connection
-            .query(sql, turso::params_from_iter(params))
-            .await?;
-        let root = self.root.clone();
-        while let Some(row) = rows.next().await? {
-            let source = root.join(row.get::<String>(0)?);
-            let target = root.join(row.get::<String>(1)?);
-            if let Some(document) = documents
-                .iter_mut()
-                .find(|document| document.path == source)
-            {
+        let mut index_by_path: HashMap<&str, usize> = HashMap::with_capacity(selected_paths.len());
+        for (index, path) in selected_paths.iter().enumerate() {
+            index_by_path.entry(path.as_str()).or_insert(index);
+        }
+        let mut attached: Vec<(usize, PathBuf)> = Vec::new();
+        for batch in selected_paths.chunks(LINK_QUERY_BATCH) {
+            let placeholders = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT DISTINCT source_path, target_path FROM wiki_links \
+                 WHERE target_path IS NOT NULL AND source_path IN ({placeholders})"
+            );
+            let params = batch
+                .iter()
+                .map(|path| Value::Text((*path).clone()))
+                .collect::<Vec<_>>();
+            let mut rows = connection
+                .query(sql, turso::params_from_iter(params))
+                .await?;
+            while let Some(row) = rows.next().await? {
+                let source: String = row.get::<String>(0)?.replace('\\', "/");
+                let target: String = row.get::<String>(1)?;
+                if let Some(&index) = index_by_path.get(source.as_str()) {
+                    attached.push((index, self.root.join(target)));
+                }
+            }
+        }
+        for (index, target) in attached {
+            if let Some(document) = documents.get_mut(index) {
                 document.links.push(target);
             }
         }
