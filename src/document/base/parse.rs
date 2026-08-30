@@ -6,9 +6,9 @@ use anyhow::{Result, anyhow, bail};
 use serde::Deserialize;
 
 use super::{
-    AggregateFn, BaseDefinition, BaseView, CardImageFit, CustomSummary, DisplayProperty, GroupRule,
-    HARD_RESULT_LIMIT, ListMarkers, PostFn, PropertyConfig, RawGraphClass, RawGraphDisplay,
-    RawGraphPhysics, SortDirection, SortRule, Summary, TableRowHeight, ViewType,
+    AggregateFn, BaseDefinition, BaseView, CardImageFit, CustomSummary, DisplayProperty,
+    GraphDisplay, GraphPhysics, GroupRule, HARD_RESULT_LIMIT, ListMarkers, PostFn, PropertyConfig,
+    RawGraphClass, SortDirection, SortRule, Summary, TableRowHeight, ViewType,
 };
 use crate::document::expr::{Expr, PropertyRef};
 use crate::document::filter::{Filter, PropertyPath, parse_property};
@@ -78,8 +78,8 @@ struct RawBaseView {
     image_aspect_ratio: Option<f32>,
     #[serde(rename = "cardSize")]
     card_size: Option<f32>,
-    display: Option<RawGraphDisplay>,
-    physics: Option<RawGraphPhysics>,
+    display: Option<GraphDisplay>,
+    physics: Option<GraphPhysics>,
     classes: Option<Vec<RawGraphClass>>,
 }
 
@@ -104,7 +104,11 @@ impl BaseDefinition {
         let summaries = raw
             .summaries
             .iter()
-            .map(|(name, body)| Ok((name.clone(), parse_custom_summary(body)?)))
+            .map(|(name, body)| {
+                let summary = parse_custom_summary(body)
+                    .map_err(|error| anyhow!("custom summary {name:?}: {error}"))?;
+                Ok((name.clone(), summary))
+            })
             .collect::<Result<BTreeMap<_, _>>>()?;
 
         let views = raw
@@ -138,7 +142,7 @@ impl BaseDefinition {
         let mut names = HashSet::new();
         let views = views
             .into_iter()
-            .map(|view| Self::parse_view(view, &formulas, &summaries, &mut names))
+            .map(|view| Self::parse_view(view, &summaries, &mut names))
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
@@ -153,7 +157,6 @@ impl BaseDefinition {
     #[allow(clippy::too_many_lines)]
     fn parse_view(
         view: RawBaseView,
-        _formulas: &BTreeMap<String, Expr>,
         summaries: &BTreeMap<String, CustomSummary>,
         names: &mut HashSet<String>,
     ) -> Result<BaseView> {
@@ -185,7 +188,7 @@ impl BaseDefinition {
             .map(|sort| {
                 let source = sort
                     .property
-                    .ok_or_else(|| anyhow!("sort property must not be empty"))?;
+                    .ok_or_else(|| anyhow!("view {name:?}.sort entries must declare a property"))?;
                 let path = validate_property_source(&source)?;
                 Ok(SortRule {
                     source,
@@ -258,7 +261,7 @@ fn parse_formulas(formulas: &BTreeMap<String, String>) -> Result<BTreeMap<String
             if name.trim().is_empty() {
                 bail!("formula names must not be empty");
             }
-            let expr = Expr::parse(body)?;
+            let expr = Expr::parse(body).map_err(|error| anyhow!("formula {name:?}: {error}"))?;
             Ok((name.clone(), expr))
         })
         .collect::<Result<BTreeMap<_, _>>>()?;
@@ -430,4 +433,166 @@ fn format_yaml_error(error: &yaml_serde::Error) -> String {
             )
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(source: &str) -> Result<BaseDefinition> {
+        BaseDefinition::parse(source)
+    }
+
+    /// Message assertions need the error value;
+    /// the scoped allow keeps the test module aligned with the crate's deny-panic lints.
+    #[allow(clippy::expect_used)]
+    fn expect_error(source: &str, context: &str) -> anyhow::Error {
+        BaseDefinition::parse(source).expect_err(context)
+    }
+
+    fn single_view(source: &str) -> Result<BaseDefinition> {
+        parse(&format!(
+            "views:\n  - type: table\n    name: T\n    {source}"
+        ))
+    }
+
+    #[test]
+    fn shipped_overview_base_parses() {
+        let source = include_str!("../../../docs/vault/Overview.base");
+        let definition = parse(source).expect("shipped Overview.base must parse");
+        assert_eq!(definition.views.len(), 2);
+        assert!(definition.filters == Filter::MatchAll);
+    }
+
+    #[test]
+    fn missing_or_empty_views_fail() {
+        assert!(parse("").is_err());
+        assert!(parse("views: []").is_err());
+    }
+
+    #[test]
+    fn duplicate_view_names_fail() {
+        let source = "views:\n  - type: table\n    name: A\n  - type: list\n    name: A";
+        let error = expect_error(source, "duplicate names must fail");
+        assert!(error.to_string().contains("duplicated"), "{error}");
+    }
+
+    #[test]
+    fn view_name_is_required() {
+        assert!(parse("views:\n  - type: table").is_err());
+        assert!(parse("views:\n  - type: table\n    name: \"  \"").is_err());
+    }
+
+    #[test]
+    fn limit_bounds_are_validated() {
+        assert!(single_view("limit: 0").is_err());
+        assert!(single_view("limit: 50001").is_err());
+        assert!(single_view("limit: 1").is_ok());
+        assert!(single_view("limit: 50000").is_ok());
+    }
+
+    #[test]
+    fn sort_entries_require_a_property_and_name_the_view() {
+        let error = expect_error(
+            "views:\n  - type: table\n    name: T\n    sort:\n    - direction: ASC",
+            "missing sort property must fail",
+        );
+        let message = error.to_string();
+        assert!(message.contains('T'), "error must name the view: {message}");
+        assert!(message.contains("sort"), "{message}");
+    }
+
+    #[test]
+    fn group_by_requires_a_property_and_names_the_view() {
+        let error = expect_error(
+            "views:\n  - type: table\n    name: T\n    groupBy: {}",
+            "missing groupBy must fail",
+        );
+        assert!(error.to_string().contains('T'), "{error}");
+    }
+
+    #[test]
+    fn unknown_top_level_keys_fail() {
+        assert!(parse("wat: 1\nviews:\n  - type: table\n    name: T").is_err());
+        assert!(single_view("rouHeight: tall").is_err());
+    }
+
+    #[test]
+    fn display_names_must_not_be_empty() {
+        let source = "properties:\n  status:\n    displayName: \" \"\nviews:\n  - type: table\n    name: T\n    order: [status]";
+        assert!(parse(source).is_err());
+    }
+
+    #[test]
+    fn empty_filter_expressions_are_rejected_with_source() {
+        let error = expect_error(
+            "views:\n  - type: table\n    name: T\n    filters: ''",
+            "empty filter must fail",
+        );
+        let message = error.to_string();
+        assert!(message.contains("invalid filter"), "{message}");
+    }
+
+    #[test]
+    fn deeply_nested_expressions_fail_instead_of_crashing() {
+        let parens = format!("{}1{}", "(".repeat(2_000), ")".repeat(2_000));
+        let error = expect_error(
+            &format!("views:\n  - type: table\n    name: T\n    filters: {parens:?}"),
+            "deep nesting must fail with an error, not abort",
+        );
+        assert!(error.to_string().contains("too deeply"), "{error}");
+        let bangs = format!("{}1", "!".repeat(2_000));
+        let error = expect_error(
+            &format!("views:\n  - type: table\n    name: T\n    filters: {bangs:?}"),
+            "deep unary chains must fail with an error, not abort",
+        );
+        assert!(error.to_string().contains("too deeply"), "{error}");
+    }
+
+    #[test]
+    fn unknown_summary_names_fail() {
+        let error = expect_error(
+            "views:\n  - type: table\n    name: T\n    summaries:\n      pages: Nope",
+            "unknown summary",
+        );
+        assert!(error.to_string().contains("unknown summary"), "{error}");
+    }
+
+    #[test]
+    fn custom_summaries_accept_aggregates_with_rounding_and_abs() {
+        assert!(parse("summaries:\n  a: values.mean().round(2)\nviews:\n  - type: table\n    name: T\n    summaries:\n      pages: a").is_ok());
+        assert!(parse("summaries:\n  a: values.sum().abs().round(3)\nviews:\n  - type: table\n    name: T\n    summaries:\n      pages: a").is_ok());
+        assert!(parse("summaries:\n  a: values.count()\nviews:\n  - type: table\n    name: T\n    summaries:\n      pages: a").is_ok());
+    }
+
+    #[test]
+    fn custom_summaries_reject_malformed_chains() {
+        let cases = [
+            "price.mean()",
+            "values.mean().sqrt()",
+            "values.mean().round(1.5)",
+            "values.mean().round(-1)",
+            "values",
+        ];
+        for body in cases {
+            let source = format!(
+                "summaries:\n  a: {body:?}\nviews:\n  - type: table\n    name: T\n    summaries:\n      pages: a"
+            );
+            parse(&source).expect_err(&format!("{body} must be rejected"));
+        }
+    }
+
+    #[test]
+    fn formula_cycles_are_rejected() {
+        let self_cycle = "formulas:\n  a: formula.a\nviews:\n  - type: table\n    name: T";
+        let error = parse(self_cycle).expect_err("self cycle");
+        assert!(error.to_string().contains("circular"), "{error}");
+        let mutual =
+            "formulas:\n  a: formula.b\n  b: formula.a\nviews:\n  - type: table\n    name: T";
+        assert!(parse(mutual).is_err());
+        let undeclared = "formulas:\n  a: formula.missing\nviews:\n  - type: table\n    name: T";
+        assert!(parse(undeclared).is_err());
+        let chain = "formulas:\n  a: formula.b + 1\n  b: formula.c * 2\n  c: 3\nviews:\n  - type: table\n    name: T";
+        assert!(parse(chain).is_ok());
+    }
 }
