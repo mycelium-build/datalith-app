@@ -105,10 +105,12 @@ mod tests {
 
     #[test]
     fn shipped_docs_are_registered_extensions() {
+        const BINARY_DOC_ASSETS: &[&str] = &["png"];
         for path in source_files(&docs_vault_source()) {
             let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
             assert!(
-                ["md", "graph", "base", "todotxt"].contains(&extension),
+                ["md", "base", "todotxt"].contains(&extension)
+                    || BINARY_DOC_ASSETS.contains(&extension),
                 "unregistered extension for seeded doc: {}",
                 path.display()
             );
@@ -141,8 +143,8 @@ mod tests {
                 relative.display()
             );
             assert_eq!(
-                fs::read_to_string(&target).unwrap(),
-                fs::read_to_string(&path).unwrap(),
+                fs::read(&target).unwrap(),
+                fs::read(&path).unwrap(),
                 "seeded doc differs: {}",
                 relative.display()
             );
