@@ -20,7 +20,6 @@ pub(super) fn render_property_cell(
     truncate: bool,
     cx: &App,
 ) -> AnyElement {
-    let _ = snapshot;
     if property.source == "file.name" {
         return render_link(
             id,
