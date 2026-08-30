@@ -252,12 +252,13 @@ fn content_width(width: Pixels) -> Pixels {
 fn columns_for(card_size: f32, viewport_width: Pixels) -> usize {
     let width = f32::from(viewport_width).max(CARD_MIN_WIDTH);
     let card_size = card_size.max(CARD_MIN_WIDTH);
-    ((width + CARD_GAP) / (card_size + CARD_GAP))
-        .floor()
-        .to_string()
-        .parse::<usize>()
-        .unwrap_or(1)
-        .max(1)
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::as_conversions
+    )]
+    let columns = ((width + CARD_GAP) / (card_size + CARD_GAP)).floor() as usize;
+    columns.max(1)
 }
 
 fn card_width_for(card_size: f32, viewport_width: Pixels, columns: usize) -> f32 {
@@ -265,13 +266,9 @@ fn card_width_for(card_size: f32, viewport_width: Pixels, columns: usize) -> f32
     if width <= 0.0 {
         return card_size;
     }
-    let gaps = CARD_GAP
-        * columns
-            .saturating_sub(1)
-            .to_string()
-            .parse::<f32>()
-            .unwrap_or(0.0);
-    ((width - gaps) / columns.to_string().parse::<f32>().unwrap_or(1.0)).max(CARD_MIN_WIDTH)
+    let gaps = CARD_GAP * f32::from(u16::try_from(columns.saturating_sub(1)).unwrap_or(0));
+    let columns = f32::from(u16::try_from(columns.max(1)).unwrap_or(1));
+    ((width - gaps) / columns).max(CARD_MIN_WIDTH)
 }
 
 fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> Vec<Size<Pixels>> {
@@ -482,7 +479,7 @@ fn card_body_height(view: &BaseView) -> f32 {
         .filter(|property| image_source != Some(property.source.as_str()))
         .count()
         .max(1);
-    let property_count = property_count.to_string().parse::<f32>().unwrap_or(1.0);
+    let property_count = f32::from(u16::try_from(property_count).unwrap_or(1));
     (property_count - 1.0)
         .mul_add(
             4.0,
