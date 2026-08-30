@@ -18,7 +18,7 @@ mod table;
 pub use cards::CardsConfig;
 pub use graph::{
     BorderStyle, ClassStyle, DirectionalEdgeHoverStyle, GraphClass, GraphColor, GraphConfig,
-    GraphPhysics, NodeStyle, RawGraphClass, RawGraphDisplay, RawGraphPhysics,
+    GraphDisplay, GraphPhysics, NodeStyle, RawGraphClass,
 };
 pub use list::ListConfig;
 pub use table::TableConfig;
