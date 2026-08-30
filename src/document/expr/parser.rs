@@ -5,10 +5,13 @@ use anyhow::{Result, bail};
 use super::lexer::{Token, lex};
 use super::{ArithOp, CmpOp, Expr, FileField, LogicOp, PropertyRef};
 
+pub(super) const MAX_EXPRESSION_DEPTH: u32 = 128;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    depth: u32,
 }
 
 impl Parser {
@@ -16,6 +19,7 @@ impl Parser {
         Self {
             tokens,
             position: 0,
+            depth: 0,
         }
     }
 
@@ -49,7 +53,13 @@ impl Parser {
     }
 
     pub(super) fn parse_expression(&mut self) -> Result<Expr> {
-        self.parse_logic()
+        self.depth = self.depth.saturating_add(1);
+        if self.depth > MAX_EXPRESSION_DEPTH {
+            bail!("expression nests too deeply (limit {MAX_EXPRESSION_DEPTH})");
+        }
+        let expression = self.parse_logic();
+        self.depth = self.depth.saturating_sub(1);
+        expression
     }
 
     fn parse_logic(&mut self) -> Result<Expr> {
@@ -131,19 +141,30 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr> {
-        match self.peek() {
-            Some(Token::Bang) => {
-                self.next();
-                let inner = self.parse_unary()?;
-                Ok(Expr::Not(Box::new(inner)))
-            }
-            Some(Token::Minus) => {
-                self.next();
-                let inner = self.parse_unary()?;
-                Ok(Expr::Neg(Box::new(inner)))
-            }
-            _ => self.parse_postfix(),
+        let mut operators = Vec::new();
+        while let Some(operator @ (Token::Bang | Token::Minus)) = self.peek().cloned() {
+            self.next();
+            operators.push(operator);
         }
+        self.depth = self
+            .depth
+            .saturating_add(u32::try_from(operators.len()).unwrap_or(u32::MAX));
+        if self.depth > MAX_EXPRESSION_DEPTH {
+            bail!("expression nests too deeply (limit {MAX_EXPRESSION_DEPTH})");
+        }
+        let wrapped = self.parse_postfix();
+        self.depth = self
+            .depth
+            .saturating_sub(u32::try_from(operators.len()).unwrap_or(u32::MAX));
+        let mut expression = wrapped?;
+        while let Some(operator) = operators.pop() {
+            expression = match operator {
+                Token::Bang => Expr::Not(Box::new(expression)),
+                Token::Minus => Expr::Neg(Box::new(expression)),
+                _ => break,
+            };
+        }
+        Ok(expression)
     }
 
     fn parse_postfix(&mut self) -> Result<Expr> {
@@ -198,6 +219,7 @@ impl Parser {
                 Ok(inner)
             }
             Some(Token::Ident(first)) => self.parse_chain(first),
+            None => bail!("unexpected end of expression"),
             other => bail!("unexpected {other:?} in expression"),
         }
     }
