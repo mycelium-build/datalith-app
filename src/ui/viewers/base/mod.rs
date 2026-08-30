@@ -81,6 +81,9 @@ pub struct BaseViewState {
     last_source: String,
     selected_view: Option<String>,
     generation: u64,
+    /// Monotonic identity handed to each stored snapshot,
+    /// so viewers can cache derived data per snapshot instead of per render.
+    next_snapshot_id: u64,
     build_task: Task<()>,
 }
 
@@ -105,6 +108,7 @@ impl BaseViewState {
             last_source: String::new(),
             selected_view: None,
             generation: 0,
+            next_snapshot_id: 0,
             build_task: Task::ready(()),
         }
     }
@@ -155,7 +159,9 @@ impl BaseViewState {
                     return;
                 }
                 match result {
-                    Ok(snapshot) => {
+                    Ok(mut snapshot) => {
+                        state.next_snapshot_id = state.next_snapshot_id.wrapping_add(1);
+                        snapshot.id = state.next_snapshot_id;
                         state.last_source.clone_from(&source);
                         state.selected_view = snapshot
                             .definition

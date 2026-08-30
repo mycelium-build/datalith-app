@@ -39,6 +39,7 @@ pub(super) enum BaseItem {
 
 #[derive(Clone, Debug)]
 pub(super) struct BaseSnapshot {
+    pub(super) id: u64, // for caching
     pub(super) definition: BaseDefinition,
     pub(super) view_index: usize,
     pub(super) rows: Vec<BaseRow>,
@@ -318,11 +319,7 @@ pub(super) async fn load_snapshot(
                 .map(|group| (group.property.source.clone(), group.direction)),
             summaries,
             classes,
-            limit: Some(
-                view.limit
-                    .unwrap_or(HARD_RESULT_LIMIT)
-                    .min(HARD_RESULT_LIMIT),
-            ),
+            limit: Some(effective_limit(view.limit)),
         })
         .await?;
 
@@ -401,6 +398,7 @@ pub(super) async fn load_snapshot(
 
     let rows_len = rows.len();
     Ok(BaseSnapshot {
+        id: 0,
         definition,
         view_index,
         projection_index,
@@ -412,6 +410,13 @@ pub(super) async fn load_snapshot(
         total: selection.total_matched,
         omitted: selection.total_matched.saturating_sub(rows_len),
     })
+}
+
+/// The effective row limit of a view:
+/// its explicit limit, or the hard safety ceiling when unset;
+/// always clamped to the ceiling.
+fn effective_limit(limit: Option<usize>) -> usize {
+    limit.unwrap_or(HARD_RESULT_LIMIT).min(HARD_RESULT_LIMIT)
 }
 
 fn summary_display(
@@ -440,7 +445,13 @@ fn summary_display(
 
 #[cfg(test)]
 mod tests {
+    use super::load_snapshot;
     use super::{SummaryDisplay, summary_entry_text, summary_inline_line};
+    use crate::document::base::BaseDefinition;
+    use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+    use crate::vault::VaultCatalog;
+    use std::fs;
+    use std::path::PathBuf;
 
     fn display(label: &str, title: &str, text: &str) -> SummaryDisplay {
         SummaryDisplay {
@@ -470,5 +481,162 @@ mod tests {
             Some("Pages Sum: 350 · Rating Sum: 8")
         );
         assert_eq!(summary_inline_line(&[]), None);
+    }
+
+    #[test]
+    fn effective_limit_defaults_to_and_clamps_at_the_hard_ceiling() {
+        use super::{HARD_RESULT_LIMIT, effective_limit};
+
+        assert_eq!(effective_limit(None), HARD_RESULT_LIMIT);
+        assert_eq!(effective_limit(Some(usize::MAX)), HARD_RESULT_LIMIT);
+        assert_eq!(effective_limit(Some(1)), 1);
+    }
+
+    fn snapshot_catalog(root: &std::path::Path) -> VaultCatalog {
+        let types = RegisteredFileTypes::new([
+            (
+                "md".to_string(),
+                FileTypeCapabilities {
+                    text_search: true,
+                    wiki_links: true,
+                    yaml_frontmatter: true,
+                },
+            ),
+            (
+                "base".to_string(),
+                FileTypeCapabilities {
+                    text_search: false,
+                    wiki_links: false,
+                    yaml_frontmatter: false,
+                },
+            ),
+            (
+                "todotxt".to_string(),
+                FileTypeCapabilities {
+                    text_search: true,
+                    wiki_links: false,
+                    yaml_frontmatter: false,
+                },
+            ),
+        ]);
+        let catalog = VaultCatalog::open(root.to_path_buf(), types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        catalog
+    }
+
+    fn snapshot_test_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "datalith-base-snapshot-{name}-{}",
+            std::process::id()
+        ))
+    }
+
+    fn seed(root: &std::path::Path, files: &[(&str, &str)]) {
+        let _ = fs::remove_dir_all(root);
+        fs::create_dir_all(root).unwrap();
+        for (name, content) in files {
+            let path = root.join(name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, content).unwrap();
+        }
+    }
+
+    fn parse(source: &str) -> BaseDefinition {
+        BaseDefinition::parse(source).unwrap()
+    }
+
+    #[test]
+    fn limit_truncates_rows_and_reports_the_omitted_count() {
+        let root = snapshot_test_root("limit");
+        seed(
+            &root,
+            &[
+                ("a.md", "---\nstatus: active\n---\n"),
+                ("b.md", "---\nstatus: active\n---\n"),
+                ("c.md", "---\nstatus: active\n---\n"),
+                ("d.md", "---\nstatus: active\n---\n"),
+                ("e.md", "---\nstatus: active\n---\n"),
+            ],
+        );
+        let catalog = snapshot_catalog(&root);
+        let definition = parse(
+            "views:\n  - type: table\n    name: T\n    filters: 'status == \"active\"'\n    limit: 2\n    order: [file.name]",
+        );
+
+        let snapshot = pollster::block_on(load_snapshot(definition, None, catalog.clone()))
+            .expect("snapshot loads");
+
+        assert_eq!(snapshot.rows.len(), 2);
+        assert_eq!(snapshot.total, 5);
+        assert_eq!(snapshot.omitted, 3);
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_views_project_no_columns_but_class_hits() {
+        let root = snapshot_test_root("graph-classes");
+        seed(
+            &root,
+            &[
+                ("a.md", "---\nstatus: active\n---\n[[b]]"),
+                ("b.md", "---\nstatus: draft\n---\n"),
+            ],
+        );
+        let catalog = snapshot_catalog(&root);
+        let definition = parse(
+            "views:\n  - type: graph\n    name: Wiki\n    classes:\n      - name: Active\n        filters: 'status == \"active\"'\n        node:\n          size: 1.5",
+        );
+
+        let snapshot = pollster::block_on(load_snapshot(definition, None, catalog.clone()))
+            .expect("snapshot loads");
+
+        assert_eq!(snapshot.rows.len(), 2);
+        assert!(snapshot.rows.iter().all(|row| row.values.is_empty()));
+        let active = snapshot
+            .rows
+            .iter()
+            .find(|row| row.path.ends_with("a.md"))
+            .expect("active row");
+        assert_eq!(active.class_hits, vec![true]);
+        let draft = snapshot
+            .rows
+            .iter()
+            .find(|row| row.path.ends_with("b.md"))
+            .expect("draft row");
+        assert_eq!(draft.class_hits, vec![false]);
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn catalog_snapshot_selects_only_markdown_and_tolerates_invalid_frontmatter() {
+        let root = snapshot_test_root("markdown-only");
+        seed(
+            &root,
+            &[
+                ("selected.md", "---\nstatus: done\n---\nSelected"),
+                (
+                    "invalid.md",
+                    "---\nd:\n 1. a\n 1. b\nloose text\n---\nInvalid",
+                ),
+                ("not-a-note.todotxt", "status: done"),
+                ("not-a-note.base", "views: []"),
+            ],
+        );
+        let catalog = snapshot_catalog(&root);
+        let definition = parse(
+            "views:\n  - type: table\n    name: T\n    filters: 'status == \"done\"'\n    order: [file.name]",
+        );
+
+        let snapshot = pollster::block_on(load_snapshot(definition, None, catalog.clone()))
+            .expect("snapshot loads");
+
+        assert_eq!(snapshot.rows.len(), 1);
+        assert!(snapshot.rows[0].path.ends_with("selected.md"));
+        drop(catalog);
+        let _ = fs::remove_dir_all(root);
     }
 }
