@@ -66,6 +66,7 @@ impl GraphState {
 
     /// Swaps in a freshly built snapshot;
     /// the camera only resets when the underlying definition changed (source edit), not on tab switches.
+    /// The simulation always restarts so the new layout settles from scratch.
     pub(super) fn set_snapshot(
         &mut self,
         snapshot: Option<GraphSnapshot>,
@@ -75,7 +76,6 @@ impl GraphState {
         if reset_view {
             self.camera = Camera::default();
             self.camera_fitted = false;
-            self.simulation = Simulation::default();
         }
         self.pointer_position = None;
         self.hovered_node = None;
