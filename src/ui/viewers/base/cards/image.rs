@@ -7,6 +7,7 @@ use gpui::{
 use gpui_component::ActiveTheme;
 
 use crate::document::base::{BaseView, CardImageFit};
+use crate::ui::viewers::base::cards::CARD_RADIUS;
 
 use super::super::BaseViewState;
 use super::super::snapshot::BaseRow;
@@ -34,7 +35,8 @@ pub(super) fn render_card_image(
         .w_full()
         .h(px(image_height))
         .overflow_hidden()
-        .bg(cx.theme().background);
+        .rounded(px(CARD_RADIUS))
+        .bg(cx.theme().secondary);
     let preview_image = image.clone();
     container = container
         .cursor_pointer()
@@ -50,10 +52,12 @@ pub(super) fn render_card_image(
         CardImage::Local(path) => img(path)
             .size_full()
             .object_fit(object_fit)
+            .rounded(px(CARD_RADIUS))
             .into_any_element(),
         CardImage::External(url) => img(SharedUri::from(url))
             .size_full()
             .object_fit(object_fit)
+            .rounded(px(CARD_RADIUS))
             .into_any_element(),
     };
     container.child(image_element).into_any_element()

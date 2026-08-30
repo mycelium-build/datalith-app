@@ -12,6 +12,7 @@ use crate::document::base::BaseView;
 
 use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
+const CARD_RADIUS: f32 = 6.0;
 const CARD_GAP: f32 = 16.0;
 const CARD_BODY_MIN_HEIGHT: f32 = 96.0;
 const CARD_BODY_PADDING: f32 = 24.0;
@@ -441,7 +442,7 @@ fn render_card(
         .h(px(card_height(context.view, card_width)))
         .flex_shrink_0()
         .overflow_hidden()
-        .rounded(px(6.0))
+        .rounded(px(CARD_RADIUS))
         .border_1()
         .border_color(context.cx.theme().border)
         .bg(context.cx.theme().secondary)
