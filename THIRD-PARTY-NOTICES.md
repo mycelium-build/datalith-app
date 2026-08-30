@@ -10703,7 +10703,7 @@ Used by:
 - `block-buffer` 0.12.1 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/utils>
 - `block-padding` 0.3.3 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/utils>
 - `cbc` 0.1.2 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/block-modes>
-- `chacha20` 0.10.1 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/stream-ciphers>
+- `chacha20` 0.10.2 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/stream-ciphers>
 - `cipher` 0.4.4 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/traits>
 - `const-oid` 0.10.2 — `Apache-2.0 OR MIT` — <https://github.com/RustCrypto/formats>
 - `cpufeatures` 0.2.17 — `MIT OR Apache-2.0` — <https://github.com/RustCrypto/utils>
