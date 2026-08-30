@@ -7,7 +7,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-CARGO_DENY_VERSION="0.18.9"
+CARGO_DENY_VERSION="0.20.2"
 
 fail() {
     echo "LICENSE-E2xx $*" >&2

@@ -40,7 +40,7 @@ scripts/licenses/generate.sh
 ```
 
 The generation script requires `cargo-about` version `0.9.1`. 
-Before submitting a pull request, verify the result with `cargo-deny` version `0.18.9` using:
+Before submitting a pull request, verify the result with `cargo-deny` version `0.20.2` using:
 
 ```bash
 scripts/licenses/check.sh
