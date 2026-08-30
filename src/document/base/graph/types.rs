@@ -35,7 +35,7 @@ pub(super) const fn default_true() -> bool {
 pub struct NodeStyle {
     pub color: Option<GraphColor>,
     pub size: Option<f32>,
-    pub propertional: bool,
+    pub proportional: bool,
     pub border: BorderStyle,
     pub hover: HoverStyle,
 }
@@ -45,7 +45,7 @@ impl Default for NodeStyle {
         Self {
             color: None,
             size: None,
-            propertional: true,
+            proportional: true,
             border: BorderStyle::default(),
             hover: HoverStyle::default(),
         }
