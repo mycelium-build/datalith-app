@@ -72,12 +72,22 @@ pub(super) async fn resolve_path_on(
         target.contains('/'),
         Path::new(&target).extension().is_some(),
     );
-    let mut rows = connection.query(sql, [target]).await?;
+    let mut rows = connection
+        .query(sql, turso::params_from_iter(resolve_params(&target)))
+        .await?;
     rows.next()
         .await?
         .map(|row| row.get::<String>(0).map(PathBuf::from))
         .transpose()
         .map_err(Into::into)
+}
+
+fn resolve_params(target: &str) -> Vec<Value> {
+    let mut params = vec![Value::Text(target.to_string())];
+    if target.contains('/') {
+        params.push(Value::Text(format!("%/{}", escape_like_pattern(target))));
+    }
+    params
 }
 
 /// Resolves every normalized target with one compile per statement shape
@@ -108,7 +118,9 @@ async fn resolve_paths_on(
             .prepare(resolve_sql(qualified, has_extension))
             .await?;
         for target in bucket {
-            let mut rows = statement.query([target.as_str()]).await?;
+            let mut rows = statement
+                .query(turso::params_from_iter(resolve_params(&target)))
+                .await?;
             let path = match rows.next().await? {
                 Some(row) => Some(PathBuf::from(row.get::<String>(0)?)),
                 None => None,
@@ -140,9 +152,20 @@ fn resolve_sql(qualified: bool, target_has_extension: bool) -> String {
         (false, true) => FILE_BASENAME_SQL,
         (false, false) => FILE_NAME_SQL,
     };
+    // A qualified target like `[[covers/x.png]]`  may live at any depth (`notes/covers/x.png`),
+    // so accept exact paths first, then any path ending in the target.
+    // Exact wins because the slash-count ordering below prefers paths with fewer segments.
+    let predicate = if qualified {
+        format!(
+            "lower({compared_field}) = lower(?1) \
+             OR {compared_field} LIKE ?2 ESCAPE '\\'"
+        )
+    } else {
+        format!("lower({compared_field}) = lower(?1)")
+    };
     format!(
         "SELECT path FROM documents \
-         WHERE lower({compared_field}) = lower(?) \
+         WHERE {predicate} \
          ORDER BY \
             length(path) - length(replace(path, '/', '')) ASC, \
             CASE WHEN lower(extension) = 'md' THEN 0 ELSE 1 END ASC, \
@@ -253,6 +276,56 @@ mod tests {
             assert_eq!(
                 database.resolve_path("a/Same").await.unwrap(),
                 Some(root.join("a/Same.md"))
+            );
+        });
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_qualified_targets_by_exact_path_then_suffix() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-suffix-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        pollster::block_on(async {
+            let database = CatalogDatabase::open(&root).await.unwrap();
+            let connection = database.connection();
+            for (path, extension, folder) in [
+                (
+                    "examples/bases/notes/covers/x.png",
+                    "png",
+                    "examples/bases/notes/covers",
+                ),
+                ("a/covers/x.png", "png", "a/covers"),
+                ("nested/covZZers/x.png", "png", "nested"),
+                ("docs/covers/pic.md", "md", "docs/covers"),
+                ("deep/docs/covers/pic.md", "md", "deep/docs/covers"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
+                         VALUES (?, ?, ?, 0, 0, NULL)",
+                        params![path, extension, folder],
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            // Suffix match resolves into the vault, fewest folders first.
+            assert_eq!(
+                database.resolve_path("covers/x.png").await.unwrap(),
+                Some(root.join("a/covers/x.png"))
+            );
+            // Suffix matches are slash-anchored: `ers/x.png` must not match
+            // inside the `covZZers` component.
+            assert_eq!(database.resolve_path("ers/x.png").await.unwrap(), None);
+            // LIKE metacharacters in the target are literal: `cov%ers` must
+            // not match `covZZers` through a wildcard.
+            assert_eq!(database.resolve_path("cov%ers/x.png").await.unwrap(), None);
+            // Qualified targets without an extension match note paths.
+            assert_eq!(
+                database.resolve_path("covers/pic").await.unwrap(),
+                Some(root.join("docs/covers/pic.md"))
             );
         });
         let _ = fs::remove_dir_all(root);
