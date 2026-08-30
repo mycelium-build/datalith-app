@@ -165,7 +165,7 @@ fn view_node(
         let class = class_style(&config.classes, node.class_index);
         resolve_class_node_style(&config.display.node, class)
     };
-    let degree_scale = if style.propertional {
+    let degree_scale = if style.proportional {
         incoming
             .get(index)
             .copied()
@@ -476,7 +476,7 @@ views:
       node:
         color: '#0000ff'
         size: 2.0
-        propertional: false
+        proportional: false
         border:
           color: '#111111'
           width: 1.0
