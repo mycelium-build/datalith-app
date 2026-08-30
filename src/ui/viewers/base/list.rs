@@ -169,11 +169,8 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
             ListItem::Row { .. } => size(px(1.), px(height)),
             ListItem::Summary { group } => {
                 let entries = summary_item_entries(group.as_deref(), snapshot);
-                let lines = entries.len().saturating_add(1);
-                size(
-                    px(1.),
-                    px(LIST_ROW_HEIGHT * lines.to_string().parse::<f32>().unwrap_or(1.0)),
-                )
+                let lines = u16::try_from(entries.len().saturating_add(1)).unwrap_or(u16::MAX);
+                size(px(1.), px(LIST_ROW_HEIGHT * f32::from(lines)))
             }
         })
         .collect()
@@ -194,8 +191,8 @@ fn list_row_height(view: &BaseView) -> f32 {
     if !list.indent_properties {
         return LIST_ROW_HEIGHT;
     }
-    let lines = u32::try_from(view.order.len().max(1)).unwrap_or(u32::MAX);
-    LIST_ROW_HEIGHT * lines.to_string().parse::<f32>().unwrap_or(1.0)
+    let lines = u16::try_from(view.order.len().max(1)).unwrap_or(u16::MAX);
+    LIST_ROW_HEIGHT * f32::from(lines)
 }
 
 fn render_group_header(
