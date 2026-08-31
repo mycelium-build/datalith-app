@@ -132,7 +132,7 @@ pub fn default_registry() -> FileRegistry {
                 wiki_links: false,
                 yaml_frontmatter: false,
             },
-            icon: DatalithIcon::File,
+            icon: DatalithIcon::Base,
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Base(BaseEditor::new(BaseEditor::new_state(path, window, cx)))
             }),
