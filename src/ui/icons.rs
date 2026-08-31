@@ -25,6 +25,8 @@ pub enum DatalithIcon {
     ArrowDownAz,
     Settings,
     Base,
+    Link,
+    Copy,
 }
 
 impl DatalithIcon {
@@ -41,6 +43,8 @@ impl DatalithIcon {
             Self::ArrowDownAz => icon_asset!("icons/arrow-down-a-z.svg"),
             Self::Settings => icon_asset!("icons/gear.svg"),
             Self::Base => icon_asset!("icons/base.svg"),
+            Self::Link => icon_asset!("icons/link.svg"),
+            Self::Copy => icon_asset!("icons/copy.svg"),
         }
     }
 }
@@ -64,6 +68,8 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     DatalithIcon::ArrowDownAz.asset(),
     DatalithIcon::Settings.asset(),
     DatalithIcon::Base.asset(),
+    DatalithIcon::Link.asset(),
+    DatalithIcon::Copy.asset(),
     // Overrides of gpui-component's lucide icons.
     icon_asset!("icons/search.svg"),
     icon_asset!("icons/layout-dashboard.svg"),
