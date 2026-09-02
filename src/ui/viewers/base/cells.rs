@@ -137,7 +137,7 @@ fn render_link(
                 handler.update(cx, |_, cx| {
                     cx.emit(FileHandlerEvent::LinkClicked(
                         target.clone(),
-                        event.modifiers().platform,
+                        event.modifiers().secondary(),
                     ));
                 });
             }

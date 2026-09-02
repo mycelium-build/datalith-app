@@ -263,7 +263,7 @@ impl MarkdownViewer {
                                 handler_clone.update(cx, |_, cx| {
                                     cx.emit(FileHandlerEvent::LinkClicked(
                                         link_url.clone(),
-                                        event.modifiers().platform,
+                                        event.modifiers().secondary(),
                                     ));
                                 });
                             })

@@ -222,7 +222,7 @@ impl DatalithView {
                     this.mark_tree_item_expanded(&id, !is_expanded);
                 } else {
                     this.last_sidebar_selection = Some(path.clone());
-                    let new_tab = event.modifiers().platform;
+                    let new_tab = event.modifiers().secondary();
                     this.open_file(path.clone(), new_tab, window, cx);
                 }
             }
