@@ -96,7 +96,10 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "datalith-docs-{label}-{}-{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test").replace("::", "-")
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
         ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();

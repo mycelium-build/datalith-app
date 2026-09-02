@@ -300,7 +300,10 @@ mod tests {
         std::env::temp_dir().join(format!(
             "datalith-settings-{test_name}-{}-{}.json",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test").replace("::", "-")
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
         ))
     }
 
@@ -429,7 +432,10 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "datalith-vault-{}-{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test").replace("::", "-")
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
         ));
         fs::create_dir_all(&directory).unwrap();
         let file = temp_settings_file("round-trip");
