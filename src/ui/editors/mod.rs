@@ -1,18 +1,18 @@
-pub mod graph;
+pub mod base;
 pub mod markdown;
 pub mod plain_text;
 pub mod todo_txt;
 
 use gpui::{AnyElement, App, Entity, FocusHandle};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 
-use self::graph::GraphEditor;
+use self::base::BaseEditor;
 use self::markdown::MarkdownEditor;
 use self::plain_text::PlainTextEditor;
 use self::todo_txt::TodoTxtEditor;
 
 pub enum EditorKind {
-    Graph(GraphEditor),
+    Base(BaseEditor),
     Markdown(MarkdownEditor),
     PlainText(PlainTextEditor),
     TodoTxt(TodoTxtEditor),
@@ -21,7 +21,7 @@ pub enum EditorKind {
 impl EditorKind {
     pub fn render(&self, cx: &mut App) -> AnyElement {
         match self {
-            Self::Graph(editor) => editor.render(cx),
+            Self::Base(editor) => editor.render(cx),
             Self::Markdown(editor) => editor.render(cx),
             Self::PlainText(editor) => editor.render(cx),
             Self::TodoTxt(editor) => editor.render(cx),
@@ -30,16 +30,16 @@ impl EditorKind {
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
-            Self::Graph(editor) => editor.focus_handle(cx),
+            Self::Base(editor) => editor.focus_handle(cx),
             Self::Markdown(editor) => editor.focus_handle(cx),
             Self::PlainText(editor) => editor.focus_handle(cx),
             Self::TodoTxt(editor) => editor.focus_handle(cx),
         }
     }
 
-    pub const fn input(&self) -> Option<&Entity<InputState>> {
+    pub const fn input(&self) -> Option<&Entity<EditorState>> {
         match self {
-            Self::Graph(editor) => Some(editor.input()),
+            Self::Base(editor) => Some(editor.input()),
             Self::Markdown(editor) => Some(editor.input()),
             Self::PlainText(editor) => Some(editor.input()),
             Self::TodoTxt(_) => None,

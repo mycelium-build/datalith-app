@@ -1,9 +1,24 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice
+    )
+)]
+
 mod fixtures;
 
 // Mirror the crate's module structure so `crate::` paths resolve correctly.
 #[allow(dead_code, unused_imports)]
 mod document {
+    pub mod base;
+    pub mod expr;
     pub mod file_types;
+    pub mod filter;
 }
 #[allow(dead_code, unused_imports)]
 #[path = "../src/vault/mod.rs"]

@@ -3,6 +3,8 @@ use std::ops::Range;
 #[derive(Clone, Debug)]
 pub struct LinkOccurrence {
     pub(crate) target: String,
+    /// True when the occurrence was authored as an embed (`![[target]]`).
+    pub(crate) is_embed: bool,
     pub(crate) range: Range<usize>,
 }
 
@@ -44,35 +46,59 @@ pub fn occurrences(source: &str) -> Vec<LinkOccurrence> {
                 cursor += 1;
                 continue;
             }
-            if !inline
-                && bytes
+            if !inline {
+                if bytes
+                    .get(cursor..)
+                    .is_some_and(|suffix| suffix.starts_with(b"![["))
+                    && let Some(length) =
+                        line.get(cursor + 3..).and_then(|suffix| suffix.find("]]"))
+                {
+                    let content_start = cursor + 3;
+                    let content_end = content_start + length;
+                    let authored = line.get(content_start..content_end).unwrap_or("");
+                    push_occurrence(&mut result, authored, true, line_start + content_start);
+                    cursor = content_end + 2;
+                    continue;
+                }
+                if bytes
                     .get(cursor..)
                     .is_some_and(|suffix| suffix.starts_with(b"[["))
-                && let Some(length) = line.get(cursor + 2..).and_then(|suffix| suffix.find("]]"))
-            {
-                let content_start = cursor + 2;
-                let content_end = content_start + length;
-                let authored = line.get(content_start..content_end).unwrap_or("");
-                let target_length = authored.find(['|', '#']).unwrap_or(authored.len());
-                let raw = authored.get(..target_length).unwrap_or(authored);
-                let target = normalized_target(raw);
-                if !target.is_empty() {
-                    let leading = raw.len() - raw.trim_start().len();
-                    let trailing = raw.trim_end().len();
-                    result.push(LinkOccurrence {
-                        target,
-                        range: line_start + content_start + leading
-                            ..line_start + content_start + trailing,
-                    });
+                    && let Some(length) =
+                        line.get(cursor + 2..).and_then(|suffix| suffix.find("]]"))
+                {
+                    let content_start = cursor + 2;
+                    let content_end = content_start + length;
+                    let authored = line.get(content_start..content_end).unwrap_or("");
+                    push_occurrence(&mut result, authored, false, line_start + content_start);
+                    cursor = content_end + 2;
+                    continue;
                 }
-                cursor = content_end + 2;
-                continue;
             }
             cursor += 1;
         }
         line_start += line_with_ending.len();
     }
     result
+}
+
+fn push_occurrence(
+    result: &mut Vec<LinkOccurrence>,
+    authored: &str,
+    is_embed: bool,
+    offset: usize,
+) {
+    let target_length = authored.find(['|', '#']).unwrap_or(authored.len());
+    let raw = authored.get(..target_length).unwrap_or(authored);
+    let target = normalized_target(raw);
+    if !target.is_empty() {
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        result.push(LinkOccurrence {
+            target,
+            is_embed,
+            range: offset.saturating_add(leading)..offset.saturating_add(trailing),
+        });
+    }
 }
 
 pub fn rewrite(source: &str, replacements: &[(usize, String)]) -> String {

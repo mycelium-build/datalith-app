@@ -83,6 +83,7 @@ impl Render for DatalithView {
                     resizable_panel()
                         .size(px(SIDEBAR_WIDTH))
                         .size_range(px(180.)..px(500.))
+                        .flex_none()
                         .child(self.render_sidebar(window, cx)),
                 )
                 .child(
@@ -171,7 +172,8 @@ impl DatalithView {
                     .gap_3()
                     .child(Self::quick_create_button("note", "New note", "md", cx))
                     .child(Self::quick_create_button("todo", "New todo", "todotxt", cx))
-                    .child(Self::quick_create_button("graph", "New graph", "graph", cx)),
+                    .child(Self::quick_create_button("graph", "New graph", "graph", cx))
+                    .child(Self::quick_create_button("base", "New base", "base", cx)),
             )
             .child(
                 div()

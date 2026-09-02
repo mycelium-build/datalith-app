@@ -1,0 +1,103 @@
+formulas:
+  completion: (progress / pages * 100).round(0)
+  score: (rating * 20 - (pages / 100)).round(1)
+
+summaries:
+  roundedAverage: values.mean().round(2)
+
+filters:
+  and:
+    - 'file.inFolder("examples/bases/notes")'
+    - 'status != null'
+    - '!title.startsWith("Draft")'
+
+properties:
+  file.name:
+    displayName: Book
+  title:
+    displayName: Title
+  author:
+    displayName: Author
+  status:
+    displayName: Status
+  rating:
+    displayName: Rating
+  formula.completion:
+    displayName: Read %
+  file.mtime:
+    displayName: Updated
+
+views:
+  # Grouped table with summaries, date filter, and multi-key sort.
+  - type: table
+    name: Library by status
+    order:
+      - title
+      - author
+      - status
+      - rating
+      - formula.completion
+      - file.tags
+      - file.links
+      - file.mtime
+    sort:
+      - property: rating
+        direction: DESC
+      - property: file.mtime
+        direction: DESC
+    groupBy:
+      property: status
+      direction: ASC
+    summaries:
+      pages: Sum
+      rating: roundedAverage
+      formula.score: Max
+      file.size: Filled
+      file.mtime: Latest
+    limit: 100
+    rowHeight: medium
+
+  # Recent reading queue driven by duration arithmetic.
+  - type: list
+    name: Recently touched
+    filters:
+      or:
+        - 'status == "reading"'
+        - 'file.mtime > now() - "4 weeks"'
+    order:
+      - title
+      - author
+      - formula.completion
+      - formula.score
+    markers: numbers
+    indentProperties: true
+    separators: " · "
+
+  # Card gallery; cover resolves from the cover property.
+  - type: cards
+    name: Covers
+    image: cover
+    imageFit: cover
+    imageAspectRatio: 1.5
+    cardSize: 240
+    order:
+      - title
+      - author
+      - status
+      - rating
+
+  # Backlinks table showing which notes reference each book.
+  - type: table
+    name: Cross references
+    filters:
+      or:
+        - 'file.hasLink("Reading Queue")'
+        - 'file.hasTag("source/book")'
+    order:
+      - file.name
+      - file.backlinks
+      - file.embeds
+      - file.ctime
+    sort:
+      - property: file.ctime
+        direction: ASC

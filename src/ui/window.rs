@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use gpui::{App, AppContext, BorrowAppContext, WindowOptions};
+use gpui::{
+    App, AppContext, BorrowAppContext, Bounds, WindowBounds, WindowOptions, point, px, size,
+};
 use gpui_component::Root;
 use gpui_component::notification::Notification;
 
@@ -15,7 +17,14 @@ pub fn open_initial(
     pending_notifications: Vec<Notification>,
 ) {
     cx.spawn(async move |cx| {
-        if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Maximized(Bounds::new(
+                point(px(0.0), px(0.0)),
+                size(px(1440.0), px(900.0)),
+            ))),
+            ..WindowOptions::default()
+        };
+        if let Err(error) = cx.open_window(options, |window, cx| {
             let view =
                 cx.new(|cx| DatalithView::new(first_startup, pending_notifications, window, cx));
             cx.update_global(|state: &mut AppState, _| {

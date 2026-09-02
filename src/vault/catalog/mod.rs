@@ -12,100 +12,12 @@ use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::search::SearchEngine;
 
+mod types;
+
 const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
+const CATALOG_WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CatalogState {
-    Syncing,
-    Ready,
-    Failed,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogEvent {
-    pub(crate) paths: Vec<PathBuf>,
-    pub(crate) structure_changed: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WikiLinkEdge {
-    pub(crate) source: PathBuf,
-    pub(crate) target: PathBuf,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogDocument {
-    pub(crate) path: PathBuf,
-    pub(crate) metadata: Option<serde_json::Value>,
-}
-
-#[derive(Clone, Debug)]
-pub struct DocumentSelection {
-    pub(crate) documents: Vec<CatalogDocument>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LinkedDocumentSelection {
-    pub(crate) documents: Vec<CatalogDocument>,
-    pub(crate) links: Vec<WikiLinkEdge>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CatalogQuery {
-    pub(crate) extension: Option<String>,
-    pub(crate) filter: CatalogFilter,
-    pub(crate) limit: Option<usize>,
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogFilter {
-    MatchAll,
-    Compare {
-        property: CatalogProperty,
-        comparison: CatalogComparison,
-        value: CatalogScalar,
-    },
-    Contains {
-        property: CatalogProperty,
-        value: CatalogScalar,
-    },
-    InFolder(String),
-    And(Vec<Self>),
-    Or(Vec<Self>),
-    Not(Box<Self>),
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogProperty {
-    Metadata(Vec<String>),
-    File(CatalogFileField),
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum CatalogFileField {
-    Name,
-    Extension,
-    Path,
-    Folder,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum CatalogComparison {
-    Equal,
-    NotEqual,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
-}
-
-#[derive(Clone, Debug)]
-pub enum CatalogScalar {
-    Null,
-    Bool(bool),
-    Number(f64),
-    String(String),
-}
+pub use types::*;
 
 struct CatalogInner {
     root: PathBuf,
@@ -246,7 +158,11 @@ impl VaultCatalog {
 
     #[must_use]
     pub(crate) fn paths(&self) -> Vec<PathBuf> {
-        pollster::block_on(self.inner.database.stored_paths()).unwrap_or_default()
+        let database = self.inner.database.clone();
+        run_blocking("paths", move || {
+            pollster::block_on(database.stored_paths()).unwrap_or_default()
+        })
+        .unwrap_or_default()
     }
 
     #[must_use]
@@ -269,65 +185,66 @@ impl VaultCatalog {
 
     #[must_use]
     pub(crate) fn resolve(&self, authored: &str) -> Option<PathBuf> {
-        pollster::block_on(self.inner.database.resolve_path(authored)).unwrap_or_default()
+        let database = self.inner.database.clone();
+        let authored = authored.to_string();
+        run_blocking("resolve", move || {
+            pollster::block_on(database.resolve_path(&authored)).unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub(crate) fn resolve_paths(
+        &self,
+        targets: std::collections::BTreeSet<String>,
+    ) -> std::collections::BTreeMap<String, Option<PathBuf>> {
+        let database = self.inner.database.clone();
+        run_blocking("resolve", move || {
+            pollster::block_on(database.resolve_paths(targets)).unwrap_or_default()
+        })
+        .unwrap_or_default()
     }
 
     pub(crate) fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
         let root = self.root();
-        pollster::block_on(self.inner.database.backlinks_under(target)).map(|links| {
-            links
-                .into_iter()
-                .map(|mut link| {
-                    link.source = root.join(link.source);
-                    link.target_path = root.join(link.target_path);
-                    link
-                })
-                .collect()
-        })
-    }
-
-    #[allow(dead_code)]
-    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
-    // keep the async signature for that call site.
-    #[allow(clippy::unused_async)]
-    pub(crate) async fn query_documents(&self, query: CatalogQuery) -> Result<DocumentSelection> {
         let database = self.inner.database.clone();
-        std::thread::Builder::new()
-            .name("vault-catalog-query".into())
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || pollster::block_on(database.query_documents(query)))
-            .context("Failed to start catalog query thread")?
-            .join()
-            .map_err(|_| anyhow!("Catalog query thread panicked"))?
-    }
-
-    // Callers await these functions from UI code even though the body spawns a dedicated blocking thread;
-    // keep the async signature for that call site.
-    #[allow(clippy::unused_async)]
-    pub(crate) async fn query_documents_with_links(
-        &self,
-        query: CatalogQuery,
-    ) -> Result<LinkedDocumentSelection> {
-        let database = self.inner.database.clone();
-        let (selection, stored_links) = std::thread::Builder::new()
-            .name("vault-catalog-query".into())
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || pollster::block_on(database.query_documents_with_links(query)))
-            .context("Failed to start catalog query thread")?
-            .join()
-            .map_err(|_| anyhow!("Catalog query thread panicked"))??;
-        let links = stored_links
-            .into_iter()
-            .map(|link| WikiLinkEdge {
-                source: link.source,
-                target: link.target,
+        let target = target.to_path_buf();
+        run_blocking("backlinks", move || {
+            pollster::block_on(database.backlinks_under(&target)).map(|links| {
+                links
+                    .into_iter()
+                    .map(|mut link| {
+                        link.source = root.join(link.source);
+                        link.target_path = root.join(link.target_path);
+                        link
+                    })
+                    .collect()
             })
-            .collect();
-        Ok(LinkedDocumentSelection {
-            documents: selection.documents,
-            links,
-        })
+        })?
     }
+
+    // Callers await from UI code even though the body runs on a blocking thread.
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
+        let database = self.inner.database.clone();
+        run_blocking("query", move || {
+            pollster::block_on(database.query_base(query))
+        })?
+    }
+}
+
+/// Runs catalog work on a thread with headroom for turso's recursive SQL compiler.
+fn run_blocking<T>(label: &str, work: impl FnOnce() -> T + Send + 'static) -> Result<T>
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .name(format!("vault-catalog-{label}"))
+        .stack_size(CATALOG_WORKER_STACK_SIZE)
+        .spawn(work)
+        .context("Failed to start catalog worker thread")?
+        .join()
+        .map_err(|_| anyhow!("Catalog {label} thread panicked"))
 }
 
 fn spawn_reconciler(
@@ -337,6 +254,7 @@ fn spawn_reconciler(
     let weak = Arc::downgrade(inner);
     std::thread::Builder::new()
         .name("vault-catalog-reconciler".into())
+        .stack_size(CATALOG_WORKER_STACK_SIZE)
         .spawn(move || {
             while let Ok(event) = receiver.recv() {
                 let Some(inner) = weak.upgrade() else { break };

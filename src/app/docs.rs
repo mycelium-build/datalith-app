@@ -9,44 +9,9 @@ pub const DOCS_VAULT_NAME: &str = "Datalith Docs";
 
 pub const INITIAL_TABS: &[&str] = &["Welcome.md", "Tour.todotxt", "Basics.md"];
 
-const SHIPPED_DOCS: &[(&str, &str)] = &[
-    ("Welcome.md", include_str!("../../docs/vault/Welcome.md")),
-    ("Basics.md", include_str!("../../docs/vault/Basics.md")),
-    (
-        "FileTypes.md",
-        include_str!("../../docs/vault/FileTypes.md"),
-    ),
-    (
-        "Overview.graph",
-        include_str!("../../docs/vault/Overview.graph"),
-    ),
-    ("Search.md", include_str!("../../docs/vault/Search.md")),
-    (
-        "Shortcuts.md",
-        include_str!("../../docs/vault/Shortcuts.md"),
-    ),
-    ("Settings.md", include_str!("../../docs/vault/Settings.md")),
-    (
-        "Tour.todotxt",
-        include_str!("../../docs/vault/Tour.todotxt"),
-    ),
-    (
-        "formats/Properties.md",
-        include_str!("../../docs/vault/formats/Properties.md"),
-    ),
-    (
-        "formats/Graph.md",
-        include_str!("../../docs/vault/formats/Graph.md"),
-    ),
-    (
-        "formats/Markdown.md",
-        include_str!("../../docs/vault/formats/Markdown.md"),
-    ),
-    (
-        "formats/TodoTxt.md",
-        include_str!("../../docs/vault/formats/TodoTxt.md"),
-    ),
-];
+pub fn docs_vault_source() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/vault")
+}
 
 #[derive(Clone, Debug)]
 pub struct DocsVaultOutcome {
@@ -67,18 +32,34 @@ pub fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
 }
 
 fn seed_into(root: &Path) -> Result<()> {
-    for (relative, content) in SHIPPED_DOCS {
-        let target = root.join(relative);
-        if target.exists() {
+    seed_dir(&docs_vault_source(), root)
+}
+
+fn seed_dir(source: &Path, target: &Path) -> Result<()> {
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("Failed to read docs Vault folder: {}", source.display()))?
+    {
+        let entry = entry
+            .with_context(|| format!("Failed to read docs Vault entry in {}", source.display()))?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
             continue;
         }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create docs Vault folder: {}", parent.display())
+        let source_path = entry.path();
+        let target_path = target.join(name);
+        if source_path.is_dir() {
+            fs::create_dir_all(&target_path).with_context(|| {
+                format!(
+                    "Failed to create docs Vault folder: {}",
+                    target_path.display()
+                )
+            })?;
+            seed_dir(&source_path, &target_path)?;
+        } else if !target_path.exists() {
+            fs::copy(&source_path, &target_path).with_context(|| {
+                format!("Failed to seed docs Vault file: {}", target_path.display())
             })?;
         }
-        fs::write(&target, content)
-            .with_context(|| format!("Failed to seed docs Vault file: {}", target.display()))?;
     }
     Ok(())
 }
@@ -90,28 +71,61 @@ pub fn docs_vault_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
+    fn source_files(dir: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(source_files(&path));
+            } else {
+                files.push(path);
+            }
+        }
+        files
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-docs-{label}-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
     #[test]
     fn shipped_docs_are_registered_extensions() {
-        for (relative, _) in SHIPPED_DOCS {
-            let extension = Path::new(relative)
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .unwrap_or("");
+        const BINARY_DOC_ASSETS: &[&str] = &["png"];
+        for path in source_files(&docs_vault_source()) {
+            let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
             assert!(
-                ["md", "graph", "todotxt"].contains(&extension),
-                "unregistered extension for seeded doc: {relative}"
+                ["md", "base", "todotxt"].contains(&extension)
+                    || BINARY_DOC_ASSETS.contains(&extension),
+                "unregistered extension for seeded doc: {}",
+                path.display()
             );
         }
     }
 
     #[test]
     fn initial_tabs_are_shipped_docs() {
+        let source = docs_vault_source();
         for name in INITIAL_TABS {
             assert!(
-                SHIPPED_DOCS.iter().any(|(relative, _)| relative == name),
+                source.join(name).is_file(),
                 "initial tab is not a shipped doc: {name}"
             );
         }
@@ -119,22 +133,23 @@ mod tests {
 
     #[test]
     fn seeding_writes_every_doc_and_preserves_edits() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-docs-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = temp_root("seed");
+        let source = docs_vault_source();
 
         seed_into(&root).expect("seed");
-        for (relative, content) in SHIPPED_DOCS {
+        for path in source_files(&source) {
+            let relative = path.strip_prefix(&source).unwrap();
             let target = root.join(relative);
-            assert!(target.exists(), "missing seeded doc: {relative}");
+            assert!(
+                target.exists(),
+                "missing seeded doc: {}",
+                relative.display()
+            );
             assert_eq!(
-                fs::read_to_string(&target).unwrap(),
-                *content,
-                "seeded doc differs: {relative}"
+                fs::read(&target).unwrap(),
+                fs::read(&path).unwrap(),
+                "seeded doc differs: {}",
+                relative.display()
             );
         }
 
@@ -152,13 +167,7 @@ mod tests {
 
     #[test]
     fn seeding_restores_deleted_docs() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-docs-restore-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = temp_root("restore");
 
         seed_into(&root).expect("seed");
         let deleted = root.join("Tour.todotxt");

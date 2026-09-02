@@ -19,7 +19,7 @@ Datalith edits Markdown files with a live preview and renders them with standard
 
 There are two kinds of links:
 
-- `[[text]]` — a wiki link to another file in the Vault, for example `[[Welcome]]` or `[[formats/Graph]]`.
+- `[[text]]` — a wiki link to another file in the Vault, for example `[[Welcome]]` or `[[formats/bases/Graph]]`.
 - `[text](target)` — a normal link; external links open in your browser.
 
 Wiki links can add a label: `[[Welcome|home]]`. A name-only link resolves to the unique same-folder target; a path link is exact. Use **Cmd/Ctrl+Enter** on a link to jump.
@@ -34,4 +34,4 @@ category: format
 ---
 ```
 
-Properties are used for data-driven views: the [[Graph|Graph View]] selects and colors nodes by them. See [[Properties]] for the details.
+Properties are used for data-driven views: the [[formats/bases/Graph|Graph View]] selects and colors nodes by them. See [[Properties]] for the details.

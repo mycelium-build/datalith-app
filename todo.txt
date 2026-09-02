@@ -4,13 +4,16 @@ x decouple editor and renderer
     x todo.txt
         x TxTodo.rs lib
     bases
-        list
-        table
-        cards
+        x list
+        x table
+        x cards
         kanban
+        x graph
         calendar
+        timeline
+        plot
     canvas
-    x graph
+    slide
 
 x hot reload side bar and files preview/editor
 

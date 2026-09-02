@@ -4,7 +4,7 @@ use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, div,
 };
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState;
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
@@ -73,6 +73,9 @@ impl FileHandler {
         };
         let outcome = reload(path, self, window, cx)?;
         if outcome == ReloadOutcome::Reloaded {
+            if let Some(viewer) = &self.viewer {
+                viewer.refresh(cx);
+            }
             cx.notify();
         }
         Ok(outcome)
@@ -108,7 +111,7 @@ impl FileHandler {
         }
     }
 
-    pub(crate) fn input(&self) -> Option<&Entity<InputState>> {
+    pub(crate) fn input(&self) -> Option<&Entity<EditorState>> {
         self.editor.as_ref().and_then(|e| e.input())
     }
 

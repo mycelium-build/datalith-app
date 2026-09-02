@@ -1,10 +1,10 @@
-pub mod graph;
+pub mod base;
 pub mod image;
 pub mod markdown;
 
 use gpui::{AnyElement, App, Context, Entity, FocusHandle};
 
-use self::graph::GraphViewer;
+use self::base::BaseViewer;
 use self::image::ImageViewer;
 use self::markdown::MarkdownViewer;
 
@@ -12,7 +12,7 @@ use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
 
 pub enum ViewerKind {
-    Graph(GraphViewer),
+    Base(BaseViewer),
     Markdown(MarkdownViewer),
     Image(ImageViewer),
 }
@@ -20,7 +20,7 @@ pub enum ViewerKind {
 impl ViewerKind {
     pub fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
         match self {
-            Self::Graph(viewer) => viewer.render(handler, cx),
+            Self::Base(viewer) => viewer.render(handler, cx),
             Self::Markdown(viewer) => viewer.render(handler, cx),
             Self::Image(viewer) => viewer.render(cx),
         }
@@ -28,21 +28,23 @@ impl ViewerKind {
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
-            Self::Graph(viewer) => viewer.focus_handle(cx),
+            Self::Base(viewer) => viewer.focus_handle(cx),
             Self::Markdown(viewer) => viewer.focus_handle(cx),
             Self::Image(viewer) => viewer.focus_handle(cx),
         }
     }
 
     pub fn refresh(&self, cx: &mut App) {
-        if let Self::Graph(viewer) = self {
-            viewer.refresh(cx);
+        match self {
+            Self::Base(viewer) => viewer.refresh(cx),
+            Self::Markdown(_) | Self::Image(_) => {}
         }
     }
 
     pub fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<FileHandler>) {
-        if let Self::Graph(viewer) = self {
-            viewer.set_vault_catalog(catalog, cx);
+        match self {
+            Self::Base(viewer) => viewer.set_vault_catalog(catalog, cx),
+            Self::Markdown(_) | Self::Image(_) => {}
         }
     }
 }
