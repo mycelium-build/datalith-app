@@ -180,38 +180,15 @@ impl BaseViewState {
                 };
                 visible_range
                     .map(|index| {
-                        let Some(item) = snapshot.items.get(index) else {
-                            return div().into_any_element();
-                        };
-                        match item {
-                            BaseItem::Header { label, count, .. } => render_group_header(
-                                format!("base-table-header-{index}"),
-                                label,
-                                *count,
-                                table_min_width,
-                                &row_column_widths,
-                                view,
-                                snapshot.group_summaries_for(label),
-                                cx,
-                            ),
-                            BaseItem::Row {
-                                index: row_index, ..
-                            } => {
-                                let Some(row) = snapshot.rows.get(*row_index) else {
-                                    return div().into_any_element();
-                                };
-                                render_table_row(
-                                    *row_index,
-                                    snapshot,
-                                    row,
-                                    view,
-                                    table_min_width,
-                                    &row_column_widths,
-                                    &handler,
-                                    cx,
-                                )
-                            }
-                        }
+                        render_table_item(
+                            index,
+                            snapshot,
+                            view,
+                            table_min_width,
+                            &row_column_widths,
+                            &handler,
+                            cx,
+                        )
                     })
                     .collect()
             },
@@ -279,6 +256,50 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
             BaseItem::Row { .. } => size(px(1.), px(height)),
         })
         .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_table_item(
+    index: usize,
+    snapshot: &BaseSnapshot,
+    view: &BaseView,
+    min_width: Pixels,
+    column_widths: &[Pixels],
+    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    cx: &App,
+) -> AnyElement {
+    let Some(item) = snapshot.items.get(index) else {
+        return div().into_any_element();
+    };
+    match item {
+        BaseItem::Header { label, count, .. } => render_group_header(
+            format!("base-table-header-{index}"),
+            label,
+            *count,
+            min_width,
+            column_widths,
+            view,
+            snapshot.group_summaries_for(label),
+            cx,
+        ),
+        BaseItem::Row {
+            index: row_index, ..
+        } => {
+            let Some(row) = snapshot.rows.get(*row_index) else {
+                return div().into_any_element();
+            };
+            render_table_row(
+                *row_index,
+                snapshot,
+                row,
+                view,
+                min_width,
+                column_widths,
+                handler,
+                cx,
+            )
+        }
+    }
 }
 
 const fn table_row_height(height: TableRowHeight) -> f32 {
