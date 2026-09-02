@@ -12,7 +12,7 @@ use crate::vault::links;
 
 impl CatalogDatabase {
     pub(crate) async fn resolve_path(&self, authored: &str) -> Result<Option<PathBuf>> {
-        let connection = self.read_connection()?;
+        let connection = self.connection().await?;
         Ok(resolve_path_on(&connection, authored)
             .await?
             .map(|path| self.root.join(path)))
@@ -22,7 +22,7 @@ impl CatalogDatabase {
         &self,
         targets: BTreeSet<String>,
     ) -> Result<BTreeMap<String, Option<PathBuf>>> {
-        let connection = self.read_connection()?;
+        let connection = self.connection().await?;
         Ok(resolve_paths_on(&connection, targets)
             .await?
             .into_iter()
@@ -36,7 +36,7 @@ impl CatalogDatabase {
             .context("Rename target is outside the Vault")?;
         let relative_target = relative_target.to_string_lossy().replace('\\', "/");
         let descendant_pattern = format!("{}/%", escape_like_pattern(&relative_target));
-        let connection = self.read_connection()?;
+        let connection = self.connection().await?;
         let mut rows = connection
             .query(
                 "SELECT source_path, ordinal, target, target_path \
@@ -242,7 +242,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             for (path, extension, folder) in [
                 ("Note.txt", "txt", ""),
                 ("a/Note.md", "md", "a"),
@@ -289,7 +289,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             for (path, extension, folder) in [
                 (
                     "examples/bases/notes/covers/x.png",
@@ -339,7 +339,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         pollster::block_on(async {
             let database = CatalogDatabase::open(&root).await.unwrap();
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             for (path, folder) in [
                 ("Source.md", ""),
                 ("Other.md", ""),

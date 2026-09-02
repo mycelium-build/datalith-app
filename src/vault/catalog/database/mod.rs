@@ -39,18 +39,18 @@ pub(super) struct CatalogDatabase {
     pub(super) root: PathBuf,
     connection: turso::Connection,
     connect_fresh: Arc<dyn Fn() -> Result<turso::Connection> + Send + Sync>,
-    read_connection: Arc<Mutex<Option<turso::Connection>>>,
+    parked: Arc<Mutex<Option<turso::Connection>>>,
 }
 
-/// A read handle on the catalog.
-/// Reuses the shared read connection while it is free;
+/// A connection checked out of the catalog pool.
+/// Reuses the parked pool connection while it is free;
 /// otherwise opens a dedicated connection that is dropped on use.
-pub(super) struct ReadConnection {
+pub(super) struct PooledConnection {
     pool: Option<Arc<Mutex<Option<turso::Connection>>>>,
     connection: turso::Connection,
 }
 
-impl Deref for ReadConnection {
+impl Deref for PooledConnection {
     type Target = turso::Connection;
 
     fn deref(&self) -> &turso::Connection {
@@ -58,7 +58,7 @@ impl Deref for ReadConnection {
     }
 }
 
-impl Drop for ReadConnection {
+impl Drop for PooledConnection {
     fn drop(&mut self) {
         if let Some(pool) = &self.pool
             && let Ok(mut parked) = pool.lock()
@@ -82,7 +82,7 @@ impl CatalogDatabase {
         let database_path_text = database_path
             .to_str()
             .ok_or_else(|| anyhow!("Catalog database path is not UTF-8"))?;
-        let (connection, read_connection, connect_fresh) = {
+        let (connection, connect_fresh) = {
             let database =
                 if let Ok(database) = turso::Builder::new_local(database_path_text).build().await {
                     database
@@ -108,55 +108,58 @@ impl CatalogDatabase {
                         .context("Failed to rebuild embedded Turso catalog")?
                 };
             let connection = database.connect()?;
-            connection.execute("PRAGMA foreign_keys = ON", ()).await?;
+            Self::configure_connection(&connection).await?;
             connection
                 .query("PRAGMA journal_mode = WAL", ())
                 .await?
                 .next()
                 .await?;
-            connection
-                .execute("PRAGMA synchronous = NORMAL", ())
-                .await?;
-            // connection.execute("PRAGMA cache_size = -2000", ()).await?; // Default 2MB
-
-            let read_connection = Arc::new(Mutex::new(Some(database.connect()?)));
             let connect_fresh: Arc<dyn Fn() -> Result<turso::Connection> + Send + Sync> = {
                 let database = database.clone();
                 Arc::new(move || Ok(database.connect()?))
             };
             drop(database);
-            (connection, read_connection, connect_fresh)
+            (connection, connect_fresh)
         };
         let this = Self {
             root: root.to_path_buf(),
             connection,
             connect_fresh,
-            read_connection,
+            parked: Arc::new(Mutex::new(None)),
         };
+        if let Ok(mut parked) = this.parked.lock() {
+            *parked = Some(this.connection.clone());
+        }
         this.initialize_schema().await?;
         Ok(this)
     }
 
-    pub(super) fn connection(&self) -> turso::Connection {
-        self.connection.clone()
+    async fn configure_connection(connection: &turso::Connection) -> Result<()> {
+        connection.busy_timeout(std::time::Duration::from_secs(5))?; // resolves write contention
+        connection.execute("PRAGMA foreign_keys = ON", ()).await?;
+        connection
+            .execute("PRAGMA synchronous = NORMAL", ())
+            .await?;
+        Ok(())
     }
 
-    pub(super) fn read_connection(&self) -> Result<ReadConnection> {
-        let mut parked = self
-            .read_connection
+    pub(super) async fn connection(&self) -> Result<PooledConnection> {
+        let parked = self
+            .parked
             .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        let pooled = parked.take();
-        drop(parked);
-        if let Some(connection) = pooled {
-            return Ok(ReadConnection {
-                pool: Some(self.read_connection.clone()),
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(connection) = parked {
+            return Ok(PooledConnection {
+                pool: Some(self.parked.clone()),
                 connection,
             });
         }
-        Ok(ReadConnection {
-            pool: None,
-            connection: (self.connect_fresh)()?,
+        let connection = (self.connect_fresh)()?;
+        Self::configure_connection(&connection).await?;
+        Ok(PooledConnection {
+            pool: Some(self.parked.clone()),
+            connection,
         })
     }
 }

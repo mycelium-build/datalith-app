@@ -8,7 +8,7 @@ pub(super) const SCHEMA_VERSION: i64 = 4;
 
 impl CatalogDatabase {
     pub(super) async fn initialize_schema(&self) -> Result<()> {
-        let connection = self.connection();
+        let connection = self.connection().await?;
         connection
             .query("PRAGMA journal_mode = WAL", ())
             .await?

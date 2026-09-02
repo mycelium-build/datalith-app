@@ -126,7 +126,7 @@ fn frontmatter_metadata(content: &str) -> Option<serde_json::Value> {
 
 impl CatalogDatabase {
     pub(crate) async fn stored_paths(&self) -> Result<Vec<PathBuf>> {
-        let connection = self.read_connection()?;
+        let connection = self.connection().await?;
         let mut rows = connection
             .query("SELECT path FROM documents ORDER BY path", ())
             .await?;
@@ -144,7 +144,7 @@ impl CatalogDatabase {
         file_types: &RegisteredFileTypes,
     ) -> Result<SynchronizedFiles> {
         let root = &self.root;
-        let connection = self.connection();
+        let connection = self.connection().await?;
         connection.execute("BEGIN IMMEDIATE", ()).await?;
         let result = async {
             // load stored meta data
@@ -520,7 +520,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             connection
                 .execute_batch(
                     "CREATE TABLE resolution_updates(source_path TEXT NOT NULL);
@@ -601,7 +601,7 @@ mod tests {
                 .synchronize(&[], &[source.clone(), text_target.clone()], &file_types)
                 .await
                 .unwrap();
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
 
             let resolved_target = async || {
                 connection
@@ -665,7 +665,7 @@ mod tests {
             assert!(result.changed.is_empty());
             assert_eq!(result.all.len(), 2);
 
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             let mut rows = connection
                 .query(
                     "SELECT metadata FROM documents WHERE path = 'Source.md'",
@@ -684,7 +684,7 @@ mod tests {
                 "metadata must survive re-sync"
             );
 
-            let connection = database.connection();
+            let connection = database.connection().await.unwrap();
             let mut rows = connection
                 .query(
                     "SELECT target_path FROM wiki_links WHERE source_path = 'Source.md'",

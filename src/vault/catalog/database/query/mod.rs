@@ -13,7 +13,7 @@ mod summaries;
 
 impl CatalogDatabase {
     pub(crate) async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
-        let connection = self.read_connection()?;
+        let connection = self.connection().await?;
         connection.execute("BEGIN DEFERRED", ()).await?;
         let result = self.query_base_on(&connection, query).await;
         let _ = connection.execute("ROLLBACK", ()).await;
