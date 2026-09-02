@@ -2,10 +2,10 @@ use std::cell::RefCell;
 
 use gpui::{
     AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
-    Size, Styled, TextRun, Window, div, px, size,
+    ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
 };
 use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
-use gpui_component::{scroll::ScrollableElement, scroll::Scrollbar, scroll::ScrollbarMode};
+use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
@@ -30,6 +30,7 @@ struct ColumnWidths {
 
 pub(super) struct TableState {
     pub(super) scroll_handle: VirtualListScrollHandle,
+    pub(super) h_scroll_handle: ScrollHandle,
     pub(super) item_sizes: Vec<Size<Pixels>>,
     column_widths: RefCell<ColumnWidths>,
 }
@@ -38,6 +39,7 @@ impl TableState {
     pub(super) fn new() -> Self {
         Self {
             scroll_handle: VirtualListScrollHandle::new(),
+            h_scroll_handle: ScrollHandle::new(),
             item_sizes: Vec::new(),
             column_widths: RefCell::default(),
         }
@@ -224,8 +226,12 @@ impl BaseViewState {
             .min_w_0()
             .min_h_0()
             .child(
-                v_flex().size_full().child(
-                    div().size_full().overflow_x_scrollbar().child(
+                div()
+                    .id("base-table-scroll")
+                    .size_full()
+                    .overflow_x_scroll()
+                    .track_scroll(&table_state.h_scroll_handle)
+                    .child(
                         v_flex()
                             .size_full()
                             .min_w(table_min_width)
@@ -233,11 +239,17 @@ impl BaseViewState {
                             .child(body)
                             .children(footer),
                     ),
-                ),
             )
             .child(
                 div().absolute().inset_0().child(
                     Scrollbar::vertical(&table_state.scroll_handle)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
+                ),
+            )
+            .child(
+                div().absolute().inset_0().child(
+                    Scrollbar::horizontal(&table_state.h_scroll_handle)
                         .mode(ScrollbarMode::Always)
                         .viewport_from_layout(),
                 ),
