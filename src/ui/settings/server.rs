@@ -41,7 +41,7 @@ impl SettingsView {
                 },
             ),
         )
-        .description("Let the Datalith web clipper browser extension save pages into your vaults.")
+        .description("Let external apps interact with your vaults, like the Datalith Clipper browser extension.")
     }
 
     fn port_item() -> SettingItem {
@@ -148,7 +148,7 @@ impl SettingsView {
                 .child(text)
                 .into_any_element()
         })
-        .description("Install the Datalith web clipper browser extension to clip pages.")
+        .description("External apps connect to this address.")
     }
 }
 
