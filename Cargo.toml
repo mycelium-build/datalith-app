@@ -14,6 +14,10 @@ homepage = "https://github.com/mycelium-build/datalith-app"
 category = "Productivity"
 icons = ["assets/logo/datalith.png", "assets/logo/datalith.icns"]
 license-file = "LICENSING.md"
+
+[[package.metadata.packager.deep_link_protocols]]
+name = "Datalith"
+schemes = ["datalith"]
 resources = [
   { src = "LICENSE", target = "Licenses/LICENSE" },
   { src = "LICENSE-GPL-3.0", target = "Licenses/LICENSE-GPL-3.0" },
@@ -54,14 +58,18 @@ txtodo = "1.0.2"
 time = "0.3.53"
 notify = "8.2.0"
 yaml_serde = "0.10.4"
+rand = "0.10.2"
 pollster = "1.0.1"
 turso = { version = "0.7.0", default-features = false }
 rayon = "1.12.0"
 conv = "0.3.3"
+poem = "3.1.12"
+poem-openapi = { version = "5.1.16", features = ["swagger-ui"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-rand = "0.10.2"
+poem = { version = "3.1.12", features = ["test"] }
 
 [[bench]]
 name = "catalog"
