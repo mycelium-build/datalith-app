@@ -6,11 +6,12 @@ use anyhow::{Context, Result, bail};
 use gpui::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
 pub const MAX_FONT_SCALE: f64 = 3.0;
+pub const DEFAULT_CLIPPER_PORT: u16 = 42908;
 
 /// The effective theme mode currently in use, derived from a [`ThemePreference`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -93,6 +94,49 @@ pub enum ThemeKind {
     Dark,
 }
 
+/// Settings for the embedded Clipper API server.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClipperSettings {
+    enabled: bool,
+    port: u16,
+    token: Option<String>,
+}
+
+impl ClipperSettings {
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
+    fn normalized(enabled: bool, port: u16, token: Option<String>) -> Self {
+        let token = token
+            .map(|token| token.trim().to_owned())
+            .filter(|token| !token.is_empty());
+        Self {
+            enabled,
+            port: if port == 0 {
+                DEFAULT_CLIPPER_PORT
+            } else {
+                port
+            },
+            token,
+        }
+    }
+}
+
+impl Default for ClipperSettings {
+    fn default() -> Self {
+        Self::normalized(true, DEFAULT_CLIPPER_PORT, None)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
@@ -101,6 +145,7 @@ pub struct ApplicationSettings {
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
+    pub clipper: ClipperSettings,
 }
 
 impl Default for ApplicationSettings {
@@ -112,8 +157,19 @@ impl Default for ApplicationSettings {
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
+            clipper: ClipperSettings::default(),
         }
     }
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+struct StoredClipperSettings {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    port: Option<u16>,
+    #[serde(default)]
+    token: Option<String>,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -132,6 +188,8 @@ struct StoredSettings {
     dark_theme_name: Option<String>,
     #[serde(default)]
     font_size_multiplier: Option<f64>,
+    #[serde(default)]
+    clipper: StoredClipperSettings,
 }
 
 const fn schema_version() -> u32 {
@@ -164,6 +222,11 @@ impl StoredSettings {
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
             font_scale: normalize_font_scale(self.font_size_multiplier.unwrap_or_default()),
+            clipper: ClipperSettings::normalized(
+                self.clipper.enabled.unwrap_or(true),
+                self.clipper.port.unwrap_or(DEFAULT_CLIPPER_PORT),
+                self.clipper.token,
+            ),
         }
     }
 
@@ -183,6 +246,11 @@ impl StoredSettings {
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
+            clipper: StoredClipperSettings {
+                enabled: Some(settings.clipper.enabled()),
+                port: Some(settings.clipper.port()),
+                token: settings.clipper.token.clone(),
+            },
         }
     }
 }
@@ -290,6 +358,24 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
     settings_lock().update(|settings| settings.font_scale = scale)
+}
+
+pub fn set_clipper_enabled(enabled: bool) -> Result<()> {
+    settings_lock().update(|settings| settings.clipper.enabled = enabled)
+}
+
+pub fn set_clipper_port(port: u16) -> Result<()> {
+    if port == 0 {
+        bail!("Clipper port must be between 1 and 65535");
+    }
+    settings_lock().update(|settings| settings.clipper.port = port)
+}
+
+pub fn set_clipper_token(token: Option<String>) -> Result<()> {
+    let token = token
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty());
+    settings_lock().update(move |settings| settings.clipper.token = token)
 }
 
 #[cfg(test)]
@@ -425,6 +511,52 @@ mod tests {
             WindowAppearance::Light
         );
         assert_eq!(ThemeMode::Dark.window_appearance(), WindowAppearance::Dark);
+    }
+
+    #[test]
+    fn v1_config_without_clipper_section_migrates_to_defaults() {
+        let file = temp_settings_file("v1-clipper-migration");
+        fs::write(
+            &file,
+            r#"{"schema_version":1,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+
+        let settings = SettingsStore::new(file.clone()).snapshot();
+
+        assert_eq!(settings.clipper, ClipperSettings::default());
+        assert!(settings.clipper.enabled());
+        assert_eq!(settings.clipper.port(), DEFAULT_CLIPPER_PORT);
+        assert_eq!(settings.clipper.token(), None);
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn clipper_settings_round_trip_and_normalize() {
+        let file = temp_settings_file("clipper-round-trip");
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| {
+                settings.clipper.enabled = false;
+                settings.clipper.port = 50000;
+                settings.clipper.token = Some("  secret  ".to_owned());
+            })
+            .unwrap();
+
+        let reloaded = SettingsStore::new(file.clone()).snapshot();
+        assert!(!reloaded.clipper.enabled());
+        assert_eq!(reloaded.clipper.port(), 50000);
+        assert_eq!(reloaded.clipper.token(), Some("secret"));
+
+        fs::write(
+            &file,
+            r#"{"schema_version":2,"clipper":{"enabled":true,"port":0,"token":"   "}}"#,
+        )
+        .unwrap();
+        let normalized = SettingsStore::new(file.clone()).snapshot();
+        assert_eq!(normalized.clipper.port(), DEFAULT_CLIPPER_PORT);
+        assert_eq!(normalized.clipper.token(), None);
+        let _ = fs::remove_file(file);
     }
 
     #[test]
