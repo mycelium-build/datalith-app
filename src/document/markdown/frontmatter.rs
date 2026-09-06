@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use yaml_serde::Value;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,11 +102,118 @@ fn parse_frontmatter_link(value: &str) -> Option<(&str, &str)> {
     markdown.split_once("](")
 }
 
+fn needs_quoting(key: &str) -> bool {
+    key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn quoted_yaml_scalar(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len().saturating_add(2));
+    escaped.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            c if c.is_control() => {
+                let code = u32::from(c);
+                if code < 0x100 {
+                    let _ = write!(escaped, "\\x{code:02x}");
+                } else {
+                    let _ = write!(escaped, "\\u{code:04x}");
+                }
+            }
+            c => escaped.push(c),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
+/// Serializes key/value pairs as YAML frontmatter lines, one `key: value` pair per line.
+/// Keys are quoted only when they need it;
+/// values are always double-quoted so plain scalars round-trip as strings
+/// (never YAML booleans or numbers).
+/// The output matches what the frontmatter parser accepts.
+#[must_use]
+pub fn serialize_properties(properties: &[(String, String)]) -> String {
+    let mut lines = Vec::with_capacity(properties.len());
+    for (key, value) in properties {
+        let key = if needs_quoting(key) {
+            quoted_yaml_scalar(key)
+        } else {
+            key.clone()
+        };
+        lines.push(format!("{key}: {}", quoted_yaml_scalar(value)));
+    }
+    lines.join("\n")
+}
+
+#[must_use]
+pub fn build_note_document(properties: &[(String, String)], content: &str) -> String {
+    if properties.is_empty() {
+        return content.to_owned();
+    }
+    format!(
+        "---\n{}\n---\n\n{}",
+        serialize_properties(properties),
+        content
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::super::parse_markdown;
     use super::*;
+
+    #[test]
+    fn serializes_properties_that_round_trip_through_the_parser() {
+        let properties = vec![
+            ("title".to_owned(), "A: \"quoted\" value".to_owned()),
+            ("tags".to_owned(), "true".to_owned()),
+            ("multi".to_owned(), "line one\nline two".to_owned()),
+            ("score".to_owned(), "3.14".to_owned()),
+            ("odd key".to_owned(), "plain".to_owned()),
+        ];
+        let document = parse_markdown(&build_note_document(&properties, "Body"));
+        let frontmatter = document.frontmatter.expect("frontmatter");
+
+        assert_eq!(
+            frontmatter.properties,
+            vec![
+                FrontmatterProperty {
+                    key: "title".into(),
+                    values: vec![FrontmatterValue::Text("A: \"quoted\" value".into())],
+                },
+                FrontmatterProperty {
+                    key: "tags".into(),
+                    values: vec![FrontmatterValue::Text("true".into())],
+                },
+                FrontmatterProperty {
+                    key: "multi".into(),
+                    values: vec![FrontmatterValue::Text("line one\nline two".into())],
+                },
+                FrontmatterProperty {
+                    key: "score".into(),
+                    values: vec![FrontmatterValue::Text("3.14".into())],
+                },
+                FrontmatterProperty {
+                    key: "odd key".into(),
+                    values: vec![FrontmatterValue::Text("plain".into())],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_content_only_document_without_properties() {
+        assert_eq!(build_note_document(&[], "Body"), "Body");
+    }
 
     #[test]
     fn parses_typed_frontmatter_properties() {

@@ -3,7 +3,7 @@ mod frontmatter;
 mod links;
 mod parse;
 
-pub use self::frontmatter::{Frontmatter, FrontmatterValue};
+pub use self::frontmatter::{Frontmatter, FrontmatterValue, build_note_document};
 pub use links::find_link_at_offset;
 
 #[derive(Clone, Debug, PartialEq)]
