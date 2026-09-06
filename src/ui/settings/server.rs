@@ -1,4 +1,4 @@
-//! Clipper settings page: the embedded Clipper API server (enable, port, token, live status).
+//! Local server settings page: enable, port, token, live status.
 
 use conv::ConvUtil as _;
 use gpui::{App, IntoElement, ParentElement, Styled, div};
@@ -12,12 +12,12 @@ use std::fmt::Write as _;
 
 use super::SettingsView;
 use crate::app::{settings, system};
-use crate::clipper;
+use crate::server;
 use crate::ui::notifications;
 
 impl SettingsView {
-    pub(super) fn clipper_group() -> SettingGroup {
-        SettingGroup::new().title("Clipper").items(vec![
+    pub(super) fn server_group() -> SettingGroup {
+        SettingGroup::new().title("Local Server").items(vec![
             Self::enabled_item(),
             Self::port_item(),
             Self::token_item(),
@@ -29,12 +29,12 @@ impl SettingsView {
         SettingItem::new(
             "Enabled",
             SettingField::switch(
-                |_cx| settings::snapshot().clipper.enabled(),
+                |_cx| settings::snapshot().server.enabled(),
                 |enabled: bool, cx| {
-                    if let Err(error) = settings::set_clipper_enabled(enabled) {
+                    if let Err(error) = settings::set_server_enabled(enabled) {
                         notifications::push_window_notification(
                             cx,
-                            notifications::settings_save_failed("clipper setting", &error),
+                            notifications::settings_save_failed("server setting", &error),
                         );
                     }
                     sync_server(cx);
@@ -53,7 +53,7 @@ impl SettingsView {
                     max: f64::from(u16::MAX),
                     step: 1.0,
                 },
-                |_cx| f64::from(settings::snapshot().clipper.port()),
+                |_cx| f64::from(settings::snapshot().server.port()),
                 |value: f64, cx| {
                     let rounded = value.round();
                     if !(1.0..=f64::from(u16::MAX)).contains(&rounded) {
@@ -62,13 +62,13 @@ impl SettingsView {
                     let Ok(port) = rounded.approx_as::<u16>() else {
                         return;
                     };
-                    if port == settings::snapshot().clipper.port() {
+                    if port == settings::snapshot().server.port() {
                         return;
                     }
-                    if let Err(error) = settings::set_clipper_port(port) {
+                    if let Err(error) = settings::set_server_port(port) {
                         notifications::push_window_notification(
                             cx,
-                            notifications::settings_save_failed("clipper port", &error),
+                            notifications::settings_save_failed("server port", &error),
                         );
                         return;
                     }
@@ -76,12 +76,12 @@ impl SettingsView {
                 },
             ),
         )
-        .description("Local port the Clipper API listens on.")
+        .description("Local port the server listens on.")
     }
 
     fn token_item() -> SettingItem {
         SettingItem::render(move |_options, _window, cx| {
-            let token = settings::snapshot().clipper.token().map(str::to_owned);
+            let token = settings::snapshot().server.token().map(str::to_owned);
             let display = token.as_deref().map_or_else(
                 || "Not set".to_owned(),
                 |token| format!("{}…", token.get(..4).unwrap_or(token)),
@@ -97,7 +97,7 @@ impl SettingsView {
                         .child(display),
                 )
                 .child(
-                    Button::new("clipper-token-generate")
+                    Button::new("server-token-generate")
                         .small()
                         .label("Generate")
                         .on_click(|_, _, cx| {
@@ -106,12 +106,12 @@ impl SettingsView {
                         }),
                 )
                 .child(
-                    Button::new("clipper-token-copy")
+                    Button::new("server-token-copy")
                         .small()
                         .label("Copy")
                         .on_click(|_, _, cx| {
                             let Some(token) =
-                                settings::snapshot().clipper.token().map(str::to_owned)
+                                settings::snapshot().server.token().map(str::to_owned)
                             else {
                                 return;
                             };
@@ -124,24 +124,24 @@ impl SettingsView {
                         }),
                 )
                 .child(
-                    Button::new("clipper-token-clear")
+                    Button::new("server-token-clear")
                         .small()
                         .label("Clear")
                         .on_click(|_, _, cx| apply_token(cx, None)),
                 )
                 .into_any_element()
         })
-        .description("Optional bearer token the clipper must send. Empty disables authentication.")
+        .description("Optional bearer token clients must send. Empty disables authentication.")
     }
 
     fn status_item() -> SettingItem {
         SettingItem::render(move |_options, _window, cx| {
-            let text = match clipper::server::status() {
-                clipper::server::ServerStatus::Running(port) => {
-                    format!("Running on {}:{port}", clipper::server::CLIPPER_HOST)
+            let text = match server::status() {
+                server::ServerStatus::Running(port) => {
+                    format!("Running on {}:{port}", server::BIND_HOST)
                 }
-                clipper::server::ServerStatus::Stopped => "Stopped".to_owned(),
-                clipper::server::ServerStatus::Failed(error) => error,
+                server::ServerStatus::Stopped => "Stopped".to_owned(),
+                server::ServerStatus::Failed(error) => error,
             };
             div()
                 .text_color(cx.theme().muted_foreground)
@@ -153,10 +153,10 @@ impl SettingsView {
 }
 
 fn apply_token(cx: &mut App, token: Option<String>) {
-    if let Err(error) = settings::set_clipper_token(token) {
+    if let Err(error) = settings::set_server_token(token) {
         notifications::push_window_notification(
             cx,
-            notifications::settings_save_failed("clipper token", &error),
+            notifications::settings_save_failed("server token", &error),
         );
         return;
     }
@@ -164,11 +164,11 @@ fn apply_token(cx: &mut App, token: Option<String>) {
 }
 
 fn sync_server(cx: &mut App) {
-    if let Err(error) = clipper::server::sync() {
-        let port = settings::snapshot().clipper.port();
+    if let Err(error) = server::sync() {
+        let port = settings::snapshot().server.port();
         notifications::push_window_notification(
             cx,
-            notifications::clipper_server_failed(port, &error),
+            notifications::server_start_failed(port, &error),
         );
     }
     cx.refresh_windows();
