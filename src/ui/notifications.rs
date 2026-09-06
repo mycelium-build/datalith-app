@@ -108,3 +108,14 @@ pub fn font_load_failed(error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to load the bundled Pixeloid font: {error}"))
         .autohide(false)
 }
+
+pub fn clipper_server_failed(port: u16, error: &str) -> Notification {
+    Notification::error(format!(
+        "Clipper API could not start on 127.0.0.1:{port}: {error}"
+    ))
+    .autohide(false)
+}
+
+pub fn copy_token_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to copy the clipper token: {error}"))
+}
