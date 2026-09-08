@@ -7,6 +7,10 @@
   "bump-minor-pre-major": true,
   "draft": true,
   "packages": {
-    ".": {}
+    ".": {
+      "extra-files": [
+        "THIRD-PARTY-NOTICES.md"
+      ]
+    }
   }
 }
