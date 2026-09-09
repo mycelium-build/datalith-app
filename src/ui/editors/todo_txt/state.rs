@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::{
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::select::SelectState;
+use gpui_kit::component::{VirtualListScrollHandle, WindowExt};
+use gpui_kit::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Size,
     Subscription, Window, px,
 };
-use gpui_component::input::{InputEvent, InputState};
-use gpui_component::select::SelectState;
-use gpui_component::{VirtualListScrollHandle, WindowExt};
 
 use crate::document::handler::ReloadOutcome;
 use crate::document::todo_txt::{FocusTarget, TodoTxtWorkspace, parse_date};

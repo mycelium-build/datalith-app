@@ -3,7 +3,7 @@ mod render;
 
 use std::path::{Path, PathBuf};
 
-use gpui::{Entity, Subscription};
+use gpui_kit::{Entity, Subscription};
 
 use crate::document::handler::FileHandler;
 

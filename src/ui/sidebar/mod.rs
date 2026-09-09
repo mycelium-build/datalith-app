@@ -5,15 +5,15 @@ mod tree_actions;
 
 use std::path::{Path, PathBuf};
 
-use gpui::{
-    AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
-    ParentElement, Render, SharedString, Styled, Window, div, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme,
     input::{InputEvent, InputState},
     menu::ContextMenuExt,
     select::Select,
+};
+use gpui_kit::{
+    AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
+    ParentElement, Render, SharedString, Styled, Window, div, px,
 };
 
 use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer};
@@ -164,7 +164,7 @@ impl DatalithView {
 
         state.focus_handle(cx).focus(window, cx);
         self.rename_state = Some(state.clone());
-        window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
+        window.dispatch_action(Box::new(gpui_kit::component::input::SelectAll), cx);
     }
 
     fn path_from_id(id: &SharedString) -> PathBuf {
@@ -201,7 +201,7 @@ impl DatalithView {
             .border_color(cx.theme().border)
             .track_focus(&self.sidebar_focus_handle)
             .on_mouse_down(
-                gpui::MouseButton::Left,
+                gpui_kit::MouseButton::Left,
                 cx.listener(|this, _event: &MouseDownEvent, window, cx| {
                     this.sidebar_focus_handle.focus(window, cx);
                     cx.stop_propagation();

@@ -1,11 +1,11 @@
-use gpui::{
+use gpui_kit::component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
+use gpui_kit::component::{
+    ActiveTheme, ElementExt, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
+};
+use gpui_kit::{
     AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement, ObjectFit,
     ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img, prelude::StyledImage as _,
     px, size,
-};
-use gpui_component::scroll::{ScrollableElement, Scrollbar, ScrollbarMode};
-use gpui_component::{
-    ActiveTheme, ElementExt, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 
 use crate::document::base::BaseView;
@@ -72,7 +72,7 @@ impl CardsState {
 
 pub(super) fn hide_fullscreen_image(
     state: &mut BaseViewState,
-    _event: &gpui::MouseUpEvent,
+    _event: &gpui_kit::MouseUpEvent,
     _window: &mut Window,
     _cx: &mut Context<BaseViewState>,
 ) {
@@ -84,7 +84,7 @@ pub(super) fn hide_fullscreen_image(
 struct CardRenderContext<'a> {
     snapshot: &'a BaseSnapshot,
     view: &'a BaseView,
-    handler: &'a gpui::WeakEntity<crate::document::handler::FileHandler>,
+    handler: &'a gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
     fullscreen_entity: &'a Entity<BaseViewState>,
     cx: &'a App,
 }

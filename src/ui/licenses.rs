@@ -1,21 +1,20 @@
 use std::sync::LazyLock;
 
-use gpui::{
-    App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    StatefulInteractiveElement, Styled, UniformListScrollHandle, div, px, uniform_list,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     scroll::{Scrollbar, ScrollbarMode},
     v_flex,
 };
+use gpui_kit::{
+    App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
+    StatefulInteractiveElement, Styled, UniformListScrollHandle, div, px, uniform_list,
+};
 
 use super::DatalithView;
 
 const MIT_LICENSE: &str = include_str!("../../LICENSE");
-const GPL_LICENSE: &str = include_str!("../../LICENSE-GPL-3.0");
 const LICENSING: &str = include_str!("../../LICENSING.md");
 const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 
@@ -37,7 +36,6 @@ enum Row {
 static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let sections = [
         ("MIT License (original Datalith source)", MIT_LICENSE),
-        ("GNU General Public License v3", GPL_LICENSE),
         ("Licensing overview", LICENSING),
         ("Third-party notices", THIRD_PARTY_NOTICES),
     ];
@@ -116,7 +114,7 @@ impl LicensesView {
         div()
             .absolute()
             .inset_0()
-            .bg(gpui::black().opacity(0.3))
+            .bg(gpui_kit::black().opacity(0.3))
             .flex()
             .items_center()
             .justify_center()
@@ -215,7 +213,7 @@ fn render_row(row: &Row) -> impl IntoElement {
         .child(text.to_string());
 
     if is_header {
-        row.font_weight(gpui::FontWeight::BOLD).text_sm()
+        row.font_weight(gpui_kit::FontWeight::BOLD).text_sm()
     } else {
         row
     }
@@ -228,15 +226,8 @@ mod tests {
     #[test]
     fn embedded_license_assets_are_non_empty() {
         assert!(!MIT_LICENSE.trim().is_empty());
-        assert!(!GPL_LICENSE.trim().is_empty());
         assert!(!LICENSING.trim().is_empty());
         assert!(!THIRD_PARTY_NOTICES.trim().is_empty());
-    }
-
-    #[test]
-    fn gpl_license_is_complete_gplv3() {
-        assert!(GPL_LICENSE.contains("GNU GENERAL PUBLIC LICENSE"));
-        assert!(GPL_LICENSE.contains("Version 3, 29 June 2007"));
     }
 
     #[test]
@@ -248,15 +239,16 @@ mod tests {
     }
 
     #[test]
-    fn third_party_notices_cover_gpl_components() {
-        assert!(THIRD_PARTY_NOTICES.contains("GPL-3.0-or-later"));
-        assert!(THIRD_PARTY_NOTICES.contains("ztracing"));
+    fn third_party_notices_cover_gpui_components() {
+        assert!(THIRD_PARTY_NOTICES.contains("Apache-2.0"));
+        assert!(THIRD_PARTY_NOTICES.contains("gpui-pre-ztracing"));
     }
 
     #[test]
-    fn licensing_overview_states_mit_and_gpl_scope() {
+    fn licensing_overview_states_mit_and_apache_scope() {
         assert!(LICENSING.contains("MIT"));
-        assert!(LICENSING.contains("GPL-3.0-or-later"));
+        assert!(LICENSING.contains("Apache-2.0"));
+        assert!(!LICENSING.contains("GPL-3.0-or-later"));
     }
 
     #[test]
@@ -285,7 +277,7 @@ mod tests {
             .iter()
             .filter(|row| matches!(row, Row::Header(_)))
             .count();
-        assert_eq!(header_count, 4);
+        assert_eq!(header_count, 3);
         assert!(matches!(ROWS.first(), Some(Row::Header(_))));
         // Wrapping must never produce a row wider than the configured budget.
         for row in ROWS.iter() {

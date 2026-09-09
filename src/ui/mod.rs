@@ -20,16 +20,16 @@ const VAULT_SELECT_MARKER: &str = "__open_new__";
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gpui::{
-    AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, Window, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     input::InputState,
     menu::AppMenuBar,
     notification::Notification,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
     tree::TreeState,
+};
+use gpui_kit::{
+    AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, Window, px,
 };
 
 use crate::app::settings as app_settings;
@@ -191,7 +191,7 @@ impl DatalithView {
                 let new_size = px(BASE_FONT_SIZE * value.start());
                 cx.global_mut::<settings::ThemeOptions>()
                     .font_size_multiplier = val;
-                gpui_component::Theme::global_mut(cx).font_size = new_size;
+                gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
                 cx.refresh_windows();
                 if let Err(error) = app_settings::set_font_scale(val) {
                     view.pending_notifications
@@ -260,8 +260,8 @@ impl DatalithView {
             let preference = app_settings::snapshot().theme_preference;
             if preference == app_settings::ThemePreference::System {
                 let effective = preference.resolve(window.appearance()).into();
-                gpui_component::Theme::change(effective, Some(window), cx);
-                gpui_component::Theme::global_mut(cx).mode = effective;
+                gpui_kit::component::Theme::change(effective, Some(window), cx);
+                gpui_kit::component::Theme::global_mut(cx).mode = effective;
             }
         })
     }

@@ -1,12 +1,12 @@
 //! About settings page: version, licensing, and legal links.
 
-use gpui::{App, IntoElement, ParentElement, Styled, div};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Sizable as _,
     button::Button,
     setting::{SettingGroup, SettingItem},
     v_flex,
 };
+use gpui_kit::{App, IntoElement, ParentElement, Styled, div};
 
 use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
 use crate::ui::monolith::monolith_mark;
@@ -41,7 +41,11 @@ impl SettingsView {
                     .items_center()
                     .gap_2()
                     .child(monolith_mark(3.0, cx.theme().primary))
-                    .child(div().font_weight(gpui::FontWeight::BOLD).child("Datalith"))
+                    .child(
+                        div()
+                            .font_weight(gpui_kit::FontWeight::BOLD)
+                            .child("Datalith"),
+                    )
                     .child(
                         div()
                             .text_sm()
@@ -84,8 +88,8 @@ impl SettingsView {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(
-                                "Distributed binaries include GPL-3.0-or-later components \
-                                 and are conveyed under GPL-3.0-or-later.",
+                                "Distributed binaries are conveyed under the MIT License; \
+                                 third-party terms are in the license notices.",
                             ),
                     )
                     .child(
@@ -94,7 +98,7 @@ impl SettingsView {
                             .text_color(cx.theme().muted_foreground)
                             .child(
                                 "This program comes with ABSOLUTELY NO WARRANTY; \
-                                 for details see the GNU GPL.",
+                                 for details see the MIT License.",
                             ),
                     )
                     .child(
@@ -134,7 +138,7 @@ impl SettingsView {
                                 Button::new("about-view-source")
                                     .outline()
                                     .small()
-                                    .label("View corresponding source")
+                                    .label("View release source")
                                     .on_click(|_, _, cx| {
                                         let url = crate::ui::licenses::corresponding_source_url();
                                         open_external_url(&url, cx);

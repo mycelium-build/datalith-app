@@ -1,14 +1,14 @@
 use super::DatalithView;
-use gpui::{
-    Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render, Styled,
-    Window, div, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Icon, IconName, Root, Sizable, WindowExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     resizable::{h_resizable, resizable_panel},
     v_flex,
+};
+use gpui_kit::{
+    Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render, Styled,
+    Window, div, px,
 };
 
 use crate::app::keymap::display_binding;
@@ -92,7 +92,7 @@ impl Render for DatalithView {
                             .size_full()
                             .overflow_hidden()
                             .on_mouse_down(
-                                gpui::MouseButton::Left,
+                                gpui_kit::MouseButton::Left,
                                 cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
                                     tree_state.update(cx, |state, cx| {
                                         state.set_selected_index(None, cx);

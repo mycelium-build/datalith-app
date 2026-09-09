@@ -8,12 +8,12 @@ mod snapshot;
 
 use std::path::PathBuf;
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, ElementExt, WindowExt, h_flex};
+use gpui_kit::{
     AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
     ScrollDelta, ScrollWheelEvent, Styled, WeakEntity, Window, div, point, px,
 };
-use gpui_component::{ActiveTheme, ElementExt, WindowExt, h_flex};
 
 use crate::document::base::GraphConfig;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
@@ -322,7 +322,7 @@ impl GraphState {
             .on_scroll_wheel(cx.listener(Self::handle_scroll))
             .on_prepaint(move |bounds, _window, cx| update_canvas_bounds(&entity, bounds, cx))
             .child(
-                gpui::canvas(
+                gpui_kit::canvas(
                     move |bounds, _window, _cx| (bounds, snapshot_for_paint, camera_for_paint),
                     move |_bounds, (bounds, snapshot, camera), window, cx| {
                         paint::paint_graph(
@@ -384,7 +384,7 @@ fn render_overlay(legend: &[LegendEntry], summaries: &[String], cx: &App) -> Opt
         return None;
     }
     Some(
-        gpui_component::v_flex()
+        gpui_kit::component::v_flex()
             .absolute()
             .top_2()
             .right_2()
@@ -405,7 +405,7 @@ fn render_summary_box(summaries: &[String], cx: &App) -> AnyElement {
             .child(line.clone())
             .into_any_element()
     });
-    gpui_component::v_flex()
+    gpui_kit::component::v_flex()
         .gap_1()
         .p_2()
         .rounded_md()
@@ -431,7 +431,7 @@ fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
             )
             .into_any_element()
     });
-    gpui_component::v_flex()
+    gpui_kit::component::v_flex()
         .gap_1()
         .p_2()
         .rounded_md()

@@ -16,7 +16,6 @@ icons = ["assets/logo/datalith.png", "assets/logo/datalith.icns"]
 license-file = "LICENSING.md"
 resources = [
   { src = "LICENSE", target = "Licenses/LICENSE" },
-  { src = "LICENSE-GPL-3.0", target = "Licenses/LICENSE-GPL-3.0" },
   { src = "LICENSING.md", target = "Licenses/LICENSING.md" },
   { src = "THIRD-PARTY-NOTICES.md", target = "Licenses/THIRD-PARTY-NOTICES.md" },
 ]
@@ -30,18 +29,10 @@ installer-icon = "assets/logo/datalith.ico"
 embed-resource = "3.0.9"
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
-  "font-kit",
-  "wayland",
-  "x11",
-] }
-reqwest_client = { git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf", features = [
+gpui-kit = { version = "0.6.1", features = [
   "tree-sitter-markdown",
   "tree-sitter-yaml",
 ] }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf" }
 anyhow = "1.0"
 dirs = "6"
 serde = { version = "1.0.228", features = ["derive"] }

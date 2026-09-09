@@ -4,7 +4,6 @@
 # This list is derived from deny.toml [licenses].allow by sync_allowlist.py; do not edit by hand.
 # Order is significant: it is cargo-about's priority list.
 accepted = [
-    "GPL-3.0-or-later",
     "Apache-2.0",
     "MIT",
     "MIT-0",
@@ -39,18 +38,6 @@ workarounds = ["ring", "rustls", "cocoa"]
 # Packages whose manifests lack machine-readable license metadata.
 # Each clarification cites the upstream license file from the exact locked revision
 # and pins its SHA-256 checksum so drift fails the generation.
-
-[gpui_shared_string.clarify]
-license = "Apache-2.0"
-files = [
-    { path = "LICENSE-APACHE", checksum = "752daf2fb234ca4a1fa372c073fe127f44b7b90fd2529ae44273a64f9d53da7a" },
-]
-
-[gpui_util.clarify]
-license = "Apache-2.0"
-files = [
-    { path = "LICENSE-APACHE", checksum = "752daf2fb234ca4a1fa372c073fe127f44b7b90fd2529ae44273a64f9d53da7a" },
-]
 
 [cfg_block.clarify]
 license = "Apache-2.0"

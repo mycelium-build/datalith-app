@@ -1,10 +1,10 @@
 //! Cell rendering over projected snapshot values.
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, h_flex};
+use gpui_kit::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
 };
-use gpui_component::{ActiveTheme, h_flex};
 
 use crate::document::base::DisplayProperty;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
@@ -15,7 +15,7 @@ pub(super) fn render_property_cell(
     snapshot: &BaseSnapshot,
     row: &BaseRow,
     property: &DisplayProperty,
-    handler: &gpui::WeakEntity<FileHandler>,
+    handler: &gpui_kit::WeakEntity<FileHandler>,
     id: ElementId,
     truncate: bool,
     cx: &App,
@@ -123,7 +123,7 @@ fn render_link(
     label: &str,
     target: String,
     truncate: bool,
-    handler: gpui::WeakEntity<FileHandler>,
+    handler: gpui_kit::WeakEntity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
     div()
@@ -148,9 +148,9 @@ fn render_link(
 
 pub(super) fn centered_message(
     message: &str,
-    cx: &gpui::Context<super::BaseViewState>,
+    cx: &gpui_kit::Context<super::BaseViewState>,
 ) -> AnyElement {
-    gpui_component::v_flex()
+    gpui_kit::component::v_flex()
         .size_full()
         .items_center()
         .justify_center()

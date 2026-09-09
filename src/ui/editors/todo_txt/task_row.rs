@@ -1,15 +1,15 @@
 use std::ops::{Add, Mul};
 
-use gpui::prelude::FluentBuilder;
-use gpui::{
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::input::Input;
+use gpui_kit::component::popover::{Popover, PopoverState};
+use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{
     AnyElement, App, AppContext, Context, Element, ElementId, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::checkbox::Checkbox;
-use gpui_component::input::Input;
-use gpui_component::popover::{Popover, PopoverState};
-use gpui_component::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
 
 use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
 use txtodo::{Priority, Task};
@@ -45,7 +45,7 @@ impl TodoTxtState {
         let row_bg = if is_selected {
             cx.theme().accent.opacity(0.1)
         } else {
-            gpui::transparent_black()
+            gpui_kit::transparent_black()
         };
 
         let mut row = h_flex()

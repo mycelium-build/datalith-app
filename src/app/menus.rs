@@ -1,5 +1,5 @@
-use gpui::{App, Menu, MenuItem};
-use gpui_component::GlobalState;
+use gpui_kit::component::GlobalState;
+use gpui_kit::{App, Menu, MenuItem};
 
 use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts};
 

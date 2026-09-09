@@ -1,8 +1,8 @@
-use gpui::{
+use gpui_kit::component::{ActiveTheme, Icon, IconName, h_flex};
+use gpui_kit::{
     Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
     div, px,
 };
-use gpui_component::{ActiveTheme, Icon, IconName, h_flex};
 
 use super::super::palette::PaletteKind;
 use super::{DatalithView, TREE_PADDING_PX};

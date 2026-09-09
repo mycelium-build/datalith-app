@@ -1,9 +1,9 @@
-use gpui_component::ThemeRegistry;
-use gpui_component::notification::Notification;
+use gpui_kit::component::ThemeRegistry;
+use gpui_kit::component::notification::Notification;
 
 use crate::ui::notifications;
 
-pub fn load_embedded_themes(cx: &mut gpui::App) -> Vec<Notification> {
+pub fn load_embedded_themes(cx: &mut gpui_kit::App) -> Vec<Notification> {
     let registry = ThemeRegistry::global_mut(cx);
 
     // From https://github.com/longbridge/gpui-component/tree/main/themes

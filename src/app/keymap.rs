@@ -1,4 +1,4 @@
-use gpui::{App, KeyBinding, Keystroke};
+use gpui_kit::{App, KeyBinding, Keystroke};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,

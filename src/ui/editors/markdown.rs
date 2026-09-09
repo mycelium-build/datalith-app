@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use gpui::{
+use gpui_kit::component::input::{Editor, EditorState};
+use gpui_kit::{
     AnyElement, App, AppContext, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Styled, Window, div, px,
 };
-use gpui_component::input::{Editor, EditorState};
 
 use crate::ui::{BASE_FONT_SIZE, LINE_HEIGHT};
 

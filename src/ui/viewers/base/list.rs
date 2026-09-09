@@ -1,9 +1,9 @@
-use gpui::{
+use gpui_kit::component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
+use gpui_kit::component::{scroll::Scrollbar, scroll::ScrollbarMode};
+use gpui_kit::{
     AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
     Size, Styled, div, px, size,
 };
-use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
-use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 use std::collections::HashMap;
 
 use crate::document::base::{BaseView, ListMarkers};
@@ -248,7 +248,7 @@ fn render_summary_item(
                 .into_any_element()
         })
         .collect::<Vec<_>>();
-    let mut column = gpui_component::v_flex()
+    let mut column = gpui_kit::component::v_flex()
         .id(ElementId::Name(id.into()))
         .w_full()
         .child(
@@ -258,7 +258,7 @@ fn render_summary_item(
                 .child(top_marker)
                 .child("Summary"),
         )
-        .child(gpui_component::v_flex().pl_4().children(entry_lines));
+        .child(gpui_kit::component::v_flex().pl_4().children(entry_lines));
     if group.is_some() {
         column = column.pl_4();
     }
@@ -271,7 +271,7 @@ fn render_list_row(
     row: &BaseRow,
     definition: &crate::document::base::BaseDefinition,
     view: &BaseView,
-    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
     cx: &App,
 ) -> AnyElement {
     let list = view.as_list().cloned().unwrap_or_default();
@@ -318,7 +318,7 @@ fn render_list_row(
                     .into_any_element()
             });
         lines.push(
-            gpui_component::v_flex()
+            gpui_kit::component::v_flex()
                 .pl_4()
                 .children(sub_items)
                 .into_any_element(),
@@ -345,7 +345,7 @@ fn render_list_row(
                 .into_any_element(),
         );
     }
-    let mut container = gpui_component::v_flex().w_full();
+    let mut container = gpui_kit::component::v_flex().w_full();
     if view.group_by.is_some() {
         container = container.pl_4();
     }
@@ -357,7 +357,7 @@ fn cell(
     snapshot: &BaseSnapshot,
     row: &BaseRow,
     property: &crate::document::base::DisplayProperty,
-    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
     ordinal: usize,
     column: usize,
     truncate: bool,

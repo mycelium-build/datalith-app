@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gpui::{Point, point};
+use gpui_kit::{Point, point};
 
 use conv::{ConvAsUtil, UnwrapOrInf};
 
@@ -263,7 +263,7 @@ mod tests {
             hover_border_width: 0.0,
             radius: 10.0,
             center_weight: 1.0,
-            position: gpui::point(x, 0.0),
+            position: gpui_kit::point(x, 0.0),
             velocity: Point::default(),
         }
     }
@@ -274,7 +274,7 @@ mod tests {
             positioned_node("visible.md", 0.0),
             positioned_node("offscreen.md", 1_000.0),
         ];
-        let viewport = gpui::point(800.0, 600.0);
+        let viewport = gpui_kit::point(800.0, 600.0);
         let high_zoom = Camera {
             zoom: ALL_LABELS_MIN_ZOOM,
             ..Camera::default()
@@ -327,7 +327,7 @@ mod tests {
                 hover_border_width: 0.0,
                 radius: 10.0,
                 center_weight: 1.0,
-                position: gpui::point(0.0, 0.0),
+                position: gpui_kit::point(0.0, 0.0),
                 velocity: Point::default(),
             },
             ViewNode {
@@ -343,13 +343,13 @@ mod tests {
                 hover_border_width: 0.0,
                 radius: 10.0,
                 center_weight: 1.0,
-                position: gpui::point(2.0, 0.0),
+                position: gpui_kit::point(2.0, 0.0),
                 velocity: Point::default(),
             },
         ];
 
-        assert_eq!(hit_test_nodes(&nodes, gpui::point(1.0, 0.0)), Some(1));
-        assert_eq!(hit_test_nodes(&nodes, gpui::point(30.0, 0.0)), None);
+        assert_eq!(hit_test_nodes(&nodes, gpui_kit::point(1.0, 0.0)), Some(1));
+        assert_eq!(hit_test_nodes(&nodes, gpui_kit::point(30.0, 0.0)), None);
     }
 
     #[test]

@@ -2,8 +2,8 @@
 // that lint can only be suppressed here, not in the macro itself.
 #![allow(clippy::derive_partial_eq_without_eq)]
 
-use gpui::{App, AppContext, PathPromptOptions, SharedString, actions};
-use gpui_component::{Theme, ThemeMode};
+use gpui_kit::component::{Theme, ThemeMode};
+use gpui_kit::{App, AppContext, PathPromptOptions, SharedString, actions};
 use std::path::{Path, PathBuf};
 
 use crate::app::{
