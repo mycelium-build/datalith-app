@@ -58,7 +58,8 @@ cargo about generate \
 
 # Some upstream license texts contain CRLF line endings. Normalize the final
 # assembled artifact so every generator path produces the same bytes.
-sed -i 's/\r$//' "$TMP_DIR/notices.md"
+sed 's/\r$//' "$TMP_DIR/notices.md" > "$TMP_DIR/notices.tmp"
+mv "$TMP_DIR/notices.tmp" "$TMP_DIR/notices.md"
 
 # 7. Write the committed artifact byte-for-byte.
 # The application embeds this same file directly, so there is no second generated copy to keep in sync.
