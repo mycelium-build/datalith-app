@@ -1,13 +1,13 @@
 //! Local server settings page: enable, port, token, live status.
 
 use conv::ConvUtil as _;
-use gpui::{App, IntoElement, ParentElement, Styled, div};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Sizable,
     button::Button,
     h_flex,
     setting::{NumberFieldOptions, SettingField, SettingGroup, SettingItem},
 };
+use gpui_kit::{App, IntoElement, ParentElement, Styled, div};
 use std::fmt::Write as _;
 
 use super::SettingsView;

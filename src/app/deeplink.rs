@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
-use gpui::{App, AsyncApp};
+use gpui_kit::{App, AsyncApp};
 use percent_encoding::percent_decode_str;
 
 use crate::vault::path::resolve_vault_id;

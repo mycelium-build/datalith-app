@@ -23,8 +23,7 @@ mod ui;
 mod vault;
 
 fn main() {
-    let application = gpui_kit::application()
-        .with_assets(app::assets::DatalithAssets);
+    let application = gpui_kit::application().with_assets(app::assets::DatalithAssets);
     application.on_open_urls(app::deeplink::capture);
     application.run(|cx| {
         app::init(cx);
