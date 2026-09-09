@@ -2,7 +2,7 @@ pub mod base;
 pub mod image;
 pub mod markdown;
 
-use gpui::{AnyElement, App, Context, Entity, FocusHandle};
+use gpui_kit::{AnyElement, App, Context, Entity, FocusHandle};
 
 use self::base::BaseViewer;
 use self::image::ImageViewer;

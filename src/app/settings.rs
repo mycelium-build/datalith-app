@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result, bail};
-use gpui::WindowAppearance;
+use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -78,7 +78,7 @@ impl ThemeMode {
     }
 }
 
-impl From<ThemeMode> for gpui_component::ThemeMode {
+impl From<ThemeMode> for gpui_kit::component::ThemeMode {
     fn from(mode: ThemeMode) -> Self {
         match mode {
             ThemeMode::Light => Self::Light,
@@ -413,12 +413,12 @@ mod tests {
         );
         assert_eq!(ThemePreference::System.to_window_appearance(), None);
         assert_eq!(
-            gpui_component::ThemeMode::from(ThemeMode::Light),
-            gpui_component::ThemeMode::Light
+            gpui_kit::component::ThemeMode::from(ThemeMode::Light),
+            gpui_kit::component::ThemeMode::Light
         );
         assert_eq!(
-            gpui_component::ThemeMode::from(ThemeMode::Dark),
-            gpui_component::ThemeMode::Dark
+            gpui_kit::component::ThemeMode::from(ThemeMode::Dark),
+            gpui_kit::component::ThemeMode::Dark
         );
         assert_eq!(
             ThemeMode::Light.window_appearance(),

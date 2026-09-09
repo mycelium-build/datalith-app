@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use gpui::{
+use gpui_kit::component::Root;
+use gpui_kit::component::notification::Notification;
+use gpui_kit::{
     App, AppContext, BorrowAppContext, Bounds, WindowBounds, WindowOptions, point, px, size,
 };
-use gpui_component::Root;
-use gpui_component::notification::Notification;
 
 use crate::app::AppState;
 use crate::ui::DatalithView;

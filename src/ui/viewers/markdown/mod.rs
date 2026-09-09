@@ -7,14 +7,14 @@ mod frontmatter;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use gpui::{
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::component::input::EditorState;
+use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, Focusable, FontWeight, HighlightStyle,
     InteractiveElement, IntoElement, ParentElement, SharedString, SharedUri,
     StatefulInteractiveElement, Styled, div, img, px, relative,
 };
-use gpui_component::ActiveTheme;
-use gpui_component::input::EditorState;
-use gpui_component::scroll::ScrollableElement;
 use percent_encoding::percent_decode_str;
 
 use crate::app::fonts::PIXELOID_FONT;

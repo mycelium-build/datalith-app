@@ -2,15 +2,15 @@
 
 use std::ops::Range;
 
-use gpui::{
-    AnyElement, App, ElementId, FontStyle, FontWeight, HighlightStyle, IntoElement, ParentElement,
-    SharedString, Styled, StyledText, div, px,
-};
-use gpui_component::scroll::ScrollableElement;
-use gpui_component::{
+use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::{
     ActiveTheme, ChildElement,
     checkbox::Checkbox,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
+};
+use gpui_kit::{
+    AnyElement, App, ElementId, FontStyle, FontWeight, HighlightStyle, IntoElement, ParentElement,
+    SharedString, Styled, StyledText, div, px,
 };
 
 use super::constants::{

@@ -1,11 +1,11 @@
 //! Appearance settings page: theme mode, light/dark themes, and font scale.
 
-use gpui::{App, Context, Entity, IntoElement, ParentElement, SharedString, Styled, div};
-use gpui_component::{
+use gpui_kit::component::{
     h_flex,
     setting::{SettingField, SettingGroup, SettingItem},
     slider::{Slider, SliderState},
 };
+use gpui_kit::{App, Context, Entity, IntoElement, ParentElement, SharedString, Styled, div};
 
 use super::{DatalithView, SettingsView, ThemeOptions};
 use crate::app::{
@@ -16,18 +16,18 @@ use crate::ui::notifications;
 
 impl SettingsView {
     pub(crate) fn init_theme_options(cx: &mut App) {
-        let registry = gpui_component::ThemeRegistry::global(cx);
+        let registry = gpui_kit::component::ThemeRegistry::global(cx);
         let mut light_options: Vec<(SharedString, SharedString)> = registry
             .themes()
             .iter()
-            .filter(|(_, theme)| theme.mode == gpui_component::ThemeMode::Light)
+            .filter(|(_, theme)| theme.mode == gpui_kit::component::ThemeMode::Light)
             .map(|(name, _)| (name.clone(), name.clone()))
             .collect();
         light_options.sort_by_key(|(name, _)| name.to_lowercase());
         let mut dark_options: Vec<(SharedString, SharedString)> = registry
             .themes()
             .iter()
-            .filter(|(_, theme)| theme.mode == gpui_component::ThemeMode::Dark)
+            .filter(|(_, theme)| theme.mode == gpui_kit::component::ThemeMode::Dark)
             .map(|(name, _)| (name.clone(), name.clone()))
             .collect();
         dark_options.sort_by_key(|(name, _)| name.to_lowercase());
@@ -39,10 +39,10 @@ impl SettingsView {
                 registry
                     .themes()
                     .get(name.as_str())
-                    .is_some_and(|theme| theme.mode == gpui_component::ThemeMode::Light)
+                    .is_some_and(|theme| theme.mode == gpui_kit::component::ThemeMode::Light)
             })
             .unwrap_or_else(|| {
-                gpui_component::Theme::global(cx)
+                gpui_kit::component::Theme::global(cx)
                     .light_theme
                     .name
                     .to_string()
@@ -53,10 +53,10 @@ impl SettingsView {
                 registry
                     .themes()
                     .get(name.as_str())
-                    .is_some_and(|theme| theme.mode == gpui_component::ThemeMode::Dark)
+                    .is_some_and(|theme| theme.mode == gpui_kit::component::ThemeMode::Dark)
             })
             .unwrap_or_else(|| {
-                gpui_component::Theme::global(cx)
+                gpui_kit::component::Theme::global(cx)
                     .dark_theme
                     .name
                     .to_string()
@@ -116,17 +116,17 @@ impl SettingsView {
                     |cx| cx.global::<ThemeOptions>().light_theme_name.clone(),
                     |val: SharedString, cx| {
                         cx.global_mut::<ThemeOptions>().light_theme_name = val.clone();
-                        let registry = gpui_component::ThemeRegistry::global(cx);
+                        let registry = gpui_kit::component::ThemeRegistry::global(cx);
                         if let Some(theme_config) = registry
                             .themes()
                             .get(val.as_str())
-                            .filter(|theme| theme.mode == gpui_component::ThemeMode::Light)
+                            .filter(|theme| theme.mode == gpui_kit::component::ThemeMode::Light)
                         {
-                            gpui_component::Theme::global_mut(cx).light_theme =
+                            gpui_kit::component::Theme::global_mut(cx).light_theme =
                                 theme_config.clone();
-                            let current_mode = gpui_component::Theme::global(cx).mode;
-                            gpui_component::Theme::change(current_mode, None, cx);
-                            gpui_component::Theme::global_mut(cx).mode = current_mode;
+                            let current_mode = gpui_kit::component::Theme::global(cx).mode;
+                            gpui_kit::component::Theme::change(current_mode, None, cx);
+                            gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
                             if let Err(error) = settings::select_theme(ThemeKind::Light, &val) {
                                 notifications::push_window_notification(
                                     cx,
@@ -146,16 +146,17 @@ impl SettingsView {
                     |cx| cx.global::<ThemeOptions>().dark_theme_name.clone(),
                     |val: SharedString, cx| {
                         cx.global_mut::<ThemeOptions>().dark_theme_name = val.clone();
-                        let registry = gpui_component::ThemeRegistry::global(cx);
+                        let registry = gpui_kit::component::ThemeRegistry::global(cx);
                         if let Some(theme_config) = registry
                             .themes()
                             .get(val.as_str())
-                            .filter(|theme| theme.mode == gpui_component::ThemeMode::Dark)
+                            .filter(|theme| theme.mode == gpui_kit::component::ThemeMode::Dark)
                         {
-                            gpui_component::Theme::global_mut(cx).dark_theme = theme_config.clone();
-                            let current_mode = gpui_component::Theme::global(cx).mode;
-                            gpui_component::Theme::change(current_mode, None, cx);
-                            gpui_component::Theme::global_mut(cx).mode = current_mode;
+                            gpui_kit::component::Theme::global_mut(cx).dark_theme =
+                                theme_config.clone();
+                            let current_mode = gpui_kit::component::Theme::global(cx).mode;
+                            gpui_kit::component::Theme::change(current_mode, None, cx);
+                            gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
                             if let Err(error) = settings::select_theme(ThemeKind::Dark, &val) {
                                 notifications::push_window_notification(
                                     cx,

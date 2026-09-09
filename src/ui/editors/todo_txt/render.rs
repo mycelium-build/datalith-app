@@ -1,14 +1,14 @@
 use std::ops::Div;
 
-use gpui::{
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::Input;
+use gpui_kit::component::scroll::Scrollbar;
+use gpui_kit::component::select::Select;
+use gpui_kit::component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
+use gpui_kit::{
     AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, Styled, Window, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::input::Input;
-use gpui_component::scroll::Scrollbar;
-use gpui_component::select::Select;
-use gpui_component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
 
 use conv::ConvAsUtil;
 

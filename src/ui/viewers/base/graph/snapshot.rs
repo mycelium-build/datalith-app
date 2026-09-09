@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use gpui::Point;
+use gpui_kit::Point;
 
 use crate::document::base::{ClassStyle, DirectionalEdgeHoverStyle, GraphClass, GraphConfig};
 use crate::ui::viewers::base::graph::model::{

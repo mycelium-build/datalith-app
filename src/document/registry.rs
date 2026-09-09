@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use gpui::{Context, Window};
+use gpui_kit::{Context, Window};
 
 use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 

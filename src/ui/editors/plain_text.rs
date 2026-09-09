@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use gpui::{
+use gpui_kit::component::input::{Editor, EditorState};
+use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement,
     ParentElement, Styled, Window, div,
 };
-use gpui_component::input::{Editor, EditorState};
 
 use crate::document::handler::{FileHandler, ReloadOutcome};
 

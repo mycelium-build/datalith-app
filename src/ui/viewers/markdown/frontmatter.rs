@@ -1,9 +1,9 @@
-use gpui::{
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::{ActiveTheme, Disableable};
+use gpui_kit::{
     AnyElement, App, ClickEvent, ElementId, Entity, FontWeight, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
-use gpui_component::checkbox::Checkbox;
-use gpui_component::{ActiveTheme, Disableable};
 
 use conv::{ConvUtil, UnwrapOrInf};
 

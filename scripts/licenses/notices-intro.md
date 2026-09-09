@@ -8,5 +8,5 @@ The Rust-dependency section is generated from `Cargo.lock` with `cargo-about`.
 The bundled-assets section is generated from `assets/licenses.toml`. This file
 is produced by `scripts/licenses/generate.sh`; do not edit it by hand.
 
-The complete scope map, including the GPL distribution boundary and
-Corresponding Source, is in `LICENSING.md`.
+The complete scope map, including release-source archive information, is in
+`LICENSING.md`.

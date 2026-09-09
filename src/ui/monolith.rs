@@ -1,5 +1,5 @@
 use conv::{ConvUtil, UnwrapOrInf};
-use gpui::{
+use gpui_kit::{
     App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, Hsla, IntoElement, LayoutId,
     Length, Pixels, Size, Style, Window, point, px, quad, size, solid_background,
     transparent_black,
@@ -31,7 +31,7 @@ pub fn tier_color(tier: Tier, primary: Hsla) -> Hsla {
         Tier::Light => primary,
         Tier::RightSide => whiten(primary, RIGHT_SIDE_WHITEN),
         Tier::LeftSide => whiten(primary, LEFT_SIDE_WHITEN),
-        Tier::Inscription | Tier::Top => gpui::white(),
+        Tier::Inscription | Tier::Top => gpui_kit::white(),
     }
 }
 
@@ -134,8 +134,8 @@ impl Element for MonolithMark {
 
     fn request_layout(
         &mut self,
-        _id: Option<&gpui::GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _id: Option<&gpui_kit::GlobalElementId>,
+        _inspector_id: Option<&gpui_kit::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -150,8 +150,8 @@ impl Element for MonolithMark {
 
     fn prepaint(
         &mut self,
-        _id: Option<&gpui::GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _id: Option<&gpui_kit::GlobalElementId>,
+        _inspector_id: Option<&gpui_kit::InspectorElementId>,
         _bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _window: &mut Window,
@@ -161,8 +161,8 @@ impl Element for MonolithMark {
 
     fn paint(
         &mut self,
-        _id: Option<&gpui::GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _id: Option<&gpui_kit::GlobalElementId>,
+        _inspector_id: Option<&gpui_kit::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,

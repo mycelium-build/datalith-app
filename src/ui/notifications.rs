@@ -1,6 +1,6 @@
-use gpui::App;
-use gpui_component::WindowExt;
-use gpui_component::notification::Notification;
+use gpui_kit::App;
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::notification::Notification;
 use std::path::Path;
 
 pub fn push_window_notification(cx: &mut App, notification: Notification) {

@@ -2,16 +2,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gpui::{
-    App, AppContext, ClickEvent, Context, Div, Entity, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, StatefulInteractiveElement,
-    Styled, div, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Icon, IconName, StyledExt, h_flex,
     input::Input,
     list::ListItem,
     tree::{self, TreeEntry, TreeItem},
+};
+use gpui_kit::{
+    App, AppContext, ClickEvent, Context, Div, Entity, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, StatefulInteractiveElement,
+    Styled, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -72,7 +72,7 @@ pub fn build_file_items_with_expanded(path: &Path, expanded_ids: &[SharedString]
 impl DatalithView {
     pub fn render_file_tree(
         cx: &Context<Self>,
-        tree_state_entity: &Entity<gpui_component::tree::TreeState>,
+        tree_state_entity: &Entity<gpui_kit::component::tree::TreeState>,
     ) -> impl IntoElement {
         let view = cx.entity();
 

@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
-use gpui::{
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{
     Context, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
     Render, StatefulInteractiveElement, Styled, Window, div,
 };
-use gpui_component::ActiveTheme;
 
 mod paint;
 mod wave;
@@ -196,7 +196,7 @@ impl Render for StartupAnimation {
             primary,
             tier_one,
             tier_two,
-            tier_inscription: gpui::white(),
+            tier_inscription: gpui_kit::white(),
             background: theme.background,
             logo: self.logo.clone(),
         };
@@ -215,7 +215,7 @@ impl Render for StartupAnimation {
 impl DatalithView {
     pub(crate) fn step_startup(
         &mut self,
-        startup: &gpui::Entity<StartupAnimation>,
+        startup: &gpui_kit::Entity<StartupAnimation>,
         cx: &mut Context<Self>,
     ) -> bool {
         let done = startup.update(cx, |this, _| this.advance());

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use gpui::{AssetSource, Result, SharedString};
+use gpui_kit::{AssetSource, Result, SharedString};
 
 use crate::ui::icons::ICON_ASSETS;
 
@@ -11,11 +11,11 @@ impl AssetSource for DatalithAssets {
         if let Some((_, bytes)) = ICON_ASSETS.iter().find(|(icon, _)| *icon == path) {
             return Ok(Some(Cow::Borrowed(bytes.as_bytes())));
         }
-        gpui_component_assets::Assets.load(path)
+        gpui_kit::assets::Assets.load(path)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        let mut entries = gpui_component_assets::Assets.list(path)?;
+        let mut entries = gpui_kit::assets::Assets.list(path)?;
         if path.starts_with("icons/") {
             for (icon, _) in ICON_ASSETS {
                 if !entries.iter().any(|entry| entry == icon) {

@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use gpui::{
-    AnyElement, AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Pixels, ScrollStrategy, SharedString, Size,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px, size,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Icon, VirtualListScrollHandle, h_flex,
     input::{Input, InputEvent, InputState},
     v_flex, v_virtual_list,
+};
+use gpui_kit::{
+    AnyElement, AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Pixels, ScrollStrategy, SharedString, Size,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, px, size,
 };
 
 use crate::ui::DatalithView;
@@ -146,7 +146,7 @@ impl Palette {
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
-                                gpui::Hsla::default()
+                                gpui_kit::Hsla::default()
                             };
                             let path = r.clone();
                             div()
@@ -176,7 +176,7 @@ impl Palette {
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
-                                gpui::Hsla::default()
+                                gpui_kit::Hsla::default()
                             };
                             let path = entry.path.clone();
                             let name = entry.name.clone();
@@ -227,7 +227,7 @@ impl Palette {
         div()
             .absolute()
             .inset_0()
-            .bg(gpui::black().opacity(0.3))
+            .bg(gpui_kit::black().opacity(0.3))
             .flex()
             .items_center()
             .justify_center()

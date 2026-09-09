@@ -2,7 +2,7 @@
 
 use conv::{ConvUtil as _, UnwrapOrInf as _};
 
-use gpui::{Bounds, Hsla, Window, point, px, size};
+use gpui_kit::{Bounds, Hsla, Window, point, px, size};
 
 use super::paint::MonolithElement;
 

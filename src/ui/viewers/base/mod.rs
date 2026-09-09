@@ -11,16 +11,16 @@ use snapshot::file_name;
 use snapshot::load_snapshot;
 use snapshot::{BaseItem, BaseRow, BaseSnapshot, BaseStatus};
 
-use gpui::{
-    AnyElement, App, AppContext, Context, ElementId, Entity, FocusHandle, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, Styled, Task, Window, div,
-    prelude::FluentBuilder,
-};
-use gpui_component::input::EditorState;
-use gpui_component::{
+use gpui_kit::component::input::EditorState;
+use gpui_kit::component::{
     ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
     h_flex, v_flex,
+};
+use gpui_kit::{
+    AnyElement, App, AppContext, Context, ElementId, Entity, FocusHandle, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Render, Styled, Task, Window, div,
+    prelude::FluentBuilder,
 };
 
 use crate::document::base::{BaseDefinition, ViewType};
@@ -69,7 +69,7 @@ pub struct BaseViewState {
     /// replaced whenever the source parses successfully again.
     definition: Option<BaseDefinition>,
     pub(super) catalog: Option<VaultCatalog>,
-    handler: gpui::WeakEntity<FileHandler>,
+    handler: gpui_kit::WeakEntity<FileHandler>,
     status: BaseStatus,
     pub(super) focus_handle: FocusHandle,
     list: Option<list::ListState>,
@@ -91,7 +91,7 @@ impl BaseViewState {
     fn new(
         input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
-        handler: gpui::WeakEntity<FileHandler>,
+        handler: gpui_kit::WeakEntity<FileHandler>,
         cx: &Context<Self>,
     ) -> Self {
         Self {

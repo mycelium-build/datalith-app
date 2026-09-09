@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use gpui::App;
-use gpui_component::notification::Notification;
+use gpui_kit::App;
+use gpui_kit::component::notification::Notification;
 
 use crate::ui::notifications;
 

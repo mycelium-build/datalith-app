@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
+use gpui_kit::component::{scroll::Scrollbar, scroll::ScrollbarMode};
+use gpui_kit::{
     AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
     ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
 };
-use gpui_component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
-use gpui_component::{scroll::Scrollbar, scroll::ScrollbarMode};
 
 use crate::document::base::{BaseView, TableRowHeight};
 
@@ -265,7 +265,7 @@ fn render_table_item(
     view: &BaseView,
     min_width: Pixels,
     column_widths: &[Pixels],
-    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
     cx: &App,
 ) -> AnyElement {
     let Some(item) = snapshot.items.get(index) else {
@@ -371,7 +371,7 @@ fn render_table_row(
     view: &BaseView,
     table_min_width: Pixels,
     column_widths: &[Pixels],
-    handler: &gpui::WeakEntity<crate::document::handler::FileHandler>,
+    handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
     cx: &App,
 ) -> AnyElement {
     let table = view.as_table().copied().unwrap_or_default();
@@ -451,7 +451,7 @@ fn table_width(column_widths: &[Pixels]) -> Pixels {
 fn measure_text(
     text: &str,
     window: &Window,
-    text_style: &gpui::TextStyle,
+    text_style: &gpui_kit::TextStyle,
     font_size: Pixels,
 ) -> f32 {
     text.split(['\r', '\n'])

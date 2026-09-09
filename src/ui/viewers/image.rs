@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gpui::{
+use gpui_kit::{
     AnyElement, App, FocusHandle, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, img, px,
 };

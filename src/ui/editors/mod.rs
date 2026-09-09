@@ -3,8 +3,8 @@ pub mod markdown;
 pub mod plain_text;
 pub mod todo_txt;
 
-use gpui::{AnyElement, App, Entity, FocusHandle};
-use gpui_component::input::EditorState;
+use gpui_kit::component::input::EditorState;
+use gpui_kit::{AnyElement, App, Entity, FocusHandle};
 
 use self::base::BaseEditor;
 use self::markdown::MarkdownEditor;
