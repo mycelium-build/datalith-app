@@ -33,6 +33,7 @@ gpui-kit = { version = "0.6.1", features = [
   "tree-sitter-markdown",
   "tree-sitter-yaml",
 ] }
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "0.3.4" }
 anyhow = "1.0"
 dirs = "6"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -51,6 +52,8 @@ rayon = "1.12.0"
 conv = "0.3.3"
 
 [dev-dependencies]
+gpui-kit = { version = "0.6.1", features = ["test-support"] }
+futures = "0.3"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.2"
 
