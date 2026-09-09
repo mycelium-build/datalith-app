@@ -45,4 +45,4 @@ The server binds to `127.0.0.1` only, nothing on your network can reach it. The 
 Datalith also registers the `datalith://` scheme, which works even when the app is closed:
 
 - `datalith://launch` opens the app.
-- `datalith://open?path=Clips/My%20Note.md` opens a vault-relative note in a tab.
+- `datalith://open?vault=Notes&path=Clips/My%20Note.md` opens a vault-relative note in the named vault, matched by name or full path, switching to it if needed.

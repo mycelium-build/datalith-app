@@ -1,4 +1,5 @@
-//! `datalith://` deep links: `launch` focuses the app and `open?path=…` reveals a note.
+//! `datalith://` deep links: `launch` focuses the app and
+//! `open?vault=…&path=…` reveals a note in a vault.
 //! URLs arrive through the platform's open-URLs callback
 //! and are dispatched to the UI through a queue polled on the main executor.
 
@@ -10,6 +11,9 @@ use std::time::Duration;
 use gpui::{App, AsyncApp};
 use percent_encoding::percent_decode_str;
 
+use crate::vault::path::resolve_vault_id;
+
+use super::settings;
 use super::state::AppState;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -18,7 +22,7 @@ const SCHEME_PREFIX: &str = "datalith://";
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum DeepLink {
     Launch,
-    OpenNote { path: String },
+    OpenNote { vault: String, path: String },
 }
 
 static PENDING: LazyLock<Mutex<VecDeque<DeepLink>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
@@ -58,12 +62,22 @@ fn parse(url: &str) -> Option<DeepLink> {
     match route {
         "launch" => Some(DeepLink::Launch),
         "open" => {
-            let path = query.split('&').find_map(|pair| {
-                let (key, value) = pair.split_once('=')?;
-                (key == "path").then(|| value.to_owned())
-            })?;
+            let mut vault = None;
+            let mut path = None;
+            for pair in query.split('&') {
+                let Some((key, value)) = pair.split_once('=') else {
+                    continue;
+                };
+                let decoded = percent_decode_str(value).decode_utf8_lossy().into_owned();
+                match key {
+                    "vault" => vault = Some(decoded),
+                    "path" => path = Some(decoded),
+                    _ => {}
+                }
+            }
             Some(DeepLink::OpenNote {
-                path: percent_decode_str(&path).decode_utf8_lossy().into_owned(),
+                vault: vault?,
+                path: path?,
             })
         }
         _ => None,
@@ -87,7 +101,7 @@ fn resolve_in_vault(root: &Path, relative: &str) -> Option<PathBuf> {
 }
 
 fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
-    let DeepLink::OpenNote { path } = link else {
+    let DeepLink::OpenNote { vault, path } = link else {
         // `launch` needs no work:
         // the OS activates the running app when the scheme fires,
         // and cold starts open the app by themselves.
@@ -100,14 +114,18 @@ fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
     let Some(view) = view else {
         // The window is not up yet (cold start);
         // keep the link queued for the next poll.
-        pending_lock().push_back(DeepLink::OpenNote { path });
+        pending_lock().push_back(DeepLink::OpenNote { vault, path });
         return;
     };
     view.update(cx, |view, cx| {
-        let Some(root) = view.root_path.clone() else {
+        // A vault is required: resolve it, and switch to it if needed.
+        let Some(vault_path) = resolve_vault_id(&vault, &settings::known_vault_paths()) else {
             return;
         };
-        if let Some(resolved) = resolve_in_vault(&root, &path) {
+        if view.root_path.as_deref() != Some(vault_path.as_path()) {
+            view.set_root_path(vault_path.clone(), cx);
+        }
+        if let Some(resolved) = resolve_in_vault(&vault_path, &path) {
             view.pending_open = Some(resolved);
             cx.notify();
         }
@@ -122,12 +140,22 @@ mod tests {
     fn parses_launch_and_open_routes() {
         assert_eq!(parse("datalith://launch"), Some(DeepLink::Launch));
         assert_eq!(
-            parse("datalith://open?path=Clips%2FMy%20Note.md"),
+            parse("datalith://open?vault=Notes&path=Clips%2FMy%20Note.md"),
             Some(DeepLink::OpenNote {
+                vault: "Notes".into(),
                 path: "Clips/My Note.md".into()
             })
         );
+        assert_eq!(
+            parse("datalith://open?vault=My%20Vault&path=Note.md"),
+            Some(DeepLink::OpenNote {
+                vault: "My Vault".into(),
+                path: "Note.md".into()
+            })
+        );
         assert_eq!(parse("datalith://open"), None);
+        assert_eq!(parse("datalith://open?path=Clips%2FMy%20Note.md"), None);
+        assert_eq!(parse("datalith://open?vault=Notes"), None);
         assert_eq!(parse("datalith://unknown"), None);
         assert_eq!(parse("https://example.com"), None);
     }

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use super::error::ApiError;
 use crate::document::markdown::build_note_document;
 use crate::vault::file_ops;
+use crate::vault::path::resolve_vault_id;
 
 /// A vault advertised to clients: its display name and absolute path.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,10 +65,8 @@ pub fn write_note(
 }
 
 fn resolve_vault<'a>(vault_id: &str, vaults: &'a [Vault]) -> Option<&'a Vault> {
-    vaults
-        .iter()
-        .find(|vault| vault.path.to_string_lossy() == vault_id)
-        .or_else(|| vaults.iter().find(|vault| vault.name == vault_id))
+    let path = resolve_vault_id(vault_id, vaults.iter().map(|vault| &vault.path))?;
+    vaults.iter().find(|vault| vault.path == path)
 }
 
 fn munge_name_characters(raw: &str) -> String {

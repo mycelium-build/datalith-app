@@ -334,6 +334,25 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
+/// Vault folders Datalith knows about, last used first:
+/// the last opened vault followed by the other recents.
+/// Directories that no longer exist are skipped.
+#[must_use]
+pub fn known_vault_paths() -> Vec<PathBuf> {
+    let settings = snapshot();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Some(last) = &settings.last_vault {
+        paths.push(last.clone());
+    }
+    for recent in &settings.recent_vaults {
+        if !paths.contains(recent) {
+            paths.push(recent.clone());
+        }
+    }
+    paths.retain(|path| path.is_dir());
+    paths
+}
+
 pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }

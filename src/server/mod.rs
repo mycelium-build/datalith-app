@@ -5,7 +5,6 @@ pub mod error;
 pub mod vaults;
 
 use std::net::TcpListener;
-use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
@@ -228,21 +227,9 @@ fn cors() -> Cors {
 }
 
 /// The vaults clients may save into, last used first.
-/// Directories that no longer exist are skipped.
 fn configured_vaults() -> Vec<vaults::Vault> {
-    let settings = settings::snapshot();
-    let mut paths: Vec<PathBuf> = Vec::new();
-    if let Some(last) = &settings.last_vault {
-        paths.push(last.clone());
-    }
-    for recent in &settings.recent_vaults {
-        if !paths.contains(recent) {
-            paths.push(recent.clone());
-        }
-    }
-    paths
+    settings::known_vault_paths()
         .into_iter()
-        .filter(|path| path.is_dir())
         .map(|path| vaults::Vault {
             name: path.file_name().map_or_else(
                 || path.to_string_lossy().into_owned(),
