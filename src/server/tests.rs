@@ -249,6 +249,74 @@ async fn non_json_save_body_is_rejected() {
 }
 
 #[tokio::test]
+async fn xml_media_types_are_rejected_at_the_boundary() {
+    let client = TestClient::new(app(None, vec![vault("xml-guard")]));
+    for content_type in [
+        "application/xml",
+        "text/xml",
+        "application/atom+xml",
+        "application/xml; charset=utf-8",
+    ] {
+        let response = client
+            .post("/api/notes")
+            .header("Content-Type", content_type)
+            .body("<note/>")
+            .send()
+            .await;
+        response.assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    // Requests without a content type are untouched.
+    let plain = client.get("/ping").send().await;
+    plain.assert_status_is_ok();
+}
+
+#[tokio::test]
+async fn openapi_spec_advertises_no_xml_media_types() {
+    let client = TestClient::new(app(None, vec![vault("no-xml-spec")]));
+    let spec = client.get("/openapi.json").send().await;
+    spec.assert_status_is_ok();
+    let body: Value = spec
+        .0
+        .into_body()
+        .into_json::<Value>()
+        .await
+        .unwrap_or_default();
+    let mut xml = Vec::new();
+    collect_xml_media_types(&body, &mut xml);
+    assert!(
+        xml.is_empty(),
+        "the spec advertises XML media types; quick-xml would be reachable: {xml:?}"
+    );
+}
+
+/// Collects every `content` map key (a media type) that mentions XML.
+fn collect_xml_media_types(value: &Value, found: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                if key == "content"
+                    && let Value::Object(content) = child
+                {
+                    for media_type in content.keys() {
+                        if media_type.to_ascii_lowercase().contains("xml") {
+                            found.push(media_type.clone());
+                        }
+                    }
+                } else {
+                    collect_xml_media_types(child, found);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_xml_media_types(item, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[tokio::test]
 async fn unknown_routes_and_methods_are_rejected() {
     let client = TestClient::new(app(None, vec![vault("routing")]));
     let missing = client.get("/api/nope").send().await;

@@ -12,13 +12,14 @@ pub struct ApiError {
     pub message: String,
 }
 
-const ERROR_STATUSES: [(u16, &str); 7] = [
+const ERROR_STATUSES: [(u16, &str); 8] = [
     (400, "Invalid request"),
     (401, "Missing or invalid bearer token"),
     (403, "Forbidden"),
     (404, "Not found"),
     (405, "Method not allowed"),
     (413, "Request body too large"),
+    (415, "Only JSON requests are accepted"),
     (500, "Internal server error"),
 ];
 
@@ -37,6 +38,10 @@ impl ApiError {
 
     pub fn payload_too_large() -> Self {
         Self::new(413, "Request body too large")
+    }
+
+    pub fn unsupported_media_type() -> Self {
+        Self::new(415, "Only JSON requests are accepted")
     }
 
     pub fn internal(message: impl Into<String>) -> Self {

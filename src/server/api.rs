@@ -1,4 +1,5 @@
-//! The `OpenAPI` surface of the local server: typed handlers, DTOs, and the body-size guard.
+//! The `OpenAPI` surface of the local server:
+//! typed handlers, DTOs, the body-size guard, and the JSON-only media guard.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -190,6 +191,49 @@ impl<E: Endpoint> Endpoint for BodyLimitEndpoint<E> {
     }
 }
 
+/// Rejects every XML media type before any extractor can run.
+/// The Local Server is JSON-only: poem-openapi links `quick-xml` for XML payload support,
+/// and this boundary guarantees that code is never reached
+/// (the advisories ignore in `deny.toml` depends on it).
+pub struct RejectXml;
+
+impl<E: Endpoint> poem::Middleware<E> for RejectXml {
+    type Output = RejectXmlEndpoint<E>;
+
+    fn transform(&self, ep: E) -> Self::Output {
+        RejectXmlEndpoint { ep }
+    }
+}
+
+pub struct RejectXmlEndpoint<E> {
+    ep: E,
+}
+
+impl<E: Endpoint> Endpoint for RejectXmlEndpoint<E> {
+    type Output = Response;
+
+    async fn call(&self, req: Request) -> Result<Self::Output> {
+        if req.content_type().is_some_and(is_xml_media_type) {
+            return Err(ApiError::unsupported_media_type().into());
+        }
+        Ok(self.ep.call(req).await?.into_response())
+    }
+}
+
+/// Matches `*/xml` and any `*/*+xml` media type, case-insensitively,
+/// ignoring parameters (`application/xml; charset=utf-8` is XML).
+fn is_xml_media_type(content_type: &str) -> bool {
+    let Some((_, subtype)) = content_type
+        .split(';')
+        .next()
+        .and_then(|mime| mime.trim().split_once('/'))
+    else {
+        return false;
+    };
+    let subtype = subtype.trim().to_ascii_lowercase();
+    subtype == "xml" || subtype.ends_with("+xml")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,5 +245,36 @@ mod tests {
         assert!(!constant_time_eq(b"secret", b"secre"));
         assert!(!constant_time_eq(b"", b"x"));
         assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn xml_media_types_are_detected() {
+        for xml in [
+            "application/xml",
+            "text/xml",
+            "APPLICATION/XML",
+            "application/atom+xml",
+            "application/rss+xml",
+            "image/svg+xml",
+            "application/xml; charset=utf-8",
+            " text/xml ",
+        ] {
+            assert!(is_xml_media_type(xml), "should match: {xml}");
+        }
+    }
+
+    #[test]
+    fn non_xml_media_types_pass() {
+        for other in [
+            "application/json",
+            "application/json; charset=utf-8",
+            "text/plain",
+            "text/xmli",
+            "xml",
+            "",
+            "multipart/form-data; boundary=x",
+        ] {
+            assert!(!is_xml_media_type(other), "should not match: {other}");
+        }
     }
 }

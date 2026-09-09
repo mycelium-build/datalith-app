@@ -187,7 +187,8 @@ fn serve(listener: TcpListener, context: ApiContext, shutdown: Arc<Notify>) {
 }
 
 /// Assembles the full application:
-/// `OpenAPI` handlers, generated spec and UI, strict preflight, and the body-size guard.
+/// `OpenAPI` handlers, generated spec and UI, strict preflight,
+/// the body-size guard, and the JSON-only media guard.
 fn build_app(context: ApiContext, port: u16) -> impl poem::Endpoint + 'static {
     let api_service = OpenApiService::new(
         Api::new(context),
@@ -207,6 +208,7 @@ fn build_app(context: ApiContext, port: u16) -> impl poem::Endpoint + 'static {
         )
         .nest("/docs", ui)
         .with(cors())
+        .with(api::RejectXml)
         .with(api::BodyLimit {
             max_size: api::MAX_BODY_BYTES,
         })
