@@ -1,14 +1,14 @@
-use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
     setting::{SelectIndex, SettingPage, Settings},
     slider::SliderState,
     v_flex,
+};
+use gpui_kit::{
+    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -114,7 +114,7 @@ impl SettingsView {
         div()
             .absolute()
             .inset_0()
-            .bg(gpui::black().opacity(0.3))
+            .bg(gpui_kit::black().opacity(0.3))
             .flex()
             .items_center()
             .justify_center()

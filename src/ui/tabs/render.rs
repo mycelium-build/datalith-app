@@ -1,10 +1,10 @@
-use gpui::{Context, IntoElement, ParentElement, SharedString, Styled};
-use gpui_component::{
+use gpui_kit::component::{
     Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
     tab::{Tab, TabBar},
 };
+use gpui_kit::{Context, IntoElement, ParentElement, SharedString, Styled};
 
 use super::NavigationAction;
 use crate::document::handler::FileHandler;

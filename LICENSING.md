@@ -11,12 +11,11 @@ itself. The authoritative license texts are the files named below.
 | Original Datalith source code | MIT |
 | Original Datalith artwork (pixel-art icons, application icons) | MIT |
 | Datalith Cargo package metadata | `license = "MIT"` |
-| GPUI and Zed crates marked Apache-2.0 | Apache-2.0 |
-| `zlog`, `ztracing`, and `ztracing_macro` | GPL-3.0-or-later |
+| GPUI Kit and its `gpui-pre-*` dependencies | Apache-2.0 |
 | Pixeloid font files | SIL Open Font License 1.1 |
 | Bundled third-party themes | Their respective licenses (see `THIRD-PARTY-NOTICES.md`) |
-| Lucide icons (via `gpui-component-assets`) | ISC, plus MIT for the Feather-derived subset |
-| **Distributed combined Datalith executable** | **Conveyed under GPL-3.0-or-later** |
+| Lucide icons (via `gpui-kit-assets`) | ISC, plus MIT for the Feather-derived subset |
+| **Distributed Datalith executable** | **MIT, with third-party notices** |
 
 ## Original Datalith source is MIT
 
@@ -30,16 +29,11 @@ stylistically inspired by line-icon sets such as Nucleo Arcade, but they are
 original works, not copies of those proprietary icons. They are MIT-covered
 first-party assets.
 
-## The distributed binary is conveyed under GPL-3.0-or-later
+## Distributed binaries are conveyed under MIT
 
-Datalith links against components licensed under GPL-3.0-or-later (notably
-`zlog`, `ztracing`, and `ztracing_macro` from the Zed repository). Because the
-combined executable is a derivative work of those components, release binaries
-are conveyed under the conditions of the GNU General Public License, version 3
-or later. The complete text is in [LICENSE-GPL-3.0](LICENSE-GPL-3.0).
-
-This applies to the distributed executable and installers, not to original
-Datalith source files, which remain available under MIT.
+Datalith's release binaries are conveyed under the MIT License. The bundled
+third-party components retain their own licenses; their complete notices and
+license texts are included in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Third-party components
 
@@ -53,7 +47,7 @@ The retained Twilight theme uses a custom permissive grant and is explicitly
 documented for maintainer review; see "Bundled theme review" in
 `THIRD-PARTY-NOTICES.md`.
 
-## Corresponding Source
+## Release source archive
 
 Each release publishes a complete, vendored source archive named:
 
@@ -79,6 +73,6 @@ full version string.
 ## No warranty
 
 Each component is distributed without warranty under the terms of its own
-license; see the individual license texts, in particular the disclaimers in
-[LICENSE](LICENSE), [LICENSE-GPL-3.0](LICENSE-GPL-3.0), and the licenses
-reproduced in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+license; see the individual license texts, in particular the disclaimer in
+[LICENSE](LICENSE) and the licenses reproduced in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

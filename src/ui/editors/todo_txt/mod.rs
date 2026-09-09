@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
-use gpui::{
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::select::{SelectEvent, SelectState};
+use gpui_kit::component::{IndexPath, VirtualListScrollHandle};
+use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, IntoElement,
     ParentElement, Size, Styled, Subscription, Window, div, px, rgb,
 };
-use gpui_component::input::{InputEvent, InputState};
-use gpui_component::select::{SelectEvent, SelectState};
-use gpui_component::{IndexPath, VirtualListScrollHandle};
 
 use crate::document::handler::{FileHandler, ReloadOutcome};
 use crate::document::todo_txt::{FilterKind, SortKind, TodoTxtWorkspace};

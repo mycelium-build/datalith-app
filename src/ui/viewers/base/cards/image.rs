@@ -1,10 +1,10 @@
 //! Card image resolution and rendering for the cards view.
 
-use gpui::{
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
     ParentElement, SharedUri, Styled, div, img, prelude::StyledImage as _, px,
 };
-use gpui_component::ActiveTheme;
 
 use crate::document::base::{BaseView, CardImageFit};
 use crate::ui::viewers::base::cards::CARD_RADIUS;

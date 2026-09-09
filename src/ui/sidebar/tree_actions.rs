@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use gpui::{Context, SharedString};
-use gpui_component::tree::TreeItem;
+use gpui_kit::component::tree::TreeItem;
+use gpui_kit::{Context, SharedString};
 
 use super::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;

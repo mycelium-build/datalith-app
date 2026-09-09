@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use gpui::{
+use gpui_kit::component::input::EditorState;
+use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, div,
 };
-use gpui_component::input::EditorState;
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;

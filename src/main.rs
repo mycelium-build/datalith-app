@@ -23,12 +23,11 @@ mod ui;
 mod vault;
 
 fn main() {
-    let application = gpui_platform::application()
-        .with_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()))
+    let application = gpui_kit::application()
         .with_assets(app::assets::DatalithAssets);
     application.on_open_urls(app::deeplink::capture);
     application.run(|cx| {
-        gpui_component::init(cx);
+        app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
         pending_notifications.extend(ui::themes::load_embedded_themes(cx));
         ui::settings::SettingsView::init_theme_options(cx);

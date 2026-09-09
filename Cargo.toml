@@ -20,7 +20,6 @@ name = "Datalith"
 schemes = ["datalith"]
 resources = [
   { src = "LICENSE", target = "Licenses/LICENSE" },
-  { src = "LICENSE-GPL-3.0", target = "Licenses/LICENSE-GPL-3.0" },
   { src = "LICENSING.md", target = "Licenses/LICENSING.md" },
   { src = "THIRD-PARTY-NOTICES.md", target = "Licenses/THIRD-PARTY-NOTICES.md" },
 ]
@@ -34,18 +33,11 @@ installer-icon = "assets/logo/datalith.ico"
 embed-resource = "3.0.9"
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
-  "font-kit",
-  "wayland",
-  "x11",
-] }
-reqwest_client = { git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf", features = [
+gpui-kit = { version = "0.6.1", features = [
   "tree-sitter-markdown",
   "tree-sitter-yaml",
 ] }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "c6ffd3e166abb43bff8845f0aa61711adb128dcf" }
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "0.3.4" }
 anyhow = "1.0"
 dirs = "6"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -68,6 +60,8 @@ poem-openapi = { version = "5.1.16", features = ["swagger-ui"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
+gpui-kit = { version = "0.6.1", features = ["test-support"] }
+futures = "0.3"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 poem = { version = "3.1.12", features = ["test"] }
 

@@ -1,11 +1,11 @@
 //! Shortcuts settings page: keyboard shortcut reference.
 
-use gpui::{IntoElement, ParentElement, SharedString, Styled, div};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, h_flex,
     setting::{SettingGroup, SettingItem},
     v_flex,
 };
+use gpui_kit::{IntoElement, ParentElement, SharedString, Styled, div};
 
 use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
 

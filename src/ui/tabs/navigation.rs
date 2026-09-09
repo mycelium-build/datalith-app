@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use gpui::{AppContext, Context, Window};
-use gpui_component::{WindowExt, input::InputEvent};
+use gpui_kit::component::{WindowExt, input::InputEvent};
+use gpui_kit::{AppContext, Context, Window};
 use percent_encoding::percent_decode_str;
 
 use super::Tab;

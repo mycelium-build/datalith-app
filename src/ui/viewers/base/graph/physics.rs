@@ -1,4 +1,4 @@
-use gpui::{Point, point};
+use gpui_kit::{Point, point};
 
 use conv::{ConvAsUtil, ConvUtil, UnwrapOrInf};
 
@@ -357,8 +357,8 @@ mod tests {
 
     #[test]
     fn simulation_limits_acceleration_and_velocity() {
-        let acceleration = clamp_magnitude(gpui::point(300.0, 400.0), 4.0);
-        let velocity = clamp_magnitude(gpui::point(-300.0, 400.0), MAX_VELOCITY);
+        let acceleration = clamp_magnitude(gpui_kit::point(300.0, 400.0), 4.0);
+        let velocity = clamp_magnitude(gpui_kit::point(-300.0, 400.0), MAX_VELOCITY);
 
         assert!((vector_length(acceleration) - 4.0).abs() < 0.001);
         assert!((vector_length(velocity) - MAX_VELOCITY).abs() < 0.001);
@@ -380,8 +380,8 @@ mod tests {
                 ("two.md".into(), Vec::new(), Vec::new()),
             ],
         );
-        snapshot.nodes[0].position = gpui::point(-200.0, 0.0);
-        snapshot.nodes[1].position = gpui::point(200.0, 0.0);
+        snapshot.nodes[0].position = gpui_kit::point(-200.0, 0.0);
+        snapshot.nodes[1].position = gpui_kit::point(200.0, 0.0);
         let mut simulation = Simulation::default();
 
         for _ in 0..400 {
@@ -442,11 +442,11 @@ mod tests {
             "views:\n  - type: graph\n    name: G\n    physics:\n      center:\n        strength: 0\n      repulsion:\n        strength: 0\n      link:\n        strength: 0",
             vec![("still.md".into(), Vec::new(), Vec::new())],
         );
-        snapshot.nodes[0].position = gpui::point(120.0, 0.0);
+        snapshot.nodes[0].position = gpui_kit::point(120.0, 0.0);
 
         Simulation::default().step(&mut snapshot, None);
 
-        assert_eq!(snapshot.nodes[0].position, gpui::point(120.0, 0.0));
+        assert_eq!(snapshot.nodes[0].position, gpui_kit::point(120.0, 0.0));
         assert_eq!(snapshot.nodes[0].velocity, Point::default());
     }
 
@@ -456,11 +456,11 @@ mod tests {
             "views:\n  - type: graph\n    name: G",
             vec![("moving.md".into(), Vec::new(), Vec::new())],
         );
-        snapshot.nodes[0].position = gpui::point(120.0, 0.0);
+        snapshot.nodes[0].position = gpui_kit::point(120.0, 0.0);
         let mut simulation = Simulation::default();
 
         simulation.step(&mut snapshot, Some(0));
-        assert_eq!(snapshot.nodes[0].position, gpui::point(120.0, 0.0));
+        assert_eq!(snapshot.nodes[0].position, gpui_kit::point(120.0, 0.0));
 
         simulation.reheat();
         simulation.step(&mut snapshot, None);

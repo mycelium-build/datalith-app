@@ -37,7 +37,7 @@ jobs:
               per_page: 100,
             })
             const releasePulls = pulls.filter((pull) =>
-              pull.head.ref.startsWith('release/') &&
+              pull.head.ref.startsWith('release-please--branches--main') &&
               pull.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`
             )
 
@@ -45,12 +45,12 @@ jobs:
               await core.summary
                 .addHeading('Release candidate not created')
                 .addRaw(
-                  `Expected exactly one open release-plz PR targeting main, ` +
+                  `Expected exactly one open Release Please PR targeting main, ` +
                   `but found ${releasePulls.length}.`
                 )
                 .write()
               core.setFailed(
-                `Expected exactly one open release-plz PR targeting main, found ${releasePulls.length}`
+                `Expected exactly one open Release Please PR targeting main, found ${releasePulls.length}`
               )
               return
             }
@@ -76,7 +76,7 @@ jobs:
                   [{ data: 'Release PR head', header: true }, releaseSha],
                   [{ data: 'Comparison', header: true }, comparison.data.status],
                 ])
-                .addRaw('The release-plz PR is stale. Update it before creating an RC.')
+                .addRaw('The Release Please PR is stale. Update it before creating an RC.')
                 .write()
               core.setFailed(
                 `Release PR #${pull.number} is stale: current main ${mainSha} is not an ancestor ` +

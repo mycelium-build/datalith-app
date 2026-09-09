@@ -1,4 +1,4 @@
-use gpui::{Entity, Global};
+use gpui_kit::{Entity, Global};
 
 use crate::ui::DatalithView;
 

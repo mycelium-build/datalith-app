@@ -1,5 +1,5 @@
-use gpui::SharedString;
-use gpui_component::IconNamed;
+use gpui_kit::SharedString;
+use gpui_kit::component::IconNamed;
 
 // Pixel-art icons shipped by Datalith.
 // Paths that collide with gpui-component's lucide icons override them

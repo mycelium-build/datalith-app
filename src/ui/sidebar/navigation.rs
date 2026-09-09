@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use gpui::{Context, KeyDownEvent, SharedString, Window};
+use gpui_kit::{Context, KeyDownEvent, SharedString, Window};
 
 use crate::vault::path::display_name;
 
@@ -64,7 +64,7 @@ impl DatalithView {
         self.sidebar_focus_handle.focus(window, cx);
         if let Some(ix) = self.tree_state.read(cx).selected_index() {
             self.tree_state.update(cx, |state, _| {
-                state.scroll_to_item(ix, gpui::ScrollStrategy::Center);
+                state.scroll_to_item(ix, gpui_kit::ScrollStrategy::Center);
             });
         }
     }
@@ -82,7 +82,7 @@ impl DatalithView {
             if let Some(ref path) = active_path {
                 let id = path.to_string_lossy().to_string();
                 let label = display_name(path).to_string();
-                let item = gpui_component::tree::TreeItem::new(id, label);
+                let item = gpui_kit::component::tree::TreeItem::new(id, label);
                 self.tree_state.update(cx, |state, cx| {
                     state.set_selected_item(Some(&item), cx);
                 });
@@ -111,7 +111,7 @@ impl DatalithView {
             if let Some(ix) = state.selected_index() {
                 let new_ix = ix.checked_sub(1).unwrap_or_else(|| count.saturating_sub(1));
                 state.set_selected_index(Some(new_ix), cx);
-                state.scroll_to_item(new_ix, gpui::ScrollStrategy::Top);
+                state.scroll_to_item(new_ix, gpui_kit::ScrollStrategy::Top);
             }
         });
         self.update_last_selection(cx);
@@ -125,7 +125,7 @@ impl DatalithView {
                     state.set_selected_index(Some(0), cx);
                 }
                 if let Some(new_ix) = state.selected_index() {
-                    state.scroll_to_item(new_ix, gpui::ScrollStrategy::Bottom);
+                    state.scroll_to_item(new_ix, gpui_kit::ScrollStrategy::Bottom);
                 }
             }
         });
@@ -157,7 +157,7 @@ impl DatalithView {
     pub(crate) fn collapse_tree_item(&mut self, id: &SharedString, cx: &mut Context<Self>) {
         self.mark_tree_item_expanded(id, false);
         self.refresh_tree(cx);
-        let item = gpui_component::tree::TreeItem::new(id.clone(), SharedString::default());
+        let item = gpui_kit::component::tree::TreeItem::new(id.clone(), SharedString::default());
         self.tree_state.update(cx, |state, cx| {
             state.set_selected_item(Some(&item), cx);
         });

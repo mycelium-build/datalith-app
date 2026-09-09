@@ -1,9 +1,9 @@
 use std::ops::Mul;
 
 use conv::ConvAsUtil;
-use gpui::{App, px};
-use gpui_component::notification::Notification;
-use gpui_component::{Theme, ThemeMode, ThemeRegistry};
+use gpui_kit::component::notification::Notification;
+use gpui_kit::component::{Theme, ThemeMode, ThemeRegistry};
+use gpui_kit::{App, px};
 
 use crate::app::settings::{self, ThemePreference};
 use crate::ui::notifications;

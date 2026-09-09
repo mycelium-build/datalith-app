@@ -53,7 +53,14 @@ def main() -> int:
         for package in packages
         if isinstance(package, dict) and isinstance(package.get("name"), str)
     }
-    required = {"gpui", "gpui-component", "zlog", "ztracing", "ztracing_macro"}
+    required = {
+        "gpui-kit",
+        "gpui-component",
+        "gpui-pre",
+        "gpui-pre-zlog",
+        "gpui-pre-ztracing",
+        "gpui-pre-ztracing-macro",
+    }
     missing = sorted(required - package_names)
     if missing:
         fail(f"SBOM missing expected components: components={','.join(missing)}")

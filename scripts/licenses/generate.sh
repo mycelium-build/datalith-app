@@ -56,6 +56,10 @@ cargo about generate \
     cat "$TMP_DIR/rust.md"
 } > "$TMP_DIR/notices.md"
 
+# Some upstream license texts contain CRLF line endings. Normalize the final
+# assembled artifact so every generator path produces the same bytes.
+sed -i 's/\r$//' "$TMP_DIR/notices.md"
+
 # 7. Write the committed artifact byte-for-byte.
 # The application embeds this same file directly, so there is no second generated copy to keep in sync.
 cp "$TMP_DIR/notices.md" "$REPO_ROOT/THIRD-PARTY-NOTICES.md"

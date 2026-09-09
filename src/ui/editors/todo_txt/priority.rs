@@ -1,9 +1,9 @@
-use gpui::prelude::FluentBuilder;
-use gpui::{
+use gpui_kit::component::{ActiveTheme, Icon, IconName, Selectable};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{
     App, AppContext, ElementId, Entity, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, RenderOnce, Styled, Window, div, px,
 };
-use gpui_component::{ActiveTheme, Icon, IconName, Selectable};
 
 use txtodo::Priority;
 

@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-plz:
+  release-please:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -31,56 +31,69 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
-
-      - name: Restore triggering branch context
-        env:
-          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          git switch -C "$RELEASE_BRANCH" "$TRIGGERING_SHA"
-          git branch --set-upstream-to="origin/$RELEASE_BRANCH" "$RELEASE_BRANCH"
-
-      # release-plz works from a temporary repository copy. A global helper makes
-      # the App token available there without writing the token to Git config.
-      - name: Configure Git authentication
-        env:
-          RELEASE_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: >-
-          git config --global credential.https://github.com.helper
-          '!f() { test "$1" = get || exit 0; echo "username=x-access-token"; echo "password=$RELEASE_GITHUB_TOKEN"; }; f'
-
+      # The Rust strategy edits Cargo.toml/Cargo.lock without cargo package.
       - name: Release or prepare next release
-        id: release-plz
-        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          RELEASE_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        id: release-please
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         with:
-          config: release-plz.toml
-          version: "0.3.160"
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Draft releases do not create their tag. Push it explicitly so Release
+      # builds the installers and publishes the draft only after verification.
+      - name: Start binary release from draft
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              ...context.repo, per_page: 100,
+            })
+            for (const release of releases) {
+              if (!release.draft || !/^v\d+\.\d+\.\d+$/.test(release.tag_name)) continue
+              try {
+                await github.rest.git.getRef({ ...context.repo, ref: `tags/${release.tag_name}` })
+                continue
+              } catch (error) {
+                if (error.status !== 404) throw error
+              }
+              const sha = release.target_commitish
+              if (!/^[a-f0-9]{40}$/.test(sha)) {
+                throw new Error(`Draft ${release.tag_name} must target an exact commit`)
+              }
+              const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                ...context.repo, basehead: `${sha}...${process.env.TRIGGERING_SHA}`,
+              })
+              if (!['ahead', 'identical'].includes(comparison.data.status)) {
+                core.info(`Waiting for successful CI covering ${release.tag_name}`)
+                continue
+              }
+              await github.rest.git.createRef({
+                ...context.repo, ref: `refs/tags/${release.tag_name}`, sha,
+              })
+            }
 
       - name: Wait for release PR branch to propagate
-        if: steps.release-plz.outputs.prs_created == 'true'
+        if: steps.release-please.outputs.prs_created == 'true'
         run: sleep 10
         shell: bash
 
       - name: Verify release PR contains triggering commit
-        if: steps.release-plz.outputs.prs_created == 'true'
+        if: steps.release-please.outputs.prs_created == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          RELEASE_PR: ${{ steps.release-plz.outputs.pr }}
+          RELEASE_PR: ${{ steps.release-please.outputs.pr }}
           TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const release = JSON.parse(process.env.RELEASE_PR)
             if (!Number.isInteger(release.number)) {
-              core.setFailed('release-plz did not return a valid release PR number')
+              core.setFailed('release-please did not return a valid release PR number')
               return
             }
 
@@ -93,10 +106,10 @@ jobs:
             if (
               pull.state !== 'open' ||
               pull.base.ref !== 'main' ||
-              !pull.head.ref.startsWith('release/') ||
+              !pull.head.ref.startsWith('release-please--branches--main') ||
               pull.head.repo?.full_name !== expectedRepository
             ) {
-              core.setFailed(`release-plz returned unexpected PR #${pull.number}`)
+              core.setFailed(`release-please returned unexpected PR #${pull.number}`)
               return
             }
 
@@ -124,3 +137,4 @@ jobs:
                 `(comparison: ${comparison.data.status})`
               )
             }
+

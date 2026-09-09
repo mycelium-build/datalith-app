@@ -1,8 +1,8 @@
-use gpui::{
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{
     BorderStyle, Bounds, Corners, Edges, Hsla, PathBuilder, Pixels, Point, Rgba, Window, point, px,
     quad, size,
 };
-use gpui_component::ActiveTheme;
 
 use crate::document::base::GraphColor;
 
@@ -44,7 +44,7 @@ struct PaintContext<'a> {
     incoming_hover_color: Hsla,
     both_hover_color: Hsla,
     window: &'a mut Window,
-    cx: &'a gpui::App,
+    cx: &'a gpui_kit::App,
 }
 
 pub(super) fn paint_graph(
@@ -53,7 +53,7 @@ pub(super) fn paint_graph(
     camera: Camera,
     hovered_node: Option<usize>,
     window: &mut Window,
-    cx: &gpui::App,
+    cx: &gpui_kit::App,
 ) {
     let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
     let focus = hovered_node.map(|source| GraphFocus::new(snapshot, source));

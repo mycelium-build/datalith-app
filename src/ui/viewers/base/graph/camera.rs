@@ -1,4 +1,4 @@
-use gpui::{Point, point};
+use gpui_kit::{Point, point};
 
 use super::model::ViewNode;
 
@@ -83,8 +83,8 @@ mod tests {
 
     #[test]
     fn zoom_keeps_the_world_point_under_the_pointer() {
-        let viewport = gpui::point(800.0, 600.0);
-        let pointer = gpui::point(615.0, 210.0);
+        let viewport = gpui_kit::point(800.0, 600.0);
+        let pointer = gpui_kit::point(615.0, 210.0);
         let mut camera = Camera::default();
         let before = camera.screen_to_world(pointer, viewport);
 
