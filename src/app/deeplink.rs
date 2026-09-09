@@ -11,6 +11,7 @@ use std::time::Duration;
 use gpui_kit::{App, AsyncApp};
 use percent_encoding::percent_decode_str;
 
+use crate::ui::notifications;
 use crate::vault::path::resolve_vault_id;
 
 use super::settings;
@@ -120,6 +121,10 @@ fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
     view.update(cx, |view, cx| {
         // A vault is required: resolve it, and switch to it if needed.
         let Some(vault_path) = resolve_vault_id(&vault, &settings::known_vault_paths()) else {
+            notifications::push_window_notification(
+                cx,
+                notifications::deeplink_vault_not_found(&vault),
+            );
             return;
         };
         if view.root_path.as_deref() != Some(vault_path.as_path()) {

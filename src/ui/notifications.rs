@@ -120,3 +120,7 @@ pub fn server_start_failed(port: u16, error: &str) -> Notification {
 pub fn copy_token_failed(error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to copy the server token: {error}"))
 }
+
+pub fn deeplink_vault_not_found(vault: &str) -> Notification {
+    Notification::error(format!("Deep link failed: unknown vault \"{vault}\"")).autohide(false)
+}
