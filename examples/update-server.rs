@@ -114,6 +114,8 @@ fn prepare_bundle(directory: &Path, marker: &Path) -> anyhow::Result<Vec<u8>> {
         let archive = directory.join("update.app.tar.gz");
         anyhow::ensure!(
             Command::new("tar")
+                // AppleDouble sidecars break the updater's app-root stripping.
+                .env("COPYFILE_DISABLE", "1")
                 .arg("-czf")
                 .arg(&archive)
                 .arg("-C")
@@ -264,7 +266,26 @@ mod tests {
         let endpoint = format!("http://{}", listener.local_addr()?);
         let directory =
             std::env::temp_dir().join(format!("datalith-update-fixture-{}", std::process::id()));
+        #[cfg(not(target_os = "macos"))]
         let target = directory.join("Datalith.AppImage");
+        #[cfg(target_os = "macos")]
+        let target = {
+            let payload = directory.join("payload/Datalith.app");
+            std::fs::create_dir_all(&payload)?;
+            // Force tar to encounter metadata that would produce ._Datalith.app.
+            anyhow::ensure!(
+                Command::new("xattr")
+                    .args(["-w", "com.datalith.update-test", "fixture metadata"])
+                    .arg(&payload)
+                    .status()?
+                    .success(),
+                "Could not add fixture metadata"
+            );
+            let target = directory.join("installed/Datalith.app/Contents/MacOS/datalith");
+            std::fs::create_dir_all(target.parent().context("missing executable parent")?)?;
+            std::fs::write(&target, "old executable")?;
+            target
+        };
         let (fixture, pubkey) = prepare(directory.clone(), endpoint.clone())?;
         let expected = fixture.bundle.clone();
         let server = std::thread::spawn(move || -> anyhow::Result<()> {
@@ -293,7 +314,12 @@ mod tests {
             update.install(bytes)?;
             assert!(Command::new(&target).status()?.success());
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        {
+            update.install(bytes)?;
+            assert!(Command::new(&target).status()?.success());
+        }
+        #[cfg(target_os = "windows")]
         assert!(
             Command::new(directory.join(format!("fake-update{}", std::env::consts::EXE_SUFFIX)))
                 .status()?
