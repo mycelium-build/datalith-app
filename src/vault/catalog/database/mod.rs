@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::vault::DATALITH_DIR_NAME;
+use crate::channel::Channel;
 
 mod document;
 mod link_resolution;
@@ -71,7 +71,7 @@ impl Drop for PooledConnection {
 
 impl CatalogDatabase {
     pub(super) async fn open(root: &Path) -> Result<Self> {
-        let metadata_dir = root.join(DATALITH_DIR_NAME);
+        let metadata_dir = Channel::current().vault_cache_dir(root);
         fs::create_dir_all(&metadata_dir).with_context(|| {
             format!(
                 "Failed to create catalog directory {}",

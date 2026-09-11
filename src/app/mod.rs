@@ -8,6 +8,8 @@ pub mod preferences;
 pub mod settings;
 mod state;
 pub mod system;
+pub mod update;
+pub mod version;
 
 use std::path::PathBuf;
 
@@ -16,10 +18,13 @@ pub use state::AppState;
 pub fn init(cx: &mut gpui_kit::App) {
     gpui_kit::init(cx);
     cx.set_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()));
+    update::init(cx);
 }
 
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("datalith")
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join(crate::channel::Channel::current().stem())
 }
 
 #[cfg(test)]

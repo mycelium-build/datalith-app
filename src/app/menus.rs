@@ -11,7 +11,7 @@ use super::actions::{
 
 pub fn install(cx: &mut App) {
     cx.set_menus([
-        application_menu(),
+        application_menu(cx),
         file_menu(),
         navigate_menu(),
         help_menu(),
@@ -22,15 +22,31 @@ pub fn install(cx: &mut App) {
     }
 }
 
-fn application_menu() -> Menu {
-    Menu::new("Datalith").items([
-        MenuItem::action("About Datalith", OpenAbout),
+fn application_menu(cx: &App) -> Menu {
+    let mut items = vec![MenuItem::action(
+        format!(
+            "About {}",
+            crate::channel::Channel::current().product_name()
+        ),
+        OpenAbout,
+    )];
+    if super::update::Updater::get(cx).is_some() {
+        items.push(MenuItem::action(
+            "Check for updates",
+            super::actions::CheckForUpdates,
+        ));
+    }
+    items.extend([
         MenuItem::separator(),
         MenuItem::action("Settings", OpenSettings),
         MenuItem::action("Shortcuts list", OpenShortcuts),
         MenuItem::separator(),
-        MenuItem::action("Quit Datalith", Quit),
-    ])
+        MenuItem::action(
+            format!("Quit {}", crate::channel::Channel::current().product_name()),
+            Quit,
+        ),
+    ]);
+    Menu::new(crate::channel::Channel::current().product_name()).items(items)
 }
 
 fn file_menu() -> Menu {

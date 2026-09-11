@@ -14,6 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  update-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test update manifest validation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          python3 -B -m unittest discover -s scripts/updates -v
+          python3 -B -m unittest discover -s scripts -p test_prepare_release.py -v
+
   ci:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
