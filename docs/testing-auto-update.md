@@ -43,3 +43,42 @@ and regenerates the test key and launch script.
 
 When finished, stop the app and server. Run `cargo run --locked --bin datalith`
 normally to return to a development build without update controls.
+
+## Linux package mode
+
+On Linux, launch `sh target/update-ui/run-package.sh` instead of `run.sh` to
+test package behavior. The update control should open the website download
+page; the server should receive no `/bundle` request and no `applied` marker
+should be created. Use a freshly started server to clear previous results.
+
+## Packaged release verification
+
+Run on both x86_64 and ARM64 for Linux, macOS, and Windows, using two
+updater-bearing versions. The fake server tests UI and handoff; it does not
+replace these checks with real packages and the published manifest.
+
+1. Fresh-install the older AppImage, macOS app from its DMG, or Windows
+   current-user NSIS package. Launch it and check the version in About.
+2. Discover the newer release and wait for **Restart to update**. Keep using
+   the app during download; it should remain responsive.
+3. Quit normally. The installed version must remain unchanged. Relaunch;
+   the update must download again.
+4. Choose **Restart to update**. Datalith should quit, install, and reopen
+   with the newer About version. Check that settings and a test Vault survive.
+5. Uninstall using the platform's normal method. On Windows, check that
+   updating did not duplicate shortcuts or the uninstall entry.
+
+For `.deb`, `.rpm`, and `.pkg.tar.zst`, install through the matching package
+manager and check for an update. The control must open
+`https://mycelium-build.github.io/datalith/#download`, without downloading or
+replacing application files. Compare package verification results before and
+after (`dpkg --verify datalith`, `rpm -V datalith`, or `pacman -Qkk datalith`).
+
+Record the package versions, OS/architecture, result, and any Gatekeeper,
+SmartScreen, or other unsigned-application warnings for each run.
+
+For release removal, use a disposable repository configured with the same
+release and Pages workflows. Publish two signed stable fixture releases,
+confirm the manifest offers the newer one, then delete it through GitHub's UI.
+The regeneration workflow must succeed and the live manifest must offer the
+older release. Delete that release too; the manifest should offer no update.

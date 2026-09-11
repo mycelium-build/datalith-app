@@ -148,25 +148,29 @@ fn write_launcher(
         } else {
             "exec cargo run --locked --bin datalith"
         };
+        let environment = format!(
+            "#!/bin/sh\nset -eu\ncd {}\nexport DATALITH_RELEASE_TAG=v0.1.0\nexport DATALITH_UPDATER_PUBKEY={}\nexport DATALITH_UPDATE_ENDPOINT={}/manifest.json\n",
+            quote(env!("CARGO_MANIFEST_DIR")),
+            quote(pubkey),
+            endpoint,
+        );
+        let installation = if cfg!(target_os = "linux") {
+            format!("export APPIMAGE={}\n", quote(&target.to_string_lossy()))
+        } else {
+            "unset APPIMAGE\n".into()
+        };
         std::fs::write(
             directory.join("run.sh"),
-            format!(
-                "#!/bin/sh\nset -eu\ncd {}\nexport DATALITH_RELEASE_TAG=v0.1.0\nexport DATALITH_UPDATER_PUBKEY={}\nexport DATALITH_UPDATE_ENDPOINT={}/manifest.json\nexport APPIMAGE={}\n{}\n",
-                quote(env!("CARGO_MANIFEST_DIR")),
-                quote(pubkey),
-                endpoint,
-                if cfg!(target_os = "linux") {
-                    quote(&target.to_string_lossy())
-                } else {
-                    "''".into()
-                },
-                if cfg!(target_os = "macos") {
-                    format!("unset APPIMAGE\n{launch}")
-                } else {
-                    launch.into()
-                },
-            ),
+            format!("{environment}{installation}{launch}\n"),
         )?;
+        if cfg!(target_os = "linux") {
+            std::fs::write(
+                directory.join("run-package.sh"),
+                format!(
+                    "{environment}unset APPIMAGE APPDIR\nexec cargo run --locked --bin datalith\n"
+                ),
+            )?;
+        }
     }
     Ok(())
 }
