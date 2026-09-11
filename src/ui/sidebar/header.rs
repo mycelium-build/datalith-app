@@ -111,27 +111,25 @@ impl Render for UpdateControl {
                         / total.approx_as::<f32>().unwrap_or_inf()
                         * 100.
                 });
-                button
-                    .disabled(true)
-                    .accessibility_label("Downloading update")
-                    .tooltip("Downloading update")
-                    .icon(
-                        ProgressCircle::new("update-progress")
-                            .value(progress)
-                            .loading(total.is_none())
-                            .accessibility_label("Downloading update"),
-                    )
+                button.disabled(true).label("Downloading update").icon(
+                    ProgressCircle::new("update-progress")
+                        .size_5()
+                        .value(progress)
+                        .loading(total.is_none())
+                        .accessibility_label("Downloading update")
+                        .child(Icon::new(DatalithIcon::Download).size_3()),
+                )
             }
             UpdatePresentation::Ready { version } => button
-                .icon(IconName::ArrowUp)
+                .icon(Icon::new(DatalithIcon::Download))
                 .label("Restart to update")
                 .tooltip(format!("Restart to update to {version}")),
             UpdatePresentation::External { version } => button
-                .icon(IconName::ArrowUp)
+                .icon(Icon::new(DatalithIcon::Download))
                 .label("Download update")
                 .tooltip(format!("Download Datalith {version}")),
             UpdatePresentation::Applying => button
-                .icon(IconName::ArrowUp)
+                .icon(Icon::new(DatalithIcon::Download))
                 .label("Installing…")
                 .disabled(true),
         };
