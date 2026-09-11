@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
     let (fixture, _) = prepare(directory, endpoint.clone())?;
     println!("Serving signed fake updates at {endpoint}");
     let launch = if cfg!(windows) {
-        "powershell -File target/update-ui/run.ps1"
+        "powershell -ExecutionPolicy Bypass -File target/update-ui/run.ps1"
     } else {
         "sh target/update-ui/run.sh"
     };
@@ -139,7 +139,7 @@ fn write_launcher(
         std::fs::write(
             directory.join("run.ps1"),
             format!(
-                "$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath $PSScriptRoot\nSet-Location ../..\n$channel = Get-Content -Raw CHANNEL\ntry {{\nSet-Content -NoNewline CHANNEL stable\n$env:DATALITH_RELEASE_TAG = 'v0.1.0'\n$env:DATALITH_UPDATER_PUBKEY = '{pubkey}'\n$env:DATALITH_UPDATE_ENDPOINT = '{endpoint}/manifest.json'\ncargo build --locked --bin datalith\nif ($LASTEXITCODE -ne 0) {{ throw 'Build failed' }}\n}} finally {{ Set-Content -NoNewline CHANNEL $channel }}\n& target/debug/datalith.exe\n"
+                "$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath $PSScriptRoot\nSet-Location ../..\n$channel = Get-Content -Raw -LiteralPath CHANNEL\ntry {{\nSet-Content -NoNewline -Encoding Ascii -LiteralPath CHANNEL -Value stable\n$env:DATALITH_RELEASE_TAG = 'v0.1.0'\n$env:DATALITH_UPDATER_PUBKEY = '{pubkey}'\n$env:DATALITH_UPDATE_ENDPOINT = '{endpoint}/manifest.json'\ncargo build --locked --bin datalith\nif ($LASTEXITCODE -ne 0) {{ throw 'Build failed' }}\n}} finally {{ Set-Content -NoNewline -Encoding Ascii -LiteralPath CHANNEL -Value $channel }}\n& target/debug/datalith.exe\n"
             ),
         )?;
     } else {

@@ -3,6 +3,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InstallationKind {
     SelfManaged,
+    #[cfg(any(test, not(any(target_os = "windows", target_os = "macos"))))]
     ExternallyManaged,
 }
 
