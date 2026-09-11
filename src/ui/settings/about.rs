@@ -50,7 +50,7 @@ impl SettingsView {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+                            .child(format!("Version {}", crate::app::version::version())),
                     )
                     .child(
                         div()

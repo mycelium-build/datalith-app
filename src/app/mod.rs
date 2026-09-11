@@ -8,6 +8,7 @@ pub mod preferences;
 pub mod settings;
 mod state;
 pub mod system;
+pub mod version;
 
 use std::path::PathBuf;
 
