@@ -18,6 +18,7 @@ pub fn open_initial(
 ) {
     cx.spawn(async move |cx| {
         let options = WindowOptions {
+            app_id: Some(crate::channel::Channel::current().stem().into()),
             window_bounds: Some(WindowBounds::Maximized(Bounds::new(
                 point(px(0.0), px(0.0)),
                 size(px(1440.0), px(900.0)),
@@ -25,6 +26,7 @@ pub fn open_initial(
             ..WindowOptions::default()
         };
         if let Err(error) = cx.open_window(options, |window, cx| {
+            window.set_window_title(crate::channel::Channel::current().product_name());
             let view =
                 cx.new(|cx| DatalithView::new(first_startup, pending_notifications, window, cx));
             cx.update_global(|state: &mut AppState, _| {

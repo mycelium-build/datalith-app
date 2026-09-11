@@ -194,15 +194,23 @@ jobs:
           sudo install -m 0755 nfpm /usr/local/bin/nfpm
           nfpm --version
 
+      - name: Stamp release channel
+        shell: bash
+        run: python scripts/prepare-release.py --tag "$GITHUB_REF_NAME"
+
       - name: Build release binary
         env:
           DATALITH_RELEASE_TAG: ${{ github.ref_name }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: Verify build identity and prepare packaging
+        shell: bash
+        run: python scripts/prepare-release.py --tag "$GITHUB_REF_NAME" --target ${{ matrix.target }}
+
       - name: Package desktop application
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.format }}
+        run: cargo packager --config target/${{ matrix.target }}/release/packager.json --target ${{ matrix.target }} --formats ${{ matrix.format }}
 
       - name: Package native Linux formats
         if: runner.os == 'Linux'
@@ -211,6 +219,8 @@ jobs:
           PACKAGE_TARGET: ${{ matrix.target }}
         run: |
           export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+          export PACKAGE_CHANNEL="$(cat CHANNEL)"
+          export PACKAGE_STEM="$(python -c 'import json, os; print(json.load(open("target/" + os.environ["PACKAGE_TARGET"] + "/release/packager.json"))["name"])')"
           for packager in deb rpm archlinux; do
             nfpm package \
               --config nfpm.yaml \
@@ -220,6 +230,7 @@ jobs:
 
       - name: Sign updater bundle
         env:
+          DATALITH_RELEASE_TAG: ${{ github.ref_name }}
           CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.DATALITH_UPDATER_PRIVATE_KEY }}
         run: python scripts/updates/sign.py --target ${{ matrix.target }} --platform ${{ matrix.platform }}
 

@@ -23,7 +23,13 @@ pub fn install(cx: &mut App) {
 }
 
 fn application_menu(cx: &App) -> Menu {
-    let mut items = vec![MenuItem::action("About Datalith", OpenAbout)];
+    let mut items = vec![MenuItem::action(
+        format!(
+            "About {}",
+            crate::channel::Channel::current().product_name()
+        ),
+        OpenAbout,
+    )];
     if super::update::Updater::get(cx).is_some() {
         items.push(MenuItem::action(
             "Check for updates",
@@ -35,9 +41,12 @@ fn application_menu(cx: &App) -> Menu {
         MenuItem::action("Settings", OpenSettings),
         MenuItem::action("Shortcuts list", OpenShortcuts),
         MenuItem::separator(),
-        MenuItem::action("Quit Datalith", Quit),
+        MenuItem::action(
+            format!("Quit {}", crate::channel::Channel::current().product_name()),
+            Quit,
+        ),
     ]);
-    Menu::new("Datalith").items(items)
+    Menu::new(crate::channel::Channel::current().product_name()).items(items)
 }
 
 fn file_menu() -> Menu {

@@ -110,7 +110,10 @@ pub fn font_load_failed(error: &anyhow::Error) -> Notification {
 }
 
 pub fn update_up_to_date() -> Notification {
-    Notification::info("Datalith is up to date")
+    Notification::info(format!(
+        "{} is up to date",
+        crate::channel::Channel::current().product_name()
+    ))
 }
 
 pub fn update_check_failed() -> Notification {

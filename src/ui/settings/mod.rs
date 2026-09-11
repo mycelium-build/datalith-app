@@ -183,7 +183,10 @@ impl SettingsView {
             SettingPage::new("General").groups(vec![SettingGroup::new().title("Updates").items(
                 vec![
                     SettingItem::new(
-                        "Automatically update Datalith",
+                        format!(
+                            "Automatically update {}",
+                            crate::channel::Channel::current().product_name()
+                        ),
                         SettingField::switch(
                             |_| settings::snapshot().automatic_updates,
                             |enabled, cx| {

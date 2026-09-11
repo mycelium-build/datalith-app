@@ -139,17 +139,17 @@ fn write_launcher(
         std::fs::write(
             directory.join("run.ps1"),
             format!(
-                "$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath $PSScriptRoot\nSet-Location ../..\n$env:DATALITH_RELEASE_TAG = 'v0.1.0'\n$env:DATALITH_UPDATER_PUBKEY = '{pubkey}'\n$env:DATALITH_UPDATE_ENDPOINT = '{endpoint}/manifest.json'\ncargo run --locked --bin datalith\n"
+                "$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath $PSScriptRoot\nSet-Location ../..\n$channel = Get-Content -Raw CHANNEL\ntry {{\nSet-Content -NoNewline CHANNEL stable\n$env:DATALITH_RELEASE_TAG = 'v0.1.0'\n$env:DATALITH_UPDATER_PUBKEY = '{pubkey}'\n$env:DATALITH_UPDATE_ENDPOINT = '{endpoint}/manifest.json'\ncargo build --locked --bin datalith\nif ($LASTEXITCODE -ne 0) {{ throw 'Build failed' }}\n}} finally {{ Set-Content -NoNewline CHANNEL $channel }}\n& target/debug/datalith.exe\n"
             ),
         )?;
     } else {
         let launch = if cfg!(target_os = "macos") {
-            "cargo build --locked --bin datalith\nmkdir -p target/update-ui/installed\ncp -R target/update-ui/payload/Datalith.app target/update-ui/installed/\ncp target/debug/datalith target/update-ui/installed/Datalith.app/Contents/MacOS/datalith\nexec target/update-ui/installed/Datalith.app/Contents/MacOS/datalith"
+            "mkdir -p target/update-ui/installed\ncp -R target/update-ui/payload/Datalith.app target/update-ui/installed/\ncp target/debug/datalith target/update-ui/installed/Datalith.app/Contents/MacOS/datalith\nexec target/update-ui/installed/Datalith.app/Contents/MacOS/datalith"
         } else {
-            "exec cargo run --locked --bin datalith"
+            "exec target/debug/datalith"
         };
         let environment = format!(
-            "#!/bin/sh\nset -eu\ncd {}\nexport DATALITH_RELEASE_TAG=v0.1.0\nexport DATALITH_UPDATER_PUBKEY={}\nexport DATALITH_UPDATE_ENDPOINT={}/manifest.json\n",
+            "#!/bin/sh\nset -eu\ncd {}\nexport DATALITH_RELEASE_TAG=v0.1.0\nexport DATALITH_UPDATER_PUBKEY={}\nexport DATALITH_UPDATE_ENDPOINT={}/manifest.json\nchannel=$(cat CHANNEL)\ntrap 'printf \"%s\\n\" \"$channel\" > CHANNEL' EXIT\nprintf 'stable\\n' > CHANNEL\ncargo build --locked --bin datalith\nprintf '%s\\n' \"$channel\" > CHANNEL\ntrap - EXIT\n",
             quote(env!("CARGO_MANIFEST_DIR")),
             quote(pubkey),
             endpoint,
@@ -166,9 +166,7 @@ fn write_launcher(
         if cfg!(target_os = "linux") {
             std::fs::write(
                 directory.join("run-package.sh"),
-                format!(
-                    "{environment}unset APPIMAGE APPDIR\nexec cargo run --locked --bin datalith\n"
-                ),
+                format!("{environment}unset APPIMAGE APPDIR\nexec target/debug/datalith\n"),
             )?;
         }
     }

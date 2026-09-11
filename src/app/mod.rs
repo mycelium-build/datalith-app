@@ -22,7 +22,9 @@ pub fn init(cx: &mut gpui_kit::App) {
 }
 
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("datalith")
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join(crate::channel::Channel::current().stem())
 }
 
 #[cfg(test)]

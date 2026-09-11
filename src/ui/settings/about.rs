@@ -31,26 +31,30 @@ pub(super) fn about_page_index() -> usize {
 impl SettingsView {
     #[allow(clippy::too_many_lines)]
     pub(super) fn about_group() -> SettingGroup {
+        let product_name = crate::channel::Channel::current().product_name();
         let docs_vault = crate::app::docs::docs_vault_path()
             .to_string_lossy()
             .to_string();
-        SettingGroup::new().title("Datalith").items(vec![
+        SettingGroup::new().title(product_name).items(vec![
             SettingItem::render(move |_options, _window, cx| {
                 v_flex()
                     .w_full()
                     .items_center()
                     .gap_2()
-                    .child(monolith_mark(3.0, cx.theme().primary))
+                    .child(monolith_mark(
+                        3.0,
+                        crate::ui::themes::logo_color(cx.theme()),
+                    ))
                     .child(
                         div()
                             .font_weight(gpui_kit::FontWeight::BOLD)
-                            .child("Datalith"),
+                            .child(product_name),
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("Version {}", crate::app::version::version())),
+                            .child(crate::app::version::about_version()),
                     )
                     .child(
                         div()

@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
-name: datalith
+name: ${PACKAGE_STEM}
 arch: ${PACKAGE_ARCH}
 platform: linux
 version: ${PACKAGE_VERSION}
@@ -13,61 +13,74 @@ homepage: https://github.com/mycelium-build/datalith-app
 license: MIT
 
 contents:
-  - src: target/${PACKAGE_TARGET}/release/datalith
-    dst: /usr/bin/datalith
+  - src: target/${PACKAGE_TARGET}/release/${PACKAGE_STEM}
+    dst: /usr/bin/${PACKAGE_STEM}
     expand: true
     file_info:
       mode: 0755
-  - src: packaging/datalith.desktop
-    dst: /usr/share/applications/datalith.desktop
+  - src: packaging/${PACKAGE_STEM}.desktop
+    dst: /usr/share/applications/${PACKAGE_STEM}.desktop
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/datalith.svg
-    dst: /usr/share/icons/hicolor/scalable/apps/datalith.svg
+  - src: assets/logo/${PACKAGE_CHANNEL}/datalith.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/${PACKAGE_STEM}.svg
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/16x16/apps/datalith.png
-    dst: /usr/share/icons/hicolor/16x16/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/16x16/apps/datalith.png
+    dst: /usr/share/icons/hicolor/16x16/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/32x32/apps/datalith.png
-    dst: /usr/share/icons/hicolor/32x32/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/32x32/apps/datalith.png
+    dst: /usr/share/icons/hicolor/32x32/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/48x48/apps/datalith.png
-    dst: /usr/share/icons/hicolor/48x48/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/48x48/apps/datalith.png
+    dst: /usr/share/icons/hicolor/48x48/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/64x64/apps/datalith.png
-    dst: /usr/share/icons/hicolor/64x64/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/64x64/apps/datalith.png
+    dst: /usr/share/icons/hicolor/64x64/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/128x128/apps/datalith.png
-    dst: /usr/share/icons/hicolor/128x128/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/128x128/apps/datalith.png
+    dst: /usr/share/icons/hicolor/128x128/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/256x256/apps/datalith.png
-    dst: /usr/share/icons/hicolor/256x256/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/256x256/apps/datalith.png
+    dst: /usr/share/icons/hicolor/256x256/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/512x512/apps/datalith.png
-    dst: /usr/share/icons/hicolor/512x512/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/512x512/apps/datalith.png
+    dst: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
-  - src: assets/logo/hicolor/1024x1024/apps/datalith.png
-    dst: /usr/share/icons/hicolor/1024x1024/apps/datalith.png
+  - src: assets/logo/${PACKAGE_CHANNEL}/hicolor/1024x1024/apps/datalith.png
+    dst: /usr/share/icons/hicolor/1024x1024/apps/${PACKAGE_STEM}.png
+    expand: true
     file_info:
       mode: 0644
   - src: LICENSE
-    dst: /usr/share/licenses/datalith/LICENSE
+    dst: /usr/share/licenses/${PACKAGE_STEM}/LICENSE
+    expand: true
     file_info:
       mode: 0644
   - src: LICENSING.md
-    dst: /usr/share/licenses/datalith/LICENSING.md
+    dst: /usr/share/licenses/${PACKAGE_STEM}/LICENSING.md
+    expand: true
     file_info:
       mode: 0644
   - src: THIRD-PARTY-NOTICES.md
-    dst: /usr/share/licenses/datalith/THIRD-PARTY-NOTICES.md
+    dst: /usr/share/licenses/${PACKAGE_STEM}/THIRD-PARTY-NOTICES.md
+    expand: true
     file_info:
       mode: 0644
 

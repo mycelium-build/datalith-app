@@ -29,8 +29,5 @@ impl InstallationKind {
     }
 }
 
-pub const STABLE_MANIFEST_ENDPOINT: &str =
-    "https://mycelium-build.github.io/datalith-app/updates/stable.json";
-
 /// The website download page opened for externally managed installations.
 pub const DOWNLOAD_PAGE_URL: &str = "https://mycelium-build.github.io/datalith/#download";

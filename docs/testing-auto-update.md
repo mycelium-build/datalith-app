@@ -13,6 +13,9 @@ Keep it running. In another terminal, launch the app with the generated script:
 | Linux / macOS | `sh target/update-ui/run.sh` |
 | Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -File target/update-ui/run.ps1` |
 
+The launcher temporarily stamps `CHANNEL` as Stable for the build and restores
+it before starting the app. Avoid building another channel at the same time.
+
 Choose **Datalith → Check for updates**, directly below **About Datalith**, or
 wait about ten seconds for the automatic check. Expect download progress for
 about eight seconds, followed by **Restart to update**.
@@ -20,7 +23,7 @@ about eight seconds, followed by **Restart to update**.
 - Ordinary Quit discards the update without applying it.
 - **Restart to update** quits and runs the fake update. Within a few seconds,
   `target/update-ui/applied` should contain `Fake update applied`. Datalith does
-  not reopen. The fixture only changes files under `target/update-ui`; on
+  not reopen. The fake update only changes files under `target/update-ui`; on
   Windows it simulates the installer handoff without installing anything.
 - Turn off **Settings → General → Updates → Automatically update Datalith** and
   confirm the menu command still works. Restore the preference afterward.
@@ -82,3 +85,19 @@ release and Pages workflows. Publish two signed stable fixture releases,
 confirm the manifest offers the newer one, then delete it through GitHub's UI.
 The regeneration workflow must succeed and the live manifest must offer the
 older release. Delete that release too; the manifest should offer no update.
+
+## Stable and Preview side by side
+
+Install a Stable and Preview package on each platform. Both should appear with
+separate names and launcher icons; Preview's icon and in-app monolith are yellow.
+Launch both, change a setting in one, and confirm the other keeps its own value.
+Both can open the same test Vault, with separate catalog and search caches. Uninstall Preview and confirm Stable still
+launches with its settings and shortcuts intact.
+
+For a local Preview UI check, put `preview` in `CHANNEL` and run
+`cargo run --locked --bin datalith`. Expect “Datalith Preview” in the menu and
+About, with the full stamped RC version when built with
+`DATALITH_RELEASE_TAG=vX.Y.Z-rc.N`, and separate settings. Put `dev` back in `CHANNEL` when finished; a normal `cargo run` should show
+a green monolith and the current Git commit in About.
+Preview update discovery needs the D7 manifest; a manual check currently fails
+until that endpoint exists.

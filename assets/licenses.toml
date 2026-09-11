@@ -44,14 +44,10 @@ license = "MIT"
 license_file = "LICENSE"
 distribution = "packaged"
 paths = [
-    "assets/logo/datalith.png",
-    "assets/logo/datalith.ico",
-    "assets/logo/datalith.icns",
-    "assets/logo/datalith-macos.png",
-    "assets/logo/datalith.svg",
     "assets/logo/datalith.txt",
-    "assets/logo/datalith.rc",
-    "assets/logo/hicolor/**",
+    "assets/logo/stable/**",
+    "assets/logo/preview/**",
+    "assets/logo/dev/**",
 ]
 
 [[asset]]

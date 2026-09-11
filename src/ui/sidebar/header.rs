@@ -127,7 +127,10 @@ impl Render for UpdateControl {
             UpdatePresentation::External { version } => button
                 .icon(Icon::new(DatalithIcon::Download))
                 .label("Download update")
-                .tooltip(format!("Download Datalith {version}")),
+                .tooltip(format!(
+                    "Download {} {version}",
+                    crate::channel::Channel::current().product_name()
+                )),
             UpdatePresentation::Applying => button
                 .icon(Icon::new(DatalithIcon::Download))
                 .label("Installing…")

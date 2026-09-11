@@ -1,26 +1,7 @@
 #!/usr/bin/env python3
-"""Generate every Datalith app-icon format from the pixel-art logo.
+"""Generate blue Stable, yellow Preview, and green Dev icons in assets/logo/.
 
-Reads `assets/logo/datalith.txt`
-(a 32×32 grid: `M` border, `1`/`2` sides, `0` top side and `I` inscriptions)
-and writes the app icons for every platform into `assets/logo/`:
-
-  assets/logo/datalith.svg                       32×32 vector source (Linux/SVG, icon source)
-  assets/logo/datalith.png                       1024×1024 (32× per logo pixel) - Linux / bundles
-  assets/logo/datalith.ico                       16/24/32/48/64/128/256 embedded PNGs - Windows
-  assets/logo/datalith.icns                      icp4/icp5/icp6/ic07/ic08/ic09/ic10 - macOS
-  assets/logo/datalith-macos.png                 1024×1024 viewable preview of the macOS icon
-  assets/logo/datalith.rc                        Windows resource file embedding the .ico
-  assets/logo/hicolor/<N>x<N>/apps/datalith.png  16/32/48/64/128/256/512/1024 - Linux icon theme
-
-Linux and Windows get the bare monolith mark on a transparent background,
-so it floats with no chrome.
-macOS gets the classic Big-Sur layout:
-the monolith centred on a solid-blue squircle with continuous corners,
-with the `M` border drawn white so it reads against the blue.
-
-Usage:
-  uv run scripts/app_icon.py
+Usage: python3 scripts/app_icon.py
 """
 
 import pathlib
@@ -30,13 +11,6 @@ import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LOGO = ROOT / "assets" / "logo" / "datalith.txt"
-SVG_OUT = ROOT / "assets" / "logo" / "datalith.svg"
-PNG_OUT = ROOT / "assets" / "logo" / "datalith.png"
-ICO_OUT = ROOT / "assets" / "logo" / "datalith.ico"
-ICNS_OUT = ROOT / "assets" / "logo" / "datalith.icns"
-MACOS_PNG_OUT = ROOT / "assets" / "logo" / "datalith-macos.png"
-RC_OUT = ROOT / "assets" / "logo" / "datalith.rc"
-HICOLOR_DIR = ROOT / "assets" / "logo" / "hicolor"
 HICOLOR_SIZES = [16, 32, 48, 64, 128, 256, 512, 1024]
 
 SIZE = 32
@@ -115,13 +89,6 @@ def whiten(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return hsl_to_rgb(h, s * (1.0 - amount), l + (1.0 - l) * amount)
 
 
-TIER_COLORS = {
-    "M": PRIMARY,
-    "1": whiten(PRIMARY, RIGHT_SIDE_WHITEN),
-    "2": whiten(PRIMARY, LEFT_SIDE_WHITEN),
-    "I": (0xFF, 0xFF, 0xFF),
-    "0": (0xFF, 0xFF, 0xFF),
-}
 WHITE = (0xFF, 0xFF, 0xFF)
 TRANSPARENT = (0, 0, 0, 0)
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
@@ -136,7 +103,10 @@ ICNS_IMAGES = [
 ]
 
 
-def load_grid(border: tuple[int, int, int] = PRIMARY) -> list[list[tuple[int, int, int, int]]]:
+def load_grid(primary, border=None) -> list[list[tuple[int, int, int, int]]]:
+    border = primary if border is None else border
+    colors = {"M": primary, "1": whiten(primary, RIGHT_SIDE_WHITEN),
+              "2": whiten(primary, LEFT_SIDE_WHITEN), "I": WHITE, "0": WHITE}
     rows = LOGO.read_text(encoding="utf-8").splitlines()
     if len(rows) > SIZE:
         raise ValueError(f"logo has {len(rows)} rows, expected at most {SIZE}")
@@ -146,8 +116,8 @@ def load_grid(border: tuple[int, int, int] = PRIMARY) -> list[list[tuple[int, in
         for ch in row[:SIZE]:
             if ch == "M":
                 cells.append((*border, 255))
-            elif ch in TIER_COLORS:
-                cells.append((*TIER_COLORS[ch], 255))
+            elif ch in colors:
+                cells.append((*colors[ch], 255))
             else:
                 cells.append(TRANSPARENT)
         while len(cells) < SIZE:
@@ -205,7 +175,7 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
     )
 
 
-def write_svg(grid) -> None:
+def write_svg(grid, directory) -> None:
     rects = []
     for y, row in enumerate(grid):
         for x, (r, g, b, a) in enumerate(row):
@@ -217,8 +187,8 @@ def write_svg(grid) -> None:
         'viewBox="0 0 32 32" shape-rendering="crispEdges">'
         f'{''.join(rects)}</svg>'
     )
-    SVG_OUT.write_text(svg, encoding="utf-8")
-    print(f"wrote {SVG_OUT.relative_to(ROOT)}")
+    (directory / "datalith.svg").write_text(svg, encoding="utf-8")
+    print(f"wrote {(directory / "datalith.svg").relative_to(ROOT)}")
 
 
 def write_png(grid, path: pathlib.Path) -> None:
@@ -227,13 +197,13 @@ def write_png(grid, path: pathlib.Path) -> None:
     print(f"wrote {path.relative_to(ROOT)}")
 
 
-def write_hicolor(grid) -> None:
+def write_hicolor(grid, directory) -> None:
     for size in HICOLOR_SIZES:
-        path = HICOLOR_DIR / f"{size}x{size}" / "apps" / "datalith.png"
+        path = (directory / "hicolor") / f"{size}x{size}" / "apps" / "datalith.png"
         write_png(scale_to(grid, size), path)
 
 
-def write_ico(grid) -> None:
+def write_ico(grid, directory) -> None:
     blobs = []
     for size in ICO_SIZES:
         blobs.append((size, png_bytes(scale_to(grid, size))))
@@ -246,23 +216,23 @@ def write_ico(grid) -> None:
         entries += struct.pack("<BBBBHHII", byte, byte, 0, 0, 1, 32, len(data), offset)
         payload += data
         offset += len(data)
-    ICO_OUT.parent.mkdir(parents=True, exist_ok=True)
-    ICO_OUT.write_bytes(header + bytes(entries) + bytes(payload))
-    print(f"wrote {ICO_OUT.relative_to(ROOT)}")
+    (directory / "datalith.ico").parent.mkdir(parents=True, exist_ok=True)
+    (directory / "datalith.ico").write_bytes(header + bytes(entries) + bytes(payload))
+    print(f"wrote {(directory / "datalith.ico").relative_to(ROOT)}")
 
 
-def write_icns() -> None:
-    full = macos_grid(ICNS_IMAGES[-1][1])
+def write_icns(primary, background, directory) -> None:
+    full = macos_grid(ICNS_IMAGES[-1][1], primary, background)
     chunks = []
     for kind, size in ICNS_IMAGES:
         grid = full if size == ICNS_IMAGES[-1][1] else resample_down(full, size)
         data = png_bytes(grid)
         chunks.append(kind.encode() + struct.pack(">I", len(data) + 8) + data)
     body = b"".join(chunks)
-    ICNS_OUT.parent.mkdir(parents=True, exist_ok=True)
-    ICNS_OUT.write_bytes(b"icns" + struct.pack(">I", len(body) + 8) + body)
-    print(f"wrote {ICNS_OUT.relative_to(ROOT)}")
-    write_png(full, MACOS_PNG_OUT)
+    (directory / "datalith.icns").parent.mkdir(parents=True, exist_ok=True)
+    (directory / "datalith.icns").write_bytes(b"icns" + struct.pack(">I", len(body) + 8) + body)
+    print(f"wrote {(directory / "datalith.icns").relative_to(ROOT)}")
+    write_png(full, (directory / "datalith-macos.png"))
 
 
 def _bezier(p0, p1, p2, p3, t: float) -> tuple[float, float]:
@@ -294,9 +264,9 @@ def _corner_x(yn: float) -> float:
     return _bezier(p0, p1, p2, p3, (lo + hi) / 2.0)[0]
 
 
-def macos_grid(size: int) -> list[list[tuple[int, int, int, int]]]:
-    """The mark centred on a solid-blue continuous-corner (Apple) squircle."""
-    logo = load_grid(border=WHITE)
+def macos_grid(size: int, primary, background) -> list[list[tuple[int, int, int, int]]]:
+    """The mark centred on a channel-colored continuous-corner (Apple) squircle."""
+    logo = load_grid(primary, border=WHITE)
     cell = max(1, round(size * MACOS_MARK_FRACTION / SIZE))
     logo_px = cell * SIZE
     origin = (size - logo_px) // 2
@@ -334,7 +304,7 @@ def macos_grid(size: int) -> list[list[tuple[int, int, int, int]]]:
                 if la and alpha:
                     row.append((lr, lg, lb, alpha))
                     continue
-            row.append((*MACOS_BG, alpha))
+            row.append((*background, alpha))
         grid.append(row)
     return grid
 
@@ -390,20 +360,27 @@ def _box_average(
     return (round(pr / pa), round(pg / pa), round(pb / pa), round(255 * pa / area))
 
 
-def write_rc() -> None:
-    ico_path = ICO_OUT.relative_to(ROOT).as_posix()
-    RC_OUT.write_text(f'1 ICON "{ico_path}"\n', encoding="utf-8")
-    print(f"wrote {RC_OUT.relative_to(ROOT)}")
+def write_rc(directory) -> None:
+    ico_path = (directory / "datalith.ico").relative_to(ROOT).as_posix()
+    (directory / "datalith.rc").write_text(f'1 ICON "{ico_path}"\n', encoding="utf-8")
+    print(f"wrote {(directory / "datalith.rc").relative_to(ROOT)}")
 
 
 def main() -> int:
-    grid = load_grid()
-    write_svg(grid)
-    write_png(scale_to(grid, 1024), PNG_OUT)
-    write_hicolor(grid)
-    write_ico(grid)
-    write_icns()
-    write_rc()
+    for channel, primary, background in (
+        ("stable", PRIMARY, MACOS_BG),
+        ("preview", (0xE8, 0xB9, 0x20), (0xE8, 0xB9, 0x20)),
+        ("dev", (0x30, 0xBA, 0x78), (0x30, 0xBA, 0x78)),
+    ):
+        directory = ROOT / "assets/logo" / channel
+        directory.mkdir(parents=True, exist_ok=True)
+        grid = load_grid(primary)
+        write_svg(grid, directory)
+        write_png(scale_to(grid, 1024), directory / "datalith.png")
+        write_hicolor(grid, directory)
+        write_ico(grid, directory)
+        write_icns(primary, background, directory)
+        write_rc(directory)
     return 0
 
 

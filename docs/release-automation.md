@@ -17,6 +17,37 @@ To publish a stable release, merge the Release Please PR into `main`, preserving
 
 Both tag kinds trigger **Release**, which builds Linux, macOS, and Windows artifacts, runs license-compliance checks, and uploads the vendored source archive, legal documents, and SBOM. The release is published after these jobs succeed, and RC releases are marked as prereleases. Publication also triggers deployment of the website.
 
+## Build channels
+
+`CHANNEL` defaults to `dev`. Release CI stamps `stable` for `vX.Y.Z` tags and
+`preview` for `vX.Y.Z-rc.N`, then builds the same Rust target. Before packaging,
+`scripts/prepare-release.py` checks `--print-build-identity` against the selected
+`packager.stable.toml` or `packager.preview.toml` and prepares the named binary
+and versioned packaging configuration.
+
+| Channel | Product | Installed executable | Identifier / app data suffix |
+| --- | --- | --- | --- |
+| Stable | Datalith | `datalith` | `datalith` |
+| Preview | Datalith Preview | `datalith-preview` | `datalith-preview` |
+| Dev | Datalith Dev | Cargo's local `datalith` target | `datalith-dev` |
+
+Identifiers use the `build.mycelium.` prefix. App data lives under the OS data
+directory. Stable keeps its existing data; Dev starts fresh without migration.
+User-selected Vaults can be opened by either product. Stable keeps caches in
+`.datalith`; Preview and Dev use `.datalith/preview` and `.datalith/dev`.
+
+Preview uses yellow launcher icons and a yellow in-app monolith; the UI theme
+is unchanged. Dev uses a green logo. Run `python3 scripts/app_icon.py` to
+regenerate all three icon sets. About shows the Git commit for Dev, the full RC
+version for Preview, and the release version for Stable.
+NSIS uses separate product names for install directories/uninstall entries and
+separate executable names for process detection. macOS uses separate app names
+and bundle identifiers. Linux packages use separate names, executables, desktop
+entries, icons, and license paths.
+
+Preview points at `updates/preview.json`; publication of that stream is still
+pending. RC releases cannot change `stable.json`.
+
 ## Automatic updates
 
 Stable releases newer than `v0.1.0` publish a signed update for each of the six

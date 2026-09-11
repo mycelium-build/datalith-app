@@ -15,13 +15,14 @@ STABLE_TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
 
 def bundles(version):
+    stem = "datalith-preview" if "-rc" in version else "datalith"
     return {
         f"{system}-{arch}": (name, format_name)
         for arch in ("x86_64", "aarch64")
         for system, name, format_name in (
-            ("linux", f"datalith_{version}_{arch}.AppImage", "appimage"),
-            ("macos", f"datalith_{version}_{arch}.app.tar.gz", "app"),
-            ("windows", f"datalith_{version}_{'x64' if arch == 'x86_64' else 'arm64'}-setup.exe", "nsis"),
+            ("linux", f"{stem}_{version}_{arch}.AppImage", "appimage"),
+            ("macos", f"{stem}_{version}_{arch}.app.tar.gz", "app"),
+            ("windows", f"{stem}_{version}_{'x64' if arch == 'x86_64' else 'arm64'}-setup.exe", "nsis"),
         )
     }
 
@@ -57,9 +58,7 @@ def verify_signature(bundle, encoded_signature, public_key=PUBLIC_KEY):
 
 def generate_manifest(release, directory, public_key=PUBLIC_KEY):
     version = release["tag_name"].removeprefix("v")
-    # RC packaging still uses the Cargo package version until channels are split.
-    package_version = version.split("-", 1)[0]
-    expected = bundles(package_version)
+    expected = bundles(version)
     assets = release["assets"]
     counts = Counter(asset["name"] for asset in assets)
     required = {name + suffix for name, _ in expected.values() for suffix in ("", ".sig")}

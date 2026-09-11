@@ -319,10 +319,10 @@ fn open_download_page(cx: &mut Context<Updater>) {
 }
 
 pub fn init(cx: &mut App) {
-    if !crate::app::version::is_release_build() {
+    let Some(endpoint) = crate::channel::Channel::current().update_endpoint() else {
         return;
-    }
-    let Ok(source) = CargoPackagerSource::stable(UPDATER_PUBKEY) else {
+    };
+    let Ok(source) = CargoPackagerSource::production(endpoint, UPDATER_PUBKEY) else {
         eprintln!("Update endpoint or build version is invalid; updater disabled");
         return;
     };

@@ -9,8 +9,8 @@ use tantivy::{
     schema::{Field, STORED, STRING, Schema, TEXT, Value},
 };
 
+use crate::channel::Channel;
 use crate::document::file_types::RegisteredFileTypes;
-use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::path::display_name;
 
 const INDEX_WRITER_BUDGET: usize = 50_000_000;
@@ -51,7 +51,9 @@ impl Indexer {
     }
 
     pub(crate) fn open_existing(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
-        let index_path = root.join(DATALITH_DIR_NAME).join("search_index");
+        let index_path = Channel::current()
+            .vault_cache_dir(root)
+            .join("search_index");
 
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);

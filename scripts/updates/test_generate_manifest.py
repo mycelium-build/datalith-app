@@ -55,6 +55,28 @@ class ManifestTests(unittest.TestCase):
             "windows-x86_64": "nsis", "windows-aarch64": "nsis",
         })
 
+    def test_signed_preview_bundles_use_the_full_rc_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            release = dict(self.release, tag_name="v0.2.0-rc.3", prerelease=True, assets=[])
+            for name, _ in bundles("0.2.0-rc.3").values():
+                self.assertTrue(name.startswith("datalith-preview_0.2.0-rc.3_"))
+                bundle = directory / name
+                bundle.write_bytes(f"Preview fixture {name}".encode())
+                raw = directory / "signature"
+                subprocess.run(["minisign", "-S", "-s", str(self.secret), "-m", str(bundle),
+                                "-x", str(raw), "-t", f"timestamp:1\tfile:{name}"],
+                               check=True, capture_output=True)
+                signature = directory / f"{name}.sig"
+                signature.write_text(base64.b64encode(raw.read_bytes()).decode())
+                for asset in (bundle, signature):
+                    release["assets"].append(dict(name=asset.name, size=asset.stat().st_size,
+                                                 browser_download_url=f"https://example.com/{asset.name}"))
+            manifest = generate_manifest(release, directory, self.public_key)
+            self.assertEqual(manifest["version"], "0.2.0-rc.3")
+            self.assertEqual(len(manifest["platforms"]), 6)
+            self.assertIsNone(latest_stable([release]))
+
     def test_missing_bundle_or_signature(self):
         for index in range(12):
             with self.subTest(index=index):

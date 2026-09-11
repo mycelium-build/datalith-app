@@ -6,7 +6,6 @@ use cargo_packager_updater::semver::Version;
 use cargo_packager_updater::url::Url;
 use cargo_packager_updater::{Config, Update, UpdaterBuilder};
 
-use super::installation::STABLE_MANIFEST_ENDPOINT;
 use super::source::{StagedUpdate, UpdateSource};
 use super::state::UpdateFailure;
 
@@ -22,16 +21,12 @@ pub struct CargoPackagerSource {
 }
 
 impl CargoPackagerSource {
-    /// Builds the production source for the stable channel.
-    pub fn stable(pubkey: &str) -> anyhow::Result<Self> {
+    /// Builds the source for this channel, with a local debug override.
+    pub fn production(endpoint: &str, pubkey: &str) -> anyhow::Result<Self> {
         #[cfg(debug_assertions)]
         let local_endpoint = std::env::var("DATALITH_UPDATE_ENDPOINT").ok();
         #[cfg(debug_assertions)]
-        let endpoint = local_endpoint
-            .as_deref()
-            .unwrap_or(STABLE_MANIFEST_ENDPOINT);
-        #[cfg(not(debug_assertions))]
-        let endpoint = STABLE_MANIFEST_ENDPOINT;
+        let endpoint = local_endpoint.as_deref().unwrap_or(endpoint);
         Self::new(endpoint, pubkey, crate::app::version::version())
     }
 

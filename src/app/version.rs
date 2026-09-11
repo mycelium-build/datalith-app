@@ -7,16 +7,19 @@ pub fn version() -> &'static str {
     version_from_tag(RELEASE_TAG)
 }
 
+pub fn about_version() -> String {
+    match crate::channel::Channel::current() {
+        crate::channel::Channel::Dev => format!("Commit {}", env!("DATALITH_COMMIT")),
+        crate::channel::Channel::Stable | crate::channel::Channel::Preview => {
+            format!("Version {}", version())
+        }
+    }
+}
+
 /// The release tag of this build, `v`-prefixed.
 #[must_use]
 pub const fn release_tag() -> &'static str {
     release_tag_from(RELEASE_TAG)
-}
-
-/// Whether this build was stamped by release CI.
-#[must_use]
-pub const fn is_release_build() -> bool {
-    RELEASE_TAG.is_some()
 }
 
 fn version_from_tag(tag: Option<&'static str>) -> &'static str {
@@ -30,6 +33,19 @@ const fn release_tag_from(tag: Option<&'static str>) -> &'static str {
         Some(tag) => tag,
         None => concat!("v", env!("CARGO_PKG_VERSION")),
     }
+}
+
+pub fn build_identity() -> serde_json::Value {
+    let channel = crate::channel::Channel::current();
+    serde_json::json!({
+        "channel": channel.name(),
+        "product_name": channel.product_name(),
+        "identifier": channel.identifier(),
+        "stem": channel.stem(),
+        "data_directory": channel.stem(),
+        "update_endpoint": channel.update_endpoint(),
+        "version": version(),
+    })
 }
 
 #[cfg(test)]

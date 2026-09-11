@@ -73,3 +73,11 @@ pub fn load_embedded_themes(cx: &mut gpui_kit::App) -> Vec<Notification> {
     })
     .collect()
 }
+
+pub fn logo_color(theme: &gpui_kit::component::Theme) -> gpui_kit::Hsla {
+    match crate::channel::Channel::current() {
+        crate::channel::Channel::Stable => theme.primary,
+        crate::channel::Channel::Preview => gpui_kit::rgb(0xe8_b9_20).into(),
+        crate::channel::Channel::Dev => gpui_kit::rgb(0x30_ba_78).into(),
+    }
+}

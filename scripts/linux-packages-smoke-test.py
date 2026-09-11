@@ -1,11 +1,11 @@
 """Build the native Linux packages in CI parity and smoke-test them in distrobox.
 
-CI builds on ubuntu-22.04 (glibc 2.35), so the release binary must be compiled
-inside an ubuntu:22.04 container — building on a newer host (e.g. Fedora 44,
+CI builds on ubuntu-24.04 (glibc 2.39), so the release binary must be compiled
+inside an ubuntu:24.04 container — building on a newer host (e.g. Fedora 44,
 glibc 2.43) produces a binary no released Debian can run. This script mirrors
 the release workflow exactly:
 
-  1. create a distrobox builder (ubuntu:22.04)
+  1. create a distrobox builder (ubuntu:24.04)
   2. install build deps + Rust (pinned in rust-toolchain.toml) + nFPM + cargo-packager
   3. cargo build --release --locked --target x86_64-unknown-linux-gnu
   4. nfpm package for deb, rpm, archlinux; cargo packager for the AppImage
@@ -44,7 +44,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PKG_DIR = ROOT / "target" / "x86_64-unknown-linux-gnu" / "release"
 CONTAINER = "datalith-builder"
-BUILDER_IMAGE = "docker.io/library/ubuntu:22.04"
+BUILDER_IMAGE = "docker.io/library/ubuntu:24.04"
 NFPM_VERSION = "2.47.0"
 
 # package extension -> (smoke-test distro name, image, install command)
@@ -129,7 +129,7 @@ def ensure_container(name: str, image: str) -> None:
 
 
 def build_packages() -> None:
-    """Mirror the CI build steps inside the ubuntu:22.04 builder container."""
+    """Mirror the CI build steps inside the ubuntu:24.04 builder container."""
     ensure_container(CONTAINER, BUILDER_IMAGE)
     c = distrobox_cmd
 
@@ -140,7 +140,7 @@ def build_packages() -> None:
     run(c(CONTAINER, ["bash", "-c",
         "sudo apt-get install -y --no-install-recommends file zstd"]))
 
-    rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.96.0"
+    rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.97.1"
     print("[builder] installing Rust (as pinned in rust-toolchain.toml)")
     run(c(CONTAINER, ["bash", "-c", rust + " && echo 'export PATH=$HOME/.cargo/bin:$PATH' >> ~/.bashrc"]))
 
@@ -156,13 +156,15 @@ def build_packages() -> None:
     print("[builder] building release binary (CI parity)")
     run(c(CONTAINER, ["bash", "-c",
         f"cd {ROOT} && export PATH=$HOME/.cargo/bin:$PATH && "
-        "cargo clean && "
-        "cargo build --release --locked --target x86_64-unknown-linux-gnu"]))
+        "channel=$(cat CHANNEL); trap 'printf \"%s\\n\" \"$channel\" > CHANNEL' EXIT; "
+        f"python3 scripts/prepare-release.py --tag v{package_version()} && "
+        f"DATALITH_RELEASE_TAG=v{package_version()} cargo build --release --locked --target x86_64-unknown-linux-gnu && "
+        f"python3 scripts/prepare-release.py --tag v{package_version()} --target x86_64-unknown-linux-gnu"]))
 
     print("[builder] packaging deb / rpm / archlinux")
     env = (
         f"export PACKAGE_VERSION={package_version()} "
-        "PACKAGE_ARCH=x86_64 PACKAGE_TARGET=x86_64-unknown-linux-gnu"
+        "PACKAGE_ARCH=x86_64 PACKAGE_TARGET=x86_64-unknown-linux-gnu PACKAGE_CHANNEL=stable PACKAGE_STEM=datalith"
     )
     run(c(CONTAINER, ["bash", "-c",
         f"cd {ROOT} && export PATH=$HOME/.cargo/bin:$PATH && {env} && "
@@ -176,7 +178,7 @@ def build_packages() -> None:
         "cargo install cargo-packager --version 0.11.8 --locked && cargo-packager --version"]))
     run(c(CONTAINER, ["bash", "-c",
         f"cd {ROOT} && export PATH=$HOME/.cargo/bin:$PATH && "
-        "APPIMAGE_EXTRACT_AND_RUN=1 cargo packager --release "
+        "APPIMAGE_EXTRACT_AND_RUN=1 cargo packager --config target/x86_64-unknown-linux-gnu/release/packager.json "
         "--target x86_64-unknown-linux-gnu --formats appimage"]))
 
 
