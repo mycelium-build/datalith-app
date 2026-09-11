@@ -411,6 +411,39 @@ mod tests {
     }
 
     #[test]
+    fn preview_checks_order_rc_versions_and_verify_the_download() {
+        let server = TestServer::start();
+        let keys = keypair();
+        let pubkey = encode_public_key(&keys.pk);
+        let signature = sign(&keys, BUNDLE);
+        server.set("/bundle", BUNDLE.to_vec());
+        let target = temp_target("preview");
+        let source = CargoPackagerSource::new(&server.url("/preview.json"), &pubkey, "0.2.0-rc.9")
+            .expect("source")
+            .with_executable(target.clone());
+        for version in ["0.2.0-rc.2", "0.2.0-rc.9", "0.0.0"] {
+            server.set(
+                "/preview.json",
+                manifest(&server.url("/bundle"), &signature, version),
+            );
+            assert!(source.check().expect("check").is_none());
+        }
+        server.set(
+            "/preview.json",
+            manifest(&server.url("/bundle"), &signature, "0.2.0-rc.10"),
+        );
+        let update = source
+            .check()
+            .expect("check")
+            .expect("newer release candidate");
+        assert_eq!(
+            update.download(&|_, _| {}).expect("verified download"),
+            BUNDLE
+        );
+        let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
     fn a_missing_manifest_is_a_check_failure() {
         let server = TestServer::start();
         let keypair = keypair();

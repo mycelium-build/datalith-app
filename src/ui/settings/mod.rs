@@ -203,7 +203,11 @@ impl SettingsView {
                             },
                         ),
                     )
-                    .description("Periodically check for and download updates in the background."),
+                    .description(if crate::channel::Channel::current() == crate::channel::Channel::Preview {
+                        "Periodically check for and download release candidates. Stable releases are not offered."
+                    } else {
+                        "Periodically check for and download updates in the background."
+                    }),
                 ],
             )])
         });

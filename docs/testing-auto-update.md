@@ -99,5 +99,18 @@ For a local Preview UI check, put `preview` in `CHANNEL` and run
 About, with the full stamped RC version when built with
 `DATALITH_RELEASE_TAG=vX.Y.Z-rc.N`, and separate settings. Put `dev` back in `CHANNEL` when finished; a normal `cargo run` should show
 a green monolith and the current Git commit in About.
-Preview update discovery needs the D7 manifest; a manual check currently fails
-until that endpoint exists.
+Preview checks only release candidates; its up-to-date notification and Updates
+setting should say so.
+
+## Preview updates
+
+Release and install `vX.Y.Z-rc.1`, then publish `vX.Y.Z-rc.2`. Check for updates
+in Preview: it should download RC.2 and restart into that version when requested.
+An ordinary quit must leave RC.1 installed. Stable must not offer either RC.
+Publishing a stable version must not move Preview onto Stable.
+
+In the disposable release-test repository, delete the latest RC and confirm
+`updates/preview.json` returns to the preceding RC while `stable.json` continues
+to offer Stable. Delete the last RC: Preview should report no newer release
+candidate, with no download offered. Repeat for Stable and confirm Preview's
+selection is unaffected.

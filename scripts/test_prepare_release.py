@@ -14,7 +14,7 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_release_tags_select_channel(self):
         self.assertEqual(release.channel_for_tag("v1.2.3"), "stable")
         self.assertEqual(release.channel_for_tag("v1.2.3-rc.2"), "preview")
-        for tag in ("1.2.3", "v1.2.3-beta.1", "v1.2.3-rcfoo"):
+        for tag in ("1.2.3", "v1.2.3-beta.1", "v1.2.3-rcfoo", "v1.2.3-rc", "v1.2.3-rc.01"):
             with self.assertRaises(ValueError):
                 release.channel_for_tag(tag)
 

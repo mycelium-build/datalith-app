@@ -14,7 +14,7 @@ import tomllib
 def channel_for_tag(tag):
     if re.fullmatch(r"v\d+\.\d+\.\d+", tag):
         return "stable"
-    if re.fullmatch(r"v\d+\.\d+\.\d+-rc(?:\.[0-9A-Za-z-]+)*", tag):
+    if re.fullmatch(r"v\d+\.\d+\.\d+-rc\.(0|[1-9][0-9]*)", tag):
         return "preview"
     raise ValueError(f"Unsupported release tag: {tag}")
 

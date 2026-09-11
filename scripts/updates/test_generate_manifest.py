@@ -4,8 +4,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import json
 
-from generate_manifest import bundles, generate_manifest, latest_stable
+import generate_manifest as generator
+
+from generate_manifest import bundles, generate_manifest, latest_release
 
 
 class ManifestTests(unittest.TestCase):
@@ -75,7 +79,7 @@ class ManifestTests(unittest.TestCase):
             manifest = generate_manifest(release, directory, self.public_key)
             self.assertEqual(manifest["version"], "0.2.0-rc.3")
             self.assertEqual(len(manifest["platforms"]), 6)
-            self.assertIsNone(latest_stable([release]))
+            self.assertIsNone(latest_release([release], "stable"))
 
     def test_missing_bundle_or_signature(self):
         for index in range(12):
@@ -148,9 +152,37 @@ class ManifestTests(unittest.TestCase):
         newer = release("v0.2.10")
         ignored = [release("v0.1.0"), release("v0.3.0-rc.1", prerelease=True),
                    release("v0.4.0", draft=True), release("v0.5.0", prerelease=True)]
-        self.assertIs(latest_stable([newer, *ignored, older]), newer)
-        self.assertIs(latest_stable([*ignored, older]), older)
-        self.assertIsNone(latest_stable(ignored))
+        self.assertIs(latest_release([newer, *ignored, older], "stable"), newer)
+        self.assertIs(latest_release([*ignored, older], "stable"), older)
+        self.assertIsNone(latest_release(ignored, "stable"))
+
+    def test_empty_channel_publishes_no_update_without_removing_other_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            stable = directory / "stable.json"
+            stable.write_text('{"version":"0.2.0"}\n')
+            preview = directory / "preview.json"
+            with patch("sys.argv", ["generate_manifest.py", "--repository", "example/app",
+                                    "--channel", "preview", "--output", str(preview)]), \
+                 patch.object(generator, "gh_json", return_value=[[self.release]]):
+                generator.main()
+            self.assertEqual(json.loads(preview.read_text()), {"version": "0.0.0", "platforms": {}})
+            self.assertEqual(stable.read_text(), '{"version":"0.2.0"}\n')
+
+    def test_preview_selection_is_numeric_and_never_selects_stable(self):
+        def release(tag, **changes):
+            return dict(self.release, tag_name=tag, prerelease=True, **changes)
+        older = release("v0.2.0-rc.2")
+        newer = release("v0.2.0-rc.10")
+        next_version = release("v0.3.0-rc.1")
+        stable = dict(self.release, tag_name="v0.4.0")
+        ignored = [stable, release("v0.5.0-beta.1"), release("v0.6.0-rc.1", draft=True),
+                   release("v0.2.0-rc.01"), dict(newer, prerelease=False)]
+        self.assertIs(latest_release([older, newer, *ignored], "preview"), newer)
+        self.assertIs(latest_release([next_version, newer, *ignored], "preview"), next_version)
+        self.assertIs(latest_release([older, *ignored], "preview"), older)
+        self.assertIsNone(latest_release(ignored, "preview"))
+        self.assertIs(latest_release([older, newer, stable], "stable"), stable)
 
 
 if __name__ == "__main__":

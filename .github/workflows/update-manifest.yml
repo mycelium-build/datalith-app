@@ -1,4 +1,4 @@
-name: Regenerate update manifest
+name: Regenerate update manifests
 
 on:
   release:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-stable-updates
+  group: publish-updates
   cancel-in-progress: false
 
 jobs:

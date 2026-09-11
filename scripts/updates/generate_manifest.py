@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate signed release bundles and generate the stable updater manifest."""
+"""Validate signed release bundles and generate a channel updater manifest."""
 
 import argparse
 import base64
@@ -12,6 +12,8 @@ import tempfile
 
 PUBLIC_KEY = Path(__file__).with_name("public-key.txt")
 STABLE_TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+
+PREVIEW_TAG = re.compile(STABLE_TAG.pattern + r"-rc\.(0|[1-9][0-9]*)")
 
 
 def bundles(version):
@@ -31,13 +33,17 @@ def gh_json(*args):
     return json.loads(subprocess.check_output(["gh", *args], text=True))
 
 
-def latest_stable(releases):
+def latest_release(releases, channel):
+    pattern = STABLE_TAG if channel == "stable" else PREVIEW_TAG
     candidates = []
     for release in releases:
-        match = STABLE_TAG.fullmatch(release["tag_name"])
-        if (match and tuple(map(int, match.groups())) > (0, 1, 0)
-                and not release["draft"] and not release["prerelease"]):
-            candidates.append((tuple(map(int, match.groups())), release))
+        match = pattern.fullmatch(release["tag_name"])
+        if (match and not release["draft"]
+                and release["prerelease"] == (channel == "preview")):
+            version = tuple(map(int, match.groups()))
+            if channel == "stable" and version <= (0, 1, 0):
+                continue
+            candidates.append((version, release))
     return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
@@ -87,7 +93,9 @@ def generate_manifest(release, directory, public_key=PUBLIC_KEY):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
-    parser.add_argument("--tag", help="Validate this draft or published release instead of selecting latest stable")
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--tag", help="Validate this draft or published release")
+    selection.add_argument("--channel", choices=("stable", "preview"))
     parser.add_argument("--assets", type=Path, help="Use already downloaded assets")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -95,7 +103,7 @@ def main():
         release = gh_json("api", f"repos/{args.repository}/releases/tags/{args.tag}")
     else:
         pages = gh_json("api", "--paginate", "--slurp", f"repos/{args.repository}/releases?per_page=100")
-        release = latest_stable([release for page in pages for release in page])
+        release = latest_release([release for page in pages for release in page], args.channel)
     if release is None:
         manifest = {"version": "0.0.0", "platforms": {}}
     else:

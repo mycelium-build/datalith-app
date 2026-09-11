@@ -1,5 +1,5 @@
-name: Publish stable updates
-description: Validate the latest stable release and deploy its updater manifest.
+name: Publish updates
+description: Validate the latest Stable and Preview releases and deploy both manifests.
 inputs:
   token:
     description: Repository token
@@ -7,14 +7,16 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Generate stable manifest
+    - name: Generate channel manifests
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
       run: |
         sudo apt-get update
         sudo apt-get install -y minisign
-        python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --output update-site/updates/stable.json
+        for channel in stable preview; do
+          python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --channel "$channel" --output "update-site/updates/$channel.json"
+        done
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1

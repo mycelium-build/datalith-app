@@ -45,27 +45,29 @@ separate executable names for process detection. macOS uses separate app names
 and bundle identifiers. Linux packages use separate names, executables, desktop
 entries, icons, and license paths.
 
-Preview points at `updates/preview.json`; publication of that stream is still
-pending. RC releases cannot change `stable.json`.
+Preview points at `updates/preview.json` and receives only published `vX.Y.Z-rc.N`
+releases. Stable points at `updates/stable.json` and receives only stable releases.
 
 ## Automatic updates
 
 Stable releases newer than `v0.1.0` publish a signed update for each of the six
 OS/architecture targets. `v0.1.0` predates the updater and is excluded from
-discovery. RC releases are signed and validated but do not change the stable
-manifest.
+discovery. RC releases publish signed Preview updates. Each deployment regenerates both
+manifests from GitHub releases, selecting each channel independently.
 
 Configure this application's repository (`mycelium-build/datalith-app`) under
 **Settings → Pages → Source → GitHub Actions**. Allow release tags and the
 default branch to deploy to the `github-pages` environment. No `gh-pages` branch
 or cross-repository token is needed. The website repository remains separate.
 
-The final release step deploys
-`https://mycelium-build.github.io/datalith-app/updates/stable.json` using the
-workflow's `GITHUB_TOKEN`. Missing bundles or signatures, duplicate assets,
+The final release step deploys `updates/stable.json` and `updates/preview.json`
+at `https://mycelium-build.github.io/datalith-app/` using the workflow's
+`GITHUB_TOKEN`. Missing bundles or signatures, duplicate assets,
 wrong filenames, and invalid signatures fail validation before the draft is
 published. Manifest generation verifies the signatures again, selects the
-highest published stable SemVer, and waits for Pages deployment to succeed.
+highest published version in each channel, and waits for Pages deployment to
+succeed. RC numbers compare numerically (`rc.10` follows `rc.9`). Drafts and
+releases whose prerelease flag disagrees with their channel are excluded.
 Release finalization and regeneration share a concurrency group.
 
 ### Signing key
@@ -104,16 +106,17 @@ a trusted channel. A compromised old key cannot authenticate its own recovery.
 
 ### Removal and recovery
 
-Deleting or editing a release runs **Regenerate update manifest** from the
-default branch. It selects the highest remaining published stable release,
-verifies its complete signed bundle set, and deploys it. With none remaining,
-it publishes version `0.0.0`, which installed releases treat as no update.
+Deleting or editing a release runs **Regenerate update manifests** from the
+default branch. It selects the highest remaining published release in each
+channel, verifies each complete signed bundle set, and deploys both manifests.
+A channel with none remaining publishes version `0.0.0`, which installed
+releases treat as no update.
 Removing a release does not revoke bytes already staged in a running app.
 
 If builds or signature validation fail, leave the release as a draft, repair
 or rebuild its assets, and manually run **Release** with the existing tag to
 retry finalization. If only Pages publication fails after the release became
-public, run **Regenerate update manifest**. The same workflow is the recovery
+public, run **Regenerate update manifests**. The same workflow is the recovery
 path for a missed release-edit/deletion event, including edits made using
 `GITHUB_TOKEN`, which do not trigger another workflow. Confirm the endpoint
 shows the expected version after deployment.
