@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -16,6 +17,7 @@ pub struct CargoPackagerSource {
     endpoint: Url,
     pubkey: String,
     current_version: Version,
+    #[cfg(test)]
     executable: Option<PathBuf>,
 }
 
@@ -39,6 +41,7 @@ impl CargoPackagerSource {
             endpoint: endpoint.parse()?,
             pubkey: pubkey.to_string(),
             current_version: version.parse()?,
+            #[cfg(test)]
             executable: None,
         })
     }
@@ -51,7 +54,7 @@ impl CargoPackagerSource {
     }
 
     fn build_updater(&self) -> Result<cargo_packager_updater::Updater, UpdateFailure> {
-        let mut builder = UpdaterBuilder::new(
+        let builder = UpdaterBuilder::new(
             self.current_version.clone(),
             Config {
                 endpoints: vec![self.endpoint.clone()],
@@ -60,9 +63,12 @@ impl CargoPackagerSource {
             },
         )
         .timeout(REQUEST_TIMEOUT);
-        if let Some(executable) = &self.executable {
-            builder = builder.executable_path(executable);
-        }
+        #[cfg(test)]
+        let builder = if let Some(executable) = &self.executable {
+            builder.executable_path(executable)
+        } else {
+            builder
+        };
         builder.build().map_err(|error| {
             eprintln!("Update discovery could not be configured: {error}");
             UpdateFailure::Check
@@ -121,11 +127,8 @@ impl StagedUpdate for CargoStagedUpdate {
             })
     }
 
-    fn install(&self, bytes: &[u8]) -> Result<(), UpdateFailure> {
-        self.update.install(bytes.to_vec()).map_err(|error| {
-            eprintln!("Update install failed: {error}");
-            UpdateFailure::Install
-        })
+    fn install(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.update.install(bytes.to_vec()).map_err(Into::into)
     }
 }
 

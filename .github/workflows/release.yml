@@ -94,43 +94,61 @@ jobs:
           - name: macOS Apple Silicon DMG
             os: macos-15
             target: aarch64-apple-darwin
-            format: dmg
-            artifact: target/aarch64-apple-darwin/release/*.dmg
+            platform: macos-aarch64
+            format: app,dmg
+            artifact: |
+              target/aarch64-apple-darwin/release/*.dmg
+              target/aarch64-apple-darwin/release/*.app.tar.gz
+              target/aarch64-apple-darwin/release/*.sig
           - name: macOS Intel DMG
             os: macos-15-intel
             target: x86_64-apple-darwin
-            format: dmg
-            artifact: target/x86_64-apple-darwin/release/*.dmg
+            platform: macos-x86_64
+            format: app,dmg
+            artifact: |
+              target/x86_64-apple-darwin/release/*.dmg
+              target/x86_64-apple-darwin/release/*.app.tar.gz
+              target/x86_64-apple-darwin/release/*.sig
           - name: Linux x86_64 packages
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
             format: appimage
             package-arch: x86_64
             artifact: |
               target/x86_64-unknown-linux-gnu/release/*.AppImage
+              target/x86_64-unknown-linux-gnu/release/*.sig
               target/x86_64-unknown-linux-gnu/release/*.deb
               target/x86_64-unknown-linux-gnu/release/*.rpm
               target/x86_64-unknown-linux-gnu/release/*.pkg.tar.zst
           - name: Linux aarch64 packages
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            platform: linux-aarch64
             format: appimage
             package-arch: aarch64
             artifact: |
               target/aarch64-unknown-linux-gnu/release/*.AppImage
+              target/aarch64-unknown-linux-gnu/release/*.sig
               target/aarch64-unknown-linux-gnu/release/*.deb
               target/aarch64-unknown-linux-gnu/release/*.rpm
               target/aarch64-unknown-linux-gnu/release/*.pkg.tar.zst
           - name: Windows x86_64 installer
             os: windows-2025
             target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
             format: nsis
-            artifact: target/x86_64-pc-windows-msvc/release/*setup.exe
+            artifact: |
+              target/x86_64-pc-windows-msvc/release/*setup.exe
+              target/x86_64-pc-windows-msvc/release/*.sig
           - name: Windows ARM64 installer
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
+            platform: windows-aarch64
             format: nsis
-            artifact: target/aarch64-pc-windows-msvc/release/*setup.exe
+            artifact: |
+              target/aarch64-pc-windows-msvc/release/*setup.exe
+              target/aarch64-pc-windows-msvc/release/*.sig
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -200,6 +218,11 @@ jobs:
               --target "target/${PACKAGE_TARGET}/release/"
           done
 
+      - name: Sign updater bundle
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.DATALITH_UPDATER_PRIVATE_KEY }}
+        run: python scripts/updates/sign.py --target ${{ matrix.target }} --platform ${{ matrix.platform }}
+
       - name: Upload package to GitHub release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -208,6 +231,11 @@ jobs:
           files: ${{ matrix.artifact }}
 
   finalize:
+    concurrency:
+      group: publish-stable-updates
+      cancel-in-progress: false
+    environment:
+      name: github-pages
     needs: [artifacts, source]
     if: >-
       always()
@@ -221,6 +249,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      pages: write
+      id-token: write
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
@@ -258,6 +288,20 @@ jobs:
         run: |
           mkdir -p release-artifacts
           gh release download "$RELEASE_TAG" --dir release-artifacts --clobber
+
+      - name: Validate signed updater assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --assets release-artifacts --output validated-update.json
+
+      - name: Read release channel
+        id: channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "prerelease=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .prerelease)" >> "$GITHUB_OUTPUT"
 
       - name: Stage legal documents and SBOM
         run: |
@@ -308,3 +352,9 @@ jobs:
                 source_ref: process.env.RELEASE_TAG,
               },
             })
+
+      - name: Publish stable update manifest
+        if: steps.channel.outputs.prerelease == 'false'
+        uses: ./.github/actions/publish-updates
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

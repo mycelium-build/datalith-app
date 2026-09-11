@@ -4,7 +4,6 @@ use cargo_packager_updater::semver::Version;
 pub enum UpdateFailure {
     Check,
     Download,
-    Install,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,7 +175,7 @@ impl UpdateMachine {
         true
     }
 
-    /// Preserve the staged offer after an unsuccessful check, download, or apply.
+    /// Preserve the staged offer after an unsuccessful check or download.
     pub fn restore(&mut self, id: OperationId) -> bool {
         if self.in_flight != Some(id) {
             return false;

@@ -10,8 +10,8 @@ pub(super) fn install(staged: Staged) {
             let executable = std::env::var_os("APPIMAGE")
                 .map(std::path::PathBuf::from)
                 .map_or_else(std::env::current_exe, Ok);
-            if staged.update.install(&staged.bytes).is_err() {
-                eprintln!("The update couldn't be installed");
+            if let Err(error) = staged.update.install(&staged.bytes) {
+                eprintln!("The update couldn't be installed: {error}");
                 return;
             }
             #[cfg(unix)]

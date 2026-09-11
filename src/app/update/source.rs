@@ -7,7 +7,7 @@ pub trait StagedUpdate: Send {
 
     fn download(&self, on_progress: &dyn Fn(u64, Option<u64>)) -> Result<Vec<u8>, UpdateFailure>;
 
-    fn install(&self, bytes: &[u8]) -> Result<(), UpdateFailure>;
+    fn install(&self, bytes: &[u8]) -> anyhow::Result<()>;
 }
 
 pub trait UpdateSource: Send + Sync + 'static {
@@ -100,7 +100,7 @@ pub mod scripted {
             Ok(self.bytes.clone())
         }
 
-        fn install(&self, _bytes: &[u8]) -> Result<(), UpdateFailure> {
+        fn install(&self, _bytes: &[u8]) -> anyhow::Result<()> {
             self.events.record("install");
             Ok(())
         }

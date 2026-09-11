@@ -136,7 +136,6 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
 
-    #[allow(dead_code)]
     fn source(text: &str) -> String {
         text.to_string()
     }

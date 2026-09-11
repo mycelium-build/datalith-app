@@ -26,11 +26,7 @@ const FIRST_CHECK_DELAY: Duration = Duration::from_secs(10);
 const CHECK_INTERVAL: Duration = Duration::from_hours(1);
 const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
-/// The compiled updater public key.
-const UPDATER_PUBKEY: &str = match option_env!("DATALITH_UPDATER_PUBKEY") {
-    Some(pubkey) => pubkey,
-    None => "",
-};
+const UPDATER_PUBKEY: &str = env!("DATALITH_UPDATER_PUBKEY");
 
 struct GlobalUpdater(Entity<Updater>);
 
@@ -309,7 +305,6 @@ fn notify_failure(failure: UpdateFailure, cx: &mut Context<Updater>) {
     let notification = match failure {
         UpdateFailure::Check => notifications::update_check_failed(),
         UpdateFailure::Download => notifications::update_download_failed(),
-        UpdateFailure::Install => notifications::update_install_failed(),
     };
     notifications::push_window_notification(cx, notification);
 }
@@ -324,7 +319,7 @@ fn open_download_page(cx: &mut Context<Updater>) {
 }
 
 pub fn init(cx: &mut App) {
-    if !crate::app::version::is_release_build() || UPDATER_PUBKEY.is_empty() {
+    if !crate::app::version::is_release_build() {
         return;
     }
     let Ok(source) = CargoPackagerSource::stable(UPDATER_PUBKEY) else {

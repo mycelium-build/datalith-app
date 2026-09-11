@@ -1,0 +1,27 @@
+name: Publish stable updates
+description: Validate the latest stable release and deploy its updater manifest.
+inputs:
+  token:
+    description: Repository token
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Generate stable manifest
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y minisign
+        python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --output update-site/updates/stable.json
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+      with:
+        path: update-site
+
+    - name: Deploy Pages
+      uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+      with:
+        token: ${{ inputs.token }}

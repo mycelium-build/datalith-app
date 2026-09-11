@@ -120,7 +120,3 @@ pub fn update_check_failed() -> Notification {
 pub fn update_download_failed() -> Notification {
     Notification::error("Couldn't download the update")
 }
-
-pub fn update_install_failed() -> Notification {
-    Notification::error("The update couldn't be installed")
-}
