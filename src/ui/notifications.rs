@@ -108,3 +108,19 @@ pub fn font_load_failed(error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to load the bundled Pixeloid font: {error}"))
         .autohide(false)
 }
+
+pub fn update_up_to_date() -> Notification {
+    Notification::info("Datalith is up to date")
+}
+
+pub fn update_check_failed() -> Notification {
+    Notification::error("Couldn't check for updates")
+}
+
+pub fn update_download_failed() -> Notification {
+    Notification::error("Couldn't download the update")
+}
+
+pub fn update_install_failed() -> Notification {
+    Notification::error("The update couldn't be installed")
+}

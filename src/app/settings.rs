@@ -101,6 +101,7 @@ pub struct ApplicationSettings {
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
+    pub automatic_updates: bool,
 }
 
 impl Default for ApplicationSettings {
@@ -112,6 +113,7 @@ impl Default for ApplicationSettings {
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
+            automatic_updates: true,
         }
     }
 }
@@ -132,6 +134,8 @@ struct StoredSettings {
     dark_theme_name: Option<String>,
     #[serde(default)]
     font_size_multiplier: Option<f64>,
+    #[serde(default)]
+    automatic_updates: Option<bool>,
 }
 
 const fn schema_version() -> u32 {
@@ -164,6 +168,7 @@ impl StoredSettings {
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
             font_scale: normalize_font_scale(self.font_size_multiplier.unwrap_or_default()),
+            automatic_updates: self.automatic_updates.unwrap_or(true),
         }
     }
 
@@ -183,6 +188,7 @@ impl StoredSettings {
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
+            automatic_updates: Some(settings.automatic_updates),
         }
     }
 }
@@ -425,6 +431,24 @@ mod tests {
             WindowAppearance::Light
         );
         assert_eq!(ThemeMode::Dark.window_appearance(), WindowAppearance::Dark);
+    }
+
+    #[test]
+    fn automatic_updates_default_to_enabled_and_persist_opt_out() {
+        let file = temp_settings_file("automatic-updates");
+        let mut store = SettingsStore::new(file.clone());
+
+        assert!(store.snapshot().automatic_updates);
+        store
+            .update(|settings| settings.automatic_updates = false)
+            .unwrap();
+        assert!(!store.snapshot().automatic_updates);
+        assert!(
+            !SettingsStore::new(file.clone())
+                .snapshot()
+                .automatic_updates
+        );
+        let _ = fs::remove_file(file);
     }
 
     #[test]

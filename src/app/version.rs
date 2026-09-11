@@ -13,6 +13,12 @@ pub const fn release_tag() -> &'static str {
     release_tag_from(RELEASE_TAG)
 }
 
+/// Whether this build was stamped by release CI.
+#[must_use]
+pub const fn is_release_build() -> bool {
+    RELEASE_TAG.is_some()
+}
+
 fn version_from_tag(tag: Option<&'static str>) -> &'static str {
     tag.map_or(env!("CARGO_PKG_VERSION"), |tag| {
         tag.strip_prefix('v').unwrap_or(tag)
