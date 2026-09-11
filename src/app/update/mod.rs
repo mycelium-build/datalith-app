@@ -1,5 +1,6 @@
 mod cargo;
 mod installation;
+mod restart;
 mod source;
 mod state;
 
@@ -8,7 +9,7 @@ use std::time::Duration;
 
 use futures::StreamExt as _;
 use futures::channel::mpsc;
-use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task};
+use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription, Task};
 
 use crate::ui::notifications;
 
@@ -31,7 +32,6 @@ const UPDATER_PUBKEY: &str = match option_env!("DATALITH_UPDATER_PUBKEY") {
     None => "",
 };
 
-#[allow(dead_code, reason = "D3 connects the global updater to the UI")]
 struct GlobalUpdater(Entity<Updater>);
 
 impl Global for GlobalUpdater {}
@@ -55,11 +55,6 @@ enum OperationMessage {
         id: OperationId,
         outcome: Result<Staged, UpdateFailure>,
     },
-    Installed {
-        id: OperationId,
-        result: Result<(), UpdateFailure>,
-        staged: Option<Staged>,
-    },
 }
 
 pub struct Updater {
@@ -70,6 +65,7 @@ pub struct Updater {
     sender: mpsc::UnboundedSender<OperationMessage>,
     _listener_task: Task<()>,
     schedule_task: Task<()>,
+    _quit_subscription: Subscription,
 }
 
 impl Updater {
@@ -90,6 +86,14 @@ impl Updater {
             }
         });
         Self {
+            _quit_subscription: cx.on_app_quit(|updater, _| {
+                let staged = updater.take_install();
+                async move {
+                    if let Some(staged) = staged {
+                        restart::install(staged);
+                    }
+                }
+            }),
             source,
             installation,
             machine: UpdateMachine::default(),
@@ -101,24 +105,20 @@ impl Updater {
     }
 
     #[must_use]
-    #[allow(dead_code, reason = "D3 connects the global updater to the UI")]
     pub fn get(cx: &App) -> Option<Entity<Self>> {
         cx.try_global::<GlobalUpdater>()
             .map(|global| global.0.clone())
     }
 
     #[must_use]
-    #[allow(dead_code, reason = "D3 adds the sidebar update control")]
     pub fn presentation(&self) -> UpdatePresentation {
         self.machine.presentation()
     }
 
-    #[allow(dead_code, reason = "D3 adds the Help-menu command")]
     pub fn check_now(&mut self, cx: &mut Context<Self>) {
         self.start_check(CheckTrigger::Manual, cx);
     }
 
-    #[allow(dead_code, reason = "D3 adds the sidebar update control")]
     pub fn activate(&mut self, cx: &mut Context<Self>) {
         match self.machine.state() {
             UpdateState::Ready { .. } => self.start_apply(cx),
@@ -180,27 +180,18 @@ impl Updater {
     }
 
     fn start_apply(&mut self, cx: &mut Context<Self>) {
-        let Some(staged) = self.staged.take() else {
-            return;
-        };
-        let Some(id) = self.machine.begin_apply() else {
-            self.staged = Some(staged);
-            return;
-        };
-        let sender = self.sender.clone();
-        let spawned = std::thread::Builder::new()
-            .name("datalith-update-install".into())
-            .spawn(move || {
-                let result = staged.update.install(&staged.bytes);
-                let staged = result.is_err().then_some(staged);
-                let _ = sender.unbounded_send(OperationMessage::Installed { id, result, staged });
-            });
-        if let Err(error) = spawned {
-            eprintln!("Failed to start update install: {error}");
-            self.machine.abandon(id);
-            notify_failure(UpdateFailure::Install, cx);
+        if self.staged.is_some() && self.machine.begin_apply().is_some() {
+            cx.notify();
+            cx.quit();
         }
-        cx.notify();
+    }
+
+    const fn take_install(&mut self) -> Option<Staged> {
+        if matches!(self.machine.state(), UpdateState::Applying { .. }) {
+            self.staged.take()
+        } else {
+            None
+        }
     }
 
     fn handle(&mut self, message: OperationMessage, cx: &mut Context<Self>) {
@@ -224,15 +215,6 @@ impl Updater {
                 }
                 Err(failure) => self.handle_failure(id, failure, cx),
             },
-            OperationMessage::Installed { id, result, staged } => {
-                if let Err(failure) = result
-                    && self.machine.restore(id)
-                {
-                    self.staged = staged;
-                    notify_failure(failure, cx);
-                    cx.notify();
-                }
-            }
         }
     }
 
@@ -528,60 +510,126 @@ mod tests {
     }
 
     #[test]
-    fn activating_a_staged_update_runs_install() {
+    fn only_explicit_apply_hands_the_staged_update_to_shutdown() {
         let cx = TestAppContext::single();
         let events = ScriptedEvents::default();
         let source = Arc::new(ScriptedSource::new(&events));
         source.push_update(scripted_update(&events));
         let updater = create(&cx, source, InstallationKind::SelfManaged);
-
         start_automatic(&cx, &updater);
-        wait_for(&cx, &updater, |presentation| {
-            matches!(presentation, UpdatePresentation::Ready { .. })
+        wait_for(&cx, &updater, |state| {
+            matches!(state, UpdatePresentation::Ready { .. })
         });
-
         cx.update(|cx| {
-            updater.update(cx, Updater::activate);
+            updater.update(cx, |updater, cx| {
+                assert!(updater.take_install().is_none());
+                updater.activate(cx);
+                assert_eq!(events.snapshot(), vec!["check", "download"]);
+                let staged = updater.take_install().expect("explicit apply");
+                staged.update.install(&staged.bytes).expect("install");
+                assert!(updater.take_install().is_none());
+            });
         });
-        let deadline = Instant::now()
-            .checked_add(Duration::from_secs(5))
-            .expect("deadline");
-        while !events.snapshot().iter().any(|event| event == "install") {
-            cx.run_until_parked();
-            assert!(Instant::now() < deadline, "install did not run");
-            std::thread::sleep(Duration::from_millis(5));
-        }
-
-        assert_eq!(presentation(&cx, &updater), UpdatePresentation::Applying);
         assert_eq!(events.snapshot(), vec!["check", "download", "install"]);
     }
-
     #[test]
-    fn a_failed_apply_returns_to_staged() {
-        let cx = TestAppContext::single();
+    fn sidebar_update_button_supports_keyboard_activation() {
+        use gpui_kit::component::Root;
+        use gpui_kit::test::TestWindowExt as _;
+        use gpui_kit::{InputEvent as _, px, size};
+        let mut cx = TestAppContext::single();
+        cx.update(gpui_kit::init);
         let events = ScriptedEvents::default();
         let source = Arc::new(ScriptedSource::new(&events));
-        source.push_update(scripted_update(&events).failing_install(UpdateFailure::Install));
+        source.push_update(scripted_update(&events));
         let updater = create(&cx, source, InstallationKind::SelfManaged);
-
-        start_automatic(&cx, &updater);
-        wait_for(&cx, &updater, |presentation| {
-            matches!(presentation, UpdatePresentation::Ready { .. })
+        let handle = cx.open_window(size(px(240.), px(100.)), |window, cx| {
+            let control =
+                cx.new(|cx| crate::ui::sidebar::header::UpdateControl::new(updater.clone(), cx));
+            Root::new(control, window, cx)
         });
-
-        cx.update(|cx| {
-            updater.update(cx, Updater::activate);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find("update-control").is_none());
+        })
+        .unwrap();
+        let id = cx.update(|cx| {
+            updater.update(cx, |updater, cx| {
+                let id = updater.machine.begin_check(CheckTrigger::Manual).unwrap();
+                updater.machine.begin_download(id);
+                updater.machine.progress(id, 5, Some(10));
+                cx.notify();
+                id
+            })
         });
-        let presentation = wait_for(&cx, &updater, |presentation| {
-            matches!(presentation, UpdatePresentation::Ready { .. })
-        });
-
+        cx.run_until_parked();
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.click("update-control", cx);
+        })
+        .unwrap();
         assert_eq!(
-            presentation,
-            UpdatePresentation::Ready {
-                version: "0.2.0".to_string()
+            presentation(&cx, &updater),
+            UpdatePresentation::Downloading {
+                received: 5,
+                total: Some(10)
             }
         );
-        assert_eq!(events.snapshot(), vec!["check", "download", "install"]);
+        cx.update(|cx| {
+            updater.update(cx, |updater, cx| {
+                updater.machine.restore(id);
+                cx.notify();
+            });
+        });
+        start_automatic(&cx, &updater);
+        wait_for(&cx, &updater, |state| {
+            matches!(state, UpdatePresentation::Ready { .. })
+        });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            assert_eq!(
+                window.find("update-control").label(),
+                Some("Restart to update")
+            );
+            for mode in [
+                gpui_kit::component::ThemeMode::Light,
+                gpui_kit::component::ThemeMode::Dark,
+            ] {
+                gpui_kit::component::Theme::change(mode, Some(window), cx);
+                for rem in [14., 28.] {
+                    window.set_rem_size(px(rem));
+                    window.render_frame(cx);
+                    let button = window.find("update-control");
+                    assert!(button.visible());
+                    assert!(button.bounds().size.width <= px(240.));
+                }
+            }
+            window.set_rem_size(px(14.));
+            window.render_frame(cx);
+            window.focus_next(cx);
+            window.render_frame(cx);
+            assert_eq!(window.find("update-control").focused(), Some(true));
+            let keystroke = gpui_kit::Keystroke::parse("enter").unwrap();
+            window.dispatch_event(
+                gpui_kit::KeyDownEvent {
+                    keystroke: keystroke.clone(),
+                    is_held: false,
+                    prefer_character_input: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.dispatch_event(gpui_kit::KeyUpEvent { keystroke }.to_platform_input(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(presentation(&cx, &updater), UpdatePresentation::Applying);
+        assert_eq!(events.snapshot(), vec!["check", "download"]);
+        // The test platform's Quit is inert; do not install on test teardown.
+        cx.update(|cx| {
+            updater.update(cx, |updater, _| {
+                updater.take_install();
+            });
+        });
     }
 }

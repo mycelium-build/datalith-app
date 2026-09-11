@@ -276,6 +276,10 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
+pub fn set_automatic_updates(enabled: bool) -> Result<()> {
+    settings_lock().update(|settings| settings.automatic_updates = enabled)
+}
+
 pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }

@@ -47,7 +47,6 @@ pub mod scripted {
         chunks: Vec<(u64, Option<u64>)>,
         bytes: Vec<u8>,
         download_failure: Option<UpdateFailure>,
-        install_failure: Option<UpdateFailure>,
         events: ScriptedEvents,
     }
 
@@ -59,7 +58,6 @@ pub mod scripted {
                 chunks: Vec::new(),
                 bytes: Vec::new(),
                 download_failure: None,
-                install_failure: None,
                 events: events.clone(),
             }
         }
@@ -79,12 +77,6 @@ pub mod scripted {
         #[must_use]
         pub fn failing_download(mut self, failure: UpdateFailure) -> Self {
             self.download_failure = Some(failure);
-            self
-        }
-
-        #[must_use]
-        pub fn failing_install(mut self, failure: UpdateFailure) -> Self {
-            self.install_failure = Some(failure);
             self
         }
     }
@@ -110,7 +102,7 @@ pub mod scripted {
 
         fn install(&self, _bytes: &[u8]) -> Result<(), UpdateFailure> {
             self.events.record("install");
-            self.install_failure.map_or(Ok(()), Err)
+            Ok(())
         }
     }
 

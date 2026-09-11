@@ -202,16 +202,6 @@ impl UpdateMachine {
         Some(id)
     }
 
-    /// Drops an apply operation whose payload can no longer be restored
-    pub fn abandon(&mut self, id: OperationId) -> bool {
-        if self.in_flight != Some(id) {
-            return false;
-        }
-        self.finish();
-        self.state = UpdateState::Idle;
-        true
-    }
-
     const fn finish(&mut self) {
         self.in_flight = None;
         self.trigger = None;

@@ -22,11 +22,15 @@ pub struct CargoPackagerSource {
 impl CargoPackagerSource {
     /// Builds the production source for the stable channel.
     pub fn stable(pubkey: &str) -> anyhow::Result<Self> {
-        Self::new(
-            STABLE_MANIFEST_ENDPOINT,
-            pubkey,
-            crate::app::version::version(),
-        )
+        #[cfg(debug_assertions)]
+        let local_endpoint = std::env::var("DATALITH_UPDATE_ENDPOINT").ok();
+        #[cfg(debug_assertions)]
+        let endpoint = local_endpoint
+            .as_deref()
+            .unwrap_or(STABLE_MANIFEST_ENDPOINT);
+        #[cfg(not(debug_assertions))]
+        let endpoint = STABLE_MANIFEST_ENDPOINT;
+        Self::new(endpoint, pubkey, crate::app::version::version())
     }
 
     /// Builds a source against an explicit endpoint and version.
