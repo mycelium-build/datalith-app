@@ -6,9 +6,9 @@ The **Local Server** is a small HTTP server embedded in Datalith, reachable only
 
 # Setup
 
-1. Enable the server in **Settings → Local Server**. The status line shows the address, e.g. `Running on 127.0.0.1:42908`.
+1. Check the server is enabled in **Settings → Local Server** (on by default). The status line shows the address, e.g. `Running on 127.0.0.1:42908`.
 2. Point your client at the same address.
-3. (Optional) Click **Generate** to create a bearer token, then **Copy** and paste it into the client. When a token is set, clients must send it to use the server, when it is empty, no authentication is used.
+3. (Optional) Click **Generate** to create a bearer token, then **Copy** and paste it into the client. When a token is set, clients must send it to use the API endpoints, when it is empty, no authentication is used.
 
 Changing the port takes effect immediately. If the port is already taken, a notification explains what happened.
 
@@ -38,7 +38,7 @@ The folder is created on first save, and colliding names get a number: `Note.md`
 
 # Security
 
-The server binds to `127.0.0.1` only, nothing on your network can reach it. The API is open to every app on your machine. Webpages in your browser are the one exception: they are refused, so a site you visit cannot list your vaults or plant notes. If you want extra security you set a token.
+The server binds to `127.0.0.1` only, nothing on your network can reach it. The API is open to every app on your machine. Webpages in your browser are the one exception: they are refused, so a site you visit cannot list your vaults or plant notes. If you want extra security you can set a token. The token guards the API endpoints, `/docs` page stay readable, since they only describe the API.
 
 # Deep links
 
