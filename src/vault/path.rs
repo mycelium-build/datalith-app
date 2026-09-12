@@ -12,21 +12,23 @@ pub fn display_name(path: &Path) -> &str {
 /// Resolves a vault id:
 /// an absolute path, or the name of a vault folder to its path,
 /// matching paths first and taking the first match.
-pub fn resolve_vault_id<'a>(
-    id: &str,
-    paths: impl IntoIterator<Item = &'a PathBuf>,
-) -> Option<PathBuf> {
+pub fn resolve_vault_id<I>(id: &str, paths: I) -> Option<PathBuf>
+where
+    I: IntoIterator,
+    I::Item: AsRef<Path>,
+{
     let mut by_name = None;
     for path in paths {
+        let path = path.as_ref();
         if path.to_string_lossy() == id {
-            return Some(path.clone());
+            return Some(path.to_path_buf());
         }
         if by_name.is_none()
             && path
                 .file_name()
                 .is_some_and(|name| name.to_string_lossy() == id)
         {
-            by_name = Some(path.clone());
+            by_name = Some(path.to_path_buf());
         }
     }
     by_name
