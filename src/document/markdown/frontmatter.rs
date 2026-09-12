@@ -107,6 +107,8 @@ fn needs_quoting(key: &str) -> bool {
         || !key
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        || yaml_serde::from_str::<Value>(key)
+            .is_ok_and(|parsed| !matches!(parsed, Value::String(_)))
 }
 
 fn quoted_yaml_scalar(value: &str) -> String {
@@ -179,6 +181,8 @@ mod tests {
             ("multi".to_owned(), "line one\nline two".to_owned()),
             ("score".to_owned(), "3.14".to_owned()),
             ("odd key".to_owned(), "plain".to_owned()),
+            ("2024".to_owned(), "year".to_owned()),
+            ("true".to_owned(), "boolean-looking key".to_owned()),
         ];
         let document = parse_markdown(&build_note_document(&properties, "Body"));
         let frontmatter = document.frontmatter.expect("frontmatter");
@@ -205,6 +209,14 @@ mod tests {
                 FrontmatterProperty {
                     key: "odd key".into(),
                     values: vec![FrontmatterValue::Text("plain".into())],
+                },
+                FrontmatterProperty {
+                    key: "2024".into(),
+                    values: vec![FrontmatterValue::Text("year".into())],
+                },
+                FrontmatterProperty {
+                    key: "true".into(),
+                    values: vec![FrontmatterValue::Text("boolean-looking key".into())],
                 },
             ]
         );
