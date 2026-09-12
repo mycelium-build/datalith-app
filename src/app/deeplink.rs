@@ -120,7 +120,7 @@ fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
     };
     view.update(cx, |view, cx| {
         // A vault is required: resolve it, and switch to it if needed.
-        let Some(vault_path) = resolve_vault_id(&vault, &settings::known_vault_paths()) else {
+        let Some(vault_path) = resolve_vault_id(&vault, settings::known_vault_paths()) else {
             notifications::push_window_notification(
                 cx,
                 notifications::deeplink_vault_not_found(&vault),
