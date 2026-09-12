@@ -7,6 +7,7 @@ pub mod vaults;
 use std::net::TcpListener;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use poem::listener::TcpAcceptor;
 use poem::middleware::Cors;
@@ -18,6 +19,8 @@ use crate::app::settings;
 use api::{Api, ApiContext};
 
 pub const BIND_HOST: &str = "127.0.0.1";
+
+const SHUTDOWN_GRACE: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerConfig {
@@ -145,6 +148,9 @@ impl ServerManager {
     }
 
     /// Stops the server, if running. Safe to call repeatedly.
+    ///
+    /// This runs on the UI thread (settings changes call it),
+    /// so the wait is bounded.
     pub fn stop(&mut self) {
         let Some(running) = self.running.take() else {
             return;
@@ -177,11 +183,7 @@ fn serve(listener: TcpListener, context: ApiContext, shutdown: Arc<Notify>) {
             }
         };
         let _ = Server::new_with_acceptor(acceptor)
-            .run_with_graceful_shutdown(
-                app,
-                shutdown.notified(),
-                Some(std::time::Duration::from_secs(1)),
-            )
+            .run_with_graceful_shutdown(app, shutdown.notified(), Some(SHUTDOWN_GRACE))
             .await;
     });
 }

@@ -2,7 +2,7 @@
 //! each test drives the `OpenAPI` application through poem's `TestClient`,
 //! plus lifecycle tests on the real manager.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -25,21 +25,39 @@ fn unique_id() -> u64 {
     COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-fn temp_vault(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "datalith-server-{tag}-{}-{}",
-        std::process::id(),
-        unique_id()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// A temporary vault directory that removes itself on drop.
+struct TempVault(PathBuf);
+
+impl TempVault {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "datalith-server-{tag}-{}-{}",
+            std::process::id(),
+            unique_id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
 }
 
-fn vault(tag: &str) -> Vault {
-    let path = temp_vault(tag);
+impl std::ops::Deref for TempVault {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for TempVault {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn vault(dir: &TempVault) -> Vault {
     Vault {
-        name: path.file_name().unwrap().to_string_lossy().into_owned(),
-        path,
+        name: dir.0.file_name().unwrap().to_string_lossy().into_owned(),
+        path: dir.0.clone(),
     }
 }
 
@@ -53,7 +71,8 @@ fn app(token: Option<&str>, vaults: Vec<Vault>) -> impl poem::Endpoint + 'static
 
 #[tokio::test]
 async fn ping_reports_app_and_version() {
-    let client = TestClient::new(app(None, vec![vault("ping")]));
+    let dir = TempVault::new("ping");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let response = client.get("/ping").send().await;
     response.assert_status_is_ok();
     response
@@ -66,7 +85,8 @@ async fn ping_reports_app_and_version() {
 
 #[tokio::test]
 async fn token_guards_every_endpoint() {
-    let client = TestClient::new(app(Some("s3cret"), vec![vault("auth")]));
+    let dir = TempVault::new("auth");
+    let client = TestClient::new(app(Some("s3cret"), vec![vault(&dir)]));
     for path in ["/ping", "/api/vaults"] {
         let denied = client.get(path).send().await;
         denied.assert_status(StatusCode::UNAUTHORIZED);
@@ -88,7 +108,8 @@ async fn token_guards_every_endpoint() {
 
 #[tokio::test]
 async fn vaults_lists_context_vaults() {
-    let entry = vault("vaults");
+    let dir = TempVault::new("vaults");
+    let entry = vault(&dir);
     let expected = json!([{
         "name": entry.name,
         "path": entry.path.to_string_lossy(),
@@ -101,10 +122,9 @@ async fn vaults_lists_context_vaults() {
 
 #[tokio::test]
 async fn save_note_writes_frontmatter_and_reports_relative_path() {
-    let entry = vault("save");
-    let root = entry.path.clone();
-    let name = entry.name.clone();
-    let client = TestClient::new(app(None, vec![entry]));
+    let dir = TempVault::new("save");
+    let name = vault(&dir).name;
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let response = client
         .post("/api/notes")
         .header("Content-Type", "application/json")
@@ -128,7 +148,7 @@ async fn save_note_writes_frontmatter_and_reports_relative_path() {
         .assert_json(json!({ "path": "Clips/Hello.md" }))
         .await;
 
-    let file = std::fs::read_to_string(root.join("Clips").join("Hello.md")).unwrap();
+    let file = std::fs::read_to_string(dir.join("Clips").join("Hello.md")).unwrap();
     assert!(file.contains("source: \"https://example.com/article\""));
     assert!(file.contains("tags: \"clips\""));
     assert!(file.trim_end().ends_with("Body text."));
@@ -136,9 +156,9 @@ async fn save_note_writes_frontmatter_and_reports_relative_path() {
 
 #[tokio::test]
 async fn save_note_numbers_colliding_names() {
-    let entry = vault("collision");
-    let name = entry.name.clone();
-    let client = TestClient::new(app(None, vec![entry]));
+    let dir = TempVault::new("collision");
+    let name = vault(&dir).name;
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let first = save_title(&client, &name, "Note").await;
     first.assert_json(json!({ "path": "Note.md" })).await;
     let second = save_title(&client, &name, "Note").await;
@@ -166,9 +186,9 @@ where
 
 #[tokio::test]
 async fn save_note_rejects_unknown_vault_and_traversal_names() {
-    let entry = vault("rejects");
-    let name = entry.name.clone();
-    let client = TestClient::new(app(None, vec![entry]));
+    let dir = TempVault::new("rejects");
+    let name = vault(&dir).name;
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let unknown = client
         .post("/api/notes")
         .header("Content-Type", "application/json")
@@ -190,7 +210,8 @@ async fn save_note_rejects_unknown_vault_and_traversal_names() {
 
 #[tokio::test]
 async fn preflight_allows_extension_origins_only() {
-    let client = TestClient::new(app(None, vec![vault("cors")]));
+    let dir = TempVault::new("cors");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let allowed = client
         .request(Method::OPTIONS, "/api/vaults")
         .header("Origin", "chrome-extension://abc123")
@@ -211,7 +232,8 @@ async fn preflight_allows_extension_origins_only() {
 
 #[tokio::test]
 async fn webpage_origins_are_refused_but_plain_clients_pass() {
-    let client = TestClient::new(app(None, vec![vault("origins")]));
+    let dir = TempVault::new("origins");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let webpage = client
         .get("/api/vaults")
         .header("Origin", "https://evil.example")
@@ -225,7 +247,8 @@ async fn webpage_origins_are_refused_but_plain_clients_pass() {
 
 #[tokio::test]
 async fn oversize_post_is_rejected() {
-    let client = TestClient::new(app(None, vec![vault("oversize")]));
+    let dir = TempVault::new("oversize");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let response = client
         .post("/api/notes")
         .header("Content-Type", "application/json")
@@ -238,7 +261,8 @@ async fn oversize_post_is_rejected() {
 
 #[tokio::test]
 async fn non_json_save_body_is_rejected() {
-    let client = TestClient::new(app(None, vec![vault("content-type")]));
+    let dir = TempVault::new("content-type");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let response = client
         .post("/api/notes")
         .header("Content-Type", "text/plain")
@@ -250,7 +274,8 @@ async fn non_json_save_body_is_rejected() {
 
 #[tokio::test]
 async fn xml_media_types_are_rejected_at_the_boundary() {
-    let client = TestClient::new(app(None, vec![vault("xml-guard")]));
+    let dir = TempVault::new("xml-guard");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     for content_type in [
         "application/xml",
         "text/xml",
@@ -272,7 +297,8 @@ async fn xml_media_types_are_rejected_at_the_boundary() {
 
 #[tokio::test]
 async fn openapi_spec_advertises_no_xml_media_types() {
-    let client = TestClient::new(app(None, vec![vault("no-xml-spec")]));
+    let dir = TempVault::new("no-xml-spec");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let spec = client.get("/openapi.json").send().await;
     spec.assert_status_is_ok();
     let body: Value = spec
@@ -318,7 +344,8 @@ fn collect_xml_media_types(value: &Value, found: &mut Vec<String>) {
 
 #[tokio::test]
 async fn unknown_routes_and_methods_are_rejected() {
-    let client = TestClient::new(app(None, vec![vault("routing")]));
+    let dir = TempVault::new("routing");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let missing = client.get("/api/nope").send().await;
     missing.assert_status(StatusCode::NOT_FOUND);
 
@@ -328,7 +355,8 @@ async fn unknown_routes_and_methods_are_rejected() {
 
 #[tokio::test]
 async fn openapi_spec_and_docs_are_served() {
-    let client = TestClient::new(app(None, vec![vault("spec")]));
+    let dir = TempVault::new("spec");
+    let client = TestClient::new(app(None, vec![vault(&dir)]));
     let spec = client.get("/openapi.json").send().await;
     spec.assert_status_is_ok();
     let body: Value = spec
@@ -347,6 +375,7 @@ async fn openapi_spec_and_docs_are_served() {
 
 #[test]
 fn manager_binds_ephemeral_port_and_stops() {
+    let dir = TempVault::new("manager");
     let mut manager = ServerManager::new();
     manager
         .apply_with_context(
@@ -354,7 +383,7 @@ fn manager_binds_ephemeral_port_and_stops() {
                 port: 0,
                 token: None,
             }),
-            Some(context(None, vec![vault("manager")])),
+            Some(context(None, vec![vault(&dir)])),
         )
         .unwrap();
     assert!(matches!(manager.status(), ServerStatus::Running(port) if port > 0));
@@ -367,10 +396,11 @@ fn manager_reports_bind_failure_without_losing_state() {
     let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = held.local_addr().unwrap().port();
 
+    let dir = TempVault::new("bind");
     let mut manager = ServerManager::new();
     let result = manager.apply_with_context(
         Some(ServerConfig { port, token: None }),
-        Some(context(None, vec![vault("bind")])),
+        Some(context(None, vec![vault(&dir)])),
     );
     assert!(result.is_err());
     assert!(matches!(manager.status(), ServerStatus::Failed(_)));

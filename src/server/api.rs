@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use poem::{Endpoint, IntoResponse, Request, Response, Result, http::Method, http::header};
+use poem::error::ReadBodyError;
+use poem::{Body, Endpoint, IntoResponse, Request, Response, Result, http::Method, http::header};
 use poem_openapi::{Object, OpenApi, payload::Json};
 
 use super::error::ApiError;
@@ -149,7 +150,9 @@ fn authorized(req: &Request, token: &str) -> bool {
         .is_some_and(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()))
 }
 
-/// Rejects oversized POST bodies before the JSON extractor buffers them.
+/// Rejects oversized POST bodies before the JSON extractor buffers them:
+/// a fast `Content-Length` check up front, then a hard cap on the actual
+/// bytes so chunked requests (which carry no `Content-Length`) are covered.
 /// Browser clients are already gated by the strict preflight; this guards
 /// against accidental memory exhaustion by local clients.
 pub struct BodyLimit {
@@ -186,6 +189,24 @@ impl<E: Endpoint> Endpoint for BodyLimitEndpoint<E> {
             if too_big {
                 return Err(ApiError::payload_too_large().into());
             }
+            let (parts, body) = req.into_parts();
+            let bytes = match body.into_bytes_limit(self.max_size).await {
+                Ok(bytes) => bytes,
+                Err(ReadBodyError::PayloadTooLarge) => {
+                    return Err(ApiError::payload_too_large().into());
+                }
+                Err(error) => {
+                    return Err(ApiError::internal(format!(
+                        "Failed to read request body: {error}"
+                    ))
+                    .into());
+                }
+            };
+            return Ok(self
+                .ep
+                .call(Request::from_parts(parts, Body::from(bytes)))
+                .await?
+                .into_response());
         }
         Ok(self.ep.call(req).await?.into_response())
     }
@@ -276,5 +297,21 @@ mod tests {
         ] {
             assert!(!is_xml_media_type(other), "should not match: {other}");
         }
+    }
+
+    #[tokio::test]
+    async fn oversized_body_without_content_length_is_rejected() {
+        use poem::Middleware as _;
+        use poem::http::StatusCode;
+
+        let limited = BodyLimit { max_size: 8 }.transform(poem::endpoint::make_sync(|_| "ok"));
+        let request = Request::builder().method(Method::POST).body("123456789");
+        let error = limited.call(request).await.unwrap_err();
+        assert_eq!(error.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let within = BodyLimit { max_size: 8 }.transform(poem::endpoint::make_sync(|_| "ok"));
+        let request = Request::builder().method(Method::POST).body("1234");
+        let response = within.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
