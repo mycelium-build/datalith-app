@@ -73,9 +73,12 @@ impl DatalithView {
     ) -> impl IntoElement {
         let view = cx.entity();
 
-        tree::tree(tree_state_entity, move |ix, entry, selected, _window, cx| {
-            Self::render_tree_item(&view, ix, entry, selected, cx)
-        })
+        tree::tree(
+            tree_state_entity,
+            move |ix, entry, selected, _window, cx| {
+                Self::render_tree_item(&view, ix, entry, selected, cx)
+            },
+        )
     }
 
     fn render_tree_item(
