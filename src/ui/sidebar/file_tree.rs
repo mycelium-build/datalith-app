@@ -160,6 +160,17 @@ impl DatalithView {
             );
         }
 
+        // gpui-base toggles a row on left mouse-down;
+        // while a context menu is open, that event also reaches the row underneath the menu.
+        // Stop it so `on_click` stays the only path that selects or toggles.
+        list_item = list_item.on_mouse_down(MouseButton::Left, {
+            let focus_handle = this.sidebar_focus_handle.clone();
+            move |_, window, cx| {
+                focus_handle.focus(window, cx);
+                cx.stop_propagation();
+            }
+        });
+
         let mut row = h_flex()
             .id(("file-tree-row", ix))
             .on_mouse_down(
@@ -202,8 +213,11 @@ impl DatalithView {
             let path = path.to_path_buf();
             let id = item_id.clone();
             move |this, event: &ClickEvent, window, cx| {
+                this.tree_state
+                    .update(cx, |state, cx| state.set_selected_index(Some(ix), cx));
                 if is_folder {
                     this.mark_tree_item_expanded(&id, !is_expanded);
+                    this.refresh_tree(cx);
                 } else {
                     this.last_sidebar_selection = Some(path.clone());
                     let new_tab = event.modifiers().secondary();
