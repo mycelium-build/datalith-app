@@ -13,10 +13,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
-    ParentElement, Render, SharedString, Styled, Window, div, px,
+    ParentElement, Render, SharedString, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer};
+use crate::app::actions::{
+    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
+};
 use crate::ui::notifications;
 use crate::vault::file_ops;
 use crate::vault::path::display_name;
@@ -230,19 +232,24 @@ impl DatalithView {
                     .child(Select::new(&self.vault_select_state)),
             )
             .context_menu(move |menu, _window, cx| {
-                let suppressed = view.update(cx, |v, _| {
-                    let suppressed = v.suppress_sidebar_context_menu;
-                    v.suppress_sidebar_context_menu = false;
-                    suppressed
+                let from_row = view.update(cx, |v, _| {
+                    let from_row = v.context_menu_from_row;
+                    v.context_menu_from_row = false;
+                    from_row
                 });
 
-                if suppressed {
-                    return menu;
+                if !from_row {
+                    view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
                 }
 
-                view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
                 menu.menu("New File", Box::new(NewFile))
                     .menu("New Folder", Box::new(NewFolder))
+                    .when(from_row, |menu| {
+                        menu.separator()
+                            .menu("Rename", Box::new(Rename))
+                            .menu("Delete", Box::new(Delete))
+                            .menu("Duplicate", Box::new(Duplicate))
+                    })
                     .separator()
                     .menu("Open in Explorer", Box::new(OpenInExplorer))
                     .menu("Copy Path", Box::new(CopyPath))

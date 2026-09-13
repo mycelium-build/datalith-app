@@ -16,9 +16,6 @@ use gpui_kit::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::actions::{
-    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
-};
 use crate::vault::path::display_name;
 
 use super::{DatalithView, DragFile, TREE_PADDING_PX};
@@ -76,24 +73,8 @@ impl DatalithView {
     ) -> impl IntoElement {
         let view = cx.entity();
 
-        tree::tree(tree_state_entity, {
-            let view = view.clone();
-            move |ix, entry, selected, _window, cx| {
-                Self::render_tree_item(&view, ix, entry, selected, cx)
-            }
-        })
-        .context_menu(move |_ix, entry, menu, _window, cx| {
-            let path = Self::path_from_id(&entry.item().id);
-            view.update(cx, |v, _| v.context_menu_target = Some(path));
-            menu.menu("New File", Box::new(NewFile))
-                .menu("New Folder", Box::new(NewFolder))
-                .separator()
-                .menu("Rename", Box::new(Rename))
-                .menu("Delete", Box::new(Delete))
-                .menu("Duplicate", Box::new(Duplicate))
-                .separator()
-                .menu("Open in Explorer", Box::new(OpenInExplorer))
-                .menu("Copy Path", Box::new(CopyPath))
+        tree::tree(tree_state_entity, move |ix, entry, selected, _window, cx| {
+            Self::render_tree_item(&view, ix, entry, selected, cx)
         })
     }
 
@@ -184,7 +165,7 @@ impl DatalithView {
                     let path = path.to_path_buf();
                     move |this, _event: &MouseDownEvent, _window, _cx| {
                         this.context_menu_target = Some(path.clone());
-                        this.suppress_sidebar_context_menu = true;
+                        this.context_menu_from_row = true;
                     }
                 }),
             )
