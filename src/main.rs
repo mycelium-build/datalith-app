@@ -18,49 +18,60 @@
 
 mod app;
 mod document;
+mod server;
 mod ui;
 mod vault;
 
 fn main() {
-    gpui_kit::application()
-        .with_assets(app::assets::DatalithAssets)
-        .run(|cx| {
-            app::init(cx);
-            let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
-            pending_notifications.extend(ui::themes::load_embedded_themes(cx));
-            ui::settings::SettingsView::init_theme_options(cx);
+    let application = gpui_kit::application().with_assets(app::assets::DatalithAssets);
+    application.on_open_urls(app::deeplink::capture);
+    application.run(|cx| {
+        app::init(cx);
+        let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
+        pending_notifications.extend(ui::themes::load_embedded_themes(cx));
+        ui::settings::SettingsView::init_theme_options(cx);
 
-            pending_notifications.extend(app::preferences::apply(cx));
-            cx.set_global(app::AppState::default());
-            app::actions::register(cx);
-            app::keymap::register(cx);
-            app::menus::install(cx);
+        pending_notifications.extend(app::preferences::apply(cx));
+        cx.set_global(app::AppState::default());
+        app::actions::register(cx);
+        app::keymap::register(cx);
+        app::menus::install(cx);
 
-            let docs_vault = match app::docs::ensure_docs_vault() {
-                Ok(outcome) => Some(outcome),
-                Err(error) => {
-                    eprintln!("Failed to seed docs Vault: {error:#}");
-                    None
-                }
-            };
-            let first_startup = docs_vault.as_ref().is_some_and(|outcome| outcome.first_run);
-            let (initial_vault, initial_tabs) = match docs_vault {
-                Some(outcome) if outcome.first_run => {
-                    let tabs = app::docs::INITIAL_TABS
-                        .iter()
-                        .map(|name| outcome.docs_vault.join(name))
-                        .collect();
-                    (Some(outcome.docs_vault), tabs)
-                }
-                _ => (app::settings::snapshot().last_vault, Vec::new()),
-            };
+        let docs_vault = match app::docs::ensure_docs_vault() {
+            Ok(outcome) => Some(outcome),
+            Err(error) => {
+                eprintln!("Failed to seed docs Vault: {error:#}");
+                None
+            }
+        };
+        let first_startup = docs_vault.as_ref().is_some_and(|outcome| outcome.first_run);
+        let (initial_vault, initial_tabs) = match docs_vault {
+            Some(outcome) if outcome.first_run => {
+                let tabs = app::docs::INITIAL_TABS
+                    .iter()
+                    .map(|name| outcome.docs_vault.join(name))
+                    .collect();
+                (Some(outcome.docs_vault), tabs)
+            }
+            _ => (app::settings::snapshot().last_vault, Vec::new()),
+        };
 
-            ui::window::open_initial(
-                cx,
-                first_startup,
-                initial_vault,
-                initial_tabs,
-                pending_notifications,
-            );
-        });
+        app::deeplink::start(cx);
+        if let Err(error) = server::sync() {
+            eprintln!("Failed to start Local Server: {error}");
+            let server_settings = app::settings::snapshot().server;
+            pending_notifications.push(ui::notifications::server_start_failed(
+                server_settings.port(),
+                &error,
+            ));
+        }
+
+        ui::window::open_initial(
+            cx,
+            first_startup,
+            initial_vault,
+            initial_tabs,
+            pending_notifications,
+        );
+    });
 }

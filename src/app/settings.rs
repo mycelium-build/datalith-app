@@ -6,11 +6,12 @@ use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
 pub const MAX_FONT_SCALE: f64 = 3.0;
+pub const DEFAULT_SERVER_PORT: u16 = 42908;
 
 /// The effective theme mode currently in use, derived from a [`ThemePreference`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -93,6 +94,45 @@ pub enum ThemeKind {
     Dark,
 }
 
+/// Settings for the embedded local server.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServerSettings {
+    enabled: bool,
+    port: u16,
+    token: Option<String>,
+}
+
+impl ServerSettings {
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
+    fn normalized(enabled: bool, port: u16, token: Option<String>) -> Self {
+        let token = token
+            .map(|token| token.trim().to_owned())
+            .filter(|token| !token.is_empty());
+        Self {
+            enabled,
+            port: if port == 0 { DEFAULT_SERVER_PORT } else { port },
+            token,
+        }
+    }
+}
+
+impl Default for ServerSettings {
+    fn default() -> Self {
+        Self::normalized(true, DEFAULT_SERVER_PORT, None)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
@@ -101,6 +141,7 @@ pub struct ApplicationSettings {
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
+    pub server: ServerSettings,
 }
 
 impl Default for ApplicationSettings {
@@ -112,8 +153,19 @@ impl Default for ApplicationSettings {
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
+            server: ServerSettings::default(),
         }
     }
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+struct StoredServerSettings {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    port: Option<u16>,
+    #[serde(default)]
+    token: Option<String>,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -132,6 +184,8 @@ struct StoredSettings {
     dark_theme_name: Option<String>,
     #[serde(default)]
     font_size_multiplier: Option<f64>,
+    #[serde(default)]
+    server: StoredServerSettings,
 }
 
 const fn schema_version() -> u32 {
@@ -164,6 +218,11 @@ impl StoredSettings {
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
             font_scale: normalize_font_scale(self.font_size_multiplier.unwrap_or_default()),
+            server: ServerSettings::normalized(
+                self.server.enabled.unwrap_or(true),
+                self.server.port.unwrap_or(DEFAULT_SERVER_PORT),
+                self.server.token,
+            ),
         }
     }
 
@@ -183,6 +242,11 @@ impl StoredSettings {
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
+            server: StoredServerSettings {
+                enabled: Some(settings.server.enabled()),
+                port: Some(settings.server.port()),
+                token: settings.server.token.clone(),
+            },
         }
     }
 }
@@ -270,6 +334,25 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
     })
 }
 
+/// Vault folders Datalith knows about, last used first:
+/// the last opened vault followed by the other recents.
+/// Directories that no longer exist are skipped.
+#[must_use]
+pub fn known_vault_paths() -> Vec<PathBuf> {
+    let settings = snapshot();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Some(last) = &settings.last_vault {
+        paths.push(last.clone());
+    }
+    for recent in &settings.recent_vaults {
+        if !paths.contains(recent) {
+            paths.push(recent.clone());
+        }
+    }
+    paths.retain(|path| path.is_dir());
+    paths
+}
+
 pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }
@@ -290,6 +373,24 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
     settings_lock().update(|settings| settings.font_scale = scale)
+}
+
+pub fn set_server_enabled(enabled: bool) -> Result<()> {
+    settings_lock().update(|settings| settings.server.enabled = enabled)
+}
+
+pub fn set_server_port(port: u16) -> Result<()> {
+    if port == 0 {
+        bail!("Server port must be between 1 and 65535");
+    }
+    settings_lock().update(|settings| settings.server.port = port)
+}
+
+pub fn set_server_token(token: Option<String>) -> Result<()> {
+    let token = token
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty());
+    settings_lock().update(move |settings| settings.server.token = token)
 }
 
 #[cfg(test)]
@@ -425,6 +526,52 @@ mod tests {
             WindowAppearance::Light
         );
         assert_eq!(ThemeMode::Dark.window_appearance(), WindowAppearance::Dark);
+    }
+
+    #[test]
+    fn v1_config_without_server_section_migrates_to_defaults() {
+        let file = temp_settings_file("v1-server-migration");
+        fs::write(
+            &file,
+            r#"{"schema_version":1,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+
+        let settings = SettingsStore::new(file.clone()).snapshot();
+
+        assert_eq!(settings.server, ServerSettings::default());
+        assert!(settings.server.enabled());
+        assert_eq!(settings.server.port(), DEFAULT_SERVER_PORT);
+        assert_eq!(settings.server.token(), None);
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn server_settings_round_trip_and_normalize() {
+        let file = temp_settings_file("server-round-trip");
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| {
+                settings.server.enabled = false;
+                settings.server.port = 50000;
+                settings.server.token = Some("  secret  ".to_owned());
+            })
+            .unwrap();
+
+        let reloaded = SettingsStore::new(file.clone()).snapshot();
+        assert!(!reloaded.server.enabled());
+        assert_eq!(reloaded.server.port(), 50000);
+        assert_eq!(reloaded.server.token(), Some("secret"));
+
+        fs::write(
+            &file,
+            r#"{"schema_version":2,"server":{"enabled":true,"port":0,"token":"   "}}"#,
+        )
+        .unwrap();
+        let normalized = SettingsStore::new(file.clone()).snapshot();
+        assert_eq!(normalized.server.port(), DEFAULT_SERVER_PORT);
+        assert_eq!(normalized.server.token(), None);
+        let _ = fs::remove_file(file);
     }
 
     #[test]
