@@ -18,11 +18,11 @@ The Panel is a full-height sidebar to review the clip before saving. The page ti
 
 # Templates
 
-Templates are named recipes that fill the note for you: variables (title, author, selection, highlights, image…), CSS-selector extraction, pipes, conditionals and loops. A trigger, a URL glob, can auto-select the right Template per site, so a recipe written for one site just works there every time. Templates are edited in the options, with a reference bar of everything available.
+Templates are named recipes that fill the note for you using the [Knap](https://knap.md) engine: variables (title, author, selection, highlights, image…), CSS-selector extraction (`{{selector:h1}}`), filters, conditionals and loops. A URL glob trigger can automatically select the appropriate Template for each site. For more information about editing Templates, go to extension options, where a reference bar lists everything available and live syntax checking helps as you type.
 
 # Interpreter
 
-The Interpreter adds optional LLM support: `{"prompt"}` expressions in a Template are sent to your own OpenAI-compatible provider and replaced with the model's answer. For example to summarize a page. It is off by default, and the browser permission for a provider's address is only requested when you add it.
+The Interpreter adds optional LLM support: `{{"prompt"}}` expressions in a Template are sent to your own OpenAI-compatible provider and replaced with the model's answer. For example to summarize a page. While the Interpreter is off, prompts show as plain text. It is off by default, and the browser permission for a provider's address is only requested when you add it.
 
 # Highlighter
 
