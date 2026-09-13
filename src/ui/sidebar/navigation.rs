@@ -15,7 +15,7 @@ impl DatalithView {
     ) {
         match event.keystroke.key.as_str() {
             "escape" if self.rename_target.is_some() => self.cancel_rename(cx),
-            "enter" => self.handle_enter_key(event, window, cx),
+            "enter" if self.rename_target.is_none() => self.handle_enter_key(event, window, cx),
             "up" => self.navigate_tree_up(cx),
             "down" => self.navigate_tree_down(cx),
             "left" => self.navigate_tree_left(cx),
