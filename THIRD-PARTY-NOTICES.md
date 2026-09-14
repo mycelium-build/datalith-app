@@ -9782,7 +9782,7 @@ Used by:
 - `rustix` 1.1.4 — `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT` — <https://github.com/bytecodealliance/rustix>
 - `rustls-native-certs` 0.8.4 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls-native-certs>
 - `rustls-pemfile` 2.2.0 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/pemfile>
-- `rustls` 0.23.43 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls>
+- `rustls` 0.23.45 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls>
 - `scoped-tls` 1.0.1 — `MIT OR Apache-2.0` — <https://github.com/alexcrichton/scoped-tls>
 - `scopeguard` 1.2.0 — `MIT OR Apache-2.0` — <https://github.com/bluss/scopeguard>
 - `security-framework-sys` 2.17.0 — `MIT OR Apache-2.0` — <https://github.com/kornelski/rust-security-framework>
