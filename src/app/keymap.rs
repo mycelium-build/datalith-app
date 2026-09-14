@@ -32,7 +32,7 @@ pub fn display_binding(binding: &str) -> String {
 shortcuts!(
     // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
     // File
-    ("File", "secondary-q", "Quit Datalith", Quit),
+    ("File", "secondary-q", "Quit", Quit),
     ("File", "secondary-n", "New note", NewFile),
     ("File", "secondary-shift-n", "New folder", NewFolder),
     ("File", "f2", "Rename", Rename),

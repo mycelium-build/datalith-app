@@ -17,15 +17,22 @@
 )]
 
 mod app;
+mod channel;
 mod document;
 mod server;
 mod ui;
 mod vault;
 
 fn main() {
+    let channel = channel::Channel::current();
+    if std::env::args().any(|arg| arg == "--print-build-identity") {
+        println!("{}", app::version::build_identity());
+        return;
+    }
     let application = gpui_kit::application().with_assets(app::assets::DatalithAssets);
     application.on_open_urls(app::deeplink::capture);
-    application.run(|cx| {
+    application.run(move |cx| {
+        cx.set_app_identity(channel.identifier(), channel.product_name());
         app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
         pending_notifications.extend(ui::themes::load_embedded_themes(cx));

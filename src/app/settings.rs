@@ -142,6 +142,7 @@ pub struct ApplicationSettings {
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
     pub server: ServerSettings,
+    pub automatic_updates: bool,
 }
 
 impl Default for ApplicationSettings {
@@ -154,6 +155,7 @@ impl Default for ApplicationSettings {
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
             server: ServerSettings::default(),
+            automatic_updates: true,
         }
     }
 }
@@ -186,6 +188,8 @@ struct StoredSettings {
     font_size_multiplier: Option<f64>,
     #[serde(default)]
     server: StoredServerSettings,
+    #[serde(default)]
+    automatic_updates: Option<bool>,
 }
 
 const fn schema_version() -> u32 {
@@ -223,6 +227,7 @@ impl StoredSettings {
                 self.server.port.unwrap_or(DEFAULT_SERVER_PORT),
                 self.server.token,
             ),
+            automatic_updates: self.automatic_updates.unwrap_or(true),
         }
     }
 
@@ -247,6 +252,7 @@ impl StoredSettings {
                 port: Some(settings.server.port()),
                 token: settings.server.token.clone(),
             },
+            automatic_updates: Some(settings.automatic_updates),
         }
     }
 }
@@ -332,6 +338,10 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
         settings.recent_vaults.insert(0, path);
         settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
     })
+}
+
+pub fn set_automatic_updates(enabled: bool) -> Result<()> {
+    settings_lock().update(|settings| settings.automatic_updates = enabled)
 }
 
 /// Vault folders Datalith knows about, last used first:
@@ -571,6 +581,24 @@ mod tests {
         let normalized = SettingsStore::new(file.clone()).snapshot();
         assert_eq!(normalized.server.port(), DEFAULT_SERVER_PORT);
         assert_eq!(normalized.server.token(), None);
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn automatic_updates_default_to_enabled_and_persist_opt_out() {
+        let file = temp_settings_file("automatic-updates");
+        let mut store = SettingsStore::new(file.clone());
+
+        assert!(store.snapshot().automatic_updates);
+        store
+            .update(|settings| settings.automatic_updates = false)
+            .unwrap();
+        assert!(!store.snapshot().automatic_updates);
+        assert!(
+            !SettingsStore::new(file.clone())
+                .snapshot()
+                .automatic_updates
+        );
         let _ = fs::remove_file(file);
     }
 

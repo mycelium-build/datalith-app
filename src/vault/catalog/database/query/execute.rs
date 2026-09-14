@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use turso::Value;
 
 use crate::document::base::{HARD_RESULT_LIMIT, SortDirection};
@@ -100,11 +100,7 @@ impl CatalogDatabase {
             .context("count cell")?;
         let total_matched = usize::try_from(total_matched).unwrap_or(usize::MAX);
 
-        let mut columns = vec![
-            "path".to_string(),
-            "json(metadata)".to_string(),
-            "created_ns".to_string(),
-        ];
+        let mut columns = vec!["path".to_string()];
         let mut projection_alias: BTreeMap<String, String> = BTreeMap::new();
         for (index, source) in query.projections.iter().enumerate() {
             let sql = projection_sql
@@ -159,24 +155,14 @@ impl CatalogDatabase {
         let class_count = query.classes.len();
         let mut documents = Vec::new();
         while let Some(row) = rows.next().await.context("main row")? {
-            // columns
-            // 1=json
-            let metadata = match row.get_value(1).context("metadata cell")? {
-                Value::Null => None,
-                Value::Text(json) => Some(serde_json::from_str(&json)?),
-                value => bail!("Unexpected metadata value {value:?}"),
-            };
-
-            // >3=projections rename, c0...cN
             let mut values = Vec::with_capacity(projection_count);
             for index in 0..projection_count {
-                values.push(turso_to_json(row.get_value(index.saturating_add(3))?));
+                values.push(turso_to_json(row.get_value(index.saturating_add(1))?));
             }
 
-            // >3+N=class, k0...kN
             let mut class_hits = Vec::with_capacity(class_count);
             for index in 0..class_count {
-                let column = projection_count.saturating_add(index).saturating_add(3);
+                let column = projection_count.saturating_add(index).saturating_add(1);
                 class_hits.push(matches!(
                     row.get_value(column)?,
                     Value::Integer(hit) if hit != 0
@@ -188,8 +174,6 @@ impl CatalogDatabase {
 
             documents.push(BaseDocument {
                 path: self.root.join(relative),
-                metadata,
-                created_ns: row.get::<i64>(2)?,
                 values,
                 class_hits,
                 links: Vec::new(),

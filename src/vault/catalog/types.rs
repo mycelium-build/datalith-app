@@ -46,10 +46,6 @@ pub enum SummaryRef {
 #[derive(Clone, Debug)]
 pub struct BaseDocument {
     pub(crate) path: PathBuf,
-    #[allow(dead_code)]
-    pub(crate) metadata: Option<serde_json::Value>,
-    #[allow(dead_code)]
-    pub(crate) created_ns: i64,
     /// Projected values aligned with `BaseQuery::projections`.
     pub(crate) values: Vec<serde_json::Value>,
     /// Class membership aligned with `BaseQuery::classes`.

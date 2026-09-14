@@ -19,7 +19,6 @@ const LICENSING: &str = include_str!("../../LICENSING.md");
 const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
 
 const RELEASE_REPO: &str = "https://github.com/mycelium-build/datalith-app";
-const RELEASE_TAG: Option<&str> = option_env!("DATALITH_RELEASE_TAG");
 
 const ROW_HEIGHT: f32 = 20.0;
 
@@ -78,7 +77,7 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
 
 #[must_use]
 pub fn corresponding_source_url() -> String {
-    let tag = RELEASE_TAG.unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
+    let tag = crate::app::version::release_tag();
     format!("{RELEASE_REPO}/releases/tag/{tag}")
 }
 
@@ -231,9 +230,9 @@ mod tests {
     }
 
     #[test]
-    fn corresponding_source_url_uses_package_version() {
+    fn corresponding_source_url_uses_build_version() {
         let url = corresponding_source_url();
-        assert!(url.contains(RELEASE_TAG.unwrap_or(env!("CARGO_PKG_VERSION"))));
+        assert!(url.contains(crate::app::version::release_tag()));
         assert!(url.starts_with(RELEASE_REPO));
         assert!(url.contains("/releases/tag/v"));
     }

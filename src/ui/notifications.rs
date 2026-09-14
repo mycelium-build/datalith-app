@@ -124,3 +124,20 @@ pub fn copy_token_failed(error: &anyhow::Error) -> Notification {
 pub fn deeplink_vault_not_found(vault: &str) -> Notification {
     Notification::error(format!("Deep link failed: unknown vault \"{vault}\"")).autohide(false)
 }
+
+pub fn update_up_to_date() -> Notification {
+    Notification::info(match crate::channel::Channel::current() {
+        crate::channel::Channel::Preview => {
+            "Datalith Preview is up to date. No newer release candidate is available."
+        }
+        crate::channel::Channel::Stable | crate::channel::Channel::Dev => "Datalith is up to date",
+    })
+}
+
+pub fn update_check_failed() -> Notification {
+    Notification::error("Couldn't check for updates")
+}
+
+pub fn update_download_failed() -> Notification {
+    Notification::error("Couldn't download the update")
+}
