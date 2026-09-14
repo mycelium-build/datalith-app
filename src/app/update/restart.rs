@@ -1,8 +1,8 @@
 use super::Staged;
 
 pub(super) fn install(staged: Staged) {
-    // GPUI polls quit futures after clearing windows. Wait here because its
-    // shutdown timeout must not interrupt replacement of the application.
+    // GPUI polls quit futures after clearing windows.
+    // Wait here because its shutdown timeout must not interrupt replacement of the application.
     let worker = std::thread::Builder::new()
         .name("datalith-update-install".into())
         .spawn(move || {
