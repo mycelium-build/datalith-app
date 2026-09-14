@@ -97,12 +97,12 @@ impl SettingsView {
 
     pub(crate) fn open_shortcuts(&mut self) {
         self.open = true;
-        self.page_index = shortcuts_page_index().saturating_add(usize::from(self.has_updater));
+        self.page_index = shortcuts_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
-        self.page_index = about_page_index().saturating_add(usize::from(self.has_updater));
+        self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
     }
 
     pub(crate) const fn close(&mut self) {
@@ -179,6 +179,8 @@ impl SettingsView {
     }
 
     fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+        // In dev channel don't display update group
+        // NOTE: need to move "General" page when add new content to it
         let general = self.has_updater.then(|| {
             SettingPage::new("General").groups(vec![SettingGroup::new().title("Updates").items(
                 vec![
