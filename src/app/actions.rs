@@ -37,6 +37,7 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
+        CheckForUpdates,
         OpenShortcuts,
         OpenDocumentation,
         OpenAbout,
@@ -69,6 +70,7 @@ macro_rules! with_view {
 
 pub fn register(cx: &mut App) {
     cx.on_action(quit);
+    cx.on_action(check_for_updates);
     cx.on_action(open_vault);
     cx.on_action(toggle_search);
     cx.on_action(toggle_quick_switcher);
@@ -495,4 +497,10 @@ pub fn handle_open_link(_: &OpenLink, cx: &mut App) {
             }
         }
     });
+}
+
+fn check_for_updates(_: &CheckForUpdates, cx: &mut App) {
+    if let Some(updater) = super::update::Updater::get(cx) {
+        updater.update(cx, super::update::Updater::check_now);
+    }
 }

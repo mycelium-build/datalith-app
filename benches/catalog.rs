@@ -12,6 +12,10 @@
 
 mod fixtures;
 
+#[allow(dead_code, unused_imports)]
+#[path = "../src/channel.rs"]
+mod channel;
+
 // Mirror the crate's module structure so `crate::` paths resolve correctly.
 #[allow(dead_code, unused_imports)]
 mod document {

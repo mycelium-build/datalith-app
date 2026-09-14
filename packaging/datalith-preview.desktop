@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Datalith Preview
+Comment=A fast, local-first knowledge workspace.
+Exec=datalith-preview
+Icon=datalith-preview
+StartupWMClass=datalith-preview
+Terminal=false
+Categories=Office;

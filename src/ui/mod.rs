@@ -72,6 +72,7 @@ impl SelectItem for VaultEntry {
 // grouping them would obscure the render loop's intent.
 #[allow(clippy::struct_excessive_bools)]
 pub struct DatalithView {
+    update_control: Option<Entity<sidebar::header::UpdateControl>>,
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
@@ -211,7 +212,10 @@ impl DatalithView {
             StartupAnimation::new(kind, cx)
         });
 
+        let update_control = crate::app::update::Updater::get(cx)
+            .map(|updater| cx.new(|cx| sidebar::header::UpdateControl::new(updater, cx)));
         let mut view = Self {
+            update_control,
             tree_state,
             vault_select_state,
             root_path: None,

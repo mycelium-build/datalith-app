@@ -5,26 +5,6 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/mycelium-build/datalith-app"
 
-[package.metadata.packager]
-product-name = "Datalith"
-identifier = "build.mycelium.datalith"
-publisher = "Mycelium Build"
-description = "A fast, local-first knowledge workspace."
-homepage = "https://github.com/mycelium-build/datalith-app"
-category = "Productivity"
-icons = ["assets/logo/datalith.png", "assets/logo/datalith.icns"]
-license-file = "LICENSING.md"
-resources = [
-  { src = "LICENSE", target = "Licenses/LICENSE" },
-  { src = "LICENSING.md", target = "Licenses/LICENSING.md" },
-  { src = "THIRD-PARTY-NOTICES.md", target = "Licenses/THIRD-PARTY-NOTICES.md" },
-]
-formats = ["appimage", "dmg", "nsis"]
-
-[package.metadata.packager.nsis]
-installMode = "currentUser"
-installer-icon = "assets/logo/datalith.ico"
-
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3.0.9"
 
@@ -34,7 +14,9 @@ gpui-kit = { version = "0.6.1", features = [
   "tree-sitter-yaml",
 ] }
 reqwest_client = { package = "gpui-pre-reqwest-client", version = "0.3.4" }
+cargo-packager-updater = "0.2.3"
 anyhow = "1.0"
+futures = "0.3"
 dirs = "6"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
@@ -53,9 +35,10 @@ conv = "0.3.3"
 
 [dev-dependencies]
 gpui-kit = { version = "0.6.1", features = ["test-support"] }
-futures = "0.3"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.2"
+minisign = "0.7"
+base64 = "0.22"
 
 [[bench]]
 name = "catalog"

@@ -184,7 +184,7 @@ impl Render for StartupAnimation {
             self.focus_handle.focus(window, cx);
         }
         let theme = cx.theme();
-        let primary = theme.primary;
+        let primary = crate::ui::themes::logo_color(theme);
         let tier_one = whiten(primary, RIGHT_SIDE_WHITEN);
         let tier_two = whiten(primary, LEFT_SIDE_WHITEN);
 
