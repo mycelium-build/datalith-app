@@ -217,11 +217,11 @@ impl SettingsView {
                 ],
             )])
         });
-        
+
         general
             .into_iter()
             .chain(SETTINGS_PAGES.iter().map(|page| {
-                 match page {
+                match page {
                     SettingsPage::Appearance => SettingPage::new(page.title())
                         .default_open(true)
                         .groups(vec![
@@ -231,12 +231,12 @@ impl SettingsView {
                     SettingsPage::Shortcuts => {
                         SettingPage::new(page.title()).groups(Self::shortcuts_groups())
                     }
-                        SettingsPage::Server => {
-                            SettingPage::new(page.title()).groups(vec![Self::server_group()])
-                        }
-                        SettingsPage::About => {
-                            SettingPage::new(page.title()).groups(vec![Self::about_group()])
-                        }
+                    SettingsPage::Server => {
+                        SettingPage::new(page.title()).groups(vec![Self::server_group()])
+                    }
+                    SettingsPage::About => {
+                        SettingPage::new(page.title()).groups(vec![Self::about_group()])
+                    }
                 }
             }))
             .collect()
