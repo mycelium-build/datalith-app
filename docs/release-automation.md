@@ -63,4 +63,6 @@ Deleting or editing a release runs **Regenerate update manifests** from the defa
 
 If builds or signature validation fail, leave the release as a draft, repair or rebuild its assets, and manually run **Release** with the existing tag to retry finalization. If only Pages publication fails after the release became public, run **Regenerate update manifests**. The same workflow is the recovery path for a missed release-edit/deletion event, including edits made using `GITHUB_TOKEN`, which do not trigger another workflow. Confirm the endpoint shows the expected version after deployment.
 
+For a finalization retry, select `main` as the workflow branch to use corrected finalization scripts, and enter the existing release tag in the `tag` input. This skips all build jobs and reuses the uploaded assets. The SBOM and legal documents are taken from the release tag's source, even when the workflow runs from `main`. Explicit tag validation includes draft releases.
+
 Bundle signatures authenticate update bytes; they are not Apple notarization or Windows Authenticode. The HTTPS manifest itself is unsigned: tampering can disrupt discovery, but cannot authorize an unsigned payload.

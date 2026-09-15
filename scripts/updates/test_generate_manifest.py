@@ -1,5 +1,6 @@
 import base64
 import copy
+import io
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,6 +11,43 @@ import json
 import generate_manifest as generator
 
 from generate_manifest import bundles, generate_manifest, latest_release
+
+
+class ReleaseLookupTests(unittest.TestCase):
+    def test_explicit_tag_finds_draft_or_published_release_on_later_page(self):
+        for draft in (True, False):
+            with self.subTest(draft=draft), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                output = directory / "validated-update.json"
+                release = {"tag_name": "v0.2.0-rc.1", "draft": draft}
+                pages = [[{"tag_name": "v0.3.0", "draft": False}], [release]]
+                manifest = {"version": "0.2.0-rc.1", "platforms": {}}
+                with patch("sys.argv", ["generate_manifest.py", "--repository", "example/app",
+                                        "--tag", release["tag_name"], "--assets", str(directory),
+                                        "--output", str(output)]), \
+                     patch.object(generator, "gh_json", return_value=pages) as api, \
+                     patch.object(generator, "generate_manifest", return_value=manifest) as generate:
+                    generator.main()
+                api.assert_called_once_with("api", "--paginate", "--slurp",
+                                            "repos/example/app/releases?per_page=100")
+                generate.assert_called_once_with(release, directory)
+                self.assertEqual(json.loads(output.read_text()), manifest)
+
+    def test_missing_explicit_tag_fails_without_overwriting_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "validated-update.json"
+            output.write_text('{"version":"0.2.0"}\n')
+            with patch("sys.argv", ["generate_manifest.py", "--repository", "example/app",
+                                    "--tag", "v0.2.0-rc.1", "--output", str(output)]), \
+                 patch.object(generator, "gh_json", return_value=[[{"tag_name": "v0.2.0"}]]), \
+                 patch.object(generator, "generate_manifest") as generate, \
+                 patch("sys.stderr", new_callable=io.StringIO) as error, \
+                 self.assertRaises(SystemExit) as failure:
+                generator.main()
+            self.assertEqual(failure.exception.code, 2)
+            self.assertIn("Release not found: v0.2.0-rc.1", error.getvalue())
+            generate.assert_not_called()
+            self.assertEqual(output.read_text(), '{"version":"0.2.0"}\n')
 
 
 class ManifestTests(unittest.TestCase):
