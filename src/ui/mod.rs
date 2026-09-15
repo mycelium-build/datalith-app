@@ -26,7 +26,7 @@ use gpui_kit::component::{
     notification::Notification,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
-    tree::TreeState,
+    tree::{TreeEvent, TreeState},
 };
 use gpui_kit::{
     AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, Window, px,
@@ -77,6 +77,7 @@ pub struct DatalithView {
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
     _vault_select_sub: Subscription,
+    _tree_state_sub: Subscription,
     pub(crate) root_path: Option<PathBuf>,
     root_name: SharedString,
     pub(crate) tabs: tabs::Tabs,
@@ -95,7 +96,7 @@ pub struct DatalithView {
     _appearance_sub: Subscription,
     pub(crate) licenses: licenses::LicensesView,
     pub(crate) context_menu_target: Option<PathBuf>,
-    pub(crate) suppress_sidebar_context_menu: bool,
+    pub(crate) context_menu_from_row: bool,
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
     rename_sub: Option<Subscription>,
@@ -159,6 +160,7 @@ impl DatalithView {
         let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
+        let tree_state_sub = Self::subscribe_tree_events(&tree_state, window, cx);
 
         let vault_select_state =
             cx.new(|cx| SelectState::new(build_vault_entries(), None, window, cx));
@@ -236,8 +238,9 @@ impl DatalithView {
             licenses: licenses::LicensesView::new(cx),
             rename_sub: None,
             _vault_select_sub: vault_select_sub,
+            _tree_state_sub: tree_state_sub,
             context_menu_target: None,
-            suppress_sidebar_context_menu: false,
+            context_menu_from_row: false,
             rename_target: None,
             rename_state: None,
             drag_hover: None,
@@ -257,6 +260,24 @@ impl DatalithView {
         };
         view.spawn_startup_driver(cx);
         view
+    }
+
+    fn subscribe_tree_events(
+        tree_state: &Entity<TreeState>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        // gpui-base mutates expansion behind our back
+        // (e.g. `expand_ancestors` while restoring a selection);
+        // keep `expanded_tree_ids` in sync.
+        cx.subscribe_in(
+            tree_state,
+            window,
+            |view: &mut Self, _state, event: &TreeEvent, _window, _cx| match event {
+                TreeEvent::Expanded(id) => view.mark_tree_item_expanded(id, true),
+                TreeEvent::Collapsed(id) => view.mark_tree_item_expanded(id, false),
+            },
+        )
     }
 
     fn observe_system_appearance(window: &mut Window, cx: &Context<Self>) -> Subscription {

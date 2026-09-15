@@ -19,6 +19,12 @@ pub fn copy_path(target: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn copy_text(text: &str) -> anyhow::Result<()> {
+    let mut clipboard = arboard::Clipboard::new()?;
+    clipboard.set_text(text.to_owned())?;
+    Ok(())
+}
+
 pub fn open_url(url: &str) -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     std::process::Command::new("open").arg(url).spawn()?;

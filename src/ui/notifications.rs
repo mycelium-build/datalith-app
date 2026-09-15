@@ -109,6 +109,22 @@ pub fn font_load_failed(error: &anyhow::Error) -> Notification {
         .autohide(false)
 }
 
+pub fn server_start_failed(port: u16, error: &str) -> Notification {
+    Notification::error(format!(
+        "Local Server could not start on {}:{port}: {error}",
+        crate::server::BIND_HOST
+    ))
+    .autohide(false)
+}
+
+pub fn copy_token_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to copy the server token: {error}"))
+}
+
+pub fn deeplink_vault_not_found(vault: &str) -> Notification {
+    Notification::error(format!("Deep link failed: unknown vault \"{vault}\"")).autohide(false)
+}
+
 pub fn update_up_to_date() -> Notification {
     Notification::info(match crate::channel::Channel::current() {
         crate::channel::Channel::Preview => {

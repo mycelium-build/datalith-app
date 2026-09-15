@@ -4,7 +4,7 @@
 
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, AppContext, PathPromptOptions, SharedString, actions};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::app::{
     AppState, preferences,
@@ -238,14 +238,10 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
 pub fn handle_delete(_: &Delete, cx: &mut App) {
     with_view!(cx, |view, cx| {
         let target_index = view.tree_state.read(cx).selected_index();
-        let tree_entry = view
-            .tree_state
-            .read(cx)
-            .selected_entry()
-            .map(|e| PathBuf::from(e.item().id.to_string()));
-        let target = tree_entry
-            .or_else(|| view.tabs.active_path().map(Path::to_path_buf))
-            .or_else(|| view.last_sidebar_selection.clone());
+        let target = view
+            .context_menu_target
+            .take()
+            .or_else(|| view.resolve_target(cx));
         view.commit_rename(cx);
         if let Some(target) = target {
             if let Err(e) = file_ops::delete(&target) {
