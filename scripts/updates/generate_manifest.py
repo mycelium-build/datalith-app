@@ -99,11 +99,15 @@ def main():
     parser.add_argument("--assets", type=Path, help="Use already downloaded assets")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    # The tag endpoint only returns published releases; finalization validates drafts.
+    pages = gh_json("api", "--paginate", "--slurp", f"repos/{args.repository}/releases?per_page=100")
+    releases = [release for page in pages for release in page]
     if args.tag:
-        release = gh_json("api", f"repos/{args.repository}/releases/tags/{args.tag}")
+        release = next((release for release in releases if release["tag_name"] == args.tag), None)
+        if release is None:
+            parser.error(f"Release not found: {args.tag}")
     else:
-        pages = gh_json("api", "--paginate", "--slurp", f"repos/{args.repository}/releases?per_page=100")
-        release = latest_release([release for page in pages for release in page], args.channel)
+        release = latest_release(releases, args.channel)
     if release is None:
         manifest = {"version": "0.0.0", "platforms": {}}
     else:
