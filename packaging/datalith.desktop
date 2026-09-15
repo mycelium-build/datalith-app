@@ -2,8 +2,9 @@
 Type=Application
 Name=Datalith
 Comment=A fast, local-first knowledge workspace.
-Exec=datalith
+Exec=datalith %U
 Icon=datalith
 StartupWMClass=datalith
 Terminal=false
 Categories=Office;
+MimeType=x-scheme-handler/datalith;

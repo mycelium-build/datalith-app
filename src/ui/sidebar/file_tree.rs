@@ -16,9 +16,6 @@ use gpui_kit::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::actions::{
-    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
-};
 use crate::vault::path::display_name;
 
 use super::{DatalithView, DragFile, TREE_PADDING_PX};
@@ -76,25 +73,12 @@ impl DatalithView {
     ) -> impl IntoElement {
         let view = cx.entity();
 
-        tree::tree(tree_state_entity, {
-            let view = view.clone();
+        tree::tree(
+            tree_state_entity,
             move |ix, entry, selected, _window, cx| {
                 Self::render_tree_item(&view, ix, entry, selected, cx)
-            }
-        })
-        .context_menu(move |_ix, entry, menu, _window, cx| {
-            let path = Self::path_from_id(&entry.item().id);
-            view.update(cx, |v, _| v.context_menu_target = Some(path));
-            menu.menu("New File", Box::new(NewFile))
-                .menu("New Folder", Box::new(NewFolder))
-                .separator()
-                .menu("Rename", Box::new(Rename))
-                .menu("Delete", Box::new(Delete))
-                .menu("Duplicate", Box::new(Duplicate))
-                .separator()
-                .menu("Open in Explorer", Box::new(OpenInExplorer))
-                .menu("Copy Path", Box::new(CopyPath))
-        })
+            },
+        )
     }
 
     fn render_tree_item(
@@ -176,6 +160,17 @@ impl DatalithView {
             );
         }
 
+        // gpui-base toggles a row on left mouse-down;
+        // while a context menu is open, that event also reaches the row underneath the menu.
+        // Stop it so `on_click` stays the only path that selects or toggles.
+        list_item = list_item.on_mouse_down(MouseButton::Left, {
+            let focus_handle = this.sidebar_focus_handle.clone();
+            move |_, window, cx| {
+                focus_handle.focus(window, cx);
+                cx.stop_propagation();
+            }
+        });
+
         let mut row = h_flex()
             .id(("file-tree-row", ix))
             .on_mouse_down(
@@ -184,7 +179,7 @@ impl DatalithView {
                     let path = path.to_path_buf();
                     move |this, _event: &MouseDownEvent, _window, _cx| {
                         this.context_menu_target = Some(path.clone());
-                        this.suppress_sidebar_context_menu = true;
+                        this.context_menu_from_row = true;
                     }
                 }),
             )
@@ -218,8 +213,11 @@ impl DatalithView {
             let path = path.to_path_buf();
             let id = item_id.clone();
             move |this, event: &ClickEvent, window, cx| {
+                this.tree_state
+                    .update(cx, |state, cx| state.set_selected_index(Some(ix), cx));
                 if is_folder {
                     this.mark_tree_item_expanded(&id, !is_expanded);
+                    this.refresh_tree(cx);
                 } else {
                     this.last_sidebar_selection = Some(path.clone());
                     let new_tab = event.modifiers().secondary();

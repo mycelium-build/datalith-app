@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod assets;
+pub mod deeplink;
 pub mod docs;
 pub mod fonts;
 pub mod keymap;

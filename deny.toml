@@ -14,6 +14,16 @@ targets = [
 version = 2
 yanked = "deny"
 unmaintained = "workspace"
+# quick-xml 0.36 is linked only through poem-openapi's XML payload support,
+# which the Local Server never uses:
+# `RejectXml` rejects every XML media type at the boundary (src/server/api.rs)
+# and a spec test asserts no XML content is advertised (src/server/tests.rs).
+# RUSTSEC-2026-0194/0195 are therefore unreachable.
+# Remove these entries when poem-openapi bumps quick-xml >= 0.41.
+ignore = [
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic attribute check is unreachable: the Local Server parses no XML" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml namespace-declaration exhaustion is unreachable: the Local Server parses no XML" },
+]
 
 [licenses]
 confidence-threshold = 0.8

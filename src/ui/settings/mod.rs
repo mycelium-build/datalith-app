@@ -21,6 +21,7 @@ pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 
 mod about;
 mod appearance;
+mod server;
 mod shortcuts;
 
 use about::about_page_index;
@@ -52,12 +53,14 @@ pub struct SettingsView {
 pub(super) enum SettingsPage {
     Appearance,
     Shortcuts,
+    Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 3] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
     SettingsPage::Appearance,
     SettingsPage::Shortcuts,
+    SettingsPage::Server,
     SettingsPage::About,
 ];
 
@@ -66,6 +69,7 @@ impl SettingsPage {
         match self {
             Self::Appearance => "Appearance",
             Self::Shortcuts => "Shortcuts",
+            Self::Server => "Local Server",
             Self::About => "About",
         }
     }
@@ -213,6 +217,7 @@ impl SettingsView {
                 ],
             )])
         });
+
         general
             .into_iter()
             .chain(SETTINGS_PAGES.iter().map(|page| {
@@ -225,6 +230,9 @@ impl SettingsView {
                         ]),
                     SettingsPage::Shortcuts => {
                         SettingPage::new(page.title()).groups(Self::shortcuts_groups())
+                    }
+                    SettingsPage::Server => {
+                        SettingPage::new(page.title()).groups(vec![Self::server_group()])
                     }
                     SettingsPage::About => {
                         SettingPage::new(page.title()).groups(vec![Self::about_group()])
