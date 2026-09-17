@@ -117,25 +117,18 @@ impl Render for DatalithView {
             layout = layout.child(self.licenses.render_overlay(cx));
         }
 
-        let mut root = v_flex().size_full();
-        if !cfg!(target_os = "macos") {
-            root = root.child(
-                h_flex()
-                    .w_full()
-                    .h(px(34.))
-                    .items_center()
-                    .bg(cx.theme().tab_bar)
-                    .border_b(px(2.0))
-                    .border_color(cx.theme().border)
-                    .child(self.app_menu_bar.clone()),
-            );
-        }
-
-        root.child(
-            layout
-                .children(Root::render_notification_layer(window, cx))
-                .children(self.startup.clone()),
-        )
+        v_flex()
+            .size_full()
+            .child(super::title_bar::render(
+                (!cfg!(target_os = "macos")).then(|| self.app_menu_bar.clone()),
+                self.update_control.clone(),
+                cx,
+            ))
+            .child(
+                layout
+                    .children(Root::render_notification_layer(window, cx))
+                    .children(self.startup.clone()),
+            )
     }
 }
 

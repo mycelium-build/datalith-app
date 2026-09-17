@@ -10,6 +10,7 @@ pub mod sidebar;
 pub mod startup;
 pub mod tabs;
 pub mod themes;
+pub(crate) mod title_bar;
 pub mod viewers;
 pub mod window;
 
@@ -72,7 +73,7 @@ impl SelectItem for VaultEntry {
 // grouping them would obscure the render loop's intent.
 #[allow(clippy::struct_excessive_bools)]
 pub struct DatalithView {
-    update_control: Option<Entity<sidebar::header::UpdateControl>>,
+    update_control: Option<Entity<title_bar::UpdateControl>>,
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
@@ -215,7 +216,7 @@ impl DatalithView {
         });
 
         let update_control = crate::app::update::Updater::get(cx)
-            .map(|updater| cx.new(|cx| sidebar::header::UpdateControl::new(updater, cx)));
+            .map(|updater| cx.new(|cx| title_bar::UpdateControl::new(updater, cx)));
         let mut view = Self {
             update_control,
             tree_state,

@@ -528,20 +528,27 @@ mod tests {
         assert_eq!(events.snapshot(), vec!["check", "download", "install"]);
     }
     #[test]
-    fn sidebar_update_button_supports_keyboard_activation() {
+    fn title_bar_update_button_supports_keyboard_activation() {
         use gpui_kit::component::Root;
         use gpui_kit::test::TestWindowExt as _;
-        use gpui_kit::{InputEvent as _, px, size};
+        use gpui_kit::{InputEvent as _, IntoElement, Render, Window, px, size};
+        struct UpdateBar(Entity<crate::ui::title_bar::UpdateControl>);
+        impl Render for UpdateBar {
+            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                crate::ui::title_bar::render(None, Some(self.0.clone()), cx)
+            }
+        }
         let mut cx = TestAppContext::single();
         cx.update(gpui_kit::init);
         let events = ScriptedEvents::default();
         let source = Arc::new(ScriptedSource::new(&events));
         source.push_update(scripted_update(&events));
         let updater = create(&cx, source, InstallationKind::SelfManaged);
-        let handle = cx.open_window(size(px(240.), px(100.)), |window, cx| {
+        let handle = cx.open_window(size(px(800.), px(100.)), |window, cx| {
             let control =
-                cx.new(|cx| crate::ui::sidebar::header::UpdateControl::new(updater.clone(), cx));
-            Root::new(control, window, cx)
+                cx.new(|cx| crate::ui::title_bar::UpdateControl::new(updater.clone(), cx));
+            let bar = cx.new(|_| UpdateBar(control));
+            Root::new(bar, window, cx)
         });
         cx.update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
@@ -592,17 +599,26 @@ mod tests {
             ] {
                 gpui_kit::component::Theme::change(mode, Some(window), cx);
                 for rem in [14., 28.] {
-                    window.set_rem_size(px(rem));
+                    gpui_kit::component::Theme::global_mut(cx).font_size = px(rem);
                     window.render_frame(cx);
                     let button = window.find("update-control");
                     assert!(button.visible());
-                    assert!(button.bounds().size.width <= px(240.));
+                    let settings = window.find("settings-trigger");
+                    assert!(button.bounds().left() > px(400.));
+                    assert!(button.bounds().right() <= settings.bounds().left());
+                    assert!(settings.bounds().right() <= px(800.));
+                    assert!(button.bounds().top() >= px(0.));
                 }
             }
-            window.set_rem_size(px(14.));
+            gpui_kit::component::Theme::global_mut(cx).font_size = px(14.);
             window.render_frame(cx);
-            window.focus_next(cx);
-            window.render_frame(cx);
+            for _ in 0..4 {
+                window.focus_next(cx);
+                window.render_frame(cx);
+                if window.find("update-control").focused() == Some(true) {
+                    break;
+                }
+            }
             assert_eq!(window.find("update-control").focused(), Some(true));
             let keystroke = gpui_kit::Keystroke::parse("enter").unwrap();
             window.dispatch_event(
