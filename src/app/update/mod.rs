@@ -534,8 +534,8 @@ mod tests {
         use gpui_kit::{InputEvent as _, IntoElement, Render, Window, px, size};
         struct UpdateBar(Entity<crate::ui::title_bar::UpdateControl>);
         impl Render for UpdateBar {
-            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-                crate::ui::title_bar::render(None, Some(self.0.clone()), cx)
+            fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                crate::ui::title_bar::render(None, Some(self.0.clone()), window, cx)
             }
         }
         let mut cx = TestAppContext::single();
@@ -593,23 +593,7 @@ mod tests {
                 window.find("update-control").label(),
                 Some("Restart to update")
             );
-            for mode in [
-                gpui_kit::component::ThemeMode::Light,
-                gpui_kit::component::ThemeMode::Dark,
-            ] {
-                gpui_kit::component::Theme::change(mode, Some(window), cx);
-                for rem in [14., 28.] {
-                    gpui_kit::component::Theme::global_mut(cx).font_size = px(rem);
-                    window.render_frame(cx);
-                    let button = window.find("update-control");
-                    assert!(button.visible());
-                    let settings = window.find("settings-trigger");
-                    assert!(button.bounds().left() > px(400.));
-                    assert!(button.bounds().right() <= settings.bounds().left());
-                    assert!(settings.bounds().right() <= px(800.));
-                    assert!(button.bounds().top() >= px(0.));
-                }
-            }
+            assert_title_bar_update_layout(window, cx);
             gpui_kit::component::Theme::global_mut(cx).font_size = px(14.);
             window.render_frame(cx);
             for _ in 0..4 {
@@ -642,5 +626,27 @@ mod tests {
                 updater.take_install();
             });
         });
+    }
+
+    fn assert_title_bar_update_layout(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+        use gpui_kit::component::{Theme, ThemeMode};
+        use gpui_kit::px;
+        use gpui_kit::test::TestWindowExt as _;
+
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            Theme::change(mode, Some(window), cx);
+            for rem in [14., 28.] {
+                Theme::global_mut(cx).font_size = px(rem);
+                window.render_frame(cx);
+                let button = window.find("update-control");
+                let settings = window.find("settings-trigger");
+                assert!(button.visible());
+                assert!(button.bounds().left() > px(400.));
+                assert!(window.find("title-bar-brand").bounds().right() < button.bounds().left());
+                assert!(button.bounds().right() <= settings.bounds().left());
+                assert!(settings.bounds().right() <= px(800.));
+                assert!(button.bounds().top() >= px(0.));
+            }
+        }
     }
 }

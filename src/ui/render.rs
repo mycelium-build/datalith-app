@@ -122,6 +122,7 @@ impl Render for DatalithView {
             .child(super::title_bar::render(
                 (!cfg!(target_os = "macos")).then(|| self.app_menu_bar.clone()),
                 self.update_control.clone(),
+                window,
                 cx,
             ))
             .child(
