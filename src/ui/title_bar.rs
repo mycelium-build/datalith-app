@@ -6,9 +6,9 @@ use gpui_kit::component::{
     progress::ProgressCircle,
 };
 use gpui_kit::{
-    App, Context, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
-    prelude::FluentBuilder as _, px,
+    Action, App, Context, Entity, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    div, prelude::FluentBuilder as _, px,
 };
 
 use super::icons::DatalithIcon;
@@ -54,7 +54,7 @@ fn render_content(
             } else {
                 bar.child(h_flex().flex_1().min_w_0().child(
                     // Keep the platform inset inside the equal-width column.
-                    // Match GPUI's macOS traffic-light padding.
+                    // GPUI Component 0.6.1 keeps its 80px macOS inset private.
                     div().pl(px(80.)).child(search_controls()),
                 ))
                 .child(branding(window, cx))
@@ -74,17 +74,12 @@ fn render_content(
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(|_, _, cx| cx.stop_propagation())
                         .children(update_control)
-                        .child(
-                            Button::new("settings-trigger")
-                                .ghost()
-                                .small()
-                                .icon(Icon::new(DatalithIcon::Settings))
-                                .accessibility_label("Settings…")
-                                .tooltip_with_action("Settings…", &OpenSettings, None)
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(Box::new(OpenSettings), cx);
-                                }),
-                        ),
+                        .child(command_button(
+                            "settings-trigger",
+                            Icon::new(DatalithIcon::Settings),
+                            "Settings…",
+                            OpenSettings,
+                        )),
                 ),
         )
 }
@@ -114,30 +109,36 @@ fn search_controls() -> impl IntoElement {
         .occlude()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, _, cx| cx.stop_propagation())
-        .child(
-            Button::new("search-trigger")
-                .ghost()
-                .small()
-                .icon(IconName::Search)
-                .accessibility_label("Search files")
-                .tooltip_with_action("Search files", &ToggleSearch, None)
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(Box::new(ToggleSearch), cx);
-                }),
-        )
-        .child(
-            Button::new("switcher-trigger")
-                .ghost()
-                .small()
-                .icon(IconName::LayoutDashboard)
-                .accessibility_label("Quick switcher")
-                .tooltip_with_action("Quick switcher", &ToggleQuickSwitcher, None)
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(Box::new(ToggleQuickSwitcher), cx);
-                }),
-        )
+        .child(command_button(
+            "search-trigger",
+            IconName::Search,
+            "Search files",
+            ToggleSearch,
+        ))
+        .child(command_button(
+            "switcher-trigger",
+            IconName::LayoutDashboard,
+            "Quick switcher",
+            ToggleQuickSwitcher,
+        ))
 }
 
+fn command_button(
+    id: &'static str,
+    icon: impl Into<Icon>,
+    label: &'static str,
+    action: impl Action,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .small()
+        .icon(icon.into())
+        .accessibility_label(label)
+        .tooltip_with_action(label, &action, None)
+        .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
+}
+
+/// Renders update progress and commands, observing state owned by `Updater`.
 pub struct UpdateControl {
     updater: Entity<Updater>,
     _subscription: Subscription,
@@ -155,10 +156,16 @@ impl UpdateControl {
 
 impl Render for UpdateControl {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        const COMPACT_WIDTH_REM: f32 = 40.;
+
         // At large text sizes, keep the update action reachable without covering
         // the centered wordmark or the other title-bar commands.
-        let compact = window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 40.;
-        let button = Button::new("update-control").ghost().small();
+        let compact =
+            window.viewport_size().width.as_f32() < window.rem_size().as_f32() * COMPACT_WIDTH_REM;
+        let button = Button::new("update-control")
+            .ghost()
+            .small()
+            .icon(Icon::new(DatalithIcon::Download));
         let (button, label) = match self.updater.read(cx).presentation() {
             UpdatePresentation::Hidden => return div().into_any_element(),
             UpdatePresentation::Downloading { received, total } => {
@@ -181,25 +188,18 @@ impl Render for UpdateControl {
                 )
             }
             UpdatePresentation::Ready { version } => (
-                button
-                    .icon(Icon::new(DatalithIcon::Download))
-                    .tooltip(format!("Restart to update to {version}")),
+                button.tooltip(format!("Restart to update to {version}")),
                 "Restart to update",
             ),
             UpdatePresentation::External { version } => (
-                button
-                    .icon(Icon::new(DatalithIcon::Download))
-                    .tooltip(format!(
-                        "Download {} {version}",
-                        crate::channel::Channel::current().product_name()
-                    )),
+                button.tooltip(format!(
+                    "Download {} {version}",
+                    crate::channel::Channel::current().product_name()
+                )),
                 "Download update",
             ),
             UpdatePresentation::Applying => (
-                button
-                    .icon(Icon::new(DatalithIcon::Download))
-                    .tooltip("Installing update")
-                    .disabled(true),
+                button.tooltip("Installing update").disabled(true),
                 "Installing…",
             ),
         };
@@ -354,17 +354,7 @@ mod tests {
                     }
                 }
                 assert_eq!(window.find("settings-trigger").focused(), Some(true));
-                let keystroke = gpui_kit::Keystroke::parse("enter").unwrap();
-                window.dispatch_event(
-                    gpui_kit::KeyDownEvent {
-                        keystroke: keystroke.clone(),
-                        is_held: false,
-                        prefer_character_input: false,
-                    }
-                    .to_platform_input(),
-                    cx,
-                );
-                window.dispatch_event(gpui_kit::KeyUpEvent { keystroke }.to_platform_input(), cx);
+                activate_focused_button("enter", window, cx);
             })
             .unwrap();
             cx.run_until_parked();
@@ -416,6 +406,17 @@ mod tests {
         cx.update_window(handle.into(), |_, window, cx| {
             window.click("test-editor", cx);
             window.click("app-menu-trigger", cx);
+            let first_item = window.within("popup-menu").find(0_usize);
+            window.press("left", cx);
+            assert_eq!(
+                window.within("popup-menu").find(0_usize).label(),
+                Some("Datalith Documentation")
+            );
+            window.press("right", cx);
+            assert_eq!(
+                window.within("popup-menu").find(0_usize).label(),
+                first_item.label()
+            );
             window.within("file-menu").hover("menu", cx);
             assert!(window.try_find("popup-menu").is_some(), "hover File");
             assert_eq!(

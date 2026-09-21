@@ -19,6 +19,8 @@ struct OpenMenu {
 }
 
 /// Owns the transient menu session; `PopupMenu` owns item navigation and dismissal.
+/// GPUI Kit 0.6.1's `AppMenuBar` exposes no session control or events to support
+/// collapsing back to the burger and search controls when a menu closes.
 pub struct ApplicationMenu {
     menus: Vec<(&'static str, OwnedMenu)>,
     open: Option<OpenMenu>,
