@@ -1,5 +1,4 @@
 pub mod file_tree;
-pub mod header;
 mod navigation;
 mod tree_actions;
 
@@ -218,7 +217,6 @@ impl DatalithView {
                     this.handle_file_move(&drag.path, &new_path, cx);
                 }
             }))
-            .child(self.render_sidebar_header(cx))
             .child(
                 div()
                     .flex_1()

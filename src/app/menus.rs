@@ -10,16 +10,21 @@ use super::actions::{
 };
 
 pub fn install(cx: &mut App) {
-    cx.set_menus([
-        application_menu(cx),
-        file_menu(),
-        navigate_menu(),
-        help_menu(),
-    ]);
+    cx.set_menus(definitions(cx).map(|(_, menu)| menu));
 
     if let Some(menus) = cx.get_menus() {
         GlobalState::global_mut(cx).set_app_menus(menus);
     }
+}
+
+/// Stable identities shared by the native menus and the collapsible title bar.
+pub fn definitions(cx: &App) -> [(&'static str, Menu); 4] {
+    [
+        ("application-menu", application_menu(cx)),
+        ("file-menu", file_menu()),
+        ("navigate-menu", navigate_menu()),
+        ("help-menu", help_menu()),
+    ]
 }
 
 fn application_menu(cx: &App) -> Menu {

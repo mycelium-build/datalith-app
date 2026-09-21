@@ -15,12 +15,12 @@ Keep it running. In another terminal, launch the app with the generated script:
 
 The launcher temporarily stamps `CHANNEL` as Stable for the build and restores it before starting the app. Avoid building another channel at the same time.
 
-Choose **Datalith → Check for updates**, directly below **About Datalith**, or wait about ten seconds for the automatic check. Expect download progress for about eight seconds, followed by **Restart to update**.
+Choose **Datalith → Check for updates**, directly below **About Datalith**, or wait about ten seconds for the automatic check. Expect download progress in the top-right title bar, before Settings, for about eight seconds, followed by **Restart to update**.
 
 - Ordinary Quit discards the update without applying it.
 - **Restart to update** quits and runs the fake update. Within a few seconds, `target/update-ui/applied` should contain `Fake update applied`. Datalith does not reopen. The fake update only changes files under `target/update-ui`; on Windows it simulates the installer handoff without installing anything.
 - Turn off **Settings → General → Updates → Automatically update Datalith** and confirm the menu command still works. Restore the preference afterward.
-- Check keyboard activation, light/dark themes, larger text, and a narrow sidebar.
+- Check keyboard activation, light/dark themes, larger text, and a narrow window. The update control must stay before Settings without covering the menus, search buttons, or window controls.
 
 To test another scenario, edit `target/update-ui/scenario` to one of these values:
 

@@ -12,6 +12,7 @@ pub(super) fn install(staged: Staged) {
                 .map_or_else(std::env::current_exe, Ok);
             if let Err(error) = staged.update.install(&staged.bytes) {
                 eprintln!("The update couldn't be installed: {error}");
+                #[cfg(unix)]
                 return;
             }
             #[cfg(unix)]

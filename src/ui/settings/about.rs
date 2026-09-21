@@ -43,7 +43,7 @@ impl SettingsView {
                     .gap_2()
                     .child(monolith_mark(
                         3.0,
-                        crate::ui::themes::logo_color(cx.theme()),
+                        crate::ui::themes::about_logo_color(cx.theme()),
                     ))
                     .child(
                         div()

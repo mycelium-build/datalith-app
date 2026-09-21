@@ -10,6 +10,7 @@ pub mod sidebar;
 pub mod startup;
 pub mod tabs;
 pub mod themes;
+pub mod title_bar;
 pub mod viewers;
 pub mod window;
 
@@ -22,7 +23,6 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::{
     input::InputState,
-    menu::AppMenuBar,
     notification::Notification,
     select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
@@ -72,7 +72,7 @@ impl SelectItem for VaultEntry {
 // grouping them would obscure the render loop's intent.
 #[allow(clippy::struct_excessive_bools)]
 pub struct DatalithView {
-    update_control: Option<Entity<sidebar::header::UpdateControl>>,
+    update_control: Option<Entity<title_bar::UpdateControl>>,
     pub(crate) tree_state: Entity<TreeState>,
     pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
     pending_vault_refresh: bool,
@@ -109,7 +109,7 @@ pub struct DatalithView {
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
     pub(crate) registry: FileRegistry,
-    app_menu_bar: Entity<AppMenuBar>,
+    app_menu_bar: Entity<title_bar::ApplicationMenu>,
     pub(crate) startup: Option<Entity<StartupAnimation>>,
     startup_driver: Task<()>,
 }
@@ -155,7 +155,7 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let app_menu_bar = AppMenuBar::new(cx);
+        let app_menu_bar = cx.new(|cx| title_bar::ApplicationMenu::new(window, cx));
         let palette = Palette::new(window, cx);
         let palette_sub = Palette::input_subscription(&palette.input, window, cx);
         let sidebar_focus_handle = cx.focus_handle();
@@ -215,7 +215,7 @@ impl DatalithView {
         });
 
         let update_control = crate::app::update::Updater::get(cx)
-            .map(|updater| cx.new(|cx| sidebar::header::UpdateControl::new(updater, cx)));
+            .map(|updater| cx.new(|cx| title_bar::UpdateControl::new(updater, cx)));
         let mut view = Self {
             update_control,
             tree_state,

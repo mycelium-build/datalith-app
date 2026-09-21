@@ -8,19 +8,19 @@ pub enum InstallationKind {
 }
 
 impl InstallationKind {
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[must_use]
+    pub const fn detect() -> Self {
+        Self::SelfManaged
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     #[must_use]
     pub fn detect() -> Self {
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        {
+        if std::env::var_os("APPIMAGE").is_some() {
             Self::SelfManaged
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-        {
-            if std::env::var_os("APPIMAGE").is_some() {
-                Self::SelfManaged
-            } else {
-                Self::ExternallyManaged
-            }
+        } else {
+            Self::ExternallyManaged
         }
     }
 

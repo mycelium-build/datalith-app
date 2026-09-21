@@ -74,6 +74,7 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     DatalithIcon::Copy.asset(),
     DatalithIcon::Download.asset(),
     // Overrides of gpui-component's lucide icons.
+    icon_asset!("icons/menu.svg"),
     icon_asset!("icons/search.svg"),
     icon_asset!("icons/layout-dashboard.svg"),
     icon_asset!("icons/folder.svg"),

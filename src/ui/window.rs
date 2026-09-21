@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use gpui_kit::component::Root;
 use gpui_kit::component::notification::Notification;
+use gpui_kit::component::{Root, TitleBar};
 use gpui_kit::{
-    App, AppContext, BorrowAppContext, Bounds, WindowBounds, WindowOptions, point, px, size,
+    App, AppContext, BorrowAppContext, Bounds, WindowBounds, WindowDecorations, WindowOptions,
+    point, px, size,
 };
 
 use crate::app::AppState;
@@ -23,7 +24,9 @@ pub fn open_initial(
                 point(px(0.0), px(0.0)),
                 size(px(1440.0), px(900.0)),
             ))),
-            ..WindowOptions::default()
+            window_min_size: Some(size(px(800.0), px(480.0))),
+            window_decorations: Some(WindowDecorations::Client),
+            ..TitleBar::window_options()
         };
         if let Err(error) = cx.open_window(options, |window, cx| {
             window.set_window_title(crate::channel::Channel::current().product_name());
