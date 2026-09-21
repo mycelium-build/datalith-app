@@ -1,4 +1,5 @@
 use conv::{ConvUtil as _, UnwrapOrInf as _};
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, TitleBar,
     button::{Button, ButtonVariants as _},
@@ -30,8 +31,8 @@ pub fn render(
         .min_h_8()
         .bg(cx.theme().tab_bar)
         .border_color(cx.theme().border)
-        // The content owns the traffic-light inset so both sides of the wordmark
-        // can have equal width, keeping it at the actual window center on macOS.
+        // The content owns the traffic-light inset so both sides of the wordmark can have equal width,
+        // keeping it at the actual window center on macOS.
         .when(cfg!(target_os = "macos"), gpui_kit::Styled::pl_0)
         .child(render_content(menu_bar, update_control, window, cx))
 }
@@ -84,11 +85,8 @@ fn render_content(
         )
 }
 
-fn branding(window: &Window, cx: &App) -> impl IntoElement {
-    use gpui_kit::base::TestSupportExt as _;
-
-    // Scale the 32-cell source art to the same 1.25rem frame as toolbar icons.
-    let cell = window.rem_size().as_f32() * 1.25 / 32.;
+fn branding(_window: &Window, cx: &App) -> impl IntoElement {
+    let cell = 16. / 32.;
     h_flex()
         .id("title-bar-brand")
         .test_support()
@@ -158,8 +156,8 @@ impl Render for UpdateControl {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         const COMPACT_WIDTH_REM: f32 = 40.;
 
-        // At large text sizes, keep the update action reachable without covering
-        // the centered wordmark or the other title-bar commands.
+        // At large text sizes, keep the update action reachable
+        // without covering the centered wordmark or the other title-bar commands.
         let compact =
             window.viewport_size().width.as_f32() < window.rem_size().as_f32() * COMPACT_WIDTH_REM;
         let button = Button::new("update-control")

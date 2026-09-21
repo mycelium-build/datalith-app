@@ -19,8 +19,8 @@ struct OpenMenu {
 }
 
 /// Owns the transient menu session; `PopupMenu` owns item navigation and dismissal.
-/// GPUI Kit 0.6.1's `AppMenuBar` exposes no session control or events to support
-/// collapsing back to the burger and search controls when a menu closes.
+/// GPUI Kit 0.6.1's `AppMenuBar` exposes no session control or events
+/// to support collapsing back to the burger and search controls when a menu closes.
 pub struct ApplicationMenu {
     menus: Vec<(&'static str, OwnedMenu)>,
     open: Option<OpenMenu>,
@@ -62,9 +62,9 @@ impl ApplicationMenu {
     }
 
     fn open(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        // A header click is outside PopupMenu's bounds, so the popup may have
-        // already yielded focus before this handler runs. Replace that closing
-        // popup even when the pointer just selected the same header by hovering.
+        // A header click is outside PopupMenu's bounds,
+        // so the popup may have already yielded focus before this handler runs.
+        // Replace that closing popup even when the pointer just selected the same header by hovering.
         if self.open.as_ref().is_some_and(|open| {
             open.ix == ix && open.popup.focus_handle(cx).contains_focused(window, cx)
         }) {
@@ -214,8 +214,8 @@ impl Render for ApplicationMenu {
                     .tooltip("Application menu")
                     .selected(self.open.is_some())
                     .toggled(self.open.is_some())
-                    // Keep its focus identity for keyboard restoration, but remove
-                    // it from layout and interaction while Datalith takes its place.
+                    // Keep its focus identity for keyboard restoration,
+                    // but remove it from layout and interaction while Datalith takes its place.
                     .when(self.open.is_some(), |button| {
                         button.absolute().invisible().tab_stop(false)
                     })
