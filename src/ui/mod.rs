@@ -19,6 +19,7 @@ pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
 const VAULT_SELECT_MARKER: &str = "__open_new__";
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -30,7 +31,8 @@ use gpui_kit::component::{
     tree::{TreeEvent, TreeState},
 };
 use gpui_kit::{
-    AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, Window, px,
+    AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Task, WeakEntity, Window,
+    px,
 };
 
 use crate::app::settings as app_settings;
@@ -84,6 +86,8 @@ pub struct DatalithView {
     pub(crate) tabs: tabs::Tabs,
     pub(crate) pending_open: Option<PathBuf>,
     pub(crate) vault_catalog: Option<VaultCatalog>,
+    /// Restored tab contexts waiting for their shared catalog to open.
+    restoring_catalogs: HashMap<PathBuf, Vec<WeakEntity<crate::document::handler::FileHandler>>>,
     pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogEvent>>,
     vault_load_generation: u64, // prevent bug when switching vault
     vault_db_ready_notified: bool,
@@ -225,6 +229,7 @@ impl DatalithView {
             root_name: "No folder open".into(),
             tabs: tabs::Tabs::new(),
             vault_catalog: None,
+            restoring_catalogs: HashMap::new(),
             catalog_updates: None,
             vault_load_generation: 0,
             vault_db_ready_notified: false,
@@ -293,6 +298,12 @@ impl DatalithView {
     }
 
     pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let retained_catalog = self.tabs.iter().find_map(|(_, _, handler)| {
+            handler
+                .read(cx)
+                .vault_catalog(cx)
+                .filter(|catalog| catalog.root() == path)
+        });
         self.vault_load_generation = self.vault_load_generation.wrapping_add(1);
         let generation = self.vault_load_generation;
         self.root_name = display_name(&path).into();
@@ -306,6 +317,7 @@ impl DatalithView {
         self.expanded_tree_ids.clear();
         self.pending_external_updates.clear();
         self.vault_catalog = None;
+        self.catalog_load_task = Task::ready(());
         self.catalog_updates = None;
         self.catalog_poll_task = Task::ready(());
         self.vault_db_ready_notified = false;
@@ -319,10 +331,17 @@ impl DatalithView {
             self.palette.refresh(None, &open_files);
         }
 
+        // A restored Base can already be opening the Vault selected by the user.
+        if self.restoring_catalogs.contains_key(&path) {
+            cx.notify();
+            return;
+        }
+
         let file_types = self.registry.registered_file_types();
         let catalog_root = path.clone();
-        let catalog_task =
-            cx.background_spawn(async move { VaultCatalog::open(catalog_root, file_types) });
+        let catalog_task = cx.background_spawn(async move {
+            retained_catalog.map_or_else(|| VaultCatalog::open(catalog_root, file_types), Ok)
+        });
         self.catalog_load_task = cx.spawn(async move |this, cx| {
             let result = catalog_task.await;
             if let Err(error) = this.update(cx, |view, cx| {
@@ -336,16 +355,7 @@ impl DatalithView {
                 }
                 match result {
                     Ok(catalog) => {
-                        view.catalog_updates = Some(catalog.events());
-                        view.vault_catalog = Some(catalog);
-                        view.start_catalog_polling(cx);
-                        if view.palette.open {
-                            let open_files = view.tabs.open_paths();
-                            view.palette
-                                .refresh(view.vault_catalog.as_ref(), &open_files);
-                        }
-                        view.pending_notifications
-                            .push(notifications::catalog_loading());
+                        view.use_vault_catalog(catalog, cx);
                     }
                     Err(_) => {
                         view.pending_notifications
@@ -361,6 +371,18 @@ impl DatalithView {
         cx.notify();
     }
 
+    fn use_vault_catalog(&mut self, catalog: VaultCatalog, cx: &Context<Self>) {
+        self.catalog_updates = Some(catalog.events());
+        self.vault_catalog = Some(catalog);
+        self.start_catalog_polling(cx);
+        if self.palette.open {
+            self.palette
+                .refresh(self.vault_catalog.as_ref(), &self.tabs.open_paths());
+        }
+        self.pending_notifications
+            .push(notifications::catalog_loading());
+    }
+
     fn start_catalog_polling(&mut self, cx: &Context<Self>) {
         self.catalog_poll_task = cx.spawn(async move |this, cx| {
             loop {
@@ -370,7 +392,11 @@ impl DatalithView {
                 if this
                     .update(cx, |view, cx| {
                         let mut changed_paths = Vec::new();
-                        let mut catalog_changed = false;
+                        let mut catalog_changed = !view.vault_db_ready_notified
+                            && view
+                                .vault_catalog
+                                .as_ref()
+                                .is_some_and(|catalog| catalog.state() == CatalogState::Ready);
                         let mut structure_changed = false;
                         if let Some(ref updates) = view.catalog_updates {
                             while let Ok(update) = updates.try_recv() {
@@ -391,7 +417,12 @@ impl DatalithView {
                                         let handlers = view
                                             .tabs
                                             .iter()
-                                            .filter(|(_, tab_path, _)| tab_path.starts_with(&root))
+                                            .filter(|(_, tab_path, handler)| {
+                                                handler.read(cx).vault_root(cx).map_or_else(
+                                                    || tab_path.starts_with(&root),
+                                                    |vault_root| vault_root == root,
+                                                )
+                                            })
                                             .map(|(_, _, handler)| handler.clone())
                                             .collect::<Vec<_>>();
                                         for handler in handlers {

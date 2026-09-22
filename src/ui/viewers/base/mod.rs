@@ -54,6 +54,10 @@ impl BaseViewer {
         });
     }
 
+    pub(crate) fn vault_catalog(&self, cx: &App) -> Option<VaultCatalog> {
+        self.state.read(cx).catalog.clone()
+    }
+
     pub(super) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.state.read(cx).focus_handle.clone()
     }

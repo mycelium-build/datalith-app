@@ -392,8 +392,15 @@ pub fn save_session(session: Session) -> Result<()> {
 }
 
 /// Apply one document mode to the application, including future openings.
+/// The choice remains effective for this run even when persistence fails.
 pub fn set_document_mode(mode: ViewMode) -> Result<()> {
-    update(|settings| settings.document_mode = mode)
+    with_store(|store| {
+        let mut settings = store.snapshot();
+        settings.document_mode = mode;
+        let result = store.persist(&settings);
+        store.cached = Some(settings);
+        result
+    })
 }
 
 pub fn record_opened_vault(path: &Path) -> Result<()> {
@@ -482,6 +489,21 @@ mod tests {
                 .unwrap_or("test")
                 .replace("::", "-")
         ))
+    }
+
+    #[test]
+    fn only_document_mode_changes_when_settings_cannot_be_written() {
+        let file = with_store(|store| store.file.clone());
+        fs::create_dir(&file).unwrap();
+        let mode_result = set_document_mode(ViewMode::Edit);
+        let theme_result = set_theme_preference(ThemePreference::Dark);
+        fs::remove_dir(&file).unwrap();
+
+        assert!(mode_result.is_err());
+        assert!(theme_result.is_err());
+        let settings = snapshot();
+        assert_eq!(settings.document_mode, ViewMode::Edit);
+        assert_eq!(settings.theme_preference, ThemePreference::System);
     }
 
     #[test]

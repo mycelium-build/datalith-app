@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{
@@ -40,6 +40,9 @@ pub struct FileHandler {
     pub(crate) editor: Option<EditorKind>,
     pub(crate) viewer: Option<ViewerKind>,
     reload_adapter: Option<ReloadAdapter>,
+    /// Keeps the saved context while its catalog is loading or unavailable.
+    /// Once attached, the catalog itself owns the root.
+    restored_vault_root: Option<PathBuf>,
 }
 
 impl EventEmitter<FileHandlerEvent> for FileHandler {}
@@ -55,6 +58,7 @@ impl FileHandler {
             editor,
             viewer,
             reload_adapter: None,
+            restored_vault_root: None,
         }
     }
 
@@ -103,9 +107,27 @@ impl FileHandler {
         cx.notify();
     }
 
-    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+        self.restored_vault_root = None;
         if let Some(viewer) = &self.viewer {
             viewer.set_vault_catalog(catalog, cx);
+        }
+    }
+
+    pub(crate) fn restore_vault_root(&mut self, root: PathBuf) {
+        self.restored_vault_root = Some(root);
+    }
+
+    pub(crate) fn vault_root(&self, cx: &App) -> Option<PathBuf> {
+        self.restored_vault_root
+            .clone()
+            .or_else(|| self.vault_catalog(cx).map(|catalog| catalog.root()))
+    }
+
+    pub(crate) fn vault_catalog(&self, cx: &App) -> Option<VaultCatalog> {
+        match &self.viewer {
+            Some(ViewerKind::Base(viewer)) => viewer.vault_catalog(cx),
+            _ => None,
         }
     }
 

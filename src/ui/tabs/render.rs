@@ -57,21 +57,18 @@ impl DatalithView {
                     .is_some_and(|handler| handler.read(cx).is_editing());
                 let mut suffix = h_flex().gap_0().px_1();
                 if can_toggle_mode {
-                    let icon = if is_editing {
-                        Icon::new(IconName::Eye)
+                    let (icon, label) = if is_editing {
+                        (Icon::new(IconName::Eye), "Switch app to reading mode")
                     } else {
-                        Icon::new(DatalithIcon::Pen)
+                        (Icon::new(DatalithIcon::Pen), "Switch app to editing mode")
                     };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
                             .ghost()
                             .xsmall()
                             .icon(icon)
-                            .tooltip(if is_editing {
-                                "Reading mode"
-                            } else {
-                                "Editing mode"
-                            })
+                            .accessibility_label(label)
+                            .tooltip(label)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(ToggleEditorMode), cx);
                             }),

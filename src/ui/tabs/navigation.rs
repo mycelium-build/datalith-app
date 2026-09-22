@@ -15,6 +15,7 @@ use crate::vault::file_ops;
 enum OpenMode {
     Replace,
     NewTab,
+    Restore,
     History { position: usize },
 }
 
@@ -34,6 +35,15 @@ impl DatalithView {
         self.open_file_with_mode(path, mode, window, cx);
     }
 
+    pub(crate) fn restore_file(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_file_with_mode(path, OpenMode::Restore, window, cx);
+    }
+
     fn open_file_with_mode(
         &mut self,
         path: PathBuf,
@@ -45,7 +55,7 @@ impl DatalithView {
             return;
         }
 
-        if !matches!(mode, OpenMode::History { .. })
+        if matches!(mode, OpenMode::Replace | OpenMode::NewTab)
             && let Some(index) = self.tabs.find_path(&path)
         {
             self.tabs.select(index);
@@ -55,7 +65,7 @@ impl DatalithView {
         }
 
         let (history, history_position) = match mode {
-            OpenMode::NewTab => (vec![path.clone()], 0),
+            OpenMode::NewTab | OpenMode::Restore => (vec![path.clone()], 0),
             OpenMode::Replace => self.tabs.active().map_or_else(
                 || (vec![path.clone()], 0),
                 |tab| next_history(&tab.history, tab.history_position, &path),
@@ -113,7 +123,8 @@ impl DatalithView {
             history,
             history_position,
         };
-        self.tabs.insert(tab, matches!(mode, OpenMode::NewTab));
+        self.tabs
+            .insert(tab, matches!(mode, OpenMode::NewTab | OpenMode::Restore));
         self.focus_active_tab(window, cx);
         cx.notify();
     }
@@ -150,8 +161,6 @@ impl DatalithView {
         if let Err(error) = crate::app::settings::set_document_mode(mode) {
             self.pending_notifications
                 .push(notifications::settings_save_failed("document mode", &error));
-            cx.notify();
-            return;
         }
         for (_, _, handler) in self.tabs.iter() {
             handler.update(cx, |handler, cx| handler.set_mode(mode, cx));
