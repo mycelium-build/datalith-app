@@ -24,6 +24,8 @@ mod appearance;
 mod fonts;
 mod server;
 mod shortcuts;
+#[cfg(test)]
+mod tests;
 
 use about::about_page_index;
 use shortcuts::shortcuts_page_index;
@@ -128,6 +130,8 @@ impl SettingsView {
             .items_center()
             .justify_center()
             .id("settings-backdrop")
+            // Keep wheel events on the modal, including at its scroll boundaries.
+            .occlude()
             .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
                 view.settings.close();
                 cx.notify();
