@@ -12,6 +12,7 @@ use gpui_kit::{
 };
 
 use crate::app::keymap::display_binding;
+use crate::ui::icons::DatalithIcon;
 use crate::ui::monolith::monolith_mark;
 
 const SIDEBAR_WIDTH: f32 = 260.0;
@@ -134,13 +135,19 @@ impl Render for DatalithView {
 }
 
 impl DatalithView {
+    fn render_empty_logo(cx: &Context<Self>) -> impl IntoElement {
+        div()
+            .opacity(0.24)
+            .child(monolith_mark(GLYPH_CELL, cx.theme().foreground).monochrome())
+    }
+
     fn render_empty_hint(cx: &Context<Self>, hint: &'static str) -> impl IntoElement {
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .gap_5()
-            .child(monolith_mark(GLYPH_CELL, cx.theme().primary.opacity(0.55)))
+            .child(Self::render_empty_logo(cx))
             .child(div().text_color(cx.theme().muted_foreground).child(hint))
     }
 
@@ -151,23 +158,46 @@ impl DatalithView {
             .items_center()
             .justify_center()
             .gap_5()
-            .child(
-                Icon::new(IconName::Plus)
-                    .size_8()
-                    .text_color(cx.theme().primary.opacity(0.55)),
-            )
+            .child(Self::render_empty_logo(cx))
             .child(
                 div()
                     .text_color(cx.theme().muted_foreground)
                     .child("Start writing"),
             )
             .child(
-                h_flex()
-                    .gap_3()
-                    .child(Self::quick_create_button("note", "New note", "md", cx))
-                    .child(Self::quick_create_button("todo", "New todo", "todotxt", cx))
-                    .child(Self::quick_create_button("graph", "New graph", "graph", cx))
-                    .child(Self::quick_create_button("base", "New base", "base", cx)),
+                v_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        Icon::new(IconName::Plus)
+                            .size_5()
+                            .text_color(cx.theme().muted_foreground),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(Self::quick_create_button(
+                                "note",
+                                "New note",
+                                "md",
+                                DatalithIcon::Note,
+                                cx,
+                            ))
+                            .child(Self::quick_create_button(
+                                "todo",
+                                "New todo",
+                                "todotxt",
+                                DatalithIcon::Todo,
+                                cx,
+                            ))
+                            .child(Self::quick_create_button(
+                                "base",
+                                "New base",
+                                "base",
+                                DatalithIcon::Base,
+                                cx,
+                            )),
+                    ),
             )
             .child(
                 div()
@@ -181,11 +211,13 @@ impl DatalithView {
         id: &'static str,
         label: &'static str,
         extension: &'static str,
+        icon: DatalithIcon,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         Button::new(id)
             .ghost()
             .small()
+            .icon(Icon::new(icon))
             .label(label)
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.create_quick_file(extension, cx);
