@@ -570,4 +570,75 @@ mod tests {
             );
         });
     }
+
+    #[test]
+    fn returning_to_retained_vault_reloads_open_files() {
+        let docs = DocsFixture::new();
+        let other = DocsFixture(docs.0.with_extension("other-vault"));
+        docs::seed_into(&other.0).unwrap();
+        let note = docs.0.join("Welcome.md");
+        let removed = docs.0.join("Search.md");
+        settings::save_session(Session {
+            vault: Some(docs.0.clone()),
+            tabs: vec![note.clone(), removed.clone()],
+            ..Session::default()
+        })
+        .unwrap();
+        let mut cx = app();
+        let (handle, view) = open(&mut cx, &docs.0);
+        let original = std::fs::read_to_string(&note).unwrap();
+        let catalog = cx.update(|cx| view.read(cx).vault_catalog.clone().unwrap());
+        let observed = catalog.events();
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_file(docs.0.join("Overview.base"), true, window, cx);
+                view.set_root_path(other.0.clone(), cx);
+            });
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| {
+            view.read(cx)
+                .vault_catalog
+                .as_ref()
+                .unwrap()
+                .wait_until_ready(Duration::from_secs(5));
+        });
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        while observed.try_recv().is_ok() {}
+        let edited = format!("{original}\nExternal edit while other Vault selected.\n");
+        std::fs::write(&note, &edited).unwrap();
+        std::fs::remove_file(&removed).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut observed_paths = Vec::new();
+        while !observed_paths.contains(&note) || !observed_paths.contains(&removed) {
+            let event = observed.recv_timeout(Duration::from_secs(5)).unwrap();
+            observed_paths.extend(event.paths);
+            assert!(std::time::Instant::now() < deadline);
+        }
+        cx.update(|cx| view.update(cx, |view, cx| view.set_root_path(docs.0.clone(), cx)));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let current = view.read(cx).vault_catalog.as_ref().unwrap();
+            current.wait_until_ready(Duration::from_secs(5));
+            assert_eq!(current.state(), crate::vault::CatalogState::Ready);
+        });
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        cx.update(|cx| {
+            let handler = view.read(cx).tabs.handler_for_path(&note).unwrap();
+            let actual = handler.read(cx).input().unwrap().read(cx).value();
+            assert_eq!(
+                actual.as_ref(),
+                edited.as_str(),
+                "Returning to A must reload its externally modified note"
+            );
+            assert!(view.read(cx).tabs.handler_for_path(&removed).is_none());
+        });
+    }
 }

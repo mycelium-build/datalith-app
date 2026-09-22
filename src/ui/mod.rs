@@ -414,6 +414,16 @@ impl DatalithView {
                                     if let (Some(catalog), Some(root)) =
                                         (view.vault_catalog.clone(), view.root_path.clone())
                                     {
+                                        // A retained catalog does not replay changes made while
+                                        // another Vault was selected. Recheck open files once.
+                                        if !view.vault_db_ready_notified {
+                                            changed_paths.extend(
+                                                view.tabs
+                                                    .iter()
+                                                    .filter(|(_, path, _)| path.starts_with(&root))
+                                                    .map(|(_, path, _)| path.to_path_buf()),
+                                            );
+                                        }
                                         let handlers = view
                                             .tabs
                                             .iter()
