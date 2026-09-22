@@ -127,6 +127,7 @@ impl SettingsView {
                             let current_mode = gpui_kit::component::Theme::global(cx).mode;
                             gpui_kit::component::Theme::change(current_mode, None, cx);
                             gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
+                            crate::app::fonts::apply(cx);
                             if let Err(error) = settings::select_theme(ThemeKind::Light, &val) {
                                 notifications::push_window_notification(
                                     cx,
@@ -157,6 +158,7 @@ impl SettingsView {
                             let current_mode = gpui_kit::component::Theme::global(cx).mode;
                             gpui_kit::component::Theme::change(current_mode, None, cx);
                             gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
+                            crate::app::fonts::apply(cx);
                             if let Err(error) = settings::select_theme(ThemeKind::Dark, &val) {
                                 notifications::push_window_notification(
                                     cx,

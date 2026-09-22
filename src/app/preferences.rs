@@ -101,6 +101,7 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
     apply_theme_preference(preference, cx);
     Theme::global_mut(cx).font_size =
         px(crate::ui::BASE_FONT_SIZE.mul(settings.font_scale.approx().unwrap_or(1.0)));
+    Theme::sync_base(cx);
 
     pending
 }
@@ -116,5 +117,6 @@ pub fn apply_theme_preference(preference: ThemePreference, cx: &mut App) {
     let effective = preference.resolve(cx.window_appearance()).into();
     Theme::change(effective, None, cx);
     Theme::global_mut(cx).mode = effective;
+    super::fonts::apply(cx);
     cx.refresh_windows();
 }

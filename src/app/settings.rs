@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SCHEMA_VERSION: u32 = 3;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -133,7 +133,60 @@ impl Default for ServerSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontRole {
+    Interface,
+    Reading,
+    Headings,
+    Code,
+}
+
+impl FontRole {
+    pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+}
+
+/// Optional family overrides. Missing values retain the application's defaults.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(default)]
+pub struct FontSettings {
+    interface: Option<String>,
+    reading: Option<String>,
+    headings: Option<String>,
+    code: Option<String>,
+}
+
+impl FontSettings {
+    pub fn family(&self, role: FontRole) -> Option<&str> {
+        match role {
+            FontRole::Interface => self.interface.as_deref(),
+            FontRole::Reading => self.reading.as_deref(),
+            FontRole::Headings => self.headings.as_deref(),
+            FontRole::Code => self.code.as_deref(),
+        }
+    }
+
+    pub fn set_family(&mut self, role: FontRole, family: Option<String>) {
+        let value = match role {
+            FontRole::Interface => &mut self.interface,
+            FontRole::Reading => &mut self.reading,
+            FontRole::Headings => &mut self.headings,
+            FontRole::Code => &mut self.code,
+        };
+        *value = family
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
+    }
+
+    fn normalized(mut self) -> Self {
+        for role in FontRole::ALL {
+            self.set_family(role, self.family(role).map(str::to_owned));
+        }
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
@@ -141,6 +194,7 @@ pub struct ApplicationSettings {
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
+    pub fonts: FontSettings,
     pub server: ServerSettings,
     pub automatic_updates: bool,
 }
@@ -154,6 +208,7 @@ impl Default for ApplicationSettings {
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
+            fonts: FontSettings::default(),
             server: ServerSettings::default(),
             automatic_updates: true,
         }
@@ -186,6 +241,8 @@ struct StoredSettings {
     dark_theme_name: Option<String>,
     #[serde(default)]
     font_size_multiplier: Option<f64>,
+    #[serde(default)]
+    fonts: FontSettings,
     #[serde(default)]
     server: StoredServerSettings,
     #[serde(default)]
@@ -222,6 +279,7 @@ impl StoredSettings {
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
             font_scale: normalize_font_scale(self.font_size_multiplier.unwrap_or_default()),
+            fonts: self.fonts.normalized(),
             server: ServerSettings::normalized(
                 self.server.enabled.unwrap_or(true),
                 self.server.port.unwrap_or(DEFAULT_SERVER_PORT),
@@ -247,6 +305,7 @@ impl StoredSettings {
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
+            fonts: settings.fonts.clone(),
             server: StoredServerSettings {
                 enabled: Some(settings.server.enabled()),
                 port: Some(settings.server.port()),
@@ -311,8 +370,17 @@ impl SettingsStore {
     }
 }
 
+#[cfg(not(test))]
 fn settings_file() -> PathBuf {
     super::data_dir().join("config.json")
+}
+
+#[cfg(test)]
+fn settings_file() -> PathBuf {
+    // UI integration tests must never read or overwrite personal preferences.
+    std::env::temp_dir()
+        .join(format!("datalith-test-settings-{}", std::process::id()))
+        .join("config.json")
 }
 
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
@@ -385,6 +453,10 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
     settings_lock().update(|settings| settings.font_scale = scale)
 }
 
+pub fn set_font_family(role: FontRole, family: Option<String>) -> Result<()> {
+    settings_lock().update(|settings| settings.fonts.set_family(role, family))
+}
+
 pub fn set_server_enabled(enabled: bool) -> Result<()> {
     settings_lock().update(|settings| settings.server.enabled = enabled)
 }
@@ -416,6 +488,91 @@ mod tests {
                 .unwrap_or("test")
                 .replace("::", "-")
         ))
+    }
+
+    #[test]
+    fn older_configs_preserve_typography_defaults() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"schema_version":2,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+        let settings = stored.normalized();
+        assert_eq!(settings.fonts, FontSettings::default());
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
+        assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn font_choices_round_trip_independently_of_theme_and_reset_per_role() {
+        let file = temp_settings_file("fonts");
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| {
+                settings
+                    .fonts
+                    .set_family(FontRole::Interface, Some("  Helvetica  ".into()));
+                settings
+                    .fonts
+                    .set_family(FontRole::Reading, Some("Georgia".into()));
+                settings
+                    .fonts
+                    .set_family(FontRole::Headings, Some("Pixeloid Sans".into()));
+                settings
+                    .fonts
+                    .set_family(FontRole::Code, Some("Menlo".into()));
+            })
+            .unwrap();
+        store
+            .update(|settings| {
+                settings.theme_preference = ThemePreference::Dark;
+                settings.fonts.set_family(FontRole::Reading, None);
+            })
+            .unwrap();
+        let reloaded = SettingsStore::new(file.clone()).snapshot();
+        assert_eq!(
+            reloaded.fonts.family(FontRole::Interface),
+            Some("Helvetica")
+        );
+        assert_eq!(reloaded.fonts.family(FontRole::Reading), None);
+        assert_eq!(
+            reloaded.fonts.family(FontRole::Headings),
+            Some("Pixeloid Sans")
+        );
+        assert_eq!(reloaded.fonts.family(FontRole::Code), Some("Menlo"));
+        assert_eq!(reloaded.theme_preference, ThemePreference::Dark);
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn stored_fonts_normalize_empty_values_and_preserve_unavailable_names() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"fonts":{"interface":"  ","reading":" Unknown font ","code":" Menlo "}}"#,
+        )
+        .unwrap();
+        let fonts = stored.normalized().fonts;
+        assert_eq!(fonts.family(FontRole::Interface), None);
+        assert_eq!(fonts.family(FontRole::Reading), Some("Unknown font"));
+        assert_eq!(fonts.family(FontRole::Headings), None);
+        assert_eq!(fonts.family(FontRole::Code), Some("Menlo"));
+    }
+
+    #[test]
+    fn failed_font_save_keeps_the_previous_snapshot() {
+        let file = temp_settings_file("fonts-unwritable").join("config.json");
+        let parent = file.parent().unwrap().to_path_buf();
+        fs::write(&parent, "not a directory").unwrap();
+        let mut store = SettingsStore::new(file);
+        assert!(
+            store
+                .update(|settings| {
+                    settings
+                        .fonts
+                        .set_family(FontRole::Code, Some("Menlo".into()));
+                })
+                .is_err()
+        );
+        assert_eq!(store.snapshot().fonts, FontSettings::default());
+        let _ = fs::remove_file(parent);
     }
 
     #[test]

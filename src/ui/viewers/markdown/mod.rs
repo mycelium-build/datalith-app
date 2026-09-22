@@ -17,7 +17,7 @@ use gpui_kit::{
 };
 use percent_encoding::percent_decode_str;
 
-use crate::app::fonts::PIXELOID_FONT;
+use crate::app::{fonts, settings::FontRole};
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
@@ -108,7 +108,7 @@ impl MarkdownViewer {
         let document = parse_markdown(&content);
         let mut elements = Vec::new();
         let mut element_id = 0usize;
-        elements.push(self.render_title());
+        elements.push(self.render_title(cx));
         if let Some(frontmatter) = &document.frontmatter {
             elements.push(render_frontmatter(
                 frontmatter,
@@ -132,12 +132,13 @@ impl MarkdownViewer {
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()
+            .font_family(fonts::family(FontRole::Reading, cx))
             .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements))
             .into_any_element()
     }
 
-    fn render_title(&self) -> AnyElement {
+    fn render_title(&self, cx: &App) -> AnyElement {
         let name = self
             .file_path
             .file_stem()
@@ -148,7 +149,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .font_family(PIXELOID_FONT)
+            .font_family(fonts::family(FontRole::Headings, cx))
             .font_weight(FontWeight::BOLD)
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
@@ -177,7 +178,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .font_family(PIXELOID_FONT)
+            .font_family(fonts::family(FontRole::Headings, ctx.cx))
             .text_size(px(BASE_FONT_SIZE * size))
             //.font_weight(FontWeight::BOLD)
             .mt(px(MD_HEADING_MARGIN * size))
@@ -248,6 +249,10 @@ impl MarkdownViewer {
                 break;
             };
             match inline {
+                MarkdownInline::Code(value) => {
+                    flush_inline_text(&mut elements, &mut text, &mut highlights);
+                    elements.push(Self::render_inline_code(value, style, ctx.cx));
+                }
                 MarkdownInline::Link { url, content } => {
                     flush_inline_text(&mut elements, &mut text, &mut highlights);
                     let link_url = url.clone();
@@ -289,7 +294,7 @@ impl MarkdownViewer {
                     ) {
                         // consumed as styled text
                     } else if let Some(children) = Self::strong_or_emphasis_children(inline) {
-                        // Strong/Emphasis wrapping a link, image, or break
+                        // Strong/Emphasis wrapping code, a link, image, or break
                         // cannot be flattened into the styled text;
                         // render its children separately.
                         flush_inline_text(&mut elements, &mut text, &mut highlights);
@@ -323,7 +328,7 @@ impl MarkdownViewer {
 
     fn is_textable(inline: &MarkdownInline) -> bool {
         match inline {
-            MarkdownInline::Text(_) | MarkdownInline::Code(_) => true,
+            MarkdownInline::Text(_) => true,
             MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
                 children.iter().all(Self::is_textable)
             }
@@ -343,21 +348,6 @@ impl MarkdownViewer {
                 let start = text.len();
                 text.push_str(value);
                 highlights.push((start..text.len(), inline_highlight(style, cx)));
-                true
-            }
-            MarkdownInline::Code(value) => {
-                let start = text.len();
-                text.push_str(value);
-                highlights.push((
-                    start..text.len(),
-                    inline_highlight(
-                        InlineStyle {
-                            code: true,
-                            ..style
-                        },
-                        cx,
-                    ),
-                ));
                 true
             }
             MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
@@ -391,7 +381,7 @@ mod tests {
     use crate::document::markdown::MarkdownInline;
 
     #[test]
-    fn strong_or_emphasis_wrapping_a_link_is_not_flattened_into_text() {
+    fn strong_or_emphasis_keeps_code_and_links_out_of_single_font_text() {
         let link = MarkdownInline::Link {
             url: "a.md".into(),
             content: vec![MarkdownInline::Text("a".into())],
@@ -402,7 +392,7 @@ mod tests {
         assert!(MarkdownViewer::is_textable(&MarkdownInline::Strong(vec![
             MarkdownInline::Text("only text".into())
         ])));
-        assert!(MarkdownViewer::is_textable(&MarkdownInline::Emphasis(
+        assert!(!MarkdownViewer::is_textable(&MarkdownInline::Emphasis(
             vec![MarkdownInline::Code("c".into())]
         )));
         assert!(!MarkdownViewer::is_textable(&MarkdownInline::Break));
