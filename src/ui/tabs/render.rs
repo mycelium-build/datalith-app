@@ -116,10 +116,7 @@ impl DatalithView {
                 .into(),
                 Icon::new(IconName::Palette),
             ),
-            super::Tab::Shortcuts(_) => (
-                "Shortcuts".into(),
-                Icon::new(gpui_kit::assets::IconName::Keyboard),
-            ),
+            super::Tab::Shortcuts(_) => ("Shortcuts".into(), Icon::new(DatalithIcon::Shortcuts)),
         };
         Tab::new()
             .label(name.clone())
