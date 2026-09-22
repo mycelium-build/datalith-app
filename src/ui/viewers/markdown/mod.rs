@@ -144,7 +144,7 @@ impl MarkdownViewer {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .map_or_else(|| display_name(&self.file_path).to_owned(), str::to_owned);
-        div()
+        let title = div()
             .w_full()
             .min_w_0()
             .flex()
@@ -154,8 +154,13 @@ impl MarkdownViewer {
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
             .mb(px(MD_HEADING_MARGIN * MD_TITLE_SIZE))
-            .child(name)
-            .into_any_element()
+            .child(name);
+        #[cfg(test)]
+        let title = {
+            use gpui_kit::test::TestSupportExt as _;
+            title.id("markdown-title").test_support()
+        };
+        title.into_any_element()
     }
 
     fn render_heading(
