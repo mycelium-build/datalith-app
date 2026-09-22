@@ -157,53 +157,63 @@ impl DatalithView {
             .size_full()
             .items_center()
             .justify_center()
-            .gap_5()
-            .child(Self::render_empty_logo(cx))
+            .gap_10()
             .child(
-                div()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Start writing"),
+                v_flex()
+                    .items_center()
+                    .gap_4()
+                    .child(Self::render_empty_logo(cx))
+                    .child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Start writing"),
+                    ),
             )
             .child(
                 v_flex()
                     .items_center()
-                    .gap_2()
+                    .gap_6()
                     .child(
-                        Icon::new(IconName::Plus)
-                            .size_5()
-                            .text_color(cx.theme().muted_foreground),
+                        v_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::Plus)
+                                    .size_5()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .child(Self::quick_create_button(
+                                        "note",
+                                        "New note",
+                                        "md",
+                                        DatalithIcon::Note,
+                                        cx,
+                                    ))
+                                    .child(Self::quick_create_button(
+                                        "todo",
+                                        "New todo",
+                                        "todotxt",
+                                        DatalithIcon::Todo,
+                                        cx,
+                                    ))
+                                    .child(Self::quick_create_button(
+                                        "base",
+                                        "New base",
+                                        "base",
+                                        DatalithIcon::Base,
+                                        cx,
+                                    )),
+                            ),
                     )
                     .child(
-                        h_flex()
-                            .gap_3()
-                            .child(Self::quick_create_button(
-                                "note",
-                                "New note",
-                                "md",
-                                DatalithIcon::Note,
-                                cx,
-                            ))
-                            .child(Self::quick_create_button(
-                                "todo",
-                                "New todo",
-                                "todotxt",
-                                DatalithIcon::Todo,
-                                cx,
-                            ))
-                            .child(Self::quick_create_button(
-                                "base",
-                                "New base",
-                                "base",
-                                DatalithIcon::Base,
-                                cx,
-                            )),
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground.opacity(0.7))
+                            .child(quick_start_shortcuts()),
                     ),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground.opacity(0.7))
-                    .child(quick_start_shortcuts()),
             )
     }
 
