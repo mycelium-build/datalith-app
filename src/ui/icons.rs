@@ -28,6 +28,7 @@ pub enum DatalithIcon {
     Link,
     Copy,
     Download,
+    Shortcuts,
 }
 
 impl DatalithIcon {
@@ -47,6 +48,7 @@ impl DatalithIcon {
             Self::Link => icon_asset!("icons/link.svg"),
             Self::Copy => icon_asset!("icons/copy.svg"),
             Self::Download => icon_asset!("icons/download.svg"),
+            Self::Shortcuts => icon_asset!("icons/shortcuts.svg"),
         }
     }
 }
@@ -73,6 +75,7 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     DatalithIcon::Link.asset(),
     DatalithIcon::Copy.asset(),
     DatalithIcon::Download.asset(),
+    DatalithIcon::Shortcuts.asset(),
     // Overrides of gpui-component's lucide icons.
     icon_asset!("icons/menu.svg"),
     icon_asset!("icons/search.svg"),
