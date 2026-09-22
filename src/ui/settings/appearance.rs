@@ -8,11 +8,7 @@ use gpui_kit::component::{
 use gpui_kit::{App, Context, Entity, IntoElement, ParentElement, SharedString, Styled, div};
 
 use super::{DatalithView, SettingsView, ThemeOptions};
-use crate::app::{
-    preferences,
-    settings::{self, ThemeKind, ThemePreference},
-};
-use crate::ui::notifications;
+use crate::app::settings::{self, ThemePreference};
 
 impl SettingsView {
     pub(crate) fn init_theme_options(cx: &mut App) {
@@ -32,14 +28,17 @@ impl SettingsView {
             .collect();
         dark_options.sort_by_key(|(name, _)| name.to_lowercase());
 
+        if let Some(library) = cx.try_global::<crate::app::themes::ThemeLibrary>() {
+            light_options = library.options(gpui_kit::component::ThemeMode::Light);
+            dark_options = library.options(gpui_kit::component::ThemeMode::Dark);
+        }
+
         let settings = settings::snapshot();
         let saved_light = settings
             .light_theme_name
             .filter(|name| {
-                registry
-                    .themes()
-                    .get(name.as_str())
-                    .is_some_and(|theme| theme.mode == gpui_kit::component::ThemeMode::Light)
+                crate::app::themes::document(name, cx)
+                    .is_some_and(|theme| theme.mode() == gpui_kit::component::ThemeMode::Light)
             })
             .unwrap_or_else(|| {
                 gpui_kit::component::Theme::global(cx)
@@ -50,10 +49,8 @@ impl SettingsView {
         let saved_dark = settings
             .dark_theme_name
             .filter(|name| {
-                registry
-                    .themes()
-                    .get(name.as_str())
-                    .is_some_and(|theme| theme.mode == gpui_kit::component::ThemeMode::Dark)
+                crate::app::themes::document(name, cx)
+                    .is_some_and(|theme| theme.mode() == gpui_kit::component::ThemeMode::Dark)
             })
             .unwrap_or_else(|| {
                 gpui_kit::component::Theme::global(cx)
@@ -94,13 +91,7 @@ impl SettingsView {
         let Some(preference) = ThemePreference::from_name(val.as_str()) else {
             return;
         };
-        if let Err(error) = settings::set_theme_preference(preference) {
-            notifications::push_window_notification(
-                cx,
-                notifications::settings_save_failed("theme mode", &error),
-            );
-        }
-        preferences::apply_theme_preference(preference, cx);
+        crate::ui::themes::change_mode(preference, cx);
     }
 
     pub(super) fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
@@ -115,27 +106,7 @@ impl SettingsView {
                     light_options,
                     |cx| cx.global::<ThemeOptions>().light_theme_name.clone(),
                     |val: SharedString, cx| {
-                        cx.global_mut::<ThemeOptions>().light_theme_name = val.clone();
-                        let registry = gpui_kit::component::ThemeRegistry::global(cx);
-                        if let Some(theme_config) = registry
-                            .themes()
-                            .get(val.as_str())
-                            .filter(|theme| theme.mode == gpui_kit::component::ThemeMode::Light)
-                        {
-                            gpui_kit::component::Theme::global_mut(cx).light_theme =
-                                theme_config.clone();
-                            let current_mode = gpui_kit::component::Theme::global(cx).mode;
-                            gpui_kit::component::Theme::change(current_mode, None, cx);
-                            gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
-                            crate::app::fonts::apply(cx);
-                            if let Err(error) = settings::select_theme(ThemeKind::Light, &val) {
-                                notifications::push_window_notification(
-                                    cx,
-                                    notifications::settings_save_failed("theme", &error),
-                                );
-                            }
-                        }
-                        cx.refresh_windows();
+                        crate::ui::themes::select_theme(&val, false, cx);
                     },
                 ),
             )
@@ -146,27 +117,7 @@ impl SettingsView {
                     dark_options,
                     |cx| cx.global::<ThemeOptions>().dark_theme_name.clone(),
                     |val: SharedString, cx| {
-                        cx.global_mut::<ThemeOptions>().dark_theme_name = val.clone();
-                        let registry = gpui_kit::component::ThemeRegistry::global(cx);
-                        if let Some(theme_config) = registry
-                            .themes()
-                            .get(val.as_str())
-                            .filter(|theme| theme.mode == gpui_kit::component::ThemeMode::Dark)
-                        {
-                            gpui_kit::component::Theme::global_mut(cx).dark_theme =
-                                theme_config.clone();
-                            let current_mode = gpui_kit::component::Theme::global(cx).mode;
-                            gpui_kit::component::Theme::change(current_mode, None, cx);
-                            gpui_kit::component::Theme::global_mut(cx).mode = current_mode;
-                            crate::app::fonts::apply(cx);
-                            if let Err(error) = settings::select_theme(ThemeKind::Dark, &val) {
-                                notifications::push_window_notification(
-                                    cx,
-                                    notifications::settings_save_failed("theme", &error),
-                                );
-                            }
-                        }
-                        cx.refresh_windows();
+                        crate::ui::themes::select_theme(&val, false, cx);
                     },
                 ),
             )

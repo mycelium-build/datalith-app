@@ -4,7 +4,7 @@ use gpui_kit::component::{WindowExt, input::InputEvent};
 use gpui_kit::{AppContext, Context, Window};
 use percent_encoding::percent_decode_str;
 
-use super::Tab;
+use super::{DocumentTab, Tab};
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
 use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
@@ -56,14 +56,14 @@ impl DatalithView {
 
         let (history, history_position) = match mode {
             OpenMode::NewTab => (vec![path.clone()], 0),
-            OpenMode::Replace => self.tabs.active().map_or_else(
+            OpenMode::Replace => self.tabs.active_document().map_or_else(
                 || (vec![path.clone()], 0),
                 |tab| next_history(&tab.history, tab.history_position, &path),
             ),
             OpenMode::History { position } => {
                 let history = self
                     .tabs
-                    .active()
+                    .active_document()
                     .map_or_else(|| vec![path.clone()], |tab| tab.history.clone());
                 (history, position)
             }
@@ -102,14 +102,14 @@ impl DatalithView {
                 }
             },
         );
-        let tab = Tab {
+        let tab = Tab::Document(DocumentTab {
             path,
             handler,
             _input_subscription: input_subscription,
             _event_subscription: Some(event_subscription),
             history,
             history_position,
-        };
+        });
         self.tabs.insert(tab, matches!(mode, OpenMode::NewTab));
         self.focus_active_tab(window, cx);
         cx.notify();
@@ -118,29 +118,17 @@ impl DatalithView {
     pub(crate) fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
         let handler = cx.new(|_cx| FileHandler::new(ViewMode::Edit, None, None));
         self.tabs.insert(
-            Tab {
+            Tab::Document(DocumentTab {
                 path: PathBuf::new(),
                 handler,
                 _input_subscription: None,
                 _event_subscription: None,
                 history: Vec::new(),
                 history_position: 0,
-            },
+            }),
             true,
         );
         cx.notify();
-    }
-
-    pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
-        if let Some(index) = self.tabs.active_index() {
-            self.close_tab(index, cx);
-        }
-    }
-
-    pub(crate) fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.tabs.remove(index) {
-            cx.notify();
-        }
     }
 
     pub(crate) fn close_tabs_under(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -149,7 +137,7 @@ impl DatalithView {
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, tab)| tab.path.starts_with(root))
+            .filter(|(_, tab)| tab.document().is_some_and(|tab| tab.path.starts_with(root)))
             .map(|(index, _)| index)
             .collect();
         for index in indices.into_iter().rev() {
@@ -159,7 +147,7 @@ impl DatalithView {
     }
 
     pub(crate) fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.active() else {
+        let Some(tab) = self.tabs.active_document() else {
             return;
         };
         let Some(position) = tab.history_position.checked_sub(1) else {
@@ -172,7 +160,7 @@ impl DatalithView {
     }
 
     pub(crate) fn go_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.active() else {
+        let Some(tab) = self.tabs.active_document() else {
             return;
         };
         let position = tab.history_position.saturating_add(1);
@@ -184,20 +172,14 @@ impl DatalithView {
 
     pub(crate) fn can_go_back(&self) -> bool {
         self.tabs
-            .active()
+            .active_document()
             .is_some_and(|tab| tab.history_position > 0)
     }
 
     pub(crate) fn can_go_forward(&self) -> bool {
         self.tabs
-            .active()
+            .active_document()
             .is_some_and(|tab| tab.history_position.saturating_add(1) < tab.history.len())
-    }
-
-    pub(crate) fn focus_active_tab(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(handler) = self.tabs.active_handler() {
-            handler.read(cx).focus_handle(cx).focus(window, cx);
-        }
     }
 }
 

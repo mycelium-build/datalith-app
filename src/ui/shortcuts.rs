@@ -1,19 +1,59 @@
-//! Shortcuts settings page: keyboard shortcut reference.
+//! Keyboard shortcut reference in a dedicated workspace tab.
 
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
-    ActiveTheme, h_flex,
-    setting::{SettingGroup, SettingItem},
+    ActiveTheme, Sizable as _, Size, h_flex,
+    setting::{SettingGroup, SettingItem, SettingPage, Settings},
     v_flex,
 };
-use gpui_kit::{IntoElement, ParentElement, SharedString, Styled, div};
+use gpui_kit::{
+    App, Context, FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement,
+    Render, SharedString, Styled, Window, div,
+};
 
-use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
+pub struct ShortcutsView {
+    focus: FocusHandle,
+}
 
-pub(super) fn shortcuts_page_index() -> usize {
-    SETTINGS_PAGES
-        .iter()
-        .position(|page| *page == SettingsPage::Shortcuts)
-        .unwrap_or(0)
+impl ShortcutsView {
+    pub(crate) fn new(cx: &Context<Self>) -> Self {
+        Self {
+            focus: cx.focus_handle(),
+        }
+    }
+}
+
+impl Focusable for ShortcutsView {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus.clone()
+    }
+}
+
+impl Render for ShortcutsView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .id("shortcuts-editor")
+            .size_full()
+            .min_h_0()
+            .test_support()
+            .track_focus(&self.focus)
+            .bg(cx.theme().background)
+            .child(
+                div()
+                    .p_4()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .text_lg()
+                    .child("Keyboard shortcuts"),
+            )
+            .child(
+                Settings::new("app-shortcuts")
+                    .with_size(Size::Small)
+                    .pages(vec![
+                        SettingPage::new("Shortcuts").groups(Self::shortcuts_groups()),
+                    ]),
+            )
+    }
 }
 
 fn merged_shortcut_rows() -> Vec<(SharedString, SharedString, SharedString)> {
@@ -57,9 +97,9 @@ fn merged_shortcut_rows() -> Vec<(SharedString, SharedString, SharedString)> {
         .collect()
 }
 
-impl SettingsView {
+impl ShortcutsView {
     #[allow(clippy::too_many_lines)]
-    pub(super) fn shortcuts_groups() -> Vec<SettingGroup> {
+    fn shortcuts_groups() -> Vec<SettingGroup> {
         let merged = merged_shortcut_rows();
 
         let mut groups: Vec<(SharedString, Vec<(SharedString, SharedString)>)> = Vec::new();

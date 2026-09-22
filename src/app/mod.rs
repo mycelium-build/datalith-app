@@ -9,6 +9,7 @@ pub mod preferences;
 pub mod settings;
 mod state;
 pub mod system;
+pub mod themes;
 pub mod update;
 pub mod version;
 

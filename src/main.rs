@@ -36,7 +36,8 @@ fn main() {
         app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
         app::fonts::FontCatalog::init(cx);
-        pending_notifications.extend(ui::themes::load_embedded_themes(cx));
+        pending_notifications.extend(app::themes::load_embedded_themes(cx));
+        pending_notifications.extend(app::themes::ThemeLibrary::init(cx));
         ui::settings::SettingsView::init_theme_options(cx);
 
         pending_notifications.extend(app::preferences::apply(cx));

@@ -2,7 +2,7 @@ use std::ops::Mul;
 
 use conv::ConvAsUtil;
 use gpui_kit::component::notification::Notification;
-use gpui_kit::component::{Theme, ThemeMode, ThemeRegistry};
+use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, px};
 
 use crate::app::settings::{self, ThemePreference};
@@ -22,7 +22,7 @@ struct UnavailableTheme<'a> {
 /// Returns `Err` when the saved name had to be dropped (missing or wrong mode)
 /// so the caller can surface it and use the fallback.
 fn registered_name<'a>(
-    registry: &ThemeRegistry,
+    cx: &App,
     saved: Option<&'a str>,
     mode: ThemeMode,
 ) -> Result<&'a str, UnavailableTheme<'a>> {
@@ -30,12 +30,8 @@ fn registered_name<'a>(
         ThemeMode::Light => DEFAULT_LIGHT_THEME,
         ThemeMode::Dark => DEFAULT_DARK_THEME,
     };
-    let is_valid = |name: &str| {
-        registry
-            .themes()
-            .get(name)
-            .is_some_and(|theme| theme.mode == mode)
-    };
+    let is_valid =
+        |name: &str| super::themes::document(name, cx).is_some_and(|theme| theme.mode() == mode);
     match saved {
         Some(name) if is_valid(name) => Ok(name),
         Some(saved) => Err(UnavailableTheme {
@@ -54,10 +50,8 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
     let saved_light_name = settings.light_theme_name;
     let saved_dark_name = settings.dark_theme_name;
 
-    let registry = ThemeRegistry::global(cx);
     let mut pending = Vec::new();
-    let light_name = match registered_name(registry, saved_light_name.as_deref(), ThemeMode::Light)
-    {
+    let light_name = match registered_name(cx, saved_light_name.as_deref(), ThemeMode::Light) {
         Ok(name) => name,
         Err(unavailable) => {
             pending.push(notifications::theme_fallback(
@@ -67,7 +61,7 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
             unavailable.fallback
         }
     };
-    let dark_name = match registered_name(registry, saved_dark_name.as_deref(), ThemeMode::Dark) {
+    let dark_name = match registered_name(cx, saved_dark_name.as_deref(), ThemeMode::Dark) {
         Ok(name) => name,
         Err(unavailable) => {
             pending.push(notifications::theme_fallback(
@@ -78,16 +72,10 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
         }
     };
 
-    let light_theme = registry
-        .themes()
-        .get(light_name)
-        .filter(|theme| theme.mode == ThemeMode::Light)
-        .cloned();
-    let dark_theme = registry
-        .themes()
-        .get(dark_name)
-        .filter(|theme| theme.mode == ThemeMode::Dark)
-        .cloned();
+    let light_theme = super::themes::document(light_name, cx)
+        .map(|document| std::rc::Rc::new(document.config().clone()));
+    let dark_theme = super::themes::document(dark_name, cx)
+        .map(|document| std::rc::Rc::new(document.config().clone()));
 
     if let Some(theme) = light_theme {
         Theme::global_mut(cx).light_theme = theme;

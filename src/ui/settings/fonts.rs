@@ -211,7 +211,7 @@ fn default_label(role: FontRole, cx: &App) -> SharedString {
     } else {
         family.as_str()
     };
-    format!("Default ({name})").into()
+    format!("Theme ({name})").into()
 }
 
 fn font_options(
@@ -264,7 +264,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             FontCatalog::init(cx);
-            fonts::apply(cx);
+            fonts::use_theme_fonts(cx).unwrap();
         });
         let mut picker = None;
         let handle = cx.open_window(size(px(480.), px(360.)), |window, cx| {
@@ -286,7 +286,7 @@ mod tests {
                 window.render_frame(cx);
                 assert_eq!(
                     window.find(("select", state.entity_id())).value(),
-                    Some(format!("Default ({family})").as_str())
+                    Some(format!("Theme ({family})").as_str())
                 );
                 assert_eq!(fonts::family(FontRole::Reading, cx).as_str(), family);
                 assert_eq!(cx.global::<FontCatalog>().selected(FontRole::Reading), None);
@@ -301,7 +301,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             FontCatalog::init(cx);
-            fonts::apply(cx);
+            fonts::use_theme_fonts(cx).unwrap();
         });
         let default_family = cx.update(|cx| cx.theme().font_family.clone());
         let mut picker = None;
@@ -315,7 +315,7 @@ mod tests {
         for (query, selected, expected_family) in [
             ("Arial", "Arial", "Arial"),
             ("Helvetica", "Helvetica", "Helvetica"),
-            ("Default", "", default_family.as_str()),
+            ("Theme", "", default_family.as_str()),
         ] {
             cx.update_window(handle.into(), |_, window, cx| {
                 window.render_frame(cx);
@@ -428,7 +428,7 @@ mod tests {
             gpui_kit::init(cx);
             fonts::load_embedded_fonts(cx);
             FontCatalog::init(cx);
-            fonts::apply(cx);
+            fonts::use_theme_fonts(cx).unwrap();
         });
         let mut picker = None;
         let handle = cx.open_window(size(px(480.), px(360.)), |window, cx| {
