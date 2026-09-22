@@ -119,6 +119,7 @@ impl Render for DatalithView {
 
         v_flex()
             .size_full()
+            .relative()
             .child(super::title_bar::render(
                 (!cfg!(target_os = "macos")).then(|| self.app_menu_bar.clone()),
                 self.update_control.clone(),
@@ -130,6 +131,7 @@ impl Render for DatalithView {
                     .children(Root::render_notification_layer(window, cx))
                     .children(self.startup.clone()),
             )
+            .children(Root::render_dialog_layer(window, cx))
     }
 }
 
@@ -204,23 +206,21 @@ impl DatalithView {
         let Some(active_tab) = self.tabs.active() else {
             return div().size_full().into_any_element();
         };
-        let is_empty = active_tab.path().as_os_str().is_empty();
+        let content = match active_tab {
+            super::tabs::Tab::Document(tab) if tab.path().as_os_str().is_empty() => {
+                Self::render_quick_start(cx).into_any_element()
+            }
+            super::tabs::Tab::Document(tab) => tab.handler().clone().into_any_element(),
+            super::tabs::Tab::Theme { editor, .. } => editor.clone().into_any_element(),
+            super::tabs::Tab::Shortcuts(view) => view.clone().into_any_element(),
+        };
 
         v_flex()
             .size_full()
             .min_h_0()
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
-            .child(if is_empty {
-                Self::render_quick_start(cx).into_any_element()
-            } else {
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_hidden()
-                    .child(active_tab.handler().clone())
-                    .into_any_element()
-            })
+            .child(div().flex_1().min_h_0().overflow_hidden().child(content))
             .into_any_element()
     }
 }

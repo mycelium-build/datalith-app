@@ -1,9 +1,12 @@
+#[cfg(test)]
+mod integration_tests;
 mod navigation;
 mod render;
+mod workspace;
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{Entity, Subscription};
+use gpui_kit::{Entity, EntityId, Subscription};
 
 use crate::document::handler::FileHandler;
 
@@ -13,7 +16,19 @@ pub enum NavigationAction {
     GoForward,
 }
 
-pub struct Tab {
+use super::{shortcuts::ShortcutsView, themes::ThemeEditor};
+
+pub enum Tab {
+    Document(DocumentTab),
+    Theme {
+        editor: Entity<ThemeEditor>,
+        _dismiss_subscription: Subscription,
+        _change_subscription: Subscription,
+    },
+    Shortcuts(Entity<ShortcutsView>),
+}
+
+pub struct DocumentTab {
     path: PathBuf,
     handler: Entity<FileHandler>,
     _input_subscription: Option<Subscription>,
@@ -49,29 +64,45 @@ impl Tabs {
     }
 
     pub(crate) fn active_path(&self) -> Option<&Path> {
-        self.active().map(|tab| tab.path.as_path())
+        self.active_document().map(|tab| tab.path.as_path())
     }
 
     pub(crate) fn active_handler(&self) -> Option<&Entity<FileHandler>> {
-        self.active().map(|tab| &tab.handler)
+        self.active_document().map(|tab| &tab.handler)
     }
 
     pub(crate) fn handler_for_path(&self, path: &Path) -> Option<&Entity<FileHandler>> {
         self.entries
             .iter()
+            .filter_map(Tab::document)
             .find(|tab| tab.path == path)
             .map(|tab| &tab.handler)
     }
 
     pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
-        self.entries.iter().map(|tab| tab.path.clone()).collect()
+        self.entries
+            .iter()
+            .filter_map(Tab::document)
+            .map(|tab| tab.path.clone())
+            .collect()
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = (usize, &Path, &Entity<FileHandler>)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .map(|(index, tab)| (index, tab.path.as_path(), &tab.handler))
+        self.entries.iter().enumerate().filter_map(|(index, tab)| {
+            tab.document()
+                .map(|tab| (index, tab.path.as_path(), &tab.handler))
+        })
+    }
+
+    fn active_document(&self) -> Option<&DocumentTab> {
+        self.active().and_then(Tab::document)
+    }
+
+    pub(crate) fn theme_editor(&self) -> Option<&Entity<ThemeEditor>> {
+        self.entries.iter().find_map(|tab| match tab {
+            Tab::Theme { editor, .. } => Some(editor),
+            _ => None,
+        })
     }
 
     pub(crate) const fn select(&mut self, index: usize) -> bool {
@@ -91,11 +122,14 @@ impl Tabs {
     }
 
     fn find_path(&self, path: &Path) -> Option<usize> {
-        self.entries.iter().position(|tab| tab.path == path)
+        self.entries
+            .iter()
+            .position(|tab| tab.document().is_some_and(|tab| tab.path == path))
     }
 
     fn insert(&mut self, tab: Tab, new_tab: bool) {
-        if new_tab || self.entries.is_empty() {
+        // Opening a document must never replace an editor tab and lose its draft.
+        if new_tab || self.active_document().is_none() {
             let index = self.entries.len();
             self.entries.push(tab);
             self.active = Some(index);
@@ -118,6 +152,9 @@ impl Tabs {
 
     pub(crate) fn rename_path(&mut self, old_path: &Path, new_path: &Path) {
         for tab in &mut self.entries {
+            let Tab::Document(tab) = tab else {
+                continue;
+            };
             if let Ok(suffix) = tab.path.strip_prefix(old_path) {
                 tab.path = new_path.join(suffix);
             }
@@ -142,6 +179,23 @@ fn active_after_removal(active: Option<usize>, removed: usize, remaining: usize)
 }
 
 impl Tab {
+    const fn document(&self) -> Option<&DocumentTab> {
+        match self {
+            Self::Document(tab) => Some(tab),
+            _ => None,
+        }
+    }
+
+    fn entity_id(&self) -> EntityId {
+        match self {
+            Self::Document(tab) => tab.handler.entity_id(),
+            Self::Theme { editor, .. } => editor.entity_id(),
+            Self::Shortcuts(view) => view.entity_id(),
+        }
+    }
+}
+
+impl DocumentTab {
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }

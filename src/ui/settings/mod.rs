@@ -1,3 +1,4 @@
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -10,6 +11,7 @@ use gpui_kit::component::{
 use gpui_kit::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    rems,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -23,12 +25,10 @@ mod about;
 mod appearance;
 mod fonts;
 mod server;
-mod shortcuts;
 #[cfg(test)]
 mod tests;
 
 use about::about_page_index;
-use shortcuts::shortcuts_page_index;
 
 #[derive(Clone)]
 pub struct ThemeOptions {
@@ -45,25 +45,23 @@ impl Global for ThemeOptions {}
 pub struct SettingsView {
     pub(crate) open: bool,
     focus_handle: FocusHandle,
+    return_focus: Option<FocusHandle>,
     page_index: usize,
     has_updater: bool,
     pub(crate) font_size_slider_state: Entity<SliderState>,
     font_pickers: Vec<(settings::FontRole, Entity<fonts::FontPicker>)>,
 }
 
-/// The settings pages, in render order. Both the page builders and the
-/// shortcuts page index derive from this list, so they cannot drift.
+/// The settings pages, in render order; shortcuts have their own surface.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     Appearance,
-    Shortcuts,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 3] = [
     SettingsPage::Appearance,
-    SettingsPage::Shortcuts,
     SettingsPage::Server,
     SettingsPage::About,
 ];
@@ -72,7 +70,6 @@ impl SettingsPage {
     const fn title(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
-            Self::Shortcuts => "Shortcuts",
             Self::Server => "Local Server",
             Self::About => "About",
         }
@@ -92,6 +89,7 @@ impl SettingsView {
         Self {
             open: false,
             focus_handle: cx.focus_handle(),
+            return_focus: None,
             page_index: 0,
             has_updater: crate::app::update::Updater::get(cx).is_some(),
             font_size_slider_state,
@@ -107,14 +105,21 @@ impl SettingsView {
         self.page_index = 0;
     }
 
-    pub(crate) fn open_shortcuts(&mut self) {
-        self.open = true;
-        self.page_index = shortcuts_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
-    }
-
     pub(crate) fn open_about(&mut self) {
         self.open = true;
         self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+    }
+
+    pub(crate) fn focus(&mut self, window: &mut Window, cx: &mut App) {
+        self.return_focus = window.focused(cx);
+        self.focus_handle.focus(window, cx);
+    }
+
+    fn dismiss(&mut self, window: &mut Window, cx: &mut App) {
+        self.close();
+        if let Some(focus) = self.return_focus.take() {
+            focus.focus(window, cx);
+        }
     }
 
     pub(crate) const fn close(&mut self) {
@@ -125,21 +130,23 @@ impl SettingsView {
         div()
             .absolute()
             .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
+            .bg(cx.theme().overlay)
             .flex()
             .items_center()
             .justify_center()
             .id("settings-backdrop")
             // Keep wheel events on the modal, including at its scroll boundaries.
             .occlude()
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.settings.close();
+            .on_click(cx.listener(|view: &mut DatalithView, _, window, cx| {
+                view.settings.dismiss(window, cx);
                 cx.notify();
             }))
             .child(
                 div()
-                    .w(px(700.))
-                    .h(px(600.))
+                    .w(rems(43.75))
+                    .max_w_full()
+                    .h(rems(37.5))
+                    .max_h_full()
                     .bg(cx.theme().background)
                     .border(px(1.))
                     .border_color(cx.theme().border)
@@ -147,11 +154,11 @@ impl SettingsView {
                     .shadow_lg()
                     .id("settings-panel")
                     .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .track_focus(&self.focus_handle)
                     .on_key_down(cx.listener(
-                        |view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
+                        |view: &mut DatalithView, event: &KeyDownEvent, window, cx| {
                             if event.keystroke.key == "escape" {
-                                view.settings.close();
+                                view.settings.dismiss(window, cx);
+                                cx.stop_propagation();
                                 cx.notify();
                             }
                         },
@@ -165,16 +172,19 @@ impl SettingsView {
                                     .w_full()
                                     .px_2()
                                     .py_1()
-                                    .justify_end()
+                                    .justify_between()
                                     .border_b(px(1.))
                                     .border_color(cx.theme().border)
+                                    .child(div().text_sm().child("Settings"))
                                     .child(
                                         Button::new("close-settings")
                                             .ghost()
                                             .small()
                                             .icon(IconName::Close)
-                                            .on_click(cx.listener(|view, _, _, cx| {
-                                                view.settings.close();
+                                            .accessibility_label("Close preferences")
+                                            .tooltip("Close")
+                                            .on_click(cx.listener(|view, _, window, cx| {
+                                                view.settings.dismiss(window, cx);
                                                 cx.notify();
                                             })),
                                     ),
@@ -188,7 +198,8 @@ impl SettingsView {
                                     })
                                     .pages(self.settings_pages(cx)),
                             ),
-                    ),
+                    )
+                    .focus_trap("preferences-focus", &self.focus_handle),
             )
     }
 
@@ -239,9 +250,6 @@ impl SettingsView {
                             Self::display_group(&self.font_size_slider_state),
                             self.fonts_group(),
                         ]),
-                    SettingsPage::Shortcuts => {
-                        SettingPage::new(page.title()).groups(Self::shortcuts_groups())
-                    }
                     SettingsPage::Server => {
                         SettingPage::new(page.title()).groups(vec![Self::server_group()])
                     }

@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use conv::ConvAsUtil as _;
+
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme, Theme};
 use gpui_kit::{App, Global, SharedString};
@@ -11,7 +13,7 @@ use super::settings::{self, FontRole, FontSettings};
 pub const PIXELOID_FONT: &str = "Pixeloid Sans";
 
 /// Enumerated once after bundled fonts load. Preferences remain independent of
-/// the active color theme, including when the OS changes appearance.
+/// theme fonts, including when the OS changes appearance.
 pub struct FontCatalog {
     families: Vec<SharedString>,
     preferences: FontSettings,
@@ -57,6 +59,22 @@ impl FontCatalog {
     }
 }
 
+pub fn has_personal_fonts(cx: &App) -> bool {
+    cx.try_global::<FontCatalog>().is_some_and(|catalog| {
+        FontRole::ALL
+            .into_iter()
+            .any(|role| catalog.selected(role).is_some())
+    })
+}
+
+pub fn use_theme_fonts(cx: &mut App) -> anyhow::Result<()> {
+    settings::use_theme_fonts()?;
+    cx.global_mut::<FontCatalog>().preferences = FontSettings::default();
+    apply(cx);
+    cx.refresh_windows();
+    Ok(())
+}
+
 pub fn select(role: FontRole, family: Option<String>, cx: &mut App) -> anyhow::Result<()> {
     settings::set_font_family(role, family.clone())?;
     cx.global_mut::<FontCatalog>()
@@ -76,6 +94,10 @@ pub fn apply(cx: &mut App) {
     let interface = family(FontRole::Interface, cx);
     let code = family(FontRole::Code, cx);
     let theme = Theme::global_mut(cx);
+    // Keep the user's interface scale stable across theme selection and preview.
+    theme.font_size = gpui_kit::px(
+        crate::ui::BASE_FONT_SIZE * settings::snapshot().font_scale.approx().unwrap_or(1.0),
+    );
     theme.font_family = interface;
     theme.mono_font_family = code;
     Theme::sync_base(cx);
@@ -92,6 +114,9 @@ pub fn family(role: FontRole, cx: &App) -> SharedString {
 /// The family a role would use after resetting its own preference.
 pub fn default_family(role: FontRole, cx: &App) -> SharedString {
     let catalog = cx.try_global::<FontCatalog>();
+    if let Some(family) = catalog.and_then(|fonts| fonts.installed(super::themes::font(role, cx))) {
+        return family;
+    }
     let theme = cx.theme();
     let config = if theme.is_dark() {
         &theme.dark_theme
@@ -197,6 +222,47 @@ mod tests {
             assert_eq!(cx.theme().mono_font_family, default_code);
             assert_eq!(family(FontRole::Reading, cx), default_interface);
             assert_eq!(family(FontRole::Headings, cx).as_str(), PIXELOID_FONT);
+        });
+    }
+
+    #[test]
+    fn theme_fonts_cover_all_roles_and_personal_choices_keep_priority() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| {
+            init_catalog(cx);
+            super::super::themes::ThemeLibrary::init(cx);
+            let mut document = super::super::themes::active_document(cx);
+            for (role, family) in FontRole::ALL.into_iter().zip([
+                "Interface font",
+                "Reading font",
+                "Heading font",
+                "Code font",
+            ]) {
+                document.set_font(role, Some(family.into()));
+            }
+            super::super::themes::preview(&document, cx);
+            for (role, expected) in FontRole::ALL.into_iter().zip([
+                "Interface font",
+                "Reading font",
+                "Heading font",
+                "Code font",
+            ]) {
+                assert_eq!(family(role, cx).as_str(), expected);
+                assert_eq!(default_family(role, cx).as_str(), expected);
+            }
+            cx.global_mut::<FontCatalog>()
+                .preferences
+                .set_family(FontRole::Reading, Some("Interface font".into()));
+            apply(cx);
+            assert_eq!(family(FontRole::Reading, cx).as_str(), "Interface font");
+            assert_eq!(
+                default_family(FontRole::Reading, cx).as_str(),
+                "Reading font"
+            );
+            document.set_font(FontRole::Headings, Some("Unavailable font".into()));
+            super::super::themes::preview(&document, cx);
+            assert_eq!(family(FontRole::Headings, cx).as_str(), PIXELOID_FONT);
+            assert_eq!(document.font(FontRole::Headings), Some("Unavailable font"));
         });
     }
 

@@ -145,7 +145,7 @@ impl FontRole {
     pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
 }
 
-/// Optional family overrides. Missing values retain the application's defaults.
+/// Optional personal families. Missing values follow the active theme.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(default)]
 pub struct FontSettings {
@@ -435,14 +435,23 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }
 
-pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
+pub fn select_theme_with_preference(
+    kind: ThemeKind,
+    name: &str,
+    preference: Option<ThemePreference>,
+) -> Result<()> {
     let name = name.trim();
     if name.is_empty() {
         bail!("Theme name cannot be empty");
     }
-    settings_lock().update(|settings| match kind {
-        ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
-        ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
+    settings_lock().update(|settings| {
+        match kind {
+            ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
+            ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
+        }
+        if let Some(preference) = preference {
+            settings.theme_preference = preference;
+        }
     })
 }
 
@@ -451,6 +460,10 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
     settings_lock().update(|settings| settings.font_scale = scale)
+}
+
+pub fn use_theme_fonts() -> Result<()> {
+    settings_lock().update(|settings| settings.fonts = FontSettings::default())
 }
 
 pub fn set_font_family(role: FontRole, family: Option<String>) -> Result<()> {
