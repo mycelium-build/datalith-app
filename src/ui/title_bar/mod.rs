@@ -352,15 +352,15 @@ mod tests {
                         window.render_frame(cx);
                         assert_eq!(
                             window.within("popup-menu").find(0_usize).label(),
-                            Some("Settings…")
+                            Some("Settings")
                         );
                         assert_eq!(
                             window.within("popup-menu").find(1_usize).label(),
-                            Some("Theme…")
+                            Some("Theme")
                         );
                         assert_eq!(
                             window.within("popup-menu").find(2_usize).label(),
-                            Some("Shortcuts…")
+                            Some("Shortcuts")
                         );
                         window.within("popup-menu").click(0_usize, cx);
                     })
