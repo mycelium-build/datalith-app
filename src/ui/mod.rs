@@ -5,6 +5,7 @@ pub mod monolith;
 pub mod notifications;
 pub mod palette;
 pub mod render;
+mod session;
 pub mod settings;
 pub mod sidebar;
 pub mod startup;

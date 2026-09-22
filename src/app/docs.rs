@@ -1,64 +1,44 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use super::settings;
-
 pub const DOCS_VAULT_NAME: &str = "Datalith Docs";
 
-pub const INITIAL_TABS: &[&str] = &["Welcome.md", "Tour.todotxt", "Basics.md"];
+pub const WELCOME_NOTE: &str = "Welcome.md";
 
-pub fn docs_vault_source() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/vault")
-}
+include!(concat!(env!("OUT_DIR"), "/docs_vault.rs"));
 
-#[derive(Clone, Debug)]
-pub struct DocsVaultOutcome {
-    pub docs_vault: PathBuf,
-    pub first_run: bool,
-}
-
-pub fn ensure_docs_vault() -> Result<DocsVaultOutcome> {
-    let first_run = settings::snapshot().last_vault.is_none();
+pub fn ensure_docs_vault() -> Result<PathBuf> {
     let docs_vault = docs_vault_path();
     fs::create_dir_all(&docs_vault)
         .with_context(|| format!("Failed to create docs Vault: {}", docs_vault.display()))?;
     seed_into(&docs_vault)?;
-    Ok(DocsVaultOutcome {
-        docs_vault,
-        first_run,
-    })
+    Ok(docs_vault)
 }
 
-fn seed_into(root: &Path) -> Result<()> {
-    seed_dir(&docs_vault_source(), root)
-}
-
-fn seed_dir(source: &Path, target: &Path) -> Result<()> {
-    for entry in fs::read_dir(source)
-        .with_context(|| format!("Failed to read docs Vault folder: {}", source.display()))?
-    {
-        let entry = entry
-            .with_context(|| format!("Failed to read docs Vault entry in {}", source.display()))?;
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with('.') {
-            continue;
-        }
-        let source_path = entry.path();
-        let target_path = target.join(name);
-        if source_path.is_dir() {
-            fs::create_dir_all(&target_path).with_context(|| {
-                format!(
-                    "Failed to create docs Vault folder: {}",
-                    target_path.display()
-                )
-            })?;
-            seed_dir(&source_path, &target_path)?;
-        } else if !target_path.exists() {
-            fs::copy(&source_path, &target_path).with_context(|| {
-                format!("Failed to seed docs Vault file: {}", target_path.display())
-            })?;
+/// Write bundled documentation into `root`, creating parent folders as needed.
+/// Existing files are preserved.
+pub fn seed_into(root: &Path) -> Result<()> {
+    for (name, bytes) in DOCS_FILES {
+        let target = root.join(name);
+        let parent = target.parent().context("Docs file has no parent")?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create docs folder: {}", parent.display()))?;
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(mut file) => file
+                .write_all(bytes)
+                .with_context(|| format!("Failed to seed docs file: {}", target.display()))?,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("Failed to seed docs file: {}", target.display()));
+            }
         }
     }
     Ok(())
@@ -74,6 +54,10 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
+
+    fn docs_vault_source() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/vault")
+    }
 
     fn source_files(dir: &Path) -> Vec<PathBuf> {
         let mut files = Vec::new();
@@ -121,14 +105,8 @@ mod tests {
     }
 
     #[test]
-    fn initial_tabs_are_shipped_docs() {
-        let source = docs_vault_source();
-        for name in INITIAL_TABS {
-            assert!(
-                source.join(name).is_file(),
-                "initial tab is not a shipped doc: {name}"
-            );
-        }
+    fn welcome_is_bundled() {
+        assert!(DOCS_FILES.iter().any(|(name, _)| *name == WELCOME_NOTE));
     }
 
     #[test]

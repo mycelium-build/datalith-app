@@ -6,6 +6,7 @@ pub mod fonts;
 pub mod keymap;
 pub mod menus;
 pub mod preferences;
+pub mod session;
 pub mod settings;
 mod state;
 pub mod system;

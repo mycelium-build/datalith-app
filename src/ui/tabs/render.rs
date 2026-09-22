@@ -7,7 +7,7 @@ use gpui_kit::component::{
 use gpui_kit::{Context, IntoElement, ParentElement, SharedString, Styled};
 
 use super::NavigationAction;
-use crate::document::handler::FileHandler;
+use crate::app::actions::ToggleEditorMode;
 use crate::ui::DatalithView;
 use crate::ui::icons::DatalithIcon;
 use crate::vault::path::display_name;
@@ -56,9 +56,7 @@ impl DatalithView {
                     .as_ref()
                     .is_some_and(|handler| handler.read(cx).is_editing());
                 let mut suffix = h_flex().gap_0().px_1();
-                if let Some(handler) = handler
-                    && can_toggle_mode
-                {
+                if can_toggle_mode {
                     let icon = if is_editing {
                         Icon::new(IconName::Eye)
                     } else {
@@ -69,9 +67,14 @@ impl DatalithView {
                             .ghost()
                             .xsmall()
                             .icon(icon)
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                handler.update(cx, FileHandler::toggle_editing);
-                            })),
+                            .tooltip(if is_editing {
+                                "Reading mode"
+                            } else {
+                                "Editing mode"
+                            })
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(ToggleEditorMode), cx);
+                            }),
                     );
                 }
                 suffix.child(

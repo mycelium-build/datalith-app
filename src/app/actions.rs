@@ -338,13 +338,7 @@ pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
 
 pub fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        if let Some(handler) = view.tabs.active_handler().cloned() {
-            handler.update(cx, |handler, cx| {
-                handler.toggle_editing(cx);
-            });
-            view.focus_editor_requested = true;
-        }
-        cx.notify();
+        view.toggle_editor_mode(cx);
     });
 }
 

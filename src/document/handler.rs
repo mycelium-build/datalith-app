@@ -24,9 +24,10 @@ pub type ReloadAdapter = fn(
     &mut Context<FileHandler>,
 ) -> anyhow::Result<ReloadOutcome>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ViewMode {
     Edit,
+    #[default]
     View,
 }
 
@@ -89,19 +90,16 @@ impl FileHandler {
         self.editor.is_some() && self.viewer.is_some()
     }
 
-    pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
-        if !self.can_toggle_mode() {
+    pub(crate) fn set_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        if !self.can_toggle_mode() || self.mode == mode {
             return;
         }
-        self.mode = match self.mode {
-            ViewMode::Edit => {
-                if let Some(viewer) = &self.viewer {
-                    viewer.refresh(cx);
-                }
-                ViewMode::View
-            }
-            ViewMode::View => ViewMode::Edit,
-        };
+        if mode == ViewMode::View
+            && let Some(viewer) = &self.viewer
+        {
+            viewer.refresh(cx);
+        }
+        self.mode = mode;
         cx.notify();
     }
 

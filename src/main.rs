@@ -51,17 +51,8 @@ fn main() {
                 None
             }
         };
-        let first_startup = docs_vault.as_ref().is_some_and(|outcome| outcome.first_run);
-        let (initial_vault, initial_tabs) = match docs_vault {
-            Some(outcome) if outcome.first_run => {
-                let tabs = app::docs::INITIAL_TABS
-                    .iter()
-                    .map(|name| outcome.docs_vault.join(name))
-                    .collect();
-                (Some(outcome.docs_vault), tabs)
-            }
-            _ => (app::settings::snapshot().last_vault, Vec::new()),
-        };
+        let (first_startup, session) =
+            app::session::Session::initial(&app::settings::snapshot(), docs_vault);
 
         app::deeplink::start(cx);
         if let Err(error) = server::sync() {
@@ -73,12 +64,6 @@ fn main() {
             ));
         }
 
-        ui::window::open_initial(
-            cx,
-            first_startup,
-            initial_vault,
-            initial_tabs,
-            pending_notifications,
-        );
+        ui::window::open_initial(cx, first_startup, session, pending_notifications);
     });
 }

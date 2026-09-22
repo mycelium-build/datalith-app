@@ -74,6 +74,9 @@ impl DatalithView {
             self.registry
                 .create_handler(&path, &dependencies, window, cx)
         });
+        handler.update(cx, |handler, cx| {
+            handler.set_mode(crate::app::settings::snapshot().document_mode, cx);
+        });
         let input_subscription = handler.read(cx).input().cloned().map(|state| {
             let path = path.clone();
             cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
@@ -128,6 +131,32 @@ impl DatalithView {
             },
             true,
         );
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_editor_mode(&mut self, cx: &mut Context<Self>) {
+        let Some(handler) = self.tabs.active_handler() else {
+            return;
+        };
+        let handler = handler.read(cx);
+        if !handler.can_toggle_mode() {
+            return;
+        }
+        let mode = if handler.is_editing() {
+            ViewMode::View
+        } else {
+            ViewMode::Edit
+        };
+        if let Err(error) = crate::app::settings::set_document_mode(mode) {
+            self.pending_notifications
+                .push(notifications::settings_save_failed("document mode", &error));
+            cx.notify();
+            return;
+        }
+        for (_, _, handler) in self.tabs.iter() {
+            handler.update(cx, |handler, cx| handler.set_mode(mode, cx));
+        }
+        self.focus_editor_requested = true;
         cx.notify();
     }
 

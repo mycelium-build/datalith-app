@@ -1,10 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(not(test))]
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
+
+use super::session::Session;
+use crate::document::handler::ViewMode;
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_VAULTS: usize = 10;
@@ -134,6 +138,7 @@ impl Default for ServerSettings {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
@@ -143,6 +148,8 @@ pub struct ApplicationSettings {
     pub font_scale: f64,
     pub server: ServerSettings,
     pub automatic_updates: bool,
+    pub(crate) document_mode: ViewMode,
+    pub(crate) session: Option<Session>,
 }
 
 impl Default for ApplicationSettings {
@@ -156,6 +163,8 @@ impl Default for ApplicationSettings {
             font_scale: DEFAULT_FONT_SCALE,
             server: ServerSettings::default(),
             automatic_updates: true,
+            document_mode: ViewMode::default(),
+            session: None,
         }
     }
 }
@@ -190,6 +199,10 @@ struct StoredSettings {
     server: StoredServerSettings,
     #[serde(default)]
     automatic_updates: Option<bool>,
+    #[serde(default)]
+    document_mode: Option<String>,
+    #[serde(default)]
+    session: Option<Session>,
 }
 
 const fn schema_version() -> u32 {
@@ -228,6 +241,11 @@ impl StoredSettings {
                 self.server.token,
             ),
             automatic_updates: self.automatic_updates.unwrap_or(true),
+            document_mode: match self.document_mode.as_deref() {
+                Some("edit") => ViewMode::Edit,
+                _ => ViewMode::View,
+            },
+            session: self.session,
         }
     }
 
@@ -253,6 +271,14 @@ impl StoredSettings {
                 token: settings.server.token.clone(),
             },
             automatic_updates: Some(settings.automatic_updates),
+            document_mode: Some(
+                match settings.document_mode {
+                    ViewMode::Edit => "edit",
+                    ViewMode::View => "view",
+                }
+                .to_owned(),
+            ),
+            session: settings.session.clone(),
         }
     }
 }
@@ -311,28 +337,68 @@ impl SettingsStore {
     }
 }
 
+#[cfg(not(test))]
 fn settings_file() -> PathBuf {
     super::data_dir().join("config.json")
 }
 
+#[cfg(not(test))]
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
     LazyLock::new(|| Mutex::new(SettingsStore::new(settings_file())));
 
-fn settings_lock() -> std::sync::MutexGuard<'static, SettingsStore> {
+#[cfg(not(test))]
+fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     // Return the value anyway even if maybe poisoned (mid updating)
-    SETTINGS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    read(
+        &mut SETTINGS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+// UI tests exercise the real settings API without sharing preferences or touching user data.
+#[cfg(test)]
+thread_local! {
+    static TEST_SETTINGS: std::cell::RefCell<SettingsStore> = std::cell::RefCell::new(
+        SettingsStore::new(tests::temp_settings_file("ui"))
+    );
+}
+
+#[cfg(test)]
+fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
+    TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
+}
+
+#[cfg(test)]
+pub fn reload_from_disk() {
+    with_store(|store| store.cached = None);
 }
 
 #[must_use]
 pub fn snapshot() -> ApplicationSettings {
-    settings_lock().snapshot()
+    with_store(SettingsStore::snapshot)
+}
+
+fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
+    with_store(|store| store.update(update))
+}
+
+/// Remember the workspace even when all tabs have been closed.
+pub fn save_session(session: Session) -> Result<()> {
+    update(|settings| {
+        settings.last_vault.clone_from(&session.vault);
+        settings.session = Some(session);
+    })
+}
+
+/// Apply one document mode to the application, including future openings.
+pub fn set_document_mode(mode: ViewMode) -> Result<()> {
+    update(|settings| settings.document_mode = mode)
 }
 
 pub fn record_opened_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
-    settings_lock().update(|settings| {
+    update(|settings| {
         settings.last_vault = Some(path.clone());
         settings.recent_vaults.retain(|recent| recent != &path);
         settings.recent_vaults.insert(0, path);
@@ -341,7 +407,7 @@ pub fn record_opened_vault(path: &Path) -> Result<()> {
 }
 
 pub fn set_automatic_updates(enabled: bool) -> Result<()> {
-    settings_lock().update(|settings| settings.automatic_updates = enabled)
+    update(|settings| settings.automatic_updates = enabled)
 }
 
 /// Vault folders Datalith knows about, last used first:
@@ -364,7 +430,7 @@ pub fn known_vault_paths() -> Vec<PathBuf> {
 }
 
 pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
-    settings_lock().update(|settings| settings.theme_preference = preference)
+    update(|settings| settings.theme_preference = preference)
 }
 
 pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
@@ -372,7 +438,7 @@ pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("Theme name cannot be empty");
     }
-    settings_lock().update(|settings| match kind {
+    update(|settings| match kind {
         ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
         ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
     })
@@ -382,32 +448,32 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
     if !scale.is_finite() || !(MIN_FONT_SCALE..=MAX_FONT_SCALE).contains(&scale) {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
-    settings_lock().update(|settings| settings.font_scale = scale)
+    update(|settings| settings.font_scale = scale)
 }
 
 pub fn set_server_enabled(enabled: bool) -> Result<()> {
-    settings_lock().update(|settings| settings.server.enabled = enabled)
+    update(|settings| settings.server.enabled = enabled)
 }
 
 pub fn set_server_port(port: u16) -> Result<()> {
     if port == 0 {
         bail!("Server port must be between 1 and 65535");
     }
-    settings_lock().update(|settings| settings.server.port = port)
+    update(|settings| settings.server.port = port)
 }
 
 pub fn set_server_token(token: Option<String>) -> Result<()> {
     let token = token
         .map(|token| token.trim().to_owned())
         .filter(|token| !token.is_empty());
-    settings_lock().update(move |settings| settings.server.token = token)
+    update(move |settings| settings.server.token = token)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn temp_settings_file(test_name: &str) -> PathBuf {
+    pub(super) fn temp_settings_file(test_name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "datalith-settings-{test_name}-{}-{}.json",
             std::process::id(),
