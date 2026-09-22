@@ -183,7 +183,7 @@ impl DatalithView {
             },
         );
 
-        let settings = SettingsView::new(cx);
+        let settings = SettingsView::new(window, cx);
         let font_size_slider_sub = cx.subscribe(
             &settings.font_size_slider_state,
             |view, _, event: &SliderEvent, cx| {
@@ -287,6 +287,7 @@ impl DatalithView {
                 let effective = preference.resolve(window.appearance()).into();
                 gpui_kit::component::Theme::change(effective, Some(window), cx);
                 gpui_kit::component::Theme::global_mut(cx).mode = effective;
+                crate::app::fonts::apply(cx);
             }
         })
     }

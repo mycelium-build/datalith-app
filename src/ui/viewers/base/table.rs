@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use gpui_kit::component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_kit::component::{scroll::Scrollbar, scroll::ScrollbarMode};
 use gpui_kit::{
-    AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
-    ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
+    AnyElement, App, Context, ElementId, Font, InteractiveElement, IntoElement, ParentElement,
+    Pixels, ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
 };
 
 use crate::document::base::{BaseView, TableRowHeight};
@@ -24,7 +24,7 @@ const TABLE_EXTRA_TALL_HEIGHT: f32 = 72.0;
 
 #[derive(Default)]
 struct ColumnWidths {
-    key: Option<(u64, f32)>,
+    key: Option<(u64, f32, Font)>,
     widths: Vec<Pixels>,
 }
 
@@ -153,10 +153,10 @@ impl BaseViewState {
         let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
         let font_size = f32::from(window.text_style().font_size.to_pixels(window.rem_size()));
-        let width_key = (snapshot.id, font_size);
+        let width_key = (snapshot.id, font_size, window.text_style().font());
         {
             let mut cache = table_state.column_widths.borrow_mut();
-            if cache.key != Some(width_key) {
+            if cache.key.as_ref() != Some(&width_key) {
                 cache.widths = column_widths(snapshot, view, window);
                 cache.key = Some(width_key);
             }

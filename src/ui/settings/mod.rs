@@ -9,7 +9,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
+    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -21,6 +21,7 @@ pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 
 mod about;
 mod appearance;
+mod fonts;
 mod server;
 mod shortcuts;
 
@@ -45,6 +46,7 @@ pub struct SettingsView {
     page_index: usize,
     has_updater: bool,
     pub(crate) font_size_slider_state: Entity<SliderState>,
+    font_pickers: Vec<(settings::FontRole, Entity<fonts::FontPicker>)>,
 }
 
 /// The settings pages, in render order. Both the page builders and the
@@ -76,7 +78,7 @@ impl SettingsPage {
 }
 
 impl SettingsView {
-    pub(crate) fn new(cx: &mut App) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut App) -> Self {
         let font_size_multiplier = settings::snapshot().font_scale;
         let font_size_slider_state = cx.new(|_| {
             SliderState::new()
@@ -91,6 +93,10 @@ impl SettingsView {
             page_index: 0,
             has_updater: crate::app::update::Updater::get(cx).is_some(),
             font_size_slider_state,
+            font_pickers: settings::FontRole::ALL
+                .into_iter()
+                .map(|role| (role, cx.new(|cx| fonts::FontPicker::new(role, window, cx))))
+                .collect(),
         }
     }
 
@@ -227,6 +233,7 @@ impl SettingsView {
                         .groups(vec![
                             Self::theme_group(cx),
                             Self::display_group(&self.font_size_slider_state),
+                            self.fonts_group(),
                         ]),
                     SettingsPage::Shortcuts => {
                         SettingPage::new(page.title()).groups(Self::shortcuts_groups())

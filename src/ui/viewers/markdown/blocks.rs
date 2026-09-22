@@ -22,6 +22,21 @@ use crate::document::markdown::{ListItem, MarkdownBlock, MarkdownInline};
 use crate::ui::BASE_FONT_SIZE;
 
 impl MarkdownViewer {
+    pub(super) fn render_inline_code(value: &str, style: InlineStyle, cx: &App) -> AnyElement {
+        let highlight = inline_highlight(
+            InlineStyle {
+                code: true,
+                ..style
+            },
+            cx,
+        );
+        div()
+            .min_w_0()
+            .font_family(cx.theme().mono_font_family.clone())
+            .child(StyledText::new(value.to_owned()).with_highlights([(0..value.len(), highlight)]))
+            .into_any_element()
+    }
+
     pub(super) fn render_blocks(
         &self,
         blocks: &[MarkdownBlock],
@@ -212,7 +227,7 @@ impl MarkdownViewer {
         });
         div()
             .bg(ctx.cx.theme().muted)
-            .font_family("monospace")
+            .font_family(ctx.cx.theme().mono_font_family.clone())
             .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE))
             .rounded(px(MD_CODE_BLOCK_RADIUS))
             .p(px(MD_CODE_BLOCK_PADDING))

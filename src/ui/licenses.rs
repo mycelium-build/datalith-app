@@ -174,9 +174,11 @@ impl LicensesView {
                                         uniform_list(
                                             "licenses-scroll",
                                             ROWS.len(),
-                                            |range, _, _| {
+                                            |range, _, cx| {
                                                 range
-                                                    .filter_map(|ix| ROWS.get(ix).map(render_row))
+                                                    .filter_map(|ix| {
+                                                        ROWS.get(ix).map(|row| render_row(row, cx))
+                                                    })
                                                     .collect()
                                             },
                                         )
@@ -197,7 +199,7 @@ impl LicensesView {
     }
 }
 
-fn render_row(row: &Row) -> impl IntoElement {
+fn render_row(row: &Row, cx: &gpui_kit::App) -> gpui_kit::Div {
     let (text, is_header) = match row {
         Row::Header(title) => (title.as_str(), true),
         Row::Line(line) => (line.as_str(), false),
@@ -207,7 +209,7 @@ fn render_row(row: &Row) -> impl IntoElement {
         .h(px(ROW_HEIGHT))
         .flex()
         .items_center()
-        .font_family("monospace")
+        .font_family(cx.theme().mono_font_family.clone())
         .text_xs()
         .child(text.to_string());
 
