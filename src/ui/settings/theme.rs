@@ -303,37 +303,43 @@ impl ThemePage {
                             .into_any_element()
                     }),
             )
-            .children(self.summaries.get(&id).map(|summary| {
-                h_flex()
-                    .gap_4()
-                    .flex_wrap()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .children(
-                        ["Reading", "Headings", "Code"]
-                            .into_iter()
-                            .zip(summary.fonts.iter())
-                            .map(|(role, font)| {
-                                h_flex()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                            .child(format!("{role}:")),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_color(cx.theme().foreground)
-                                            .font_family(font.clone())
-                                            .child(if font.as_ref() == ".SystemUIFont" {
-                                                "System font".into()
-                                            } else {
-                                                font.clone()
-                                            }),
-                                    )
-                            }),
-                    )
-            }))
+            .children(
+                self.summaries
+                    .get(&id)
+                    .map(|summary| Self::render_fonts(summary, cx)),
+            )
+    }
+
+    fn render_fonts(summary: &VariantSummary, cx: &Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_4()
+            .flex_wrap()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .children(
+                ["Reading", "Headings", "Code"]
+                    .into_iter()
+                    .zip(summary.fonts.iter())
+                    .map(|(role, font)| {
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    .child(format!("{role}:")),
+                            )
+                            .child(
+                                div()
+                                    .text_color(cx.theme().foreground)
+                                    .font_family(font.clone())
+                                    .child(if font.as_ref() == ".SystemUIFont" {
+                                        "System font".into()
+                                    } else {
+                                        font.clone()
+                                    }),
+                            )
+                    }),
+            )
     }
 
     fn render_family(&self, family: &ThemeFamily, cx: &Context<Self>) -> impl IntoElement {
@@ -456,6 +462,53 @@ impl ThemePage {
     }
 }
 
+impl ThemePage {
+    fn render_search(&self, cx: &Context<Self>) -> impl IntoElement {
+        h_flex()
+            .min_w_0()
+            .gap_3()
+            .flex_wrap()
+            .child(
+                Button::new("import-theme")
+                    .small()
+                    .label("Import")
+                    .on_click(|_, _, cx| import_theme(cx)),
+            )
+            .child(
+                div().flex_1().min_w_0().child(
+                    Input::new(&self.query)
+                        .id("theme-search")
+                        .small()
+                        .aria_label("Search themes"),
+                ),
+            )
+            .child(
+                h_flex().gap_1().children(
+                    [
+                        (Filter::All, "All"),
+                        (Filter::Light, "Light"),
+                        (Filter::Dark, "Dark"),
+                        (Filter::Custom, "Custom"),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, (filter, label))| {
+                        Button::new(("theme-filter", ix))
+                            .small()
+                            .ghost()
+                            .selected(self.filter == filter)
+                            .label(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.filter = filter;
+                                this.list.remeasure();
+                                cx.notify();
+                            }))
+                    }),
+                ),
+            )
+    }
+}
+
 impl Render for ThemePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.refresh_rows(window, cx);
@@ -488,50 +541,7 @@ impl Render for ThemePage {
                     .child(self.render_current(ThemeKind::Light, cx))
                     .child(self.render_current(ThemeKind::Dark, cx)),
             )
-            .child(
-                h_flex()
-                    .min_w_0()
-                    .gap_3()
-                    .flex_wrap()
-                    .child(
-                        Button::new("import-theme")
-                            .small()
-                            .label("Import")
-                            .on_click(|_, _, cx| import_theme(cx)),
-                    )
-                    .child(
-                        div().flex_1().min_w_0().child(
-                            Input::new(&self.query)
-                                .id("theme-search")
-                                .small()
-                                .aria_label("Search themes"),
-                        ),
-                    )
-                    .child(
-                        h_flex().gap_1().children(
-                            [
-                                (Filter::All, "All"),
-                                (Filter::Light, "Light"),
-                                (Filter::Dark, "Dark"),
-                                (Filter::Custom, "Custom"),
-                            ]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, (filter, label))| {
-                                Button::new(("theme-filter", ix))
-                                    .small()
-                                    .ghost()
-                                    .selected(self.filter == filter)
-                                    .label(label)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.filter = filter;
-                                        this.list.remeasure();
-                                        cx.notify();
-                                    }))
-                            }),
-                        ),
-                    ),
-            )
+            .child(self.render_search(cx))
             .children((!empty).then(|| {
                 list(self.list.clone(), move |ix, _, cx| {
                     page.update(cx, |page, cx| match rows.get(ix) {
