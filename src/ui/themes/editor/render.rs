@@ -478,8 +478,11 @@ impl Render for ThemeEditor {
                         .child(resizable_panel().child(controls))
                         .child(
                             resizable_panel()
-                                .size(window.rem_size() * 30.)
-                                .size_range(window.rem_size() * 20. ..window.rem_size() * 55.)
+                                .size(gpui_kit::rems(30.).to_pixels(window.rem_size()))
+                                .size_range(
+                                    gpui_kit::rems(20.).to_pixels(window.rem_size())
+                                        ..gpui_kit::rems(55.).to_pixels(window.rem_size()),
+                                )
                                 .flex_none()
                                 .child(preview_pane),
                         ),

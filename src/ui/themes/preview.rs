@@ -30,7 +30,7 @@ enum Content {
     Todo,
 }
 
-pub(crate) struct ThemePreview {
+pub(super) struct ThemePreview {
     appearance: Option<ResolvedAppearance>,
     note: Entity<EditorState>,
     base: Result<Entity<BaseViewState>, String>,
@@ -39,7 +39,7 @@ pub(crate) struct ThemePreview {
 }
 
 impl ThemePreview {
-    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             appearance: None,
             note: cx.new(|cx| EditorState::new(window, cx).default_value(NOTE)),
@@ -50,7 +50,7 @@ impl ThemePreview {
         }
     }
 
-    pub(crate) fn set_appearance(
+    pub(super) fn set_appearance(
         &mut self,
         appearance: Option<ResolvedAppearance>,
         cx: &mut Context<Self>,
@@ -59,7 +59,7 @@ impl ThemePreview {
             let theme = Rc::new(appearance.theme().clone());
             if let Ok(base) = &self.base {
                 base.update(cx, |base, cx| {
-                    base.set_preview_appearance(theme.clone(), cx)
+                    base.set_preview_appearance(theme.clone(), cx);
                 });
             }
             if let Ok(todo) = &self.todo {
@@ -194,10 +194,10 @@ mod tests {
             Root::new(view, window, cx)
         });
         let preview = preview.unwrap();
-        for appearance in [light, dark] {
+        for appearance in [&light, &dark] {
             cx.update_window(handle.into(), |_, window, cx| {
                 preview.update(cx, |preview, cx| {
-                    preview.set_appearance(Some(appearance.clone()), cx)
+                    preview.set_appearance(Some(appearance.clone()), cx);
                 });
                 window.render_frame(cx);
                 window.click("preview-base", cx);
