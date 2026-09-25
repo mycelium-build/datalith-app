@@ -7,9 +7,11 @@ category: guide
 A **Vault** is a directory whose files are managed together. Datalith watches it, builds a catalog, and derives search results, wiki-link connections, and graph views.
 
 - **Navigate → Open Vault** opens a folder from disk. Your recent Vaults appear in the vault selector at the bottom of the sidebar.
-- The first time Datalith runs, it opens the **Datalith Docs** Vault you are reading now.
+- The first time Datalith runs, it opens the **Datalith Documentation** Vault you are reading now.
 
 # Create a new note
+
+This documentation Vault is read-only. Choose **Open a new vault** in the vault selector and open a personal folder before creating or editing notes.
 
 Press **Cmd/Ctrl+N** to create a new file. It is created in the current Vault and immediately renamed, type a name and press **Enter**. The extension decides the file type:
 

@@ -71,7 +71,7 @@ impl Drop for PooledConnection {
 
 impl CatalogDatabase {
     pub(super) async fn open(root: &Path) -> Result<Self> {
-        let metadata_dir = Channel::current().vault_cache_dir(root);
+        let metadata_dir = Channel::current().vault_cache_dir(root)?;
         fs::create_dir_all(&metadata_dir).with_context(|| {
             format!(
                 "Failed to create catalog directory {}",

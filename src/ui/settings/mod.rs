@@ -3,7 +3,6 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     setting::{SelectIndex, SettingPage, Settings},
-    setting::{SettingField, SettingGroup, SettingItem},
     slider::SliderState,
     v_flex,
 };
@@ -21,6 +20,7 @@ pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 
 mod about;
 mod appearance;
+mod general;
 mod server;
 mod shortcuts;
 
@@ -47,17 +47,19 @@ pub struct SettingsView {
     pub(crate) font_size_slider_state: Entity<SliderState>,
 }
 
-/// The settings pages, in render order. Both the page builders and the
-/// shortcuts page index derive from this list, so they cannot drift.
+/// The settings pages, in render order. Page builders and shortcut indexes
+/// derive from this list, so they cannot drift.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
+    General,
     Appearance,
     Shortcuts,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 5] = [
+    SettingsPage::General,
     SettingsPage::Appearance,
     SettingsPage::Shortcuts,
     SettingsPage::Server,
@@ -67,6 +69,7 @@ pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
 impl SettingsPage {
     const fn title(self) -> &'static str {
         match self {
+            Self::General => "General",
             Self::Appearance => "Appearance",
             Self::Shortcuts => "Shortcuts",
             Self::Server => "Local Server",
@@ -101,12 +104,12 @@ impl SettingsView {
 
     pub(crate) fn open_shortcuts(&mut self) {
         self.open = true;
-        self.page_index = shortcuts_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+        self.page_index = shortcuts_page_index();
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
-        self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+        self.page_index = about_page_index();
     }
 
     pub(crate) const fn close(&mut self) {
@@ -183,62 +186,28 @@ impl SettingsView {
     }
 
     fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
-        // In dev channel don't display update group
-        // NOTE: need to move "General" page when add new content to it
-        let general = self.has_updater.then(|| {
-            SettingPage::new("General").groups(vec![SettingGroup::new().title("Updates").items(
-                vec![
-                    SettingItem::new(
-                        format!(
-                            "Automatically update {}",
-                            crate::channel::Channel::current().product_name()
-                        ),
-                        SettingField::switch(
-                            |_| settings::snapshot().automatic_updates,
-                            |enabled, cx| {
-                                if let Err(error) = settings::set_automatic_updates(enabled) {
-                                    crate::ui::notifications::push_window_notification(
-                                        cx,
-                                        crate::ui::notifications::settings_save_failed(
-                                            "automatic updates",
-                                            &error,
-                                        ),
-                                    );
-                                }
-                                cx.refresh_windows();
-                            },
-                        ),
-                    )
-                    .description(if crate::channel::Channel::current() == crate::channel::Channel::Preview {
-                        "Periodically check for and download release candidates. Stable releases are not offered."
-                    } else {
-                        "Periodically check for and download updates in the background."
-                    }),
-                ],
-            )])
-        });
-
-        general
-            .into_iter()
-            .chain(SETTINGS_PAGES.iter().map(|page| {
-                match page {
-                    SettingsPage::Appearance => SettingPage::new(page.title())
-                        .default_open(true)
-                        .groups(vec![
-                            Self::theme_group(cx),
-                            Self::display_group(&self.font_size_slider_state),
-                        ]),
-                    SettingsPage::Shortcuts => {
-                        SettingPage::new(page.title()).groups(Self::shortcuts_groups())
-                    }
-                    SettingsPage::Server => {
-                        SettingPage::new(page.title()).groups(vec![Self::server_group()])
-                    }
-                    SettingsPage::About => {
-                        SettingPage::new(page.title()).groups(vec![Self::about_group()])
-                    }
+        SETTINGS_PAGES
+            .iter()
+            .map(|page| match page {
+                SettingsPage::General => {
+                    SettingPage::new(page.title()).groups(self.general_groups())
                 }
-            }))
+                SettingsPage::Appearance => SettingPage::new(page.title())
+                    .default_open(true)
+                    .groups(vec![
+                        Self::theme_group(cx),
+                        Self::display_group(&self.font_size_slider_state),
+                    ]),
+                SettingsPage::Shortcuts => {
+                    SettingPage::new(page.title()).groups(Self::shortcuts_groups())
+                }
+                SettingsPage::Server => {
+                    SettingPage::new(page.title()).groups(vec![Self::server_group()])
+                }
+                SettingsPage::About => {
+                    SettingPage::new(page.title()).groups(vec![Self::about_group()])
+                }
+            })
             .collect()
     }
 }

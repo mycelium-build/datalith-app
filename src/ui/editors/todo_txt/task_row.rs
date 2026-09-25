@@ -4,7 +4,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::popover::{Popover, PopoverState};
-use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Disableable, Icon, IconName, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Element, ElementId, Focusable, InteractiveElement,
@@ -17,7 +17,9 @@ use txtodo::{Priority, Task};
 use crate::document::todo_txt::parse_date;
 
 use super::TodoTxtState;
-use super::constants::{TODO_COL_DATE, TODO_COL_EXPAND, TODO_INDENT_PX, TODO_ROW_HEIGHT};
+use super::constants::{
+    TODO_COL_DATE, TODO_COL_EXPAND, TODO_COL_PRIORITY, TODO_INDENT_PX, TODO_ROW_HEIGHT,
+};
 use super::priority::{PRIORITY_VALUES, PriorityTrigger};
 
 fn element_id(name: &'static str, index: usize) -> ElementId {
@@ -41,6 +43,7 @@ impl TodoTxtState {
         let indent = (depth.approx_as::<f32>().unwrap_or_inf()).mul(TODO_INDENT_PX);
         let has_subtasks = !task.subtasks.is_empty();
         let is_expanded = self.workspace.is_expanded(flat_index);
+        let read_only = self.workspace.is_read_only();
 
         let row_bg = if is_selected {
             cx.theme().accent.opacity(0.1)
@@ -97,13 +100,18 @@ impl TodoTxtState {
         row = row.child(
             Checkbox::new(element_id("todo-check", fi))
                 .checked(completed)
+                .disabled(read_only)
                 .on_click(cx.listener(move |this, _checked, window, cx| {
                     this.toggle_complete(fi, window, cx);
                 })),
         );
 
         // Priority (popover)
-        row = row.child(self.render_priority_picker(flat_index, cx));
+        row = row.child(if read_only {
+            Self::render_read_only_priority(task, cx)
+        } else {
+            self.render_priority_picker(flat_index, cx)
+        });
 
         // Date
         row = row.child(self.render_date_cell(flat_index, task, cx));
@@ -136,9 +144,31 @@ impl TodoTxtState {
         }
 
         // Hover actions
-        row = row.child(Self::render_hover_actions(flat_index, cx));
+        if !read_only {
+            row = row.child(Self::render_hover_actions(flat_index, cx));
+        }
 
         row.into_any()
+    }
+
+    fn render_read_only_priority(task: &Task, cx: &Context<Self>) -> AnyElement {
+        let Some(priority) = task.priority else {
+            return div().w(px(TODO_COL_PRIORITY)).into_any_element();
+        };
+        let color = if task.completed {
+            cx.theme().muted_foreground
+        } else {
+            super::priority_color(priority.as_char())
+        };
+        div()
+            .w(px(TODO_COL_PRIORITY))
+            .flex()
+            .justify_center()
+            .child(super::render_pill(
+                &format!("({})", priority.as_char()),
+                color,
+            ))
+            .into_any_element()
     }
 
     fn render_date_cell(&self, flat_index: usize, task: &Task, cx: &Context<Self>) -> AnyElement {
@@ -158,6 +188,7 @@ impl TodoTxtState {
         let date_input = Input::new(date_entity)
             .appearance(false)
             .p_0()
+            .readonly(self.workspace.is_read_only())
             .text_color(date_color);
         let fi = flat_index;
         div()
@@ -193,7 +224,10 @@ impl TodoTxtState {
             return div().flex_1().into_any_element();
         };
         let fi = flat_index;
-        let mut desc_input = Input::new(desc_entity).appearance(false).p_0();
+        let mut desc_input = Input::new(desc_entity)
+            .appearance(false)
+            .p_0()
+            .readonly(self.workspace.is_read_only());
         if task.completed {
             desc_input = desc_input.text_color(cx.theme().muted_foreground);
         }
@@ -204,14 +238,17 @@ impl TodoTxtState {
             .child(desc_input)
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                 match event.keystroke.key.as_str() {
-                    "enter" if event.keystroke.modifiers.shift => {
+                    "enter"
+                        if !this.workspace.is_read_only() && event.keystroke.modifiers.shift =>
+                    {
                         this.add_subtask(fi, cx);
                     }
-                    "enter" => {
+                    "enter" if !this.workspace.is_read_only() => {
                         this.toggle_complete(fi, window, cx);
                     }
                     "backspace"
-                        if event.keystroke.modifiers.shift
+                        if !this.workspace.is_read_only()
+                            && event.keystroke.modifiers.shift
                             && event.keystroke.modifiers.secondary() =>
                     {
                         this.delete_task(fi, window, cx);
@@ -239,6 +276,8 @@ impl TodoTxtState {
                                 if let Some(e) = this.desc_inputs.get(&next_fi) {
                                     e.focus_handle(cx).focus(window, cx);
                                 }
+                            } else if this.workspace.is_read_only() {
+                                this.search_input.focus_handle(cx).focus(window, cx);
                             } else {
                                 this.new_task_input.focus_handle(cx).focus(window, cx);
                             }

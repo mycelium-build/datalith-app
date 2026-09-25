@@ -9,8 +9,8 @@ mod database;
 use database::{Backlink, CatalogDatabase};
 
 use crate::document::file_types::RegisteredFileTypes;
-use crate::vault::DATALITH_DIR_NAME;
 use crate::vault::search::SearchEngine;
+use crate::vault::{DATALITH_DIR_NAME, source::VaultSource};
 
 mod types;
 
@@ -21,6 +21,7 @@ pub use types::*;
 
 struct CatalogInner {
     root: PathBuf,
+    source: VaultSource,
     database: CatalogDatabase,
     file_types: RegisteredFileTypes,
     search: Mutex<SearchEngine>,
@@ -36,11 +37,13 @@ pub struct VaultCatalog {
 
 impl VaultCatalog {
     pub(crate) fn open(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
+        let source = VaultSource::for_root(&root)?;
         let database = pollster::block_on(CatalogDatabase::open(&root))?;
         let search = SearchEngine::open_existing(&root, file_types.clone())?;
 
         let inner = Arc::new(CatalogInner {
             root,
+            source,
             database,
             file_types: file_types.clone(),
             search: Mutex::new(search),
@@ -65,7 +68,7 @@ impl VaultCatalog {
 
     fn sync_on_background_thread(inner: &Arc<CatalogInner>, file_types: &RegisteredFileTypes) {
         let result = (|| -> Result<()> {
-            let initial = walk_tracked_files(&inner.root, file_types);
+            let initial = walk_tracked_files(&inner.root, file_types)?;
             let stored = pollster::block_on(inner.database.stored_paths())?;
             let removed = stored
                 .into_iter()
@@ -82,33 +85,36 @@ impl VaultCatalog {
             search.indexer.synchronize(&sync_result.all)?;
             drop(search);
 
-            let (notify_tx, notify_rx) = mpsc::channel();
-            let observed_root = inner
-                .root
-                .canonicalize()
-                .unwrap_or_else(|_| inner.root.clone());
-            let logical_root = inner.root.clone();
-            let mut watcher =
-                notify::recommended_watcher(move |mut event: notify::Result<notify::Event>| {
-                    if let Ok(event) = &mut event {
-                        for path in &mut event.paths {
-                            if let Ok(relative) = path.strip_prefix(&observed_root) {
-                                *path = logical_root.join(relative);
+            if matches!(&inner.source, VaultSource::Directory(_)) {
+                let (notify_tx, notify_rx) = mpsc::channel();
+                let observed_root = inner
+                    .root
+                    .canonicalize()
+                    .unwrap_or_else(|_| inner.root.clone());
+                let logical_root = inner.root.clone();
+                let mut watcher = notify::recommended_watcher(
+                    move |mut event: notify::Result<notify::Event>| {
+                        if let Ok(event) = &mut event {
+                            for path in &mut event.paths {
+                                if let Ok(relative) = path.strip_prefix(&observed_root) {
+                                    *path = logical_root.join(relative);
+                                }
                             }
                         }
-                    }
-                    if let Err(error) = notify_tx.send(event) {
-                        // Background task there can be no UI
-                        eprintln!("Vault Catalog watcher stopped: {error}");
-                    }
-                })?;
-            watcher.watch(&inner.root, RecursiveMode::Recursive)?;
+                        if let Err(error) = notify_tx.send(event) {
+                            // Background task there can be no UI
+                            eprintln!("Vault Catalog watcher stopped: {error}");
+                        }
+                    },
+                )?;
+                watcher.watch(&inner.root, RecursiveMode::Recursive)?;
 
-            if let Ok(mut guard) = inner.watcher.lock() {
-                *guard = Some(watcher);
+                if let Ok(mut guard) = inner.watcher.lock() {
+                    *guard = Some(watcher);
+                }
+
+                spawn_reconciler(inner, notify_rx)?;
             }
-
-            spawn_reconciler(inner, notify_rx)?;
 
             publish_event(inner, sync_result.all, true);
 
@@ -285,7 +291,9 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
             continue;
         }
         if path.is_dir() {
-            let current = walk_tracked_files(&path, &inner.file_types);
+            let Ok(current) = walk_tracked_files(&path, &inner.file_types) else {
+                continue;
+            };
             changed.extend(current.iter().cloned());
             removed.extend(
                 known
@@ -364,26 +372,14 @@ fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>, structure_change
     }
 }
 
-fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> BTreeSet<PathBuf> {
-    let mut files = BTreeSet::new();
-    let mut directories = vec![root.to_path_buf()];
-    while let Some(directory) = directories.pop() {
-        let Ok(entries) = std::fs::read_dir(directory) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.starts_with(root.join(DATALITH_DIR_NAME)) {
-                continue;
-            }
-            if path.is_dir() {
-                directories.push(path);
-            } else if file_types.is_tracked(&path) {
-                files.insert(path);
-            }
-        }
-    }
-    files
+fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> Result<BTreeSet<PathBuf>> {
+    let source = VaultSource::for_root(root)
+        .with_context(|| format!("Failed to open Vault source: {}", root.display()))?;
+    Ok(source
+        .paths()?
+        .into_iter()
+        .filter(|path| file_types.is_tracked(path))
+        .collect())
 }
 
 #[cfg(test)]
@@ -471,5 +467,51 @@ mod tests {
         assert!(event.structure_changed);
         drop(catalog);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn embedded_vault_is_catalogued_and_searchable_without_materialization() {
+        let root = crate::vault::source::DOCUMENTATION.root();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+
+        let welcome = root.join("Welcome.md");
+        assert_eq!(catalog.state(), CatalogState::Ready);
+        assert!(catalog.paths().contains(&welcome));
+        assert!(catalog.search("Datalith").contains(&welcome));
+        assert_eq!(catalog.resolve("Basics"), Some(root.join("Basics.md")));
+        let base = pollster::block_on(catalog.query_base(BaseQuery {
+            filters: crate::document::filter::Filter::MatchAll,
+            formulas: std::collections::BTreeMap::default(),
+            projections: vec!["category".into()],
+            sort: Vec::new(),
+            group_by: None,
+            summaries: Vec::new(),
+            classes: Vec::new(),
+            limit: Some(100),
+        }))
+        .unwrap();
+        let welcome_row = base
+            .documents
+            .iter()
+            .find(|document| document.path == welcome)
+            .expect("Base query includes embedded Welcome metadata");
+        assert_eq!(welcome_row.values, vec![serde_json::json!("welcome")]);
+        assert!(!root.exists());
+
+        drop(catalog);
+        let cache = crate::channel::Channel::current()
+            .vault_cache_dir(&root)
+            .unwrap();
+        let test_cache_root = cache.parent().unwrap().parent().unwrap();
+        let _ = std::fs::remove_dir_all(test_cache_root);
     }
 }

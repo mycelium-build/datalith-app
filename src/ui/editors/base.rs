@@ -10,15 +10,16 @@ use crate::ui::{BASE_FONT_SIZE, LINE_HEIGHT};
 
 pub struct BaseEditor {
     input: Entity<EditorState>,
+    read_only: bool,
 }
 
 impl BaseEditor {
-    pub const fn new(input: Entity<EditorState>) -> Self {
-        Self { input }
+    pub const fn new(input: Entity<EditorState>, read_only: bool) -> Self {
+        Self { input, read_only }
     }
 
     pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<EditorState> {
-        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let content = crate::vault::source::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             EditorState::new(window, cx)
                 .language("yaml")
@@ -39,6 +40,7 @@ impl BaseEditor {
                 Editor::new(&self.input)
                     .h_full()
                     .appearance(false)
+                    .readonly(self.read_only)
                     .text_size(px(BASE_FONT_SIZE))
                     .line_height(px(BASE_FONT_SIZE * LINE_HEIGHT)),
             )

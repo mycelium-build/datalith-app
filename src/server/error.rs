@@ -32,6 +32,10 @@ impl ApiError {
         Self::new(401, "Missing or invalid bearer token")
     }
 
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(403, message)
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(404, message)
     }

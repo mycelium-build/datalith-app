@@ -11,6 +11,9 @@ impl AssetSource for DatalithAssets {
         if let Some((_, bytes)) = ICON_ASSETS.iter().find(|(icon, _)| *icon == path) {
             return Ok(Some(Cow::Borrowed(bytes.as_bytes())));
         }
+        if let Some(bytes) = crate::vault::source::embedded_bytes(std::path::Path::new(path)) {
+            return Ok(Some(Cow::Borrowed(bytes)));
+        }
         gpui_kit::assets::Assets.load(path)
     }
 

@@ -14,7 +14,7 @@ use crate::app::{
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::ui::{notifications, settings::DOCS_URL};
+use crate::ui::{PendingOpen, notifications, settings::DOCS_URL};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -65,6 +65,23 @@ macro_rules! with_view {
         if let Some($view) = $cx.read_global(|state: &AppState, _| state.view.clone()) {
             $view.update($cx, |$view, $cx2| $body);
         }
+    };
+}
+
+// Keyboard and menu commands share the same vault capability check.
+macro_rules! with_writable_view {
+    ($cx:expr, |$view:ident, $cx2:ident| $body:block) => {
+        with_view!($cx, |$view, $cx2| {
+            if $view
+                .root_path
+                .as_deref()
+                .is_some_and(crate::vault::source::is_read_only)
+            {
+                $view.context_menu_target = None;
+                return;
+            }
+            $body
+        });
     };
 }
 
@@ -122,15 +139,25 @@ pub fn open_vault(_: &OpenVault, cx: &mut App) {
         if let Ok(Ok(Some(paths))) = rx.await
             && let Some(path) = paths.into_iter().next()
         {
-            let view_opt = cx.read_global(|state: &AppState, _| state.view.clone());
-            if let Some(view) = view_opt {
-                cx.update_entity(&view, |view, cx| {
-                    view.set_root_path(path, cx);
-                });
-            }
+            cx.update(|cx| open_vault_path(path, None, cx));
         }
     })
     .detach();
+}
+
+/// Route vault selection through the main window so transition and document opening stay ordered.
+pub fn open_vault_path(path: PathBuf, pending: Option<PendingOpen>, cx: &mut App) {
+    let view = cx.global::<AppState>().view.clone();
+    if let Some(view) = view
+        && let Some(handle) = cx.windows().first().copied()
+        && let Err(error) = handle.update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.set_root_path(path, pending, window, cx);
+            });
+        })
+    {
+        notifications::push_window_notification(cx, notifications::workspace_load_failed(&error));
+    }
 }
 
 pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
@@ -171,7 +198,7 @@ pub fn close_palette(_: &ClosePalette, cx: &mut App) {
 }
 
 pub fn handle_new_file(_: &NewFile, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -187,14 +214,14 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
             }
             view.refresh_tree(cx);
             view.rename_target = Some(created.clone());
-            view.pending_open = Some(created);
+            view.pending_open = Some(PendingOpen::Created(created));
         }
         cx.notify();
     });
 }
 
 pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -212,7 +239,7 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 }
 
 pub fn handle_rename(_: &Rename, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let catalog_blocked = view
             .vault_catalog
             .as_ref()
@@ -236,7 +263,7 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
 }
 
 pub fn handle_delete(_: &Delete, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let target_index = view.tree_state.read(cx).selected_index();
         let target = view
             .context_menu_target
@@ -268,7 +295,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
 }
 
 pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -278,7 +305,7 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
             if let Ok(duplicated) = file_ops::duplicate(&target)
                 && duplicated.is_file()
             {
-                view.pending_open = Some(duplicated);
+                view.pending_open = Some(PendingOpen::Created(duplicated));
             }
             view.refresh_tree(cx);
         }
@@ -287,7 +314,7 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
 }
 
 pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
             .take()
@@ -338,13 +365,7 @@ pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
 
 pub fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        if let Some(handler) = view.tabs.active_handler().cloned() {
-            handler.update(cx, |handler, cx| {
-                handler.toggle_editing(cx);
-            });
-            view.focus_editor_requested = true;
-        }
-        cx.notify();
+        view.toggle_editor_mode(cx);
     });
 }
 

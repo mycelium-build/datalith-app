@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -14,6 +13,9 @@ use gpui_kit::{
     Styled, div, px,
 };
 
+#[cfg(test)]
+use gpui_kit::test::TestSupportExt as _;
+
 use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::vault::path::display_name;
@@ -28,16 +30,15 @@ pub fn build_file_items_with_expanded(path: &Path, expanded_ids: &[SharedString]
     let mut dirs = Vec::new();
     let mut files = Vec::new();
 
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let entry_path = entry.path();
+    if let Ok(entries) = crate::vault::source::read_dir(path) {
+        for entry_path in entries {
             let name = display_name(&entry_path).to_string();
 
             if name.starts_with('.') {
                 continue;
             }
 
-            if entry_path.is_dir() {
+            if crate::vault::source::is_dir(&entry_path) {
                 let children = build_file_items_with_expanded(&entry_path, expanded_ids);
                 let id = entry_path.to_string_lossy().to_string();
                 let expanded = expanded_ids
@@ -90,7 +91,7 @@ impl DatalithView {
     ) -> ListItem {
         let item_id = entry.item().id.clone();
         let path = Self::path_from_id(&item_id);
-        let is_folder = entry.is_folder() || path.is_dir();
+        let is_folder = entry.is_folder() || crate::vault::source::is_dir(&path);
         let is_expanded = entry.is_expanded();
         let item_label = entry.item().label.clone();
         let depth = entry.depth();
@@ -192,8 +193,10 @@ impl DatalithView {
                     //.h_flex() // which make truncate not work
                     .truncate()
                     .child(item_label.clone()),
-            )
-            .on_drag(
+            );
+
+        if !crate::vault::source::is_read_only(path) {
+            row = row.on_drag(
                 DragFile {
                     path: path.to_path_buf(),
                 },
@@ -202,12 +205,27 @@ impl DatalithView {
                     cx.new(|_| drag.clone())
                 },
             );
+        }
 
-        if is_folder {
+        if is_folder && !crate::vault::source::is_read_only(path) {
             row = Self::attach_folder_drop(row, path.to_path_buf(), view, cx);
         }
 
+        #[cfg(test)]
+        let row = row.test_support();
         list_item = list_item.child(row);
+
+        list_item = list_item.on_aux_click(cx.listener({
+            let path = path.to_path_buf();
+            move |this, event: &ClickEvent, window, cx| {
+                if !is_folder && event.is_middle_click() {
+                    this.tree_state
+                        .update(cx, |state, cx| state.set_selected_index(Some(ix), cx));
+                    this.last_sidebar_selection = Some(path.clone());
+                    this.open_file(path.clone(), true, window, cx);
+                }
+            }
+        }));
 
         list_item.on_click(cx.listener({
             let path = path.to_path_buf();

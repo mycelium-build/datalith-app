@@ -5,6 +5,7 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, div,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
@@ -24,9 +25,11 @@ pub type ReloadAdapter = fn(
     &mut Context<FileHandler>,
 ) -> anyhow::Result<ReloadOutcome>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ViewMode {
     Edit,
+    #[default]
     View,
 }
 
@@ -38,6 +41,7 @@ pub struct FileHandler {
     pub(crate) mode: ViewMode,
     pub(crate) editor: Option<EditorKind>,
     pub(crate) viewer: Option<ViewerKind>,
+    read_only: bool,
     reload_adapter: Option<ReloadAdapter>,
 }
 
@@ -53,8 +57,17 @@ impl FileHandler {
             mode,
             editor,
             viewer,
+            read_only: false,
             reload_adapter: None,
         }
+    }
+
+    pub(crate) const fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        if read_only {
+            self.mode = ViewMode::View;
+        }
+        self
     }
 
     pub(crate) fn with_reload_adapter(mut self, reload_adapter: Option<ReloadAdapter>) -> Self {
@@ -85,23 +98,37 @@ impl FileHandler {
         self.mode == ViewMode::Edit
     }
 
-    pub(crate) const fn can_toggle_mode(&self) -> bool {
-        self.editor.is_some() && self.viewer.is_some()
+    pub(crate) const fn mode(&self) -> ViewMode {
+        self.mode
     }
 
-    pub(crate) fn toggle_editing(&mut self, cx: &mut Context<Self>) {
-        if !self.can_toggle_mode() {
+    pub(crate) const fn can_toggle_mode(&self) -> bool {
+        !self.read_only && self.editor.is_some() && self.viewer.is_some()
+    }
+
+    pub(crate) const fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    pub(crate) fn set_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        let mode = if self.read_only {
+            ViewMode::View
+        } else {
+            match (self.editor.is_some(), self.viewer.is_some()) {
+                (true, true) | (false, false) => mode,
+                (true, false) => ViewMode::Edit,
+                (false, true) => ViewMode::View,
+            }
+        };
+        if self.mode == mode {
             return;
         }
-        self.mode = match self.mode {
-            ViewMode::Edit => {
-                if let Some(viewer) = &self.viewer {
-                    viewer.refresh(cx);
-                }
-                ViewMode::View
-            }
-            ViewMode::View => ViewMode::Edit,
-        };
+        if mode == ViewMode::View
+            && let Some(viewer) = &self.viewer
+        {
+            viewer.refresh(cx);
+        }
+        self.mode = mode;
         cx.notify();
     }
 
@@ -124,7 +151,9 @@ impl FileHandler {
             ViewMode::View => self
                 .viewer
                 .as_ref()
-                .map_or_else(|| cx.focus_handle(), |v| v.focus_handle(cx)),
+                .map(|viewer| viewer.focus_handle(cx))
+                .or_else(|| self.editor.as_ref().map(|editor| editor.focus_handle(cx)))
+                .unwrap_or_else(|| cx.focus_handle()),
         }
     }
 }

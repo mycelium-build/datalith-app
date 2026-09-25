@@ -53,6 +53,14 @@ pub fn settings_save_failed(action: &str, error: &anyhow::Error) -> Notification
     Notification::error(format!("Failed to save {action}: {error}")).autohide(false)
 }
 
+pub fn workspace_load_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to load workspace: {error}")).autohide(false)
+}
+
+pub fn workspace_save_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to save workspace: {error}")).autohide(false)
+}
+
 pub fn documentation_open_failed(error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to open documentation: {error}")).autohide(false)
 }

@@ -5,6 +5,7 @@ pub mod monolith;
 pub mod notifications;
 pub mod palette;
 pub mod render;
+mod session;
 pub mod settings;
 pub mod sidebar;
 pub mod startup;
@@ -16,7 +17,6 @@ pub mod window;
 
 pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
-const VAULT_SELECT_MARKER: &str = "__open_new__";
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -24,7 +24,6 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::{
     input::InputState,
     notification::Notification,
-    select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
     tree::{TreeEvent, TreeState},
 };
@@ -34,38 +33,14 @@ use gpui_kit::{
 
 use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
-use crate::ui::sidebar::file_tree::build_file_items_with_expanded;
 use crate::ui::startup::{StartupAnimation, StartupType};
-use crate::vault::path::display_name;
 use crate::vault::{CatalogEvent, CatalogState, VaultCatalog};
 use palette::Palette;
 use settings::SettingsView;
 
-#[derive(Clone, Debug)]
-pub enum VaultEntry {
-    Vault {
-        path: SharedString,
-        name: SharedString,
-    },
-    OpenNew(SharedString),
-}
-
-impl SelectItem for VaultEntry {
-    type Value = SharedString;
-
-    fn title(&self) -> SharedString {
-        match self {
-            Self::Vault { name, .. } => name.clone(),
-            Self::OpenNew(_) => SharedString::from("Open new vault..."),
-        }
-    }
-
-    fn value(&self) -> &Self::Value {
-        match self {
-            Self::Vault { path, .. } => path,
-            Self::OpenNew(marker) => marker,
-        }
-    }
+pub enum PendingOpen {
+    Open(PathBuf),
+    Created(PathBuf),
 }
 
 // The view tracks several independent one-shot UI flags (focus requests, refresh notifications) that are read and cleared during rendering;
@@ -74,14 +49,17 @@ impl SelectItem for VaultEntry {
 pub struct DatalithView {
     update_control: Option<Entity<title_bar::UpdateControl>>,
     pub(crate) tree_state: Entity<TreeState>,
-    pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
-    pending_vault_refresh: bool,
-    _vault_select_sub: Subscription,
     _tree_state_sub: Subscription,
     pub(crate) root_path: Option<PathBuf>,
     root_name: SharedString,
     pub(crate) tabs: tabs::Tabs,
-    pub(crate) pending_open: Option<PathBuf>,
+    pub(crate) pending_open: Option<PendingOpen>,
+    workspace_machine_id: Option<String>,
+    workspace_save_blocked: bool,
+    vault_transition_generation: u64,
+    pending_vault_path: Option<PathBuf>,
+    pending_vault_open: Option<PendingOpen>,
+    vault_transition_task: Task<()>,
     pub(crate) vault_catalog: Option<VaultCatalog>,
     pub(crate) catalog_updates: Option<std::sync::mpsc::Receiver<CatalogEvent>>,
     vault_load_generation: u64, // prevent bug when switching vault
@@ -114,39 +92,6 @@ pub struct DatalithView {
     startup_driver: Task<()>,
 }
 
-fn build_vault_entries() -> Vec<VaultEntry> {
-    let mut items = Vec::new();
-    let docs_vault = crate::app::docs::docs_vault_path();
-    if docs_vault.is_dir() {
-        items.push(VaultEntry::Vault {
-            path: docs_vault.to_string_lossy().to_string().into(),
-            name: SharedString::from(crate::app::docs::DOCS_VAULT_NAME),
-        });
-    }
-    for path in app_settings::snapshot().recent_vaults {
-        if path == docs_vault {
-            continue;
-        }
-        let path_text: SharedString = path.to_string_lossy().to_string().into();
-        let name: SharedString = display_name(&path).into();
-        items.push(VaultEntry::Vault {
-            path: path_text,
-            name,
-        });
-    }
-    items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
-    items
-}
-
-fn is_current_vault_load(
-    current_generation: u64,
-    current_root: Option<&Path>,
-    load_generation: u64,
-    load_root: &Path,
-) -> bool {
-    current_generation == load_generation && current_root == Some(load_root)
-}
-
 impl DatalithView {
     #[must_use]
     pub(crate) fn new(
@@ -161,27 +106,6 @@ impl DatalithView {
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
         let tree_state_sub = Self::subscribe_tree_events(&tree_state, window, cx);
-
-        let vault_select_state =
-            cx.new(|cx| SelectState::new(build_vault_entries(), None, window, cx));
-
-        let vault_select_sub = cx.subscribe_in(
-            &vault_select_state,
-            window,
-            |view: &mut Self, _state, event: &SelectEvent<Vec<VaultEntry>>, window, cx| match event
-            {
-                SelectEvent::Confirm(value) => {
-                    if let Some(value) = value {
-                        if value == VAULT_SELECT_MARKER {
-                            window.dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
-                        } else {
-                            let path = PathBuf::from(value.to_string());
-                            view.set_root_path(path, cx);
-                        }
-                    }
-                }
-            },
-        );
 
         let settings = SettingsView::new(cx);
         let font_size_slider_sub = cx.subscribe(
@@ -216,13 +140,20 @@ impl DatalithView {
 
         let update_control = crate::app::update::Updater::get(cx)
             .map(|updater| cx.new(|cx| title_bar::UpdateControl::new(updater, cx)));
+        let workspace_machine_id = crate::app::workspace::machine_id().ok();
         let mut view = Self {
             update_control,
             tree_state,
-            vault_select_state,
             root_path: None,
-            root_name: "No folder open".into(),
+            root_name: "No vault opened".into(),
             tabs: tabs::Tabs::new(),
+            pending_open: None,
+            workspace_machine_id,
+            workspace_save_blocked: false,
+            vault_transition_generation: 0,
+            pending_vault_path: None,
+            pending_vault_open: None,
+            vault_transition_task: Task::ready(()),
             vault_catalog: None,
             catalog_updates: None,
             vault_load_generation: 0,
@@ -237,7 +168,6 @@ impl DatalithView {
             _appearance_sub: appearance_sub,
             licenses: licenses::LicensesView::new(cx),
             rename_sub: None,
-            _vault_select_sub: vault_select_sub,
             _tree_state_sub: tree_state_sub,
             context_menu_target: None,
             context_menu_from_row: false,
@@ -247,8 +177,6 @@ impl DatalithView {
             expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
-            pending_open: None,
-            pending_vault_refresh: false,
             sidebar_focus_handle,
             last_sidebar_selection: None,
             pending_navigation: None,
@@ -291,73 +219,16 @@ impl DatalithView {
         })
     }
 
-    pub(crate) fn set_root_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.vault_load_generation = self.vault_load_generation.wrapping_add(1);
-        let generation = self.vault_load_generation;
-        self.root_name = display_name(&path).into();
-        self.root_path = Some(path.clone());
-        if let Err(error) = app_settings::record_opened_vault(&path) {
-            self.pending_notifications
-                .push(notifications::settings_save_failed("opened vault", &error));
-        }
-
-        self.pending_vault_refresh = true;
-        self.expanded_tree_ids.clear();
-        self.pending_external_updates.clear();
-        self.vault_catalog = None;
-        self.catalog_updates = None;
-        self.catalog_poll_task = Task::ready(());
-        self.vault_db_ready_notified = false;
-
-        let items = build_file_items_with_expanded(&path, &self.expanded_tree_ids);
-        self.tree_state.update(cx, |state, cx| {
-            state.set_items(items, cx);
-        });
+    fn use_vault_catalog(&mut self, catalog: VaultCatalog, cx: &Context<Self>) {
+        self.catalog_updates = Some(catalog.events());
+        self.vault_catalog = Some(catalog);
+        self.start_catalog_polling(cx);
         if self.palette.open {
-            let open_files = self.tabs.open_paths();
-            self.palette.refresh(None, &open_files);
+            self.palette
+                .refresh(self.vault_catalog.as_ref(), &self.tabs.open_paths());
         }
-
-        let file_types = self.registry.registered_file_types();
-        let catalog_root = path.clone();
-        let catalog_task =
-            cx.background_spawn(async move { VaultCatalog::open(catalog_root, file_types) });
-        self.catalog_load_task = cx.spawn(async move |this, cx| {
-            let result = catalog_task.await;
-            if let Err(error) = this.update(cx, |view, cx| {
-                if !is_current_vault_load(
-                    view.vault_load_generation,
-                    view.root_path.as_deref(),
-                    generation,
-                    &path,
-                ) {
-                    return;
-                }
-                match result {
-                    Ok(catalog) => {
-                        view.catalog_updates = Some(catalog.events());
-                        view.vault_catalog = Some(catalog);
-                        view.start_catalog_polling(cx);
-                        if view.palette.open {
-                            let open_files = view.tabs.open_paths();
-                            view.palette
-                                .refresh(view.vault_catalog.as_ref(), &open_files);
-                        }
-                        view.pending_notifications
-                            .push(notifications::catalog_loading());
-                    }
-                    Err(_) => {
-                        view.pending_notifications
-                            .push(notifications::vault_db_failed_to_load());
-                    }
-                }
-                cx.notify();
-            }) {
-                eprintln!("Failed to publish Vault load result to the UI: {error}");
-            }
-        });
-
-        cx.notify();
+        self.pending_notifications
+            .push(notifications::catalog_loading());
     }
 
     fn start_catalog_polling(&mut self, cx: &Context<Self>) {
@@ -369,7 +240,11 @@ impl DatalithView {
                 if this
                     .update(cx, |view, cx| {
                         let mut changed_paths = Vec::new();
-                        let mut catalog_changed = false;
+                        let mut catalog_changed = !view.vault_db_ready_notified
+                            && view
+                                .vault_catalog
+                                .as_ref()
+                                .is_some_and(|catalog| catalog.state() == CatalogState::Ready);
                         let mut structure_changed = false;
                         if let Some(ref updates) = view.catalog_updates {
                             while let Ok(update) = updates.try_recv() {
@@ -387,6 +262,15 @@ impl DatalithView {
                                     if let (Some(catalog), Some(root)) =
                                         (view.vault_catalog.clone(), view.root_path.clone())
                                     {
+                                        // Recheck restored documents once when the catalog is ready.
+                                        if !view.vault_db_ready_notified {
+                                            changed_paths.extend(
+                                                view.tabs
+                                                    .iter()
+                                                    .filter(|(_, path, _)| path.starts_with(&root))
+                                                    .map(|(_, path, _)| path.to_path_buf()),
+                                            );
+                                        }
                                         let handlers = view
                                             .tabs
                                             .iter()
@@ -417,7 +301,10 @@ impl DatalithView {
                         }
 
                         if !changed_paths.is_empty() {
-                            for removed in changed_paths.iter().filter(|path| !path.exists()) {
+                            for removed in changed_paths
+                                .iter()
+                                .filter(|path| !crate::vault::source::exists(path))
+                            {
                                 view.close_tabs_under(removed, cx);
                             }
                             view.pending_external_updates.extend(changed_paths);
@@ -440,13 +327,6 @@ impl DatalithView {
         });
     }
 
-    pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.vault_select_state.update(cx, |state, cx| {
-            state.set_items(build_vault_entries(), window, cx);
-        });
-        self.pending_vault_refresh = false;
-    }
-
     pub(crate) fn create_quick_file(&mut self, extension: &str, cx: &mut Context<Self>) {
         let Some(root) = self.root_path.clone() else {
             return;
@@ -466,7 +346,7 @@ impl DatalithView {
                     );
                     return;
                 }
-                self.pending_open = Some(path);
+                self.pending_open = Some(PendingOpen::Created(path));
             }
             Err(error) => {
                 notifications::push_window_notification(
@@ -486,25 +366,5 @@ impl DatalithView {
             .map(|e| PathBuf::from(e.item().id.to_string()))
             .or_else(|| self.tabs.active_path().map(Path::to_path_buf))
             .or_else(|| self.last_sidebar_selection.clone())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_current_vault_load;
-    use std::path::Path;
-
-    #[test]
-    fn only_the_current_vault_load_can_publish_results() {
-        let current = Path::new("/vault/current");
-
-        assert!(is_current_vault_load(2, Some(current), 2, current));
-        assert!(!is_current_vault_load(2, Some(current), 1, current));
-        assert!(!is_current_vault_load(
-            2,
-            Some(current),
-            2,
-            Path::new("/vault/previous")
-        ));
     }
 }

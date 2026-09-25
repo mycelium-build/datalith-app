@@ -27,7 +27,7 @@ pub struct FileTypeConfig {
     pub(crate) default_mode: ViewMode,
 }
 
-pub type EditorFactory = fn(&Path, &mut Window, &mut Context<FileHandler>) -> EditorKind;
+pub type EditorFactory = fn(&Path, bool, &mut Window, &mut Context<FileHandler>) -> EditorKind;
 
 pub struct ViewerDependencies {
     vault_catalog: Option<VaultCatalog>,
@@ -62,10 +62,11 @@ impl FileRegistry {
                     yaml_frontmatter: false,
                 },
                 icon: DatalithIcon::File,
-                editor_factory: Some(|path, window, cx| {
-                    EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
-                        path, window, cx,
-                    )))
+                editor_factory: Some(|path, read_only, window, cx| {
+                    EditorKind::PlainText(PlainTextEditor::new(
+                        PlainTextEditor::new_state(path, window, cx),
+                        read_only,
+                    ))
                 }),
                 viewer_factory: None,
                 reload_adapter: None,
@@ -108,13 +109,15 @@ impl FileRegistry {
         cx: &mut Context<FileHandler>,
     ) -> FileHandler {
         let config = self.config_for(path);
+        let read_only = crate::vault::source::is_read_only(path);
         let editor = config
             .editor_factory
-            .map(|factory| factory(path, window, cx));
+            .map(|factory| factory(path, read_only, window, cx));
         let viewer = config
             .viewer_factory
             .and_then(|factory| factory(path, editor.as_ref(), dependencies, cx));
         FileHandler::new(config.default_mode, editor, viewer)
+            .with_read_only(read_only)
             .with_reload_adapter(config.reload_adapter)
     }
 }
@@ -133,8 +136,11 @@ pub fn default_registry() -> FileRegistry {
                 yaml_frontmatter: false,
             },
             icon: DatalithIcon::Base,
-            editor_factory: Some(|path, window, cx| {
-                EditorKind::Base(BaseEditor::new(BaseEditor::new_state(path, window, cx)))
+            editor_factory: Some(|path, read_only, window, cx| {
+                EditorKind::Base(BaseEditor::new(
+                    BaseEditor::new_state(path, window, cx),
+                    read_only,
+                ))
             }),
             viewer_factory: Some(|_path, editor, dependencies, cx| {
                 let input = editor?.input()?.clone();
@@ -159,10 +165,11 @@ pub fn default_registry() -> FileRegistry {
                 yaml_frontmatter: true,
             },
             icon: DatalithIcon::Note,
-            editor_factory: Some(|path, window, cx| {
-                EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
-                    path, window, cx,
-                )))
+            editor_factory: Some(|path, read_only, window, cx| {
+                EditorKind::Markdown(MarkdownEditor::new(
+                    MarkdownEditor::new_state(path, window, cx),
+                    read_only,
+                ))
             }),
             viewer_factory: Some(|path, editor, _dependencies, _cx| {
                 let editor = editor?;
@@ -208,7 +215,7 @@ pub fn default_registry() -> FileRegistry {
                 yaml_frontmatter: false,
             },
             icon: DatalithIcon::Todo,
-            editor_factory: Some(|path, window, cx| {
+            editor_factory: Some(|path, _read_only, window, cx| {
                 EditorKind::TodoTxt(TodoTxtEditor::new(TodoTxtEditor::new_state(
                     path, window, cx,
                 )))

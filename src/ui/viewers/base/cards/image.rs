@@ -49,7 +49,7 @@ pub(super) fn render_card_image(
             });
         });
     let image_element = match image {
-        CardImage::Local(path) => img(path)
+        CardImage::Local(path) => img(crate::ui::viewers::image::image_source(&path))
             .size_full()
             .object_fit(object_fit)
             .aspect_ratio(cards_config.image_aspect_ratio)
@@ -123,13 +123,13 @@ pub(in crate::ui::viewers::base) fn resolve_card_image(
                 || root.join(&target),
                 |parent| root.join(parent).join(&target),
             );
-            if relative_candidate.is_file() {
+            if crate::vault::source::is_file(&relative_candidate) {
                 return Some(CardImage::Local(relative_candidate));
             }
             resolved
                 .get(&target)?
                 .clone()
-                .filter(|path| path.is_file())
+                .filter(|path| crate::vault::source::is_file(path))
                 .map(CardImage::Local)
         }
     }
