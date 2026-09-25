@@ -141,6 +141,7 @@ impl Default for ServerSettings {
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
+    pub onboarding_complete: bool,
     pub theme_preference: ThemePreference,
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
@@ -155,6 +156,7 @@ impl Default for ApplicationSettings {
         Self {
             last_vault: None,
             recent_vaults: Vec::new(),
+            onboarding_complete: false,
             theme_preference: ThemePreference::default(),
             light_theme_name: None,
             dark_theme_name: None,
@@ -192,6 +194,8 @@ struct StoredSettings {
     #[serde(default)]
     recent_vaults: Vec<String>,
     #[serde(default)]
+    onboarding_complete: bool,
+    #[serde(default)]
     theme_preference: Option<String>,
     #[serde(default)]
     light_theme_name: Option<String>,
@@ -215,7 +219,10 @@ impl StoredSettings {
     fn normalized(self) -> ApplicationSettings {
         let mut recent_vaults = Vec::new();
         for path in self.recent_vaults.into_iter().map(PathBuf::from) {
-            if path.is_dir() && !recent_vaults.contains(&path) {
+            if crate::vault::source::is_dir(&path)
+                && !crate::vault::source::is_read_only(&path)
+                && !recent_vaults.contains(&path)
+            {
                 recent_vaults.push(path);
             }
             if recent_vaults.len() == MAX_RECENT_VAULTS {
@@ -227,8 +234,9 @@ impl StoredSettings {
             last_vault: self
                 .last_vault
                 .map(PathBuf::from)
-                .filter(|path| path.is_dir()),
+                .filter(|path| crate::vault::source::is_dir(path)),
             recent_vaults,
+            onboarding_complete: self.onboarding_complete,
             theme_preference: match self.theme_preference.as_deref() {
                 Some("light") => ThemePreference::Light,
                 Some("dark") => ThemePreference::Dark,
@@ -262,6 +270,7 @@ impl StoredSettings {
                 .iter()
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect(),
+            onboarding_complete: settings.onboarding_complete,
             theme_preference: Some(settings.theme_preference.name().to_owned()),
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
@@ -392,11 +401,28 @@ pub fn set_open_new_tab_mode(mode: ViewMode) -> Result<()> {
 
 pub fn record_opened_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
+    let personal = !crate::vault::source::is_read_only(&path);
     update(|settings| {
         settings.last_vault = Some(path.clone());
+        settings.onboarding_complete = true;
+        if personal {
+            settings.recent_vaults.retain(|recent| recent != &path);
+            settings.recent_vaults.insert(0, path);
+            settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+        } else {
+            settings.recent_vaults.retain(|recent| recent != &path);
+        }
+    })
+}
+
+/// Forget a personal vault without deleting its folder or saved workspace.
+pub fn remove_recent_vault(path: &Path) -> Result<()> {
+    let path = path.to_path_buf();
+    update(|settings| {
         settings.recent_vaults.retain(|recent| recent != &path);
-        settings.recent_vaults.insert(0, path);
-        settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+        if settings.last_vault.as_ref() == Some(&path) {
+            settings.last_vault = None;
+        }
     })
 }
 
@@ -419,7 +445,9 @@ pub fn known_vault_paths() -> Vec<PathBuf> {
             paths.push(recent.clone());
         }
     }
-    paths.retain(|path| path.is_dir());
+    paths.retain(|path| {
+        crate::vault::source::is_dir(path) && !crate::vault::source::is_read_only(path)
+    });
     paths
 }
 
@@ -705,5 +733,35 @@ mod tests {
         assert_eq!(reloaded.theme_preference, ThemePreference::Dark);
         let _ = fs::remove_file(file);
         let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn embedded_vault_stays_as_last_vault_but_is_not_a_personal_recent() {
+        let docs = crate::vault::source::DOCUMENTATION.root();
+        let personal = std::env::temp_dir().join(format!(
+            "datalith-personal-vault-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        fs::create_dir_all(&personal).unwrap();
+
+        let normalized = StoredSettings {
+            last_vault: Some(docs.to_string_lossy().into_owned()),
+            recent_vaults: vec![
+                docs.to_string_lossy().into_owned(),
+                personal.to_string_lossy().into_owned(),
+            ],
+            onboarding_complete: true,
+            ..StoredSettings::default()
+        }
+        .normalized();
+
+        assert_eq!(normalized.last_vault, Some(docs));
+        assert_eq!(normalized.recent_vaults, vec![personal.clone()]);
+        assert!(normalized.onboarding_complete);
+        let _ = fs::remove_dir(personal);
     }
 }

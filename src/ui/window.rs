@@ -90,12 +90,11 @@ mod tests {
     use gpui_kit::{TestAppContext, WindowHandle};
 
     use super::*;
-    use crate::app::{actions, docs};
+    use crate::app::{actions, docs, settings};
     use crate::document::handler::ViewMode;
 
-    // Keep window-level coverage to the four paths that need real window state:
-    // first launch, close/restore across vaults, per-tab keyboard mode, and a
-    // failed save invalidating an older pending transition.
+    // Keep window-level coverage focused on first launch and menu navigation,
+    // workspace restore, per-tab keyboard mode, and transition/close failures.
     struct VaultFixture(PathBuf);
 
     impl VaultFixture {
@@ -106,7 +105,9 @@ mod tests {
                 std::thread::current().name().unwrap().replace("::", "-")
             ));
             let _ = std::fs::remove_dir_all(&root);
-            docs::seed_into(&root).unwrap();
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("Welcome.md"), "# Welcome\n").unwrap();
+            std::fs::write(root.join("Basics.md"), "# Basics\n").unwrap();
             Self(root)
         }
     }
@@ -190,27 +191,77 @@ mod tests {
     }
 
     #[test]
-    fn first_startup_opens_welcome_in_reading_mode() {
-        let vault = VaultFixture::new("first-startup");
+    fn first_startup_opens_embedded_welcome_in_reading_mode() {
+        let vault = docs::docs_vault_path();
         let mut cx = app();
-        let (_, view) = open(&mut cx, &vault.0, true);
+        settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
+        let (handle, view) = open(&mut cx, &vault, true);
         cx.update(|cx| {
             let view = view.read(cx);
-            assert_eq!(view.root_path.as_ref(), Some(&vault.0));
-            assert_eq!(view.tabs.open_paths(), vec![vault.0.join("Welcome.md")]);
+            assert_eq!(view.root_path.as_ref(), Some(&vault));
+            assert_eq!(view.tabs.open_paths(), vec![vault.join(docs::WELCOME_NOTE)]);
             assert_eq!(
                 view.tabs.active_path(),
-                Some(vault.0.join("Welcome.md").as_path())
+                Some(vault.join(docs::WELCOME_NOTE).as_path())
+            );
+            assert!(settings::snapshot().onboarding_complete);
+        });
+        assert!(!vault.exists());
+        assert_modes(&cx, &view, &[ViewMode::View]);
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_file(vault.join("Basics.md"), true, window, cx);
+            });
+        })
+        .unwrap();
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert!(
+                !view
+                    .tabs
+                    .active_handler()
+                    .is_some_and(|handler| handler.read(cx).can_toggle_mode())
             );
         });
-        assert_modes(&cx, &view, &[ViewMode::View]);
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::View]);
+
+        let personal = VaultFixture::new("documentation-menu-navigation");
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                assert!(view.set_root_path(personal.0.clone(), None, window, cx));
+            });
+        })
+        .unwrap();
+        wait_for_root(&cx, &view, &personal.0);
+
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("vault-selector", cx);
+            window.render_frame(cx);
+            let mut menu = window.within("popup-menu");
+            assert!(menu.try_find(0_usize).is_some());
+            menu.click(0_usize, cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
+        wait_for_root(&cx, &view, &vault);
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.root_path.as_ref(), Some(&vault));
+            assert_eq!(
+                view.tabs.open_paths(),
+                vec![vault.join(docs::WELCOME_NOTE), vault.join("Basics.md")]
+            );
+        });
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::View]);
     }
 
     #[test]
     fn workspace_survives_vault_switch_and_window_restore_without_history() {
         let first = VaultFixture::new("switch-first");
         let second = VaultFixture(first.0.with_extension("second-vault"));
-        docs::seed_into(&second.0).unwrap();
+        std::fs::create_dir_all(&second.0).unwrap();
+        std::fs::write(second.0.join("Welcome.md"), "# Welcome\n").unwrap();
+        std::fs::write(second.0.join("Basics.md"), "# Basics\n").unwrap();
         let mut cx = app();
         let (handle, view) = open(&mut cx, &first.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
@@ -288,12 +339,144 @@ mod tests {
     }
 
     #[test]
+    fn removing_vaults_preserves_files_and_active_workspace_on_save_failure() {
+        let active = VaultFixture::new("close-active");
+        let inactive = VaultFixture::new("close-inactive");
+        let inactive_saved_state = inactive.0.join(".datalith/workspace/preserve.json");
+        std::fs::create_dir_all(inactive_saved_state.parent().unwrap()).unwrap();
+        std::fs::write(&inactive_saved_state, "keep this workspace").unwrap();
+
+        let mut cx = app();
+        let (handle, view) = open(&mut cx, &active.0, true);
+        settings::record_opened_vault(&inactive.0).unwrap();
+        settings::record_opened_vault(&active.0).unwrap();
+        let before = cx.update(|cx| view.read(cx).tabs.snapshot(cx));
+
+        let remove_inactive_id = format!("remove-vault-{}", inactive.0.display());
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("vault-selector", cx);
+            window.render_frame(cx);
+            assert_close_button_in_menu(window, remove_inactive_id.clone());
+            window.click(remove_inactive_id.clone(), cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.root_path.as_ref(), Some(&active.0));
+            assert_eq!(view.tabs.snapshot(cx), before);
+            assert_eq!(settings::snapshot().recent_vaults, vec![active.0.clone()]);
+        });
+        assert!(inactive.0.is_dir());
+        assert_eq!(
+            std::fs::read_to_string(&inactive_saved_state).unwrap(),
+            "keep this workspace"
+        );
+
+        let machine_id = crate::app::workspace::machine_id().unwrap();
+        let workspace_dir = active.0.join(".datalith/workspace");
+        let preserved_dir = active.0.join(".datalith/workspace-preserved");
+        let workspace_file = workspace_dir.join(format!("{machine_id}.json"));
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                assert!(view.set_root_path(inactive.0.clone(), None, window, cx));
+            });
+        })
+        .unwrap();
+
+        let saved_bytes = std::fs::read(&workspace_file).unwrap();
+        std::fs::rename(&workspace_dir, &preserved_dir).unwrap();
+        std::fs::write(&workspace_dir, "block workspace writes").unwrap();
+        assert!(
+            !cx.update(
+                |cx| view.update(cx, |view, cx| { view.close_personal_vault(&active.0, cx) })
+            )
+        );
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.root_path.as_ref(), Some(&active.0));
+            assert_eq!(view.tabs.snapshot(cx), before);
+            assert_eq!(settings::snapshot().recent_vaults, vec![active.0.clone()]);
+        });
+        assert_eq!(
+            std::fs::read(preserved_dir.join(format!("{machine_id}.json"))).unwrap(),
+            saved_bytes
+        );
+
+        std::fs::remove_file(&workspace_dir).unwrap();
+        std::fs::rename(&preserved_dir, &workspace_dir).unwrap();
+        let remove_active_id = format!("remove-vault-{}", active.0.display());
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("vault-selector", cx);
+            window.render_frame(cx);
+            window.press("tab", cx);
+            window.render_frame(cx);
+            assert_eq!(window.find(remove_active_id.clone()).focused(), Some(true));
+        })
+        .unwrap();
+        cx.run_until_parked();
+        activate_close_button_with_keyboard(&cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            assert!(
+                view.read(cx).root_path.is_none(),
+                "keyboard did not remove active vault"
+            );
+            window.render_frame(cx);
+            assert!(view.read(cx).sidebar_focus_handle.is_focused(window));
+            assert!(
+                !window
+                    .try_find("popup-menu")
+                    .is_some_and(|popup| popup.visible())
+            );
+        })
+        .unwrap();
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.root_path, None);
+            assert!(view.tabs.is_empty());
+            assert!(settings::snapshot().recent_vaults.is_empty());
+            assert_eq!(settings::snapshot().last_vault, None);
+            assert!(settings::snapshot().onboarding_complete);
+        });
+        assert!(workspace_file.is_file());
+    }
+
+    fn assert_close_button_in_menu(window: &Window, button_id: String) {
+        let menu_bounds = window.find("popup-menu").bounds();
+        let close_bounds = window.find(button_id).bounds();
+        assert!(
+            close_bounds.origin.x >= menu_bounds.origin.x
+                && close_bounds.origin.y >= menu_bounds.origin.y
+                && close_bounds.right() <= menu_bounds.right()
+                && close_bounds.bottom() <= menu_bounds.bottom(),
+            "close button bounds {close_bounds:?} escaped popup bounds {menu_bounds:?}"
+        );
+    }
+
+    fn activate_close_button_with_keyboard(cx: &TestAppContext, handle: WindowHandle<Root>) {
+        let mut visual = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let keystroke = gpui_kit::Keystroke::parse("space").unwrap();
+        visual.simulate_event(gpui_kit::KeyDownEvent {
+            keystroke: keystroke.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        visual.simulate_event(gpui_kit::KeyUpEvent { keystroke });
+    }
+
+    #[test]
     fn failed_newer_save_preserves_active_workspace_and_cancels_pending_transition() {
         let current = VaultFixture::new("stale-current");
         let target = VaultFixture(current.0.with_extension("stale-target"));
-        docs::seed_into(&target.0).unwrap();
+        std::fs::create_dir_all(&target.0).unwrap();
+        std::fs::write(target.0.join("Welcome.md"), "# Welcome\n").unwrap();
+        std::fs::write(target.0.join("Basics.md"), "# Basics\n").unwrap();
         let newer = VaultFixture(current.0.with_extension("stale-newer"));
-        docs::seed_into(&newer.0).unwrap();
+        std::fs::create_dir_all(&newer.0).unwrap();
+        std::fs::write(newer.0.join("Welcome.md"), "# Welcome\n").unwrap();
+        std::fs::write(newer.0.join("Basics.md"), "# Basics\n").unwrap();
         let mut cx = app();
         let (handle, view) = open(&mut cx, &current.0, true);
         let machine_id = crate::app::workspace::machine_id().unwrap();

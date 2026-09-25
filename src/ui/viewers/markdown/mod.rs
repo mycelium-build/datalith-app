@@ -71,9 +71,9 @@ impl MarkdownViewer {
             .file_path
             .parent()
             .map_or_else(|| PathBuf::from(&decoded), |parent| parent.join(&decoded));
-        if path.exists() {
+        if crate::vault::source::is_file(&path) {
             return container
-                .child(img(path).max_w(relative(1.)))
+                .child(img(crate::ui::viewers::image::image_source(&path)).max_w(relative(1.)))
                 .into_any_element();
         }
 

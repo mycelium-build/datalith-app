@@ -42,7 +42,12 @@ impl Render for DatalithView {
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
-            if let Some(handler) = self.tabs.handler_for_path(&path) {
+            let handlers = self
+                .tabs
+                .handlers_for_path(&path)
+                .cloned()
+                .collect::<Vec<_>>();
+            for handler in handlers {
                 handler.update(cx, |handler, cx| {
                     if let Err(error) = handler.reload_from_disk(&path, window, cx) {
                         eprintln!("Failed to reload {}: {error}", path.display());

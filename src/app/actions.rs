@@ -68,6 +68,23 @@ macro_rules! with_view {
     };
 }
 
+// Keyboard and menu commands share the same vault capability check.
+macro_rules! with_writable_view {
+    ($cx:expr, |$view:ident, $cx2:ident| $body:block) => {
+        with_view!($cx, |$view, $cx2| {
+            if $view
+                .root_path
+                .as_deref()
+                .is_some_and(crate::vault::source::is_read_only)
+            {
+                $view.context_menu_target = None;
+                return;
+            }
+            $body
+        });
+    };
+}
+
 pub fn register(cx: &mut App) {
     cx.on_action(quit);
     cx.on_action(check_for_updates);
@@ -181,7 +198,7 @@ pub fn close_palette(_: &ClosePalette, cx: &mut App) {
 }
 
 pub fn handle_new_file(_: &NewFile, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -204,7 +221,7 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
 }
 
 pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -222,7 +239,7 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
 }
 
 pub fn handle_rename(_: &Rename, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let catalog_blocked = view
             .vault_catalog
             .as_ref()
@@ -246,7 +263,7 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
 }
 
 pub fn handle_delete(_: &Delete, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let target_index = view.tree_state.read(cx).selected_index();
         let target = view
             .context_menu_target
@@ -278,7 +295,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
 }
 
 pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
             .context_menu_target
@@ -297,7 +314,7 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
 }
 
 pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
-    with_view!(cx, |view, cx| {
+    with_writable_view!(cx, |view, cx| {
         let target = view
             .context_menu_target
             .take()

@@ -44,18 +44,11 @@ fn main() {
         app::keymap::register(cx);
         app::menus::install(cx);
 
-        let docs_vault = match app::docs::ensure_docs_vault() {
-            Ok(outcome) => Some(outcome),
-            Err(error) => {
-                eprintln!("Failed to seed docs Vault: {error:#}");
-                None
-            }
-        };
         let settings = app::settings::snapshot();
-        let first_startup = settings.last_vault.is_none() && settings.recent_vaults.is_empty();
+        let first_startup = !settings.onboarding_complete;
         let root = settings
             .last_vault
-            .or_else(|| docs_vault.filter(|_| first_startup));
+            .or_else(|| first_startup.then(app::docs::docs_vault_path));
 
         app::deeplink::start(cx);
         if let Err(error) = server::sync() {

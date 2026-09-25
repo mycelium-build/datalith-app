@@ -60,10 +60,13 @@ impl Tabs {
         self.active().map(|tab| &tab.id)
     }
 
-    pub(crate) fn handler_for_path(&self, path: &Path) -> Option<&Entity<FileHandler>> {
+    pub(crate) fn handlers_for_path(
+        &self,
+        path: &Path,
+    ) -> impl Iterator<Item = &Entity<FileHandler>> {
         self.entries
             .iter()
-            .find(|tab| same_document(&tab.path, path))
+            .filter(move |tab| same_document(&tab.path, path))
             .map(|tab| &tab.handler)
     }
 
@@ -219,10 +222,16 @@ fn same_document(left: &Path, right: &Path) -> bool {
 }
 
 fn normalized_path(path: &Path) -> PathBuf {
-    let absolute = if path.is_absolute() {
+    let source_path = crate::vault::source::is_read_only(path);
+    let absolute = if path.is_absolute() || source_path {
         path.to_path_buf()
     } else {
         std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+    };
+    let absolute = if source_path {
+        absolute
+    } else {
+        std::fs::canonicalize(&absolute).unwrap_or(absolute)
     };
     let mut normalized = PathBuf::new();
     for component in absolute.components() {
@@ -258,5 +267,11 @@ mod tests {
             Path::new("notes/today.md")
         ));
         assert!(!same_document(Path::new(""), Path::new("notes/today.md")));
+
+        let embedded = crate::vault::source::DOCUMENTATION.root();
+        assert!(same_document(
+            &embedded.join("examples/../Welcome.md"),
+            &embedded.join("Welcome.md")
+        ));
     }
 }

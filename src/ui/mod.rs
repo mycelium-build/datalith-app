@@ -17,7 +17,6 @@ pub mod window;
 
 pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
-const VAULT_SELECT_MARKER: &str = "__open_new__";
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -25,7 +24,6 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::{
     input::InputState,
     notification::Notification,
-    select::{SelectEvent, SelectItem, SelectState},
     slider::SliderEvent,
     tree::{TreeEvent, TreeState},
 };
@@ -36,41 +34,13 @@ use gpui_kit::{
 use crate::app::settings as app_settings;
 use crate::document::registry::{self, FileRegistry};
 use crate::ui::startup::{StartupAnimation, StartupType};
-use crate::vault::path::display_name;
 use crate::vault::{CatalogEvent, CatalogState, VaultCatalog};
 use palette::Palette;
 use settings::SettingsView;
 
-#[derive(Clone, Debug)]
-pub enum VaultEntry {
-    Vault {
-        path: SharedString,
-        name: SharedString,
-    },
-    OpenNew(SharedString),
-}
-
 pub enum PendingOpen {
     Open(PathBuf),
     Created(PathBuf),
-}
-
-impl SelectItem for VaultEntry {
-    type Value = SharedString;
-
-    fn title(&self) -> SharedString {
-        match self {
-            Self::Vault { name, .. } => name.clone(),
-            Self::OpenNew(_) => SharedString::from("Open new vault..."),
-        }
-    }
-
-    fn value(&self) -> &Self::Value {
-        match self {
-            Self::Vault { path, .. } => path,
-            Self::OpenNew(marker) => marker,
-        }
-    }
 }
 
 // The view tracks several independent one-shot UI flags (focus requests, refresh notifications) that are read and cleared during rendering;
@@ -79,9 +49,6 @@ impl SelectItem for VaultEntry {
 pub struct DatalithView {
     update_control: Option<Entity<title_bar::UpdateControl>>,
     pub(crate) tree_state: Entity<TreeState>,
-    pub(crate) vault_select_state: Entity<SelectState<Vec<VaultEntry>>>,
-    pending_vault_refresh: bool,
-    _vault_select_sub: Subscription,
     _tree_state_sub: Subscription,
     pub(crate) root_path: Option<PathBuf>,
     root_name: SharedString,
@@ -125,53 +92,7 @@ pub struct DatalithView {
     startup_driver: Task<()>,
 }
 
-fn build_vault_entries() -> Vec<VaultEntry> {
-    let mut items = Vec::new();
-    let docs_vault = crate::app::docs::docs_vault_path();
-    if docs_vault.is_dir() {
-        items.push(VaultEntry::Vault {
-            path: docs_vault.to_string_lossy().to_string().into(),
-            name: SharedString::from(crate::app::docs::DOCS_VAULT_NAME),
-        });
-    }
-    for path in app_settings::snapshot().recent_vaults {
-        if path == docs_vault {
-            continue;
-        }
-        let path_text: SharedString = path.to_string_lossy().to_string().into();
-        let name: SharedString = display_name(&path).into();
-        items.push(VaultEntry::Vault {
-            path: path_text,
-            name,
-        });
-    }
-    items.push(VaultEntry::OpenNew(SharedString::from(VAULT_SELECT_MARKER)));
-    items
-}
-
 impl DatalithView {
-    fn create_vault_selector(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> (Entity<SelectState<Vec<VaultEntry>>>, Subscription) {
-        let state = cx.new(|cx| SelectState::new(build_vault_entries(), None, window, cx));
-        let subscription = cx.subscribe_in(
-            &state,
-            window,
-            |view: &mut Self, _state, event: &SelectEvent<Vec<VaultEntry>>, window, cx| {
-                let SelectEvent::Confirm(Some(value)) = event else {
-                    return;
-                };
-                if value == VAULT_SELECT_MARKER {
-                    window.dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
-                } else {
-                    view.set_root_path(PathBuf::from(value.to_string()), None, window, cx);
-                }
-            },
-        );
-        (state, subscription)
-    }
-
     #[must_use]
     pub(crate) fn new(
         first_startup: bool,
@@ -185,8 +106,6 @@ impl DatalithView {
         let sidebar_focus_handle = cx.focus_handle();
         let tree_state = cx.new(|cx| TreeState::new(cx));
         let tree_state_sub = Self::subscribe_tree_events(&tree_state, window, cx);
-
-        let (vault_select_state, vault_select_sub) = Self::create_vault_selector(window, cx);
 
         let settings = SettingsView::new(cx);
         let font_size_slider_sub = cx.subscribe(
@@ -225,9 +144,8 @@ impl DatalithView {
         let mut view = Self {
             update_control,
             tree_state,
-            vault_select_state,
             root_path: None,
-            root_name: "No folder open".into(),
+            root_name: "No vault opened".into(),
             tabs: tabs::Tabs::new(),
             pending_open: None,
             workspace_machine_id,
@@ -250,7 +168,6 @@ impl DatalithView {
             _appearance_sub: appearance_sub,
             licenses: licenses::LicensesView::new(cx),
             rename_sub: None,
-            _vault_select_sub: vault_select_sub,
             _tree_state_sub: tree_state_sub,
             context_menu_target: None,
             context_menu_from_row: false,
@@ -260,7 +177,6 @@ impl DatalithView {
             expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
-            pending_vault_refresh: false,
             sidebar_focus_handle,
             last_sidebar_selection: None,
             pending_navigation: None,
@@ -385,7 +301,10 @@ impl DatalithView {
                         }
 
                         if !changed_paths.is_empty() {
-                            for removed in changed_paths.iter().filter(|path| !path.exists()) {
+                            for removed in changed_paths
+                                .iter()
+                                .filter(|path| !crate::vault::source::exists(path))
+                            {
                                 view.close_tabs_under(removed, cx);
                             }
                             view.pending_external_updates.extend(changed_paths);
@@ -406,13 +325,6 @@ impl DatalithView {
                 }
             }
         });
-    }
-
-    pub(crate) fn refresh_vault_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.vault_select_state.update(cx, |state, cx| {
-            state.set_items(build_vault_entries(), window, cx);
-        });
-        self.pending_vault_refresh = false;
     }
 
     pub(crate) fn create_quick_file(&mut self, extension: &str, cx: &mut Context<Self>) {

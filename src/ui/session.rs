@@ -19,7 +19,7 @@ fn same_vault_path(left: &Path, right: &Path) -> bool {
 
 fn initial_workspace(root: &Path, first_startup: bool) -> Workspace {
     let welcome = root.join(crate::app::docs::WELCOME_NOTE);
-    let tabs = if first_startup && welcome.is_file() {
+    let tabs = if first_startup && crate::vault::source::is_file(&welcome) {
         vec![WorkspaceTab::new(
             TabId::new(),
             Some(welcome),
@@ -53,7 +53,7 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = path.filter(|path| path.is_dir()) else {
+        let Some(path) = path.filter(|path| crate::vault::source::is_dir(path)) else {
             return;
         };
 
@@ -89,7 +89,7 @@ impl DatalithView {
             return true;
         }
 
-        if path.is_dir()
+        if crate::vault::source::is_dir(&path)
             && self
                 .pending_vault_path
                 .as_deref()
@@ -105,7 +105,7 @@ impl DatalithView {
         // request that later fails validation, saving, or workspace loading.
         self.cancel_pending_vault_transition();
 
-        if !path.is_dir() {
+        if !crate::vault::source::is_dir(&path) {
             self.pending_notifications
                 .push(super::notifications::workspace_load_failed(
                     &anyhow::anyhow!("the selected folder is unavailable"),
@@ -143,7 +143,10 @@ impl DatalithView {
         let catalog_root = path.clone();
         let file_types = self.registry.registered_file_types();
         let catalog_load = cx.background_spawn(async move {
-            anyhow::ensure!(catalog_root.is_dir(), "Vault folder is unavailable");
+            anyhow::ensure!(
+                crate::vault::source::is_dir(&catalog_root),
+                "Vault folder is unavailable"
+            );
             VaultCatalog::open(catalog_root, file_types)
         });
         let window_handle = window.window_handle();
@@ -196,11 +199,16 @@ impl DatalithView {
     }
 
     fn load_workspace(&self, path: &Path) -> anyhow::Result<Option<Workspace>> {
-        let machine_id = self
-            .workspace_machine_id
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("the machine workspace identity is unavailable"))?;
-        Workspace::load(path, machine_id)
+        Workspace::load(path, &self.workspace_id(path)?)
+    }
+
+    fn workspace_id(&self, path: &Path) -> anyhow::Result<String> {
+        if crate::vault::source::is_read_only(path) {
+            return Ok(String::new());
+        }
+        self.workspace_machine_id
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("the machine workspace identity is unavailable"))
     }
 
     pub(super) fn save_workspace(&self, cx: &App) -> anyhow::Result<()> {
@@ -210,10 +218,7 @@ impl DatalithView {
         if self.workspace_save_blocked {
             anyhow::bail!("the saved workspace could not be read and was left untouched");
         }
-        let machine_id = self
-            .workspace_machine_id
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("the machine workspace identity is unavailable"))?;
+        let machine_id = self.workspace_id(root)?;
         let (tabs, active_tab_id) = self.tabs.snapshot(cx);
         let workspace = Workspace {
             tabs,
@@ -229,7 +234,73 @@ impl DatalithView {
                 .selected_entry()
                 .map(|entry| PathBuf::from(entry.item().id.as_str())),
         };
-        workspace.save(root, machine_id)
+        workspace.save(root, &machine_id)
+    }
+
+    pub(crate) fn close_personal_vault(&mut self, path: &Path, cx: &mut Context<Self>) -> bool {
+        self.cancel_pending_vault_transition();
+        if crate::vault::source::is_read_only(path) {
+            return false;
+        }
+
+        let is_active = self
+            .root_path
+            .as_deref()
+            .is_some_and(|root| same_vault_path(root, path));
+        if is_active && let Err(error) = self.save_workspace(cx) {
+            self.pending_notifications
+                .push(super::notifications::workspace_save_failed(&error));
+            cx.notify();
+            return false;
+        }
+        if let Err(error) = settings::remove_recent_vault(path) {
+            self.pending_notifications
+                .push(super::notifications::settings_save_failed(
+                    "vault list",
+                    &error,
+                ));
+            cx.notify();
+            return false;
+        }
+        if is_active {
+            self.clear_active_vault(cx);
+        }
+        cx.notify();
+        true
+    }
+
+    fn clear_active_vault(&mut self, cx: &mut Context<Self>) {
+        self.cancel_pending_vault_transition();
+        self.vault_load_generation = self.vault_load_generation.wrapping_add(1);
+        self.vault_catalog = None;
+        self.catalog_updates = None;
+        self.catalog_load_task = Task::ready(());
+        self.catalog_poll_task = Task::ready(());
+        self.vault_db_ready_notified = false;
+        self.root_path = None;
+        self.root_name = "No vault opened".into();
+        self.workspace_save_blocked = false;
+        self.pending_open = None;
+        self.pending_external_updates.clear();
+        self.context_menu_target = None;
+        self.context_menu_from_row = false;
+        self.pending_navigation = None;
+        self.focus_editor_requested = false;
+        self.focus_sidebar_requested = false;
+        self.clear_rename_for_vault_switch();
+        self.tabs.clear();
+        self.expanded_tree_ids.clear();
+        self.last_sidebar_selection = None;
+        self.refresh_tree(cx);
+        if self.palette.open {
+            self.palette.refresh(None, &[]);
+        }
+    }
+
+    fn clear_rename_for_vault_switch(&mut self) {
+        self.rename_target = None;
+        self.rename_state = None;
+        self.rename_sub = None;
     }
 
     fn activate_vault(
@@ -254,7 +325,10 @@ impl DatalithView {
         self.vault_db_ready_notified = false;
 
         self.root_path = Some(path.clone());
-        self.root_name = crate::vault::path::display_name(&path).into();
+        self.root_name = crate::vault::source::embedded_vault(&path).map_or_else(
+            || crate::vault::path::display_name(&path).into(),
+            |vault| vault.name().into(),
+        );
         self.workspace_save_blocked = save_blocked;
         if let Err(error) = settings::record_opened_vault(&path) {
             self.pending_notifications
@@ -265,9 +339,12 @@ impl DatalithView {
         }
 
         self.pending_open = None;
-        self.pending_vault_refresh = true;
         self.pending_external_updates.clear();
         self.context_menu_target = None;
+        self.context_menu_from_row = false;
+        self.pending_navigation = None;
+        self.focus_editor_requested = false;
+        self.focus_sidebar_requested = false;
         self.rename_target = None;
         self.rename_state = None;
         self.rename_sub = None;
@@ -275,16 +352,15 @@ impl DatalithView {
         self.expanded_tree_ids = workspace
             .expanded_folders
             .into_iter()
-            .filter(|folder| folder.starts_with(&path) && folder.is_dir())
+            .filter(|folder| folder.starts_with(&path) && crate::vault::source::is_dir(folder))
             .map(|folder| folder.to_string_lossy().into_owned().into())
             .collect();
         self.restore_workspace_tabs(workspace.tabs, workspace.active_tab_id.as_ref(), window, cx);
         self.last_sidebar_selection = None;
         self.refresh_tree(cx);
-        if let Some(selection) = workspace
-            .sidebar_selection
-            .filter(|selection| selection.starts_with(&path) && selection.exists())
-        {
+        if let Some(selection) = workspace.sidebar_selection.filter(|selection| {
+            selection.starts_with(&path) && crate::vault::source::exists(selection)
+        }) {
             let item = TreeItem::new(selection.to_string_lossy().into_owned(), "");
             self.tree_state
                 .update(cx, |state, cx| state.set_selected_item(Some(&item), cx));
@@ -303,7 +379,10 @@ impl DatalithView {
             let file_types = self.registry.registered_file_types();
             let catalog_root = path.clone();
             let catalog_load = cx.background_spawn(async move {
-                anyhow::ensure!(catalog_root.is_dir(), "Vault folder is unavailable");
+                anyhow::ensure!(
+                    crate::vault::source::is_dir(&catalog_root),
+                    "Vault folder is unavailable"
+                );
                 VaultCatalog::open(catalog_root, file_types)
             });
             self.catalog_load_task = cx.spawn(async move |this, cx| {

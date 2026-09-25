@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::vault::VaultCatalog;
-use crate::vault::links;
+use crate::vault::{links, source};
 
 #[must_use]
 pub fn parent_dir(target: &Path) -> PathBuf {
-    if target.is_dir() {
+    if source::is_dir(target) {
         target.to_path_buf()
     } else {
         target
@@ -28,7 +28,7 @@ pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     });
     let mut candidate = base_dir.join(name);
     for counter in 1usize.. {
-        if !candidate.exists() {
+        if !source::exists(&candidate) {
             break;
         }
         candidate = base_dir.join(format!("{stem} {counter}{ext}"));
@@ -41,13 +41,18 @@ pub fn create(target: &Path) -> Result<PathBuf> {
 }
 
 pub fn create_with_name(target: &Path, base_name: &str) -> Result<PathBuf> {
+    source::ensure_writable(target)?;
+
     let directory = parent_dir(target);
     let path = unique_name(&directory, base_name);
+    source::ensure_writable(&path)?;
     fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
 
 pub fn create_folder(target: &Path) -> Result<PathBuf> {
+    source::ensure_writable(target)?;
+
     let directory = parent_dir(target);
     let path = unique_name(&directory, "New Folder");
     fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
@@ -55,6 +60,8 @@ pub fn create_folder(target: &Path) -> Result<PathBuf> {
 }
 
 pub fn update(path: &Path, content: &str) -> Result<()> {
+    source::ensure_writable(path)?;
+
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
@@ -64,6 +71,9 @@ pub struct RenameResult {
 }
 
 pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<RenameResult> {
+    source::ensure_writable(old_path)?;
+    source::ensure_writable(new_path)?;
+
     let root = catalog.root();
     let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
     for backlink in catalog.backlinks_under(old_path)? {
@@ -109,7 +119,9 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
 }
 
 pub fn delete(target: &Path) -> Result<()> {
-    if target.is_dir() {
+    source::ensure_writable(target)?;
+
+    if source::is_dir(target) {
         fs::remove_dir_all(target)
             .with_context(|| format!("Failed to delete directory {}", target.display()))?;
     } else {
@@ -120,7 +132,9 @@ pub fn delete(target: &Path) -> Result<()> {
 }
 
 pub fn duplicate(target: &Path) -> Result<PathBuf> {
-    if target.is_dir() {
+    source::ensure_writable(target)?;
+
+    if source::is_dir(target) {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
         let name = target
             .file_name()
@@ -179,6 +193,33 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+
+    #[test]
+    fn immutable_vault_rejects_every_file_mutation() {
+        let root = source::DOCUMENTATION.root();
+        let note = root.join("Welcome.md");
+        let original = source::read(&note).unwrap();
+        let personal = std::env::temp_dir().join(format!(
+            "datalith-read-only-{:032x}",
+            rand::random::<u128>()
+        ));
+        fs::create_dir_all(&personal).unwrap();
+        let catalog = VaultCatalog::open(personal.clone(), RegisteredFileTypes::new([])).unwrap();
+        assert!(create(&root).is_err());
+        assert!(create_folder(&root).is_err());
+        assert!(update(&note, "changed").is_err());
+        assert!(delete(&note).is_err());
+        assert!(duplicate(&note).is_err());
+        assert!(rename(&catalog, &note, &root.join("Renamed.md")).is_err());
+        let personal_note = personal.join("Personal.md");
+        fs::write(&personal_note, "personal").unwrap();
+        assert!(rename(&catalog, &personal_note, &root.join("Personal.md")).is_err());
+        assert!(personal_note.is_file());
+        assert_eq!(source::read(&note).unwrap(), original);
+        assert!(!root.exists());
+        drop(catalog);
+        fs::remove_dir_all(personal).unwrap();
+    }
 
     #[test]
     fn rename_rewrites_catalogued_backlinks_without_writing_catalog_state() {

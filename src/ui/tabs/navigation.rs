@@ -20,6 +20,19 @@ enum OpenMode {
     History { position: usize },
 }
 
+impl OpenMode {
+    fn view_mode(&self, current: Option<ViewMode>) -> ViewMode {
+        match self {
+            Self::Replace | Self::History { .. } => {
+                current.unwrap_or_else(|| crate::app::settings::snapshot().open_new_tab_mode())
+            }
+            Self::NewTab => crate::app::settings::snapshot().open_new_tab_mode(),
+            Self::Created => ViewMode::Edit,
+            Self::Restore { mode, .. } => *mode,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum NavigationAction {
     GoBack,
@@ -61,7 +74,10 @@ impl DatalithView {
         self.tabs.clear();
         for tab in tabs {
             match tab.path {
-                Some(path) if path.is_file() && self.registry.is_supported(&path) => {
+                Some(path)
+                    if crate::vault::source::is_file(&path)
+                        && self.registry.is_supported(&path) =>
+                {
                     self.open_file_with_mode(
                         path,
                         &OpenMode::Restore {
@@ -91,7 +107,7 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.registry.is_supported(&path) {
+        if !self.registry.is_supported(&path) || !crate::vault::source::is_file(&path) {
             return;
         }
 
@@ -108,14 +124,7 @@ impl DatalithView {
             .tabs
             .active_handler()
             .map(|handler| handler.read(cx).mode());
-        let mode_for_handler = match mode {
-            OpenMode::Replace | OpenMode::History { .. } => {
-                current_mode.unwrap_or_else(|| crate::app::settings::snapshot().open_new_tab_mode())
-            }
-            OpenMode::NewTab => crate::app::settings::snapshot().open_new_tab_mode(),
-            OpenMode::Created => ViewMode::Edit,
-            OpenMode::Restore { mode, .. } => *mode,
-        };
+        let mode_for_handler = mode.view_mode(current_mode);
         let tab_id = match mode {
             OpenMode::Replace | OpenMode::History { .. } => self
                 .tabs
@@ -148,18 +157,24 @@ impl DatalithView {
                 .create_handler(&path, &dependencies, window, cx)
         });
         handler.update(cx, |handler, cx| handler.set_mode(mode_for_handler, cx));
-        let input_subscription = handler.read(cx).input().cloned().map(|state| {
-            let path = path.clone();
-            cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
-                if matches!(event, InputEvent::Change) {
-                    let content = state.read(cx).value();
-                    if let Err(error) = file_ops::update(&path, &content) {
-                        window
-                            .push_notification(notifications::save_file_failed(&path, &error), cx);
+        let input_subscription = if handler.read(cx).is_read_only() {
+            None
+        } else {
+            handler.read(cx).input().cloned().map(|state| {
+                let path = path.clone();
+                cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        let content = state.read(cx).value();
+                        if let Err(error) = file_ops::update(&path, &content) {
+                            window.push_notification(
+                                notifications::save_file_failed(&path, &error),
+                                cx,
+                            );
+                        }
                     }
-                }
+                })
             })
-        });
+        };
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
@@ -197,11 +212,25 @@ impl DatalithView {
     }
 
     pub(crate) fn new_empty_tab(&mut self, cx: &mut Context<Self>) {
-        self.new_empty_tab_with_id(TabId::new(), ViewMode::Edit, cx);
+        let mode = if self
+            .root_path
+            .as_deref()
+            .is_some_and(crate::vault::source::is_read_only)
+        {
+            ViewMode::View
+        } else {
+            ViewMode::Edit
+        };
+        self.new_empty_tab_with_id(TabId::new(), mode, cx);
     }
 
     fn new_empty_tab_with_id(&mut self, id: TabId, mode: ViewMode, cx: &mut Context<Self>) {
-        let handler = cx.new(|_cx| FileHandler::new(mode, None, None));
+        let read_only = self
+            .root_path
+            .as_deref()
+            .is_some_and(crate::vault::source::is_read_only);
+        let mode = if read_only { ViewMode::View } else { mode };
+        let handler = cx.new(|_cx| FileHandler::new(mode, None, None).with_read_only(read_only));
         self.tabs.insert(
             Tab {
                 id,
@@ -325,6 +354,7 @@ mod tests {
     use gpui_kit::{AppContext, TestAppContext, px, size};
 
     use super::{DatalithView, next_history};
+    use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
     use crate::ui::settings::SettingsView;
 
@@ -338,6 +368,7 @@ mod tests {
         let a = root.join("A.md");
         let b = root.join("B.md");
         let created = root.join("Created.md");
+        let missing_path = root.join("Missing.md");
         for path in [&a, &b, &created] {
             std::fs::write(path, "# Note").unwrap();
         }
@@ -380,6 +411,7 @@ mod tests {
                 assert_eq!(view.tabs.active_tab_id(), Some(&first));
                 view.go_back(window, cx);
                 assert_eq!(view.tabs.open_paths(), vec![a.clone(), a.clone()]);
+                assert_eq!(view.tabs.handlers_for_path(&a).count(), 2);
                 assert_eq!(view.tabs.active_tab_id(), Some(&first));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
@@ -396,8 +428,8 @@ mod tests {
                     saved.0.iter().map(|tab| tab.mode).collect::<Vec<_>>(),
                     vec![ViewMode::View, ViewMode::Edit]
                 );
-                view.restore_workspace_tabs(saved.0.clone(), saved.1.as_ref(), window, cx);
-                assert_eq!(view.tabs.snapshot(cx), saved);
+
+                assert_missing_document_restore(view, &saved, &missing_path, window, cx);
                 assert!(!view.can_go_back());
                 crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
                 view.open_created_file(created.clone(), window, cx);
@@ -419,6 +451,47 @@ mod tests {
         finish_startup(&mut cx, window_handle);
         drop(cx);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn assert_missing_document_restore(
+        view: &mut DatalithView,
+        saved: &(Vec<WorkspaceTab>, Option<TabId>),
+        missing_path: &std::path::Path,
+        window: &mut gpui_kit::Window,
+        cx: &mut gpui_kit::Context<DatalithView>,
+    ) {
+        let missing_id = TabId::new();
+        let empty_id = TabId::new();
+        view.restore_workspace_tabs(
+            vec![
+                WorkspaceTab::new(
+                    missing_id.clone(),
+                    Some(missing_path.to_path_buf()),
+                    ViewMode::View,
+                ),
+                WorkspaceTab::new(empty_id.clone(), None, ViewMode::Edit),
+            ],
+            Some(&empty_id),
+            window,
+            cx,
+        );
+        let restored_empty = view.tabs.snapshot(cx);
+        assert_eq!(restored_empty.0.len(), 1);
+        assert_eq!(restored_empty.0[0].id(), &empty_id);
+        assert_eq!(restored_empty.0[0].path, None);
+        assert_eq!(restored_empty.1.as_ref(), Some(&empty_id));
+
+        let mut tabs_with_missing = vec![WorkspaceTab::new(
+            missing_id.clone(),
+            Some(missing_path.to_path_buf()),
+            ViewMode::View,
+        )];
+        tabs_with_missing.extend(saved.0.clone());
+        view.restore_workspace_tabs(tabs_with_missing, Some(&missing_id), window, cx);
+        assert_eq!(view.tabs.snapshot(cx), *saved);
+
+        view.restore_workspace_tabs(saved.0.clone(), saved.1.as_ref(), window, cx);
+        assert_eq!(view.tabs.snapshot(cx), *saved);
     }
 
     fn finish_startup(cx: &mut TestAppContext, window_handle: gpui_kit::WindowHandle<Root>) {

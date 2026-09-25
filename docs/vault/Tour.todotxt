@@ -5,4 +5,5 @@ x Open this Vault and take a look around @welcome
     Or use Overview.base
 (D) Discover all the formats we support in formats/ folder @formats
 (E) Explore the rest of the docs
-(F) Create your own vault by clicking "Open Vault" in navigate menu
+(F) Open a personal folder with "Open a new vault" in the vault selector
+(G) To try editing tasks, copy this checklist into a .todotxt file in your personal vault; this documentation is read-only

@@ -201,6 +201,12 @@ struct StoredWorkspaceTab {
 }
 
 fn workspace_file_path(vault_root: &Path, machine_id: &str) -> Result<PathBuf> {
+    if crate::vault::source::is_read_only(vault_root) {
+        let vault = crate::vault::source::embedded_vault(vault_root)
+            .filter(|vault| vault.root() == vault_root)
+            .context("Unknown immutable vault workspace")?;
+        return Ok(immutable_workspace_dir().join(format!("{}.json", vault.id())));
+    }
     ensure!(
         !machine_id.is_empty()
             && machine_id
@@ -212,6 +218,23 @@ fn workspace_file_path(vault_root: &Path, machine_id: &str) -> Result<PathBuf> {
         .join(".datalith")
         .join("workspace")
         .join(format!("{machine_id}.json")))
+}
+
+#[cfg(test)]
+fn immutable_workspace_dir() -> PathBuf {
+    let test_name = std::thread::current()
+        .name()
+        .unwrap_or("test")
+        .replace("::", "-");
+    std::env::temp_dir().join(format!(
+        "datalith-test-immutable-workspaces-{}-{test_name}",
+        std::process::id()
+    ))
+}
+
+#[cfg(not(test))]
+fn immutable_workspace_dir() -> PathBuf {
+    super::data_dir().join("immutable-vaults-workspaces")
 }
 
 fn path_to_vault_relative(
@@ -423,16 +446,45 @@ mod tests {
             unknown_schema
         );
 
+        fs::write(
+            &file,
+            r#"{"schema_version":1,"tabs":[{"id":"not-a-tab-id","path":null,"mode":"view"}],"active_tab_id":null,"expanded_folders":[],"sidebar_selection":null}"#,
+        )
+        .expect("write invalid tab identity");
+        let invalid_tab_id = fs::read(&file).expect("read invalid tab identity");
+        assert!(Workspace::load(&root, machine).is_err());
+        assert_eq!(
+            fs::read(&file).expect("re-read invalid tab identity"),
+            invalid_tab_id
+        );
+
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn persisted_tab_ids_are_validated() {
-        assert!(serde_json::from_str::<TabId>(r#""not-a-tab-id""#).is_err());
-        let id = TabId::new();
+    fn immutable_workspace_is_local_and_independent_of_machine_identity() {
+        let root = crate::vault::source::DOCUMENTATION.root();
+        let workspace = Workspace {
+            tabs: vec![WorkspaceTab::new(
+                TabId::new(),
+                Some(root.join("Welcome.md")),
+                ViewMode::View,
+            )],
+            ..Workspace::default()
+        };
+        workspace.save(&root, "machine-one").unwrap();
         assert_eq!(
-            serde_json::from_str::<TabId>(&serde_json::to_string(&id).unwrap()).unwrap(),
-            id
+            Workspace::load(&root, "machine-two").unwrap(),
+            Some(workspace)
         );
+
+        let first = workspace_file_path(&root, "machine-one").expect("first workspace path");
+        let second = workspace_file_path(&root, "machine-two").expect("second workspace path");
+        assert_eq!(first, second);
+        assert!(first.starts_with(immutable_workspace_dir()));
+        assert!(first.ends_with("documentation.json"));
+        assert!(!first.starts_with(&root));
+        assert!(!root.exists());
+        let _ = fs::remove_dir_all(immutable_workspace_dir());
     }
 }

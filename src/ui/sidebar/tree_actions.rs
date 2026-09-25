@@ -10,22 +10,23 @@ use crate::ui::DatalithView;
 
 impl DatalithView {
     pub(crate) fn refresh_tree(&self, cx: &mut Context<Self>) {
-        if let Some(ref root) = self.root_path {
-            let selected = self
-                .tree_state
+        let selected = self.root_path.as_ref().and_then(|_| {
+            self.tree_state
                 .read(cx)
                 .selected_entry()
-                .map(|e| (e.item().id.clone(), e.item().label.clone()));
-            let items = build_file_items_with_expanded(root, &self.expanded_tree_ids);
-            self.tree_state.update(cx, |state, cx| {
-                state.set_items(items, cx);
-                if let Some((item_id, item_label)) = selected {
-                    let item = TreeItem::new(item_id, item_label);
-                    state.set_selected_item(Some(&item), cx);
-                }
-            });
-            cx.notify();
-        }
+                .map(|entry| (entry.item().id.clone(), entry.item().label.clone()))
+        });
+        let items = self.root_path.as_deref().map_or_else(Vec::new, |root| {
+            build_file_items_with_expanded(root, &self.expanded_tree_ids)
+        });
+        self.tree_state.update(cx, |state, cx| {
+            state.set_items(items, cx);
+            if let Some((item_id, item_label)) = selected {
+                let item = TreeItem::new(item_id, item_label);
+                state.set_selected_item(Some(&item), cx);
+            }
+        });
+        cx.notify();
     }
 
     pub(crate) fn refresh_tree_with_rename(

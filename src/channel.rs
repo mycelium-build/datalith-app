@@ -1,3 +1,5 @@
+use anyhow::{Context, Result};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Channel {
     Stable,
@@ -46,11 +48,39 @@ impl Channel {
         }
     }
 
-    pub fn vault_cache_dir(self, root: &std::path::Path) -> std::path::PathBuf {
+    pub fn vault_cache_dir(self, root: &std::path::Path) -> Result<std::path::PathBuf> {
+        if crate::vault::source::is_read_only(root) {
+            let vault = crate::vault::source::embedded_vault(root)
+                .filter(|vault| vault.root() == root)
+                .context("Unknown immutable vault cache")?;
+            return Ok(self
+                .app_data_dir()
+                .join("immutable-vault-caches")
+                .join(vault.id()));
+        }
         let directory = root.join(crate::vault::DATALITH_DIR_NAME);
-        match self {
+        Ok(match self {
             Self::Stable => directory,
             Self::Preview | Self::Dev => directory.join(self.name()),
+        })
+    }
+
+    fn app_data_dir(self) -> std::path::PathBuf {
+        #[cfg(test)]
+        {
+            let test_name = std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-");
+            std::env::temp_dir().join(format!(
+                "datalith-test-cache-{}-{}-{test_name}",
+                self.stem(),
+                std::process::id()
+            ))
+        }
+        #[cfg(not(test))]
+        {
+            dirs::data_dir().unwrap_or_default().join(self.stem())
         }
     }
 
@@ -75,15 +105,15 @@ mod tests {
     fn vault_caches_are_separate_and_stable_keeps_its_path() {
         let root = std::path::Path::new("vault");
         assert_eq!(
-            Channel::Stable.vault_cache_dir(root),
+            Channel::Stable.vault_cache_dir(root).unwrap(),
             root.join(".datalith")
         );
         assert_eq!(
-            Channel::Preview.vault_cache_dir(root),
+            Channel::Preview.vault_cache_dir(root).unwrap(),
             root.join(".datalith/preview")
         );
         assert_eq!(
-            Channel::Dev.vault_cache_dir(root),
+            Channel::Dev.vault_cache_dir(root).unwrap(),
             root.join(".datalith/dev")
         );
     }
@@ -103,6 +133,23 @@ mod tests {
         assert_ne!(
             Channel::Stable.update_endpoint(),
             Channel::Preview.update_endpoint()
+        );
+    }
+
+    #[test]
+    fn immutable_vault_caches_are_channel_local_application_data() {
+        let root = crate::vault::source::DOCUMENTATION.root();
+        let stable = Channel::Stable.vault_cache_dir(&root).unwrap();
+        let preview = Channel::Preview.vault_cache_dir(&root).unwrap();
+        assert_ne!(stable, preview);
+        assert!(stable.ends_with("immutable-vault-caches/documentation"));
+        assert!(preview.ends_with("immutable-vault-caches/documentation"));
+        assert!(!stable.starts_with(&root));
+        assert!(!preview.starts_with(&root));
+        assert!(
+            Channel::Stable
+                .vault_cache_dir(&std::path::Path::new("datalith-embedded:").join("unknown"))
+                .is_err()
         );
     }
 }

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gpui_kit::{
     AnyElement, App, FocusHandle, InteractiveElement, IntoElement, ParentElement,
@@ -32,10 +32,21 @@ impl ImageViewer {
             .items_center()
             .p_4()
             .child(
-                img(self.file_path.clone())
+                img(image_source(&self.file_path))
                     .w_full()
                     .max_w(px(IMAGE_MAX_WIDTH)),
             )
             .into_any_element()
+    }
+}
+
+/// Resolve a vault image without materializing embedded resources on disk.
+pub fn image_source(path: &Path) -> gpui_kit::ImageSource {
+    if crate::vault::source::is_read_only(path) {
+        gpui_kit::ImageSource::Resource(gpui_kit::Resource::Embedded(
+            path.to_string_lossy().into_owned().into(),
+        ))
+    } else {
+        path.to_path_buf().into()
     }
 }
