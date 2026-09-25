@@ -1,4 +1,4 @@
-use super::DatalithView;
+use super::{DatalithView, PendingOpen};
 use gpui_kit::component::{
     ActiveTheme, Icon, IconName, Root, Sizable, WindowExt,
     button::{Button, ButtonVariants as _},
@@ -62,9 +62,12 @@ impl Render for DatalithView {
         }
 
         if self.rename_target.is_none()
-            && let Some(path) = self.pending_open.take()
+            && let Some(pending_open) = self.pending_open.take()
         {
-            self.open_file(path, true, window, cx);
+            match pending_open {
+                PendingOpen::Open(path) => self.open_file(path, true, window, cx),
+                PendingOpen::Created(path) => self.open_created_file(path, window, cx),
+            }
         }
 
         if let Some(action) = self.pending_navigation.take() {

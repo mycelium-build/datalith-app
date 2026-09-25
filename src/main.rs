@@ -51,8 +51,11 @@ fn main() {
                 None
             }
         };
-        let (first_startup, session) =
-            app::session::Session::initial(&app::settings::snapshot(), docs_vault);
+        let settings = app::settings::snapshot();
+        let first_startup = settings.last_vault.is_none() && settings.recent_vaults.is_empty();
+        let root = settings
+            .last_vault
+            .or_else(|| docs_vault.filter(|_| first_startup));
 
         app::deeplink::start(cx);
         if let Err(error) = server::sync() {
@@ -64,6 +67,6 @@ fn main() {
             ));
         }
 
-        ui::window::open_initial(cx, first_startup, session, pending_notifications);
+        ui::window::open_initial(cx, first_startup, root, pending_notifications);
     });
 }

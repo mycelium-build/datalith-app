@@ -7,10 +7,9 @@ use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
-use super::session::Session;
 use crate::document::handler::ViewMode;
 
-const CURRENT_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SCHEMA_VERSION: u32 = 3;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -148,8 +147,7 @@ pub struct ApplicationSettings {
     pub font_scale: f64,
     pub server: ServerSettings,
     pub automatic_updates: bool,
-    pub(crate) document_mode: ViewMode,
-    pub(crate) session: Option<Session>,
+    pub(crate) open_new_tab_mode: ViewMode,
 }
 
 impl Default for ApplicationSettings {
@@ -163,9 +161,15 @@ impl Default for ApplicationSettings {
             font_scale: DEFAULT_FONT_SCALE,
             server: ServerSettings::default(),
             automatic_updates: true,
-            document_mode: ViewMode::default(),
-            session: None,
+            open_new_tab_mode: ViewMode::default(),
         }
+    }
+}
+
+impl ApplicationSettings {
+    /// The mode applied to existing documents opened in a new tab.
+    pub const fn open_new_tab_mode(&self) -> ViewMode {
+        self.open_new_tab_mode
     }
 }
 
@@ -200,9 +204,7 @@ struct StoredSettings {
     #[serde(default)]
     automatic_updates: Option<bool>,
     #[serde(default)]
-    document_mode: Option<String>,
-    #[serde(default)]
-    session: Option<Session>,
+    open_new_tab_mode: Option<String>,
 }
 
 const fn schema_version() -> u32 {
@@ -241,11 +243,10 @@ impl StoredSettings {
                 self.server.token,
             ),
             automatic_updates: self.automatic_updates.unwrap_or(true),
-            document_mode: match self.document_mode.as_deref() {
+            open_new_tab_mode: match self.open_new_tab_mode.as_deref() {
                 Some("edit") => ViewMode::Edit,
                 _ => ViewMode::View,
             },
-            session: self.session,
         }
     }
 
@@ -271,14 +272,13 @@ impl StoredSettings {
                 token: settings.server.token.clone(),
             },
             automatic_updates: Some(settings.automatic_updates),
-            document_mode: Some(
-                match settings.document_mode {
+            open_new_tab_mode: Some(
+                match settings.open_new_tab_mode {
                     ViewMode::Edit => "edit",
                     ViewMode::View => "view",
                 }
                 .to_owned(),
             ),
-            session: settings.session.clone(),
         }
     }
 }
@@ -369,11 +369,6 @@ fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
 }
 
-#[cfg(test)]
-pub fn reload_from_disk() {
-    with_store(|store| store.cached = None);
-}
-
 #[must_use]
 pub fn snapshot() -> ApplicationSettings {
     with_store(SettingsStore::snapshot)
@@ -383,20 +378,12 @@ fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
     with_store(|store| store.update(update))
 }
 
-/// Remember the workspace even when all tabs have been closed.
-pub fn save_session(session: Session) -> Result<()> {
-    update(|settings| {
-        settings.last_vault.clone_from(&session.vault);
-        settings.session = Some(session);
-    })
-}
-
-/// Apply one document mode to the application, including future openings.
+/// Set the mode for existing documents opened in a new tab.
 /// The choice remains effective for this run even when persistence fails.
-pub fn set_document_mode(mode: ViewMode) -> Result<()> {
+pub fn set_open_new_tab_mode(mode: ViewMode) -> Result<()> {
     with_store(|store| {
         let mut settings = store.snapshot();
-        settings.document_mode = mode;
+        settings.open_new_tab_mode = mode;
         let result = store.persist(&settings);
         store.cached = Some(settings);
         result
@@ -492,17 +479,17 @@ mod tests {
     }
 
     #[test]
-    fn only_document_mode_changes_when_settings_cannot_be_written() {
+    fn only_new_tab_mode_changes_when_settings_cannot_be_written() {
         let file = with_store(|store| store.file.clone());
         fs::create_dir(&file).unwrap();
-        let mode_result = set_document_mode(ViewMode::Edit);
+        let mode_result = set_open_new_tab_mode(ViewMode::Edit);
         let theme_result = set_theme_preference(ThemePreference::Dark);
         fs::remove_dir(&file).unwrap();
 
         assert!(mode_result.is_err());
         assert!(theme_result.is_err());
         let settings = snapshot();
-        assert_eq!(settings.document_mode, ViewMode::Edit);
+        assert_eq!(settings.open_new_tab_mode(), ViewMode::Edit);
         assert_eq!(settings.theme_preference, ThemePreference::System);
     }
 

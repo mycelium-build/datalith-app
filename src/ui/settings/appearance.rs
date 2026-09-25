@@ -173,9 +173,38 @@ impl SettingsView {
     }
 
     pub(super) fn display_group(font_size_slider_state: &Entity<SliderState>) -> SettingGroup {
-        SettingGroup::new()
-            .title("Display")
-            .items(vec![SettingItem::render({
+        SettingGroup::new().title("Display").items(vec![
+            SettingItem::new(
+                "Mode when opening in a new tab",
+                SettingField::scrollable_dropdown(
+                    vec![
+                        ("view".into(), "Reading".into()),
+                        ("edit".into(), "Editing".into()),
+                    ],
+                    |_| match settings::snapshot().open_new_tab_mode() {
+                        crate::document::handler::ViewMode::View => "view".into(),
+                        crate::document::handler::ViewMode::Edit => "edit".into(),
+                    },
+                    |value: SharedString, cx| {
+                        let mode = match value.as_str() {
+                            "view" => crate::document::handler::ViewMode::View,
+                            "edit" => crate::document::handler::ViewMode::Edit,
+                            _ => return,
+                        };
+                        if let Err(error) = settings::set_open_new_tab_mode(mode) {
+                            notifications::push_window_notification(
+                                cx,
+                                notifications::settings_save_failed("new-tab mode", &error),
+                            );
+                        }
+                        cx.refresh_windows();
+                    },
+                ),
+            )
+            .description(
+                "Mode for existing documents opened in a new tab. New files open in editing mode.",
+            ),
+            SettingItem::render({
                 let slider_state = font_size_slider_state.clone();
                 move |_options, _window, cx| {
                     let value = slider_state.read(cx).value().start();
@@ -189,6 +218,7 @@ impl SettingsView {
                         .child(label)
                         .into_any_element()
                 }
-            })])
+            }),
+        ])
     }
 }

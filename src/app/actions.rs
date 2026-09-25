@@ -14,7 +14,7 @@ use crate::app::{
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::ui::{notifications, settings::DOCS_URL};
+use crate::ui::{PendingOpen, notifications, settings::DOCS_URL};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -122,15 +122,25 @@ pub fn open_vault(_: &OpenVault, cx: &mut App) {
         if let Ok(Ok(Some(paths))) = rx.await
             && let Some(path) = paths.into_iter().next()
         {
-            let view_opt = cx.read_global(|state: &AppState, _| state.view.clone());
-            if let Some(view) = view_opt {
-                cx.update_entity(&view, |view, cx| {
-                    view.set_root_path(path, cx);
-                });
-            }
+            cx.update(|cx| open_vault_path(path, None, cx));
         }
     })
     .detach();
+}
+
+/// Route vault selection through the main window so transition and document opening stay ordered.
+pub fn open_vault_path(path: PathBuf, pending: Option<PendingOpen>, cx: &mut App) {
+    let view = cx.global::<AppState>().view.clone();
+    if let Some(view) = view
+        && let Some(handle) = cx.windows().first().copied()
+        && let Err(error) = handle.update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.set_root_path(path, pending, window, cx);
+            });
+        })
+    {
+        notifications::push_window_notification(cx, notifications::workspace_load_failed(&error));
+    }
 }
 
 pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
@@ -187,7 +197,7 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
             }
             view.refresh_tree(cx);
             view.rename_target = Some(created.clone());
-            view.pending_open = Some(created);
+            view.pending_open = Some(PendingOpen::Created(created));
         }
         cx.notify();
     });
@@ -278,7 +288,7 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
             if let Ok(duplicated) = file_ops::duplicate(&target)
                 && duplicated.is_file()
             {
-                view.pending_open = Some(duplicated);
+                view.pending_open = Some(PendingOpen::Created(duplicated));
             }
             view.refresh_tree(cx);
         }

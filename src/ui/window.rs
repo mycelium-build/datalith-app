@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{Root, TitleBar};
 use gpui_kit::{
@@ -6,13 +8,12 @@ use gpui_kit::{
 };
 
 use crate::app::AppState;
-use crate::app::session::Session;
 use crate::ui::DatalithView;
 
 pub fn open_initial(
     cx: &App,
     first_startup: bool,
-    session: Session,
+    initial_vault: Option<PathBuf>,
     pending_notifications: Vec<Notification>,
 ) {
     cx.spawn(async move |cx| {
@@ -28,8 +29,13 @@ pub fn open_initial(
         };
         if let Err(error) = cx.open_window(options, |window, cx| {
             window.set_window_title(crate::channel::Channel::current().product_name());
-            let view =
-                create_initial_view(first_startup, session, pending_notifications, window, cx);
+            let view = create_initial_view(
+                first_startup,
+                initial_vault,
+                pending_notifications,
+                window,
+                cx,
+            );
             cx.new(|cx| Root::new(view, window, cx))
         }) {
             eprintln!("Failed to open window: {error}");
@@ -40,29 +46,34 @@ pub fn open_initial(
 
 fn create_initial_view(
     first_startup: bool,
-    session: Session,
+    initial_vault: Option<PathBuf>,
     pending_notifications: Vec<Notification>,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<DatalithView> {
     let view = cx.new(|cx| DatalithView::new(first_startup, pending_notifications, window, cx));
     cx.update_global(|state: &mut AppState, _| state.view = Some(view.clone()));
-    view.update(cx, |view, cx| view.restore_session(session, window, cx));
+    view.update(cx, |view, cx| {
+        view.restore_initial_workspace(initial_vault, first_startup, window, cx);
+    });
     let closing_view = view.downgrade();
     let window_id = window.window_handle().window_id();
     // Client-side title-bar controls remove the window directly, bypassing should-close.
     cx.on_window_closed(move |cx, closed_id| {
         if closed_id == window_id
             && let Some(view) = closing_view.upgrade()
+            && let Err(error) = view.read(cx).save_workspace(cx)
         {
-            view.read(cx).save_session(cx);
+            eprintln!("Failed to save workspace when closing window: {error:#}");
         }
     })
     .detach();
     let quitting_view = view.downgrade();
     cx.on_app_quit(move |cx| {
-        if let Some(view) = quitting_view.upgrade() {
-            view.read(cx).save_session(cx);
+        if let Some(view) = quitting_view.upgrade()
+            && let Err(error) = view.read(cx).save_workspace(cx)
+        {
+            eprintln!("Failed to save workspace when quitting: {error:#}");
         }
         async {}
     })
@@ -73,21 +84,24 @@ fn create_initial_view(
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{TestAppContext, WindowHandle};
 
     use super::*;
-    use crate::app::{actions, docs, settings};
+    use crate::app::{actions, docs};
     use crate::document::handler::ViewMode;
 
-    struct DocsFixture(PathBuf);
+    // Keep window-level coverage to the four paths that need real window state:
+    // first launch, close/restore across vaults, per-tab keyboard mode, and a
+    // failed save invalidating an older pending transition.
+    struct VaultFixture(PathBuf);
 
-    impl DocsFixture {
-        fn new() -> Self {
+    impl VaultFixture {
+        fn new(label: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "datalith-session-{}-{}",
+                "datalith-window-{label}-{}-{}",
                 std::process::id(),
                 std::thread::current().name().unwrap().replace("::", "-")
             ));
@@ -97,7 +111,7 @@ mod tests {
         }
     }
 
-    impl Drop for DocsFixture {
+    impl Drop for VaultFixture {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
@@ -115,10 +129,14 @@ mod tests {
         cx
     }
 
-    fn open(cx: &mut TestAppContext, docs: &Path) -> (WindowHandle<Root>, Entity<DatalithView>) {
-        let (first, session) = Session::initial(&settings::snapshot(), Some(docs.to_owned()));
+    fn open(
+        cx: &mut TestAppContext,
+        root: &Path,
+        first_startup: bool,
+    ) -> (WindowHandle<Root>, Entity<DatalithView>) {
         let handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {
-            let view = create_initial_view(first, session, Vec::new(), window, cx);
+            let view =
+                create_initial_view(first_startup, Some(root.to_owned()), Vec::new(), window, cx);
             Root::new(view, window, cx)
         });
         cx.update_window(handle.into(), |_, window, cx| {
@@ -133,13 +151,10 @@ mod tests {
                 catalog.wait_until_ready(Duration::from_secs(5));
             }
         });
-        // Let the startup driver and catalog poll publish their completed work.
         cx.executor().advance_clock(Duration::from_millis(200));
         cx.run_until_parked();
-        cx.update(|cx| assert!(view.read(cx).startup.is_none()));
         cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
             .unwrap();
-        // Indexing notifications cover the mode button until their normal expiry.
         cx.executor().advance_clock(Duration::from_secs(6));
         cx.run_until_parked();
         cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
@@ -147,498 +162,170 @@ mod tests {
         (handle, view)
     }
 
-    fn assert_mode(cx: &TestAppContext, view: &Entity<DatalithView>, mode: ViewMode) {
+    fn assert_modes(cx: &TestAppContext, view: &Entity<DatalithView>, modes: &[ViewMode]) {
         cx.update(|cx| {
             let view = view.read(cx);
-            assert!(!view.tabs.is_empty());
-            for (_, _, handler) in view.tabs.iter() {
-                assert_eq!(handler.read(cx).mode, mode);
-            }
+            let actual = view
+                .tabs
+                .iter()
+                .map(|(_, _, handler)| handler.read(cx).mode)
+                .collect::<Vec<_>>();
+            assert_eq!(actual, modes);
         });
+    }
+
+    fn wait_for_root(cx: &TestAppContext, view: &Entity<DatalithView>, expected: &Path) {
+        let started = Instant::now();
+        loop {
+            cx.run_until_parked();
+            if cx.update(|cx| view.read(cx).root_path.as_deref() == Some(expected)) {
+                return;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "vault transition timed out"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]
     fn first_startup_opens_welcome_in_reading_mode() {
-        let docs = DocsFixture::new();
+        let vault = VaultFixture::new("first-startup");
         let mut cx = app();
-        let (_, view) = open(&mut cx, &docs.0);
+        let (_, view) = open(&mut cx, &vault.0, true);
         cx.update(|cx| {
             let view = view.read(cx);
-            assert_eq!(view.root_path.as_ref(), Some(&docs.0));
-            assert_eq!(view.tabs.open_paths(), vec![docs.0.join("Welcome.md")]);
+            assert_eq!(view.root_path.as_ref(), Some(&vault.0));
+            assert_eq!(view.tabs.open_paths(), vec![vault.0.join("Welcome.md")]);
             assert_eq!(
                 view.tabs.active_path(),
-                Some(docs.0.join("Welcome.md").as_path())
+                Some(vault.0.join("Welcome.md").as_path())
             );
         });
-        assert_mode(&cx, &view, ViewMode::View);
+        assert_modes(&cx, &view, &[ViewMode::View]);
     }
 
     #[test]
-    fn closing_and_reopening_restores_workspace_and_global_mode() {
-        let docs = DocsFixture::new();
+    fn workspace_survives_vault_switch_and_window_restore_without_history() {
+        let first = VaultFixture::new("switch-first");
+        let second = VaultFixture(first.0.with_extension("second-vault"));
+        docs::seed_into(&second.0).unwrap();
         let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
+        let (handle, view) = open(&mut cx, &first.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
+            view.update(cx, |view, cx| {
+                view.open_file(first.0.join("Basics.md"), true, window, cx);
+            });
+        })
+        .unwrap();
+        cx.update_window(handle.into(), |_, window, cx| {
             window.click("toggle-mode", cx);
         })
         .unwrap();
-        cx.run_until_parked();
-        assert_mode(&cx, &view, ViewMode::Edit);
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::Edit]);
+
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Basics.md"), true, window, cx);
-                view.open_file(docs.0.join("Search.md"), true, window, cx);
-                view.tabs.select(1);
-                let folder = docs.0.join("formats").to_string_lossy().into_owned().into();
-                view.expand_tree_item(&folder, cx);
+                assert!(view.set_root_path(second.0.clone(), None, window, cx));
             });
         })
         .unwrap();
-        assert_mode(&cx, &view, ViewMode::Edit);
-        // The custom title-bar close button uses this same window lifecycle.
-        cx.update_window(handle.into(), |_, window, _| window.remove_window())
-            .unwrap();
-        drop(view);
-        drop(cx);
-        settings::reload_from_disk();
-        assert_eq!(settings::snapshot().document_mode, ViewMode::Edit);
-        let mut reopened = app();
-        let (_, restored) = open(&mut reopened, &docs.0);
-        reopened.update(|cx| {
-            let restored = restored.read(cx);
-            assert_eq!(restored.root_path.as_ref(), Some(&docs.0));
-            assert_eq!(
-                restored.tabs.open_paths(),
-                vec![
-                    docs.0.join("Welcome.md"),
-                    docs.0.join("Basics.md"),
-                    docs.0.join("Search.md")
-                ]
-            );
-            assert_eq!(
-                restored.tabs.active_path(),
-                Some(docs.0.join("Basics.md").as_path())
-            );
-            assert!(
-                restored
-                    .expanded_tree_ids
-                    .iter()
-                    .any(|id| Path::new(id.as_str()) == docs.0.join("formats"))
-            );
-        });
-        assert_mode(&reopened, &restored, ViewMode::Edit);
-    }
+        wait_for_root(&cx, &view, &second.0);
+        cx.update(|cx| assert!(view.read(cx).tabs.is_empty()));
 
-    #[test]
-    fn keyboard_mode_change_applies_to_other_tabs_and_future_files() {
-        let docs = DocsFixture::new();
-        let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Basics.md"), true, window, cx);
-            });
-            window.render_frame(cx);
-            window.press("secondary-e", cx);
-        })
-        .unwrap();
-        cx.run_until_parked();
-        assert_mode(&cx, &view, ViewMode::Edit);
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.press("secondary-e", cx);
-        })
-        .unwrap();
-        cx.run_until_parked();
-        cx.update_window(handle.into(), |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Search.md"), true, window, cx);
+                assert!(view.set_root_path(first.0.clone(), None, window, cx));
             });
         })
         .unwrap();
-        assert_mode(&cx, &view, ViewMode::View);
-        settings::reload_from_disk();
-        assert_eq!(settings::snapshot().document_mode, ViewMode::View);
-    }
-
-    #[test]
-    fn quitting_with_no_tabs_restores_an_empty_workspace() {
-        let docs = DocsFixture::new();
-        let mut cx = app();
-        let (_, view) = open(&mut cx, &docs.0);
-        cx.update(|cx| view.update(cx, DatalithView::close_active_tab));
-        cx.quit();
-        drop(view);
-        drop(cx);
-        settings::reload_from_disk();
-        assert_eq!(
-            settings::snapshot()
-                .session
-                .as_ref()
-                .map(|session| session.tabs.len()),
-            Some(0)
-        );
-        let (first, session) = Session::initial(&settings::snapshot(), Some(docs.0.clone()));
-        assert!(!first);
-        assert!(session.tabs.is_empty());
-        let mut reopened = app();
-        let (_, restored) = open(&mut reopened, &docs.0);
-        reopened.update(|cx| assert!(restored.read(cx).tabs.is_empty()));
-    }
-
-    #[test]
-    fn legacy_session_restores_active_note_after_a_file_disappears() {
-        let docs = DocsFixture::new();
-        let session = serde_json::from_value(serde_json::json!({
-            "vault": docs.0,
-            "tabs": [
-                docs.0.join("deleted.md"),
-                docs.0.join("Welcome.md"),
-                docs.0.join("Basics.md"),
-            ],
-            "active_tab": docs.0.join("Basics.md"),
-        }))
-        .unwrap();
-        settings::save_session(session).unwrap();
-        settings::reload_from_disk();
-        let mut cx = app();
-        let (_, view) = open(&mut cx, &docs.0);
+        wait_for_root(&cx, &view, &first.0);
         cx.update(|cx| {
             let view = view.read(cx);
             assert_eq!(
                 view.tabs.open_paths(),
-                vec![docs.0.join("Welcome.md"), docs.0.join("Basics.md")]
+                vec![first.0.join("Welcome.md"), first.0.join("Basics.md")]
             );
+            assert_eq!(view.tabs.active_index(), Some(1));
+        });
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::Edit]);
+
+        cx.update_window(handle.into(), |_, window, _| window.remove_window())
+            .unwrap();
+        drop(view);
+        drop(cx);
+
+        let mut reopened = app();
+        let (_, restored) = open(&mut reopened, &first.0, false);
+        reopened.update(|cx| {
+            let restored = restored.read(cx);
             assert_eq!(
-                view.tabs.active_path(),
-                Some(docs.0.join("Basics.md").as_path())
+                restored.tabs.open_paths(),
+                vec![first.0.join("Welcome.md"), first.0.join("Basics.md")]
             );
-        });
-    }
-
-    #[test]
-    fn duplicate_tabs_and_active_occurrence_survive_restart() {
-        let docs = DocsFixture::new();
-        let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
-        let welcome = docs.0.join("Welcome.md");
-        cx.update_window(handle.into(), |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Basics.md"), false, window, cx);
-                view.open_file(welcome.clone(), true, window, cx);
-                view.tabs.select(0);
-                view.go_back(window, cx);
-                assert_eq!(view.tabs.open_paths(), vec![welcome.clone(); 2]);
-                view.tabs.select(1);
-            });
-        })
-        .unwrap();
-        cx.quit();
-        drop(view);
-        drop(cx);
-        settings::reload_from_disk();
-        let mut reopened = app();
-        let (_, restored) = open(&mut reopened, &docs.0);
-        reopened.update(|cx| {
-            let restored = restored.read(cx);
-            assert_eq!(restored.tabs.open_paths(), vec![welcome; 2]);
             assert_eq!(restored.tabs.active_index(), Some(1));
+            assert!(!restored.can_go_back());
         });
-        let saved = serde_json::to_value(settings::snapshot().session.unwrap()).unwrap();
-        assert_eq!(saved["active_tab_index"], 1);
-        assert!(saved.get("active_tab").is_none());
+        assert_modes(&reopened, &restored, &[ViewMode::View, ViewMode::Edit]);
     }
 
     #[test]
-    fn active_empty_tab_survives_restart_after_a_file_disappears() {
-        let docs = DocsFixture::new();
+    fn keyboard_mode_change_only_changes_the_active_tab() {
+        let vault = VaultFixture::new("keyboard-mode");
         let mut cx = app();
-        let (_, view) = open(&mut cx, &docs.0);
-        cx.update(|cx| {
-            view.update(cx, |view, cx| {
-                view.new_empty_tab(cx);
-                view.new_empty_tab(cx);
-                assert_eq!(view.tabs.active_index(), Some(2));
-            });
-        });
-        cx.quit();
-        drop(view);
-        drop(cx);
-        std::fs::remove_file(docs.0.join("Welcome.md")).unwrap();
-        settings::reload_from_disk();
-        let mut reopened = app();
-        let (_, restored) = open(&mut reopened, &docs.0);
-        reopened.update(|cx| {
-            let restored = restored.read(cx);
-            assert_eq!(restored.tabs.open_paths(), vec![PathBuf::new(); 2]);
-            assert_eq!(restored.tabs.active_index(), Some(1));
-        });
-    }
-
-    #[test]
-    fn mode_change_survives_settings_write_failure() {
-        let docs = DocsFixture::new();
-        let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
+        let (handle, view) = open(&mut cx, &vault.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Basics.md"), true, window, cx);
+                view.open_file(vault.0.join("Basics.md"), true, window, cx);
             });
-        })
-        .unwrap();
-        let config = std::env::temp_dir().join(format!(
-            "datalith-settings-ui-{}-{}.json",
-            std::process::id(),
-            std::thread::current().name().unwrap().replace("::", "-")
-        ));
-        std::fs::remove_file(&config).unwrap();
-        std::fs::create_dir(&config).unwrap();
-        cx.update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
             window.press("secondary-e", cx);
         })
         .unwrap();
         cx.run_until_parked();
-        std::fs::remove_dir(&config).unwrap();
-        assert_mode(&cx, &view, ViewMode::Edit);
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
-            assert_eq!(
-                Root::read(window, cx)
-                    .notification
-                    .read(cx)
-                    .notifications()
-                    .len(),
-                1
-            );
-            view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Search.md"), true, window, cx);
-            });
-        })
-        .unwrap();
-        assert_mode(&cx, &view, ViewMode::Edit);
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::Edit]);
     }
 
     #[test]
-    fn base_tabs_keep_their_vault_catalog_after_restart() {
-        let docs = DocsFixture::new();
-        let other = DocsFixture(docs.0.with_extension("other-vault"));
-        docs::seed_into(&other.0).unwrap();
+    fn failed_newer_save_preserves_active_workspace_and_cancels_pending_transition() {
+        let current = VaultFixture::new("stale-current");
+        let target = VaultFixture(current.0.with_extension("stale-target"));
+        docs::seed_into(&target.0).unwrap();
+        let newer = VaultFixture(current.0.with_extension("stale-newer"));
+        docs::seed_into(&newer.0).unwrap();
         let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
-        let bases = [
-            docs.0.join("Overview.base"),
-            docs.0.join("examples/bases/Library.base"),
-        ];
+        let (handle, view) = open(&mut cx, &current.0, true);
+        let machine_id = crate::app::workspace::machine_id().unwrap();
+        let workspace_dir = current.0.join(".datalith/workspace");
+        let saved_workspace_dir = current.0.join(".datalith/workspace-preserved");
+        let workspace_file = workspace_dir.join(format!("{machine_id}.json"));
+        let before = cx.update(|cx| view.read(cx).tabs.snapshot(cx));
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
-                for path in &bases {
-                    view.open_file(path.clone(), true, window, cx);
-                }
-                view.set_root_path(other.0.clone(), cx);
-            });
-        })
-        .unwrap();
-        cx.run_until_parked();
-        cx.update(|cx| {
-            view.read(cx)
-                .vault_catalog
-                .as_ref()
-                .unwrap()
-                .wait_until_ready(std::time::Duration::from_secs(5));
-            for path in &bases {
-                let handler = view.read(cx).tabs.handler_for_path(path).unwrap();
-                assert_eq!(handler.read(cx).vault_catalog(cx).unwrap().root(), docs.0);
-            }
-        });
-        cx.quit();
-        drop(view);
-        drop(cx);
-        std::fs::remove_file(docs.0.join("Welcome.md")).unwrap();
-        settings::reload_from_disk();
-
-        let mut reopened = app();
-        let (_, restored) = open(&mut reopened, &docs.0);
-        reopened
-            .executor()
-            .advance_clock(std::time::Duration::from_secs(1));
-        reopened.run_until_parked();
-        reopened.update(|cx| {
-            assert_eq!(restored.read(cx).root_path.as_ref(), Some(&other.0));
-            for path in &bases {
-                let handler = restored.read(cx).tabs.handler_for_path(path).unwrap();
-                let catalog = handler
-                    .read(cx)
-                    .vault_catalog(cx)
-                    .expect("restored Base must retain its Vault catalog");
-                catalog.wait_until_ready(std::time::Duration::from_secs(5));
-                assert_eq!(catalog.root(), docs.0);
-                assert!(catalog.paths().contains(&docs.0.join("Basics.md")));
-            }
-            restored.update(cx, |view, cx| view.set_root_path(docs.0.clone(), cx));
-        });
-        reopened.run_until_parked();
-        reopened
-            .executor()
-            .advance_clock(std::time::Duration::from_secs(1));
-        reopened.run_until_parked();
-        reopened.update(|cx| {
-            let catalog = restored
-                .read(cx)
-                .vault_catalog
-                .as_ref()
-                .expect("returning to the Base Vault must reuse its open catalog");
-            assert_eq!(catalog.root(), docs.0);
-            assert_eq!(catalog.state(), crate::vault::CatalogState::Ready);
-        });
-    }
-
-    #[test]
-    fn pending_base_catalog_survives_saving_and_switching_vaults() {
-        let docs = DocsFixture::new();
-        let other = DocsFixture(docs.0.with_extension("other-vault"));
-        docs::seed_into(&other.0).unwrap();
-        let base = docs.0.join("Overview.base");
-        let mut session = Session {
-            vault: Some(docs.0.clone()),
-            tabs: vec![base.clone()],
-            ..Session::default()
-        };
-        session.tab_vaults.insert(0, docs.0.clone());
-        let mut cx = app();
-        let handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {
-            let view = create_initial_view(false, session, Vec::new(), window, cx);
-            view.update(cx, |view, cx| {
-                let handler = view.tabs.handler_for_path(&base).unwrap();
-                assert!(handler.read(cx).vault_catalog(cx).is_none());
-                view.save_session(cx);
+                assert!(view.set_root_path(target.0.clone(), None, window, cx));
+                let notifications_before = view.pending_notifications.len();
+                assert!(workspace_file.is_file());
+                let saved_bytes = std::fs::read(&workspace_file).unwrap();
+                std::fs::rename(&workspace_dir, &saved_workspace_dir).unwrap();
+                std::fs::write(&workspace_dir, "block workspace writes").unwrap();
+                assert!(!view.set_root_path(newer.0.clone(), None, window, cx));
+                assert_eq!(view.pending_notifications.len(), notifications_before + 1);
                 assert_eq!(
-                    settings::snapshot().session.unwrap().tab_vaults.get(&0),
-                    Some(&docs.0)
+                    std::fs::read(saved_workspace_dir.join(format!("{machine_id}.json"))).unwrap(),
+                    saved_bytes
                 );
-                view.set_root_path(other.0.clone(), cx);
-                view.set_root_path(docs.0.clone(), cx);
-            });
-            Root::new(view, window, cx)
-        });
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
-            window.press("escape", cx);
-        })
-        .unwrap();
-        cx.run_until_parked();
-        let view = cx.update(|cx| cx.global::<AppState>().view.clone().unwrap());
-        cx.update(|cx| {
-            let catalog = view
-                .read(cx)
-                .vault_catalog
-                .as_ref()
-                .expect("pending restore must finish after switching away and back");
-            catalog.wait_until_ready(std::time::Duration::from_secs(5));
-            assert_eq!(catalog.state(), crate::vault::CatalogState::Ready);
-            let handler = view.read(cx).tabs.handler_for_path(&base).unwrap();
-            assert_eq!(handler.read(cx).vault_catalog(cx).unwrap().root(), docs.0);
-        });
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(1));
-        cx.run_until_parked();
-        cx.update(|cx| assert!(view.read(cx).vault_db_ready_notified));
-    }
-
-    #[test]
-    fn missing_base_vault_is_preserved_without_recreating_the_folder() {
-        let docs = DocsFixture::new();
-        let missing = docs.0.join("missing-vault");
-        let mut session = Session {
-            vault: Some(docs.0.clone()),
-            tabs: vec![docs.0.join("Overview.base")],
-            ..Session::default()
-        };
-        session.tab_vaults.insert(0, missing.clone());
-        settings::save_session(session).unwrap();
-        let mut cx = app();
-        let (_, view) = open(&mut cx, &docs.0);
-        assert!(!missing.exists());
-        cx.update(|cx| {
-            let handler = view.read(cx).tabs.active_handler().unwrap();
-            assert!(handler.read(cx).vault_catalog(cx).is_none());
-            view.read(cx).save_session(cx);
-            assert_eq!(
-                settings::snapshot().session.unwrap().tab_vaults.get(&0),
-                Some(&missing)
-            );
-        });
-    }
-
-    #[test]
-    fn returning_to_retained_vault_reloads_open_files() {
-        let docs = DocsFixture::new();
-        let other = DocsFixture(docs.0.with_extension("other-vault"));
-        docs::seed_into(&other.0).unwrap();
-        let note = docs.0.join("Welcome.md");
-        let removed = docs.0.join("Search.md");
-        settings::save_session(Session {
-            vault: Some(docs.0.clone()),
-            tabs: vec![note.clone(), removed.clone()],
-            ..Session::default()
-        })
-        .unwrap();
-        let mut cx = app();
-        let (handle, view) = open(&mut cx, &docs.0);
-        let original = std::fs::read_to_string(&note).unwrap();
-        let catalog = cx.update(|cx| view.read(cx).vault_catalog.clone().unwrap());
-        let observed = catalog.events();
-        cx.update_window(handle.into(), |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.open_file(docs.0.join("Overview.base"), true, window, cx);
-                view.set_root_path(other.0.clone(), cx);
             });
         })
         .unwrap();
         cx.run_until_parked();
         cx.update(|cx| {
-            view.read(cx)
-                .vault_catalog
-                .as_ref()
-                .unwrap()
-                .wait_until_ready(Duration::from_secs(5));
+            let view = view.read(cx);
+            assert_eq!(view.root_path.as_ref(), Some(&current.0));
+            assert_eq!(view.tabs.open_paths(), vec![current.0.join("Welcome.md")]);
+            assert_eq!(view.tabs.snapshot(cx), before);
         });
-        cx.executor().advance_clock(Duration::from_secs(1));
-        cx.run_until_parked();
-        cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
-            .unwrap();
-        while observed.try_recv().is_ok() {}
-        let edited = format!("{original}\nExternal edit while other Vault selected.\n");
-        std::fs::write(&note, &edited).unwrap();
-        std::fs::remove_file(&removed).unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        let mut observed_paths = Vec::new();
-        while !observed_paths.contains(&note) || !observed_paths.contains(&removed) {
-            let event = observed.recv_timeout(Duration::from_secs(5)).unwrap();
-            observed_paths.extend(event.paths);
-            assert!(std::time::Instant::now() < deadline);
-        }
-        cx.update(|cx| view.update(cx, |view, cx| view.set_root_path(docs.0.clone(), cx)));
-        cx.run_until_parked();
-        cx.update(|cx| {
-            let current = view.read(cx).vault_catalog.as_ref().unwrap();
-            current.wait_until_ready(Duration::from_secs(5));
-            assert_eq!(current.state(), crate::vault::CatalogState::Ready);
-        });
-        cx.executor().advance_clock(Duration::from_secs(1));
-        cx.run_until_parked();
-        cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
-            .unwrap();
-        cx.update(|cx| {
-            let handler = view.read(cx).tabs.handler_for_path(&note).unwrap();
-            let actual = handler.read(cx).input().unwrap().read(cx).value();
-            assert_eq!(
-                actual.as_ref(),
-                edited.as_str(),
-                "Returning to A must reload its externally modified note"
-            );
-            assert!(view.read(cx).tabs.handler_for_path(&removed).is_none());
-        });
+        std::fs::remove_file(&workspace_dir).unwrap();
+        std::fs::rename(&saved_workspace_dir, &workspace_dir).unwrap();
     }
 }

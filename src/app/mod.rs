@@ -4,14 +4,15 @@ pub mod deeplink;
 pub mod docs;
 pub mod fonts;
 pub mod keymap;
+mod machine;
 pub mod menus;
 pub mod preferences;
-pub mod session;
 pub mod settings;
 mod state;
 pub mod system;
 pub mod update;
 pub mod version;
+pub mod workspace;
 
 use std::path::PathBuf;
 

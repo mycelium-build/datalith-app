@@ -78,8 +78,11 @@ impl DatalithView {
             return;
         }
         self.tabs.rename_path(old_path, new_path);
-        if self.pending_open.as_deref() == Some(old_path) {
-            self.pending_open = Some(new_path.to_path_buf());
+        if let Some(super::PendingOpen::Open(path) | super::PendingOpen::Created(path)) =
+            self.pending_open.as_mut()
+            && let Ok(suffix) = path.strip_prefix(old_path)
+        {
+            *path = new_path.join(suffix);
         }
         self.last_sidebar_selection = self.last_sidebar_selection.as_ref().map(|path| {
             path.strip_prefix(old_path)

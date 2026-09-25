@@ -7,7 +7,7 @@ category: guide
 A **Vault** is a directory whose files are managed together. Datalith watches it, builds a catalog, and derives search results, wiki-link connections, and graph views.
 
 - **Navigate → Open Vault** opens a folder from disk. Your recent Vaults appear in the vault selector at the bottom of the sidebar.
-- The first time Datalith runs, it opens the **Datalith Docs** Vault with [[Welcome]] in reading mode. Later launches restore your last Vault, open tabs, active note, and expanded folders.
+- The first time Datalith runs, it opens the **Datalith Docs** Vault you are reading now.
 
 # Create a new note
 
@@ -21,7 +21,7 @@ You can also right-click in the sidebar and choose **New File** or **New Folder*
 
 # Write some content
 
-To write in a Markdown file, switch to **edit mode** with **Cmd/Ctrl+E** or the **pen icon** in the tab bar. Write normally: headings, lists, bold, code blocks. The [[formats/Markdown]] page lists everything supported.
+If you created a Markdown file, you are in **edit mode** by default. Write normally: headings, lists, bold, code blocks. The [[formats/Markdown]] page lists everything supported.
 
 Add **properties** at the top to tag your note for data-driven views:
 
@@ -46,9 +46,7 @@ Links between Markdown files become the edges of a [[formats/bases/Graph|graph v
 
 # Edit or view
 
-The **eye icon** in the top-right of the tab bar switches to **reading mode**, and the **pen icon** switches to **edit mode**. You can also use **Cmd/Ctrl+E**.
-
-Datalith remembers this choice for the whole app, including other tabs, files you open next, and future launches. Closing all tabs leaves the workspace empty the next time you open the app.
+The **eye icon** in the top-right of the tab bar toggles between **edit** mode and **view** mode, use **Cmd/Ctrl+E** to switch.
 
 Some files only have a viewer or only an editor. See [[FileTypes]].
 

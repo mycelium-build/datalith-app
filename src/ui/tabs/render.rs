@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use gpui_kit::component::{
     Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -58,9 +60,9 @@ impl DatalithView {
                 let mut suffix = h_flex().gap_0().px_1();
                 if can_toggle_mode {
                     let (icon, label) = if is_editing {
-                        (Icon::new(IconName::Eye), "Switch app to reading mode")
+                        (Icon::new(IconName::Eye), "Switch tab to reading mode")
                     } else {
-                        (Icon::new(DatalithIcon::Pen), "Switch app to editing mode")
+                        (Icon::new(DatalithIcon::Pen), "Switch tab to editing mode")
                     };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
@@ -91,26 +93,34 @@ impl DatalithView {
                     cx.notify();
                 })
             })
-            .children(self.tabs.iter().map(|(index, path, _)| {
-                let name = SharedString::from(display_name(path));
-                Tab::new()
-                    .label(name)
-                    .prefix(
-                        Icon::new(self.registry.config_for(path).icon)
-                            .size_3()
-                            .ml_2(),
-                    )
-                    .suffix(
-                        Button::new(format!("close-tab-{index}"))
-                            .icon(IconName::Close)
-                            .ghost()
-                            .xsmall()
-                            .mr_1()
-                            .on_click(cx.listener(move |view, _, _, cx| {
-                                cx.stop_propagation();
-                                view.close_tab(index, cx);
-                            })),
-                    )
-            }))
+            .children(
+                self.tabs
+                    .iter_with_id()
+                    .map(|(index, id, path, _)| self.render_tab(index, id.as_str(), path, cx)),
+            )
+    }
+
+    fn render_tab(&self, index: usize, identity: &str, path: &Path, cx: &Context<Self>) -> Tab {
+        let display_name = display_name(path);
+        let close_label = format!("Close {display_name}");
+        Tab::new()
+            .label(SharedString::from(display_name))
+            .prefix(
+                Icon::new(self.registry.config_for(path).icon)
+                    .size_3()
+                    .ml_2(),
+            )
+            .suffix(
+                Button::new(format!("close-tab-{identity}"))
+                    .icon(IconName::Close)
+                    .ghost()
+                    .xsmall()
+                    .mr_1()
+                    .accessibility_label(close_label)
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        cx.stop_propagation();
+                        view.close_tab(index, cx);
+                    })),
+            )
     }
 }

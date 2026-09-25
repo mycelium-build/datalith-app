@@ -1,10 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, div,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
@@ -24,7 +25,8 @@ pub type ReloadAdapter = fn(
     &mut Context<FileHandler>,
 ) -> anyhow::Result<ReloadOutcome>;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ViewMode {
     Edit,
     #[default]
@@ -40,9 +42,6 @@ pub struct FileHandler {
     pub(crate) editor: Option<EditorKind>,
     pub(crate) viewer: Option<ViewerKind>,
     reload_adapter: Option<ReloadAdapter>,
-    /// Keeps the saved context while its catalog is loading or unavailable.
-    /// Once attached, the catalog itself owns the root.
-    restored_vault_root: Option<PathBuf>,
 }
 
 impl EventEmitter<FileHandlerEvent> for FileHandler {}
@@ -58,7 +57,6 @@ impl FileHandler {
             editor,
             viewer,
             reload_adapter: None,
-            restored_vault_root: None,
         }
     }
 
@@ -90,12 +88,21 @@ impl FileHandler {
         self.mode == ViewMode::Edit
     }
 
+    pub(crate) const fn mode(&self) -> ViewMode {
+        self.mode
+    }
+
     pub(crate) const fn can_toggle_mode(&self) -> bool {
         self.editor.is_some() && self.viewer.is_some()
     }
 
     pub(crate) fn set_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
-        if !self.can_toggle_mode() || self.mode == mode {
+        let mode = match (self.editor.is_some(), self.viewer.is_some()) {
+            (true, true) | (false, false) => mode,
+            (true, false) => ViewMode::Edit,
+            (false, true) => ViewMode::View,
+        };
+        if self.mode == mode {
             return;
         }
         if mode == ViewMode::View
@@ -107,27 +114,9 @@ impl FileHandler {
         cx.notify();
     }
 
-    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
-        self.restored_vault_root = None;
+    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<Self>) {
         if let Some(viewer) = &self.viewer {
             viewer.set_vault_catalog(catalog, cx);
-        }
-    }
-
-    pub(crate) fn restore_vault_root(&mut self, root: PathBuf) {
-        self.restored_vault_root = Some(root);
-    }
-
-    pub(crate) fn vault_root(&self, cx: &App) -> Option<PathBuf> {
-        self.restored_vault_root
-            .clone()
-            .or_else(|| self.vault_catalog(cx).map(|catalog| catalog.root()))
-    }
-
-    pub(crate) fn vault_catalog(&self, cx: &App) -> Option<VaultCatalog> {
-        match &self.viewer {
-            Some(ViewerKind::Base(viewer)) => viewer.vault_catalog(cx),
-            _ => None,
         }
     }
 
