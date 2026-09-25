@@ -4,7 +4,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::component::select::Select;
-use gpui_kit::component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
+use gpui_kit::component::{Icon, IconName, h_flex, v_flex, v_virtual_list};
 use gpui_kit::{
     AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, Styled, Window, div, px, relative,
@@ -77,16 +77,20 @@ impl Render for TodoTxtState {
 
         v_flex()
             .size_full()
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground)
+            .font_family(self.theme(cx).font_family.clone())
             .min_h_0()
             .overflow_hidden()
             .track_focus(&self.editor_focus)
             .child(header)
             .child(
-                div()
-                    .h(px(6.0))
-                    .w_full()
-                    .bg(cx.theme().border)
-                    .child(div().h_full().w(relative(progress)).bg(cx.theme().success)),
+                div().h(px(6.0)).w_full().bg(self.theme(cx).border).child(
+                    div()
+                        .h_full()
+                        .w(relative(progress))
+                        .bg(self.theme(cx).success),
+                ),
             )
             .children(error_banner)
             .child(task_list)
@@ -96,9 +100,16 @@ impl Render for TodoTxtState {
 
 impl TodoTxtState {
     fn render_header(&self, cx: &Context<Self>) -> AnyElement {
-        let search = Input::new(&self.search_input).cleanable(true);
-        let filter_select = Select::new(&self.filter_select);
-        let sort_select = Select::new(&self.sort_select);
+        let search = Input::new(&self.search_input)
+            .cleanable(true)
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground);
+        let filter_select = Select::new(&self.filter_select)
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground);
+        let sort_select = Select::new(&self.sort_select)
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground);
 
         let sort_icon = if self.workspace.sort_descending() {
             Icon::new(DatalithIcon::ArrowDownAz).size_4()
@@ -113,7 +124,7 @@ impl TodoTxtState {
             .gap_1()
             .px_3()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(self.theme(cx).border)
             .child(
                 Button::new("todo-add-btn")
                     .ghost()
@@ -150,7 +161,7 @@ impl TodoTxtState {
                     .child(
                         Icon::new(DatalithIcon::Funnel)
                             .size_4()
-                            .text_color(cx.theme().muted_foreground),
+                            .text_color(self.theme(cx).muted_foreground),
                     )
                     .child(div().w(px(120.0)).child(filter_select)),
             )
@@ -178,8 +189,8 @@ impl TodoTxtState {
                 .w_full()
                 .px_3()
                 .py_1()
-                .bg(cx.theme().warning)
-                .text_color(cx.theme().warning_foreground)
+                .bg(self.theme(cx).warning)
+                .text_color(self.theme(cx).warning_foreground)
                 .text_sm()
                 .child(format!("{count} line(s) failed to parse"))
                 .into_any_element(),
@@ -193,11 +204,11 @@ impl TodoTxtState {
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(self.theme(cx).muted_foreground)
                 .child(
                     Icon::new(IconName::Inbox)
                         .size_8()
-                        .text_color(cx.theme().muted_foreground.opacity(0.4)),
+                        .text_color(self.theme(cx).muted_foreground.opacity(0.4)),
                 )
                 .child(div().text_sm().child("No tasks to display"))
                 .into_any_element();
@@ -248,13 +259,18 @@ impl TodoTxtState {
             .gap_2()
             .px_3()
             .border_t_1()
-            .border_color(cx.theme().border)
+            .border_color(self.theme(cx).border)
             .child(div().w(px(TODO_INDENT_PX + 16.0)))
             .child(
                 div()
                     .flex_1()
                     .id("new-task-input-wrap")
-                    .child(Input::new(&self.new_task_input).appearance(false))
+                    .child(
+                        Input::new(&self.new_task_input)
+                            .bg(self.theme(cx).background)
+                            .text_color(self.theme(cx).foreground)
+                            .appearance(false),
+                    )
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
                             "enter" if !event.keystroke.modifiers.secondary() => {

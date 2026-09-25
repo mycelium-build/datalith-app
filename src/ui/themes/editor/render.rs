@@ -21,7 +21,6 @@ use crate::app::{
     settings::FontRole,
     themes::{SaveStatus, ThemeFamily, ThemeLibrary},
 };
-use crate::ui::themes::preview::{PreviewFonts, ThemePreview};
 
 fn group(token: &str) -> &'static str {
     if token.starts_with("sidebar.") || token.starts_with("tab.") || token.starts_with("title_bar.")
@@ -173,46 +172,6 @@ impl ThemeEditor {
             .into_any_element()
     }
 
-    fn render_group(&self, id: u64, name: &'static str, cx: &Context<Self>) -> impl IntoElement {
-        let controls = self.variants.get(&id);
-        let expanded = controls.is_some_and(|controls| controls.expanded.contains(name));
-        div()
-            .w_full()
-            .mb_3()
-            .child(
-                Button::new(format!("token-group-{id}-{name}"))
-                    .small()
-                    .ghost()
-                    .mb_1()
-                    .icon(if expanded {
-                        IconName::ChevronDown
-                    } else {
-                        IconName::ChevronRight
-                    })
-                    .label(name)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(controls) = this.variants.get_mut(&id) {
-                            if !controls.expanded.insert(name) {
-                                controls.expanded.remove(name);
-                            }
-                            cx.notify();
-                        }
-                    })),
-            )
-            .children(expanded.then(|| {
-                div()
-                    .w_full()
-                    .pl_3()
-                    .children(controls.into_iter().flat_map(|controls| {
-                        controls
-                            .colors
-                            .keys()
-                            .filter(|token| group(token) == name)
-                            .map(|token| self.render_color_row(id, token, cx))
-                    }))
-            }))
-    }
-
     fn render_fonts(&self, id: u64, cx: &Context<Self>) -> impl IntoElement {
         let controls = self.variants.get(&id);
         v_flex()
@@ -270,7 +229,7 @@ impl ThemeEditor {
 
     #[allow(
         clippy::too_many_lines,
-        reason = "A variant's header and expandable controls form a single rendered section"
+        reason = "Variant identity, mode and property navigation share a header"
     )]
     fn render_variant(
         &self,
@@ -285,7 +244,7 @@ impl ThemeEditor {
             return v_flex().into_any_element();
         };
         let selected = id == self.edited;
-        let expanded = self.expanded_variants.contains(&id);
+
         let dark = variant.mode().is_dark();
         div()
             .id(("variant-editor", id))
@@ -308,24 +267,6 @@ impl ThemeEditor {
                     .min_w_0()
                     .gap_2()
                     .flex_wrap()
-                    .child(
-                        Button::new(("select-variant", id))
-                            .small()
-                            .ghost()
-                            .icon(if expanded {
-                                IconName::ChevronDown
-                            } else {
-                                IconName::ChevronRight
-                            })
-                            .label(variant.name().to_owned())
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_edited(id, window, cx);
-                                if !this.expanded_variants.insert(id) {
-                                    this.expanded_variants.remove(&id);
-                                }
-                                cx.notify();
-                            })),
-                    )
                     .child(
                         div().flex_1().min_w_0().child(
                             Input::new(&controls.suffix)
@@ -382,16 +323,33 @@ impl ThemeEditor {
                     .text_color(cx.theme().danger)
                     .child(error.clone())
             }))
-            .children(expanded.then(|| {
-                div()
-                    .w_full()
-                    .children(
-                        ["Surface", "Chrome", "Accent", "Syntax"]
-                            .into_iter()
-                            .map(|name| self.render_group(id, name, cx)),
-                    )
-                    .child(self.render_fonts(id, cx))
-            }))
+            .child(
+                h_flex().w_full().gap_1().flex_wrap().py_2().children(
+                    [
+                        ("Surface", "Surfaces"),
+                        ("Chrome", "Interface"),
+                        ("Accent", "Accents"),
+                        ("Syntax", "Syntax"),
+                        ("Fonts", "Fonts"),
+                    ]
+                    .into_iter()
+                    .map(|(category, label)| {
+                        Button::new(format!("token-group-{id}-{category}"))
+                            .small()
+                            .ghost()
+                            .selected(self.category == category)
+                            .label(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.category = category;
+                                this.scroll.set_offset(gpui_kit::point(
+                                    gpui_kit::px(0.),
+                                    gpui_kit::px(0.),
+                                ));
+                                cx.notify();
+                            }))
+                    }),
+                ),
+            )
             .into_any_element()
     }
 }
@@ -402,19 +360,6 @@ impl Render for ThemeEditor {
         reason = "The editor's header, controls and isolated preview share a single layout"
     )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let preview = self.preview.as_ref().map(|appearance| {
-            ThemePreview::new(
-                appearance.theme(),
-                PreviewFonts::new(
-                    appearance.font(FontRole::Interface).clone(),
-                    appearance.font(FontRole::Reading).clone(),
-                    appearance.font(FontRole::Headings).clone(),
-                    appearance.font(FontRole::Code).clone(),
-                ),
-            )
-            .render(&self.preview_note, cx)
-            .into_any_element()
-        });
         let family = cx.global::<ThemeLibrary>().family(self.family_id);
         let Some(family) = family else {
             return div().child("This theme was deleted").into_any_element();
@@ -425,34 +370,88 @@ impl Render for ThemeEditor {
             SaveStatus::Failed(error) => format!("Couldn’t save: {error}"),
         };
         let narrow = window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 75.;
-        // This is a bounded editor viewport, so its content does not participate
-        // in sizing the panes. Keep one native scroll owner and direct variant
-        // children so additions can reveal their header by model position.
-        let controls_content = div()
-            .id("theme-controls-scroll")
-            .absolute()
-            .inset_0()
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .children(
-                family
-                    .variants()
-                    .iter()
-                    .filter(|v| self.variants.contains_key(&v.id()))
-                    .map(|variant| {
-                        div()
-                            .w_full()
-                            .p_3()
-                            .child(self.render_variant(family, variant.id(), cx))
-                    }),
+        let show_navigation =
+            window.viewport_size().width.as_f32() >= window.rem_size().as_f32() * 90.;
+        let id = self.edited;
+        let mut properties = v_flex().w_full().p_3();
+        if self.category == "Fonts" {
+            properties = properties.child(self.render_fonts(id, cx));
+        } else if let Some(controls) = self.variants.get(&id) {
+            properties = properties.children(
+                controls
+                    .colors
+                    .keys()
+                    .filter(|token| group(token) == self.category)
+                    .map(|token| self.render_color_row(id, token, cx)),
             );
-        let controls = div()
-            .relative()
+        }
+        let controls = v_flex()
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .child(controls_content)
-            .vertical_scrollbar(&self.scroll);
+            .child(self.render_variant(family, id, cx))
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("theme-controls-scroll")
+                            .test_support()
+                            .absolute()
+                            .inset_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .child(properties),
+                    )
+                    .vertical_scrollbar(&self.scroll),
+            );
+        let navigation = v_flex()
+            .id("theme-variant-navigation")
+            .w(gpui_kit::rems(12.))
+            .flex_none()
+            .min_h_0()
+            .p_2()
+            .gap_1()
+            .border_r_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .p_2()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Variants"),
+            )
+            .child(
+                v_flex()
+                    .id("theme-variants-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .gap_1()
+                    .children(family.variants().iter().map(|variant| {
+                        let variant_id = variant.id();
+                        Button::new(("select-variant", variant_id))
+                            .w_full()
+                            .ghost()
+                            .selected(variant_id == id)
+                            .label(format!(
+                                "{} · {}",
+                                variant.name(),
+                                if variant.mode().is_dark() {
+                                    "Dark"
+                                } else {
+                                    "Light"
+                                }
+                            ))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.select(variant_id, window, cx);
+                                this.reset_property_scroll();
+                            }))
+                    })),
+            );
         let preview_pane = v_flex()
             .id("theme-preview-pane")
             .test_support()
@@ -462,15 +461,7 @@ impl Render for ThemeEditor {
             .border_color(cx.theme().border)
             .when(narrow, |pane| pane.w_full().flex_1())
             .when(!narrow, gpui_kit::Styled::border_l_1)
-            .child(
-                div().p_3().child(
-                    Select::new(&self.selector)
-                        .w_full()
-                        .small()
-                        .accessibility_label("Preview variant"),
-                ),
-            )
-            .children(preview);
+            .child(self.preview_pane.clone());
         let body = if narrow {
             if self.show_preview {
                 preview_pane.into_any_element()
@@ -487,8 +478,8 @@ impl Render for ThemeEditor {
                         .child(resizable_panel().child(controls))
                         .child(
                             resizable_panel()
-                                .size(gpui_kit::px(448.))
-                                .size_range(gpui_kit::px(256.)..gpui_kit::px(880.))
+                                .size(window.rem_size() * 30.)
+                                .size_range(window.rem_size() * 20. ..window.rem_size() * 55.)
                                 .flex_none()
                                 .child(preview_pane),
                         ),
@@ -566,7 +557,25 @@ impl Render for ThemeEditor {
                     .text_color(cx.theme().danger)
                     .child(error.clone())
             }))
-            .child(body)
+            .when(!show_navigation, |view| {
+                view.child(
+                    div().p_2().child(
+                        Select::new(&self.selector)
+                            .w_full()
+                            .small()
+                            .accessibility_label("Edited variant"),
+                    ),
+                )
+            })
+            .child(
+                h_flex()
+                    .items_stretch()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .when(show_navigation, |row| row.child(navigation))
+                    .child(body),
+            )
             .into_any_element()
     }
 }

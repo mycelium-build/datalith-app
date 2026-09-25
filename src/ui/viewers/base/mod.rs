@@ -2,6 +2,7 @@ mod cards;
 mod cells;
 mod graph;
 mod list;
+mod preview;
 mod snapshot;
 mod table;
 
@@ -64,6 +65,7 @@ impl BaseViewer {
 }
 
 pub struct BaseViewState {
+    preview_appearance: Option<std::rc::Rc<gpui_kit::component::Theme>>,
     input: Entity<EditorState>,
     /// The parsed definition the switcher renders from and queries reuse;
     /// replaced whenever the source parses successfully again.
@@ -88,6 +90,21 @@ pub struct BaseViewState {
 }
 
 impl BaseViewState {
+    pub(crate) fn set_preview_appearance(
+        &mut self,
+        appearance: std::rc::Rc<gpui_kit::component::Theme>,
+        cx: &mut Context<Self>,
+    ) {
+        self.preview_appearance = Some(appearance);
+        cx.notify();
+    }
+
+    fn theme<'a>(&'a self, cx: &'a App) -> &'a gpui_kit::component::Theme {
+        self.preview_appearance
+            .as_deref()
+            .unwrap_or_else(|| cx.theme())
+    }
+
     fn new(
         input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
@@ -95,6 +112,7 @@ impl BaseViewState {
         cx: &Context<Self>,
     ) -> Self {
         Self {
+            preview_appearance: None,
             input,
             definition: None,
             catalog,
@@ -256,6 +274,7 @@ impl BaseViewState {
     }
 
     fn render_view_switcher(
+        &self,
         definition: &BaseDefinition,
         selected_name: Option<&str>,
         cx: &Context<Self>,
@@ -268,7 +287,7 @@ impl BaseViewState {
             .px_2()
             .py_1()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(self.theme(cx).border)
             .children(definition.views.iter().map(|view| {
                 let selected = active.as_deref() == Some(view.name.as_str());
                 let name = view.name.clone();
@@ -277,8 +296,23 @@ impl BaseViewState {
                     .small()
                     .label(view.name.clone())
                     .when(selected, ButtonVariants::primary)
+                    .when(self.preview_appearance.is_some(), |button| {
+                        button
+                            .bg(if selected {
+                                self.theme(cx).primary
+                            } else {
+                                self.theme(cx).background
+                            })
+                            .text_color(if selected {
+                                self.theme(cx).primary_foreground
+                            } else {
+                                self.theme(cx).foreground
+                            })
+                    })
                     .on_click(cx.listener(move |state, _, _, cx| {
-                        state.select_view(name.clone(), cx);
+                        if state.preview_appearance.is_none() {
+                            state.select_view(name.clone(), cx);
+                        }
                     }))
                     .into_any_element()
             }))
@@ -305,9 +339,13 @@ impl BaseViewState {
 
 impl Render for BaseViewState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut column = v_flex().size_full();
+        let mut column = v_flex()
+            .size_full()
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground)
+            .font_family(self.theme(cx).font_family.clone());
         if let Some(definition) = &self.definition {
-            column = column.child(Self::render_view_switcher(
+            column = column.child(self.render_view_switcher(
                 definition,
                 self.selected_view.as_deref(),
                 cx,
@@ -341,6 +379,8 @@ impl Render for BaseViewState {
         let root_content = column.child(content).into_any_element();
         let mut root = div()
             .id("base-viewer-root")
+            .bg(self.theme(cx).background)
+            .text_color(self.theme(cx).foreground)
             .size_full()
             .relative()
             .overflow_hidden()

@@ -133,10 +133,10 @@ fn theme_editor_performance() {
 }
 
 fn scroll_controls(window: &mut Window, delta: f32, cx: &mut App) {
-    let bounds = window.find("theme-editor").bounds();
+    let bounds = window.find("theme-controls-scroll").bounds();
     window.dispatch_event(
         ScrollWheelEvent {
-            position: point(px(f32::from(bounds.origin.x) + 100.), bounds.center().y),
+            position: bounds.center(),
             delta: ScrollDelta::Pixels(point(px(0.), px(delta))),
             ..Default::default()
         }
@@ -172,7 +172,7 @@ fn workspace(
         (id, variant, name)
     });
     let mut view = None;
-    let handle = cx.open_window(size(px(1200.), px(900.)), |window, cx| {
+    let handle = cx.open_window(size(px(1600.), px(900.)), |window, cx| {
         let app = cx.new(|cx| DatalithView::new(false, vec![], window, cx));
         app.update(cx, |app, cx| {
             app.startup_driver = gpui_kit::Task::ready(());
@@ -330,7 +330,6 @@ fn editing_the_current_variant_repaints_the_application_theme() {
     .unwrap();
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
-        window.click(("expand-theme", family), cx);
         window.render_frame(cx);
         window.click(("set-current", variant), cx);
         window.click("close-settings", cx);
@@ -740,6 +739,11 @@ fn changing_each_font_role_through_native_select_keeps_app_fonts_and_slots_uncha
                 .to_owned(),
         ]
     });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(format!("token-group-{variant}-Fonts"), cx);
+    })
+    .unwrap();
     for role in FontRole::ALL {
         let picker = cx.update(|cx| {
             app.read(cx)
@@ -790,7 +794,7 @@ fn changing_each_font_role_through_native_select_keeps_app_fonts_and_slots_uncha
         });
     }
     cx.update_window(handle.into(), |_, window, cx| {
-        scroll_controls(window, -10000., cx);
+        scroll_controls(window, 10000., cx);
         window.click(("apply-family-fonts", variant), cx);
     })
     .unwrap();
@@ -808,7 +812,7 @@ fn changing_each_font_role_through_native_select_keeps_app_fonts_and_slots_uncha
 }
 
 #[test]
-fn focusing_another_variants_color_field_selects_its_preview() {
+fn switching_variants_updates_visible_color_controls_and_preview() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, first, _) = workspace(&mut cx);
     let second = cx.update(|cx| {
@@ -835,7 +839,7 @@ fn focusing_another_variants_color_field_selects_its_preview() {
                 .edited,
             second
         );
-        scroll_controls(window, 10000., cx);
+        window.click(("select-variant", first), cx);
         window.click(format!("color-value-{first}-background"), cx);
     })
     .unwrap();
@@ -875,7 +879,7 @@ fn focusing_another_variants_color_field_selects_its_preview() {
 }
 
 #[test]
-fn focusing_another_variants_font_select_updates_its_preview_before_confirm() {
+fn switching_variants_updates_visible_font_controls_and_preview() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, first, _) = workspace(&mut cx);
     let second = cx.update(|cx| {
@@ -902,9 +906,7 @@ fn focusing_another_variants_font_select_updates_its_preview_before_confirm() {
         window.render_frame(cx);
         scroll_controls(window, -10000., cx);
         window.click(("select-variant", second), cx);
-        scroll_controls(window, 10000., cx);
-        window.click(("variant-suffix", first), cx);
-        scroll_controls(window, -100_000., cx);
+        window.click(format!("token-group-{second}-Fonts"), cx);
         assert!(window.find(("select", picker.entity_id())).visible());
     })
     .unwrap();
@@ -930,7 +932,7 @@ fn focusing_another_variants_font_select_updates_its_preview_before_confirm() {
 }
 
 #[test]
-fn focusing_another_variants_mode_button_updates_its_preview_before_activation() {
+fn switching_variants_keeps_mode_controls_keyboard_accessible() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, first, _) = workspace(&mut cx);
     let second = cx.update(|cx| {
@@ -948,7 +950,7 @@ fn focusing_another_variants_mode_button_updates_its_preview_before_activation()
         scroll_controls(window, -10000., cx);
         window.click(("select-variant", second), cx);
         window.render_frame(cx);
-        scroll_controls(window, 10000., cx);
+        window.click(("select-variant", first), cx);
         window.click(("variant-suffix", first), cx);
         window.press("tab", cx);
         assert_eq!(window.find(("variant-light", first)).focused(), Some(true));
@@ -1027,7 +1029,13 @@ fn syntax_color_edits_use_the_variant_highlight_override() {
         }
         window.click(format!("token-group-{variant}-Syntax"), cx);
         window.render_frame(cx);
-        scroll_controls(window, -850., cx);
+        let target = format!("color-value-{variant}-highlight:syntax.keyword");
+        for _ in 0..30 {
+            if window.find(target.clone()).visible() {
+                break;
+            }
+            scroll_controls(window, -100., cx);
+        }
         window.click(
             format!("color-value-{variant}-highlight:syntax.keyword"),
             cx,

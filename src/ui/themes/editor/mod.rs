@@ -4,9 +4,8 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
-use gpui_kit::component::input::EditorState;
 use gpui_kit::component::{
     Colorize as _, IndexPath,
     color_picker::{ColorPickerEvent, ColorPickerState},
@@ -70,7 +69,6 @@ struct VariantControls {
     header_focus: FocusHandle,
     fonts: [Entity<Choices>; 4],
     colors: BTreeMap<String, ColorRow>,
-    expanded: HashSet<&'static str>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -79,11 +77,11 @@ pub struct ThemeEditor {
     edited: u64,
     selector: Entity<Choices>,
     variants: HashMap<u64, VariantControls>,
-    expanded_variants: HashSet<u64>,
+    category: &'static str,
     show_preview: bool,
     active_color: Option<(u64, String)>,
     preview: Option<themes::ResolvedAppearance>,
-    preview_note: Entity<EditorState>,
+    preview_pane: Entity<super::preview::ThemePreview>,
     scroll: ScrollHandle,
     error: Option<String>,
     focus: FocusHandle,
@@ -135,7 +133,7 @@ impl ThemeEditor {
                     && let Ok(id) = value.parse::<u64>()
                 {
                     this.select(id, window, cx);
-                    this.reveal_variant(id, cx);
+                    this.reset_property_scroll();
                 }
             });
         let mut this = Self {
@@ -143,33 +141,19 @@ impl ThemeEditor {
             edited,
             selector,
             variants: HashMap::new(),
-            expanded_variants: HashSet::from([edited]),
+            category: "Surface",
             show_preview: false,
             active_color: None,
-            preview: cx
-                .global::<ThemeLibrary>()
-                .resolved(edited, cx.global::<FontCatalog>())
-                .ok(),
-            preview_note: cx.new(|cx| EditorState::new(window, cx).default_value("# Field notes\n\nA quiet place to capture the details that matter. Follow the thread, then turn it into a plan.\n\n> Make room for the next idea.\n\nLink the draft to [Project Atlas](atlas.md).\n\n```rust\nlet plan = build(\"Atlas\", 3);\n```")),
+            preview: None,
+            preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
             scroll: ScrollHandle::default(),
             error: None,
             focus: cx.focus_handle(),
             _selector_subscription: selector_subscription,
         };
+        this.refresh_preview(cx);
         for variant in &variants {
             this.mount_variant(variant.id(), window, cx);
-        }
-        if variants
-            .first()
-            .is_some_and(|variant| variant.id() != edited)
-        {
-            let editor = cx.weak_entity();
-            window.on_next_frame(move |_, cx| {
-                let _ = editor.update(cx, |editor, cx| {
-                    editor.reveal_variant(edited, cx);
-                    cx.notify();
-                });
-            });
         }
         this
     }
@@ -179,13 +163,9 @@ impl ThemeEditor {
             return;
         }
         self.set_edited(id, window, cx);
-        if self.expanded_variants.insert(id) {
-            cx.notify();
-        }
     }
 
-    // Focusing a header selects its preview without changing disclosure state.
-    // Otherwise a pointer press expands it before the disclosure click can toggle it.
+    // Controls and preview always follow the same edited variant.
     fn set_edited(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         if self.edited == id || !self.variants.contains_key(&id) {
             return;
@@ -198,11 +178,13 @@ impl ThemeEditor {
         cx.notify();
     }
 
-    fn refresh_preview(&mut self, cx: &App) {
+    fn refresh_preview(&mut self, cx: &mut App) {
         self.preview = cx
             .global::<ThemeLibrary>()
             .resolved(self.edited, cx.global::<FontCatalog>())
             .ok();
+        self.preview_pane
+            .update(cx, |pane, cx| pane.set_appearance(self.preview.clone(), cx));
     }
 
     #[allow(
@@ -304,7 +286,6 @@ impl ThemeEditor {
                 header_focus: cx.focus_handle(),
                 fonts,
                 colors: rows,
-                expanded: HashSet::from(["Surface", "Chrome", "Accent", "Fonts"]),
                 subscriptions: Vec::new(),
             },
         );
@@ -693,7 +674,7 @@ impl ThemeEditor {
                     self.mount_variant(id, window, cx);
                     self.refresh_variants(window, cx);
                     self.select(id, window, cx);
-                    self.reveal_variant(id, cx);
+                    self.reset_property_scroll();
                     ThemeLibrary::schedule_save(self.family_id, cx);
                 }
                 Err(error) => self.error = Some(error.to_string()),
@@ -762,7 +743,6 @@ impl ThemeEditor {
             })
             .unwrap_or_default();
         self.variants.retain(|id, _| ids.contains(id));
-        self.expanded_variants.retain(|id| ids.contains(id));
         if !ids.contains(&self.edited) {
             self.edited = ids.first().copied().unwrap_or_default();
         }
@@ -770,8 +750,7 @@ impl ThemeEditor {
             if !self.variants.contains_key(id) {
                 self.mount_variant(*id, window, cx);
                 self.edited = *id;
-                self.expanded_variants.insert(*id);
-                self.reveal_variant(*id, cx);
+                self.reset_property_scroll();
             }
         }
         let suffixes: Vec<_> = cx
@@ -815,27 +794,15 @@ impl ThemeEditor {
         cx.notify();
     }
 
-    fn reveal_variant(&self, id: u64, cx: &App) {
-        if let Some(ix) = cx
-            .global::<ThemeLibrary>()
-            .family(self.family_id)
-            .and_then(|family| {
-                family
-                    .variants()
-                    .iter()
-                    .position(|variant| variant.id() == id)
-            })
-        {
-            self.scroll.scroll_to_top_of_item(ix);
-        }
+    fn reset_property_scroll(&self) {
+        self.scroll
+            .set_offset(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(0.)));
     }
 
     pub(crate) fn reload_variants(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.variants.clear();
         self.active_color = None;
-        self.expanded_variants.clear();
         self.refresh_variants(window, cx);
-        self.expanded_variants.insert(self.edited);
         cx.notify();
     }
 }

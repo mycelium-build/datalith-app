@@ -221,6 +221,9 @@ impl ThemeFamily {
     pub const fn source(&self) -> &ThemeSource {
         &self.source
     }
+    pub(crate) const fn revision(&self) -> u64 {
+        self.revision
+    }
     pub const fn status(&self) -> &SaveStatus {
         &self.status
     }

@@ -187,7 +187,7 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find(("copy-theme", catppuccin)).visible());
-        window.click(("expand-theme", catppuccin), cx);
+        assert!(window.try_find(("expand-theme", catppuccin)).is_none());
     })
     .unwrap();
     cx.run_until_parked();
@@ -271,23 +271,38 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
 }
 
 #[test]
-fn theme_page_sets_the_light_slot_from_an_expanded_variant() {
-    use crate::app::{settings::ThemeKind, themes::ThemeLibrary};
+fn theme_page_sets_the_light_slot_from_a_compact_variant() {
+    assert_compact_selection(crate::app::settings::ThemeKind::Light);
+}
+
+#[test]
+fn theme_page_sets_the_dark_slot_from_a_compact_variant() {
+    assert_compact_selection(crate::app::settings::ThemeKind::Dark);
+}
+
+fn assert_compact_selection(kind: crate::app::settings::ThemeKind) {
+    use crate::app::themes::ThemeLibrary;
 
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
-    let (family, variant, old) = cx.update(|cx| {
+    let (family, variant, old, query) = cx.update(|cx| {
         let library = cx.global::<ThemeLibrary>();
-        let family = library.family_named("Catppuccin").unwrap();
+        let query = if library.current(kind).starts_with("Catppuccin") {
+            "Datalith"
+        } else {
+            "Catppuccin"
+        };
+        let family = library.family_named(query).unwrap();
         let variant = family
             .variants()
             .iter()
-            .find(|v| v.mode() == ThemeKind::Light.mode())
+            .find(|v| v.mode() == kind.mode())
             .unwrap();
         (
             family.id(),
             variant.id(),
-            library.current(ThemeKind::Light).to_owned(),
+            library.current(kind).to_owned(),
+            query,
         )
     });
     cx.update_window(handle.into(), |_, window, cx| {
@@ -296,21 +311,33 @@ fn theme_page_sets_the_light_slot_from_an_expanded_variant() {
             cx.notify();
         });
         window.render_frame(cx);
-        window.click(("expand-theme", family), cx);
+        assert!(window.try_find(("expand-theme", family)).is_none());
+        window.click("theme-search", cx);
+        window.input(query, cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click(("set-current", variant), cx);
     })
     .unwrap();
     cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find(("current-theme", variant)).visible());
+        assert!(window.try_find(("set-current", variant)).is_none());
+    })
+    .unwrap();
     cx.update(|cx| {
         let library = cx.global::<ThemeLibrary>();
         assert_eq!(
-            library.current(ThemeKind::Light),
+            library.current(kind),
             library.variant_by_id(variant).unwrap().name()
         );
         let previous = library.variant(&old).unwrap().id();
         cx.global_mut::<ThemeLibrary>()
-            .set_current(previous, ThemeKind::Light)
+            .set_current(previous, kind)
             .unwrap();
         crate::app::themes::refresh_current(cx);
     });
