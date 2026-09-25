@@ -4,7 +4,7 @@ category: reference
 
 # Settings
 
-Open **Settings** from the gear button or the Datalith menu, or press **Cmd/Ctrl+,**. **Appearance** contains the display zoom slider. Use **Manage themes** there to open the **Theme** page.
+Open **Settings** from the gear button or the Datalith menu, or press **Cmd/Ctrl+,**. **Appearance** contains the display zoom slider. Use **Manage themes** there to open the separate **Theme** panel without the Settings navigation sidebar.
 
 ## Theme
 
@@ -16,7 +16,7 @@ Search or filter the theme list by **All**, **Light**, **Dark**, or **Custom**. 
 
 ## Theme editor and fonts
 
-Each custom theme opens in its own workspace tab. Reopening that theme focuses its existing tab. Built-in themes must first be copied with **Copy & edit**. Select a variant to edit its suffix, light/dark mode, grouped color and syntax tokens, and four font roles: **Interface**, **Reading**, **Headings**, and **Code and editing**. The editor preview shows the selected variant in a note, a base table, and a todo.txt sample. Editing a non-current variant affects only that preview; editing a current variant updates its application slot live.
+Each custom theme opens in its own workspace tab. Reopening that theme focuses its existing tab. Built-in themes must first be copied with **Copy & edit**. Select a variant to edit its suffix, light/dark mode, grouped color and syntax tokens, and four font roles: **Interface**, **Reading**, **Headings**, and **Code and editing**. The resizable preview uses Datalith's actual Markdown document renderer with the selected variant's resolved colors and fonts. Editing a non-current variant affects only that preview; editing a current variant updates its application slot live.
 
 Colors apply as soon as a value becomes valid. An invalid value is marked beside its field and is restored to the last valid value when the field loses focus. **Reset** removes a token override and restores the Datalith default for the variant's mode. Changes autosave; the editor reports **Saving**, **Autosaved**, or **Couldn’t save** with **Retry** when necessary. Closing its tab does not discard valid changes.
 

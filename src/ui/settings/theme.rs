@@ -1,4 +1,4 @@
-//! Theme management within Settings. Family and variant identity comes from the library.
+//! Theme management in its own modal. Family and variant identity comes from the library.
 
 use std::collections::HashSet;
 
@@ -9,7 +9,7 @@ use gpui_kit::component::{
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::Notification,
-    setting::{SettingGroup, SettingItem},
+    select::{Select, SelectEvent, SelectState},
     v_flex,
 };
 use gpui_kit::{
@@ -42,12 +42,14 @@ enum FamilyRow {
 
 pub(super) struct ThemePage {
     query: Entity<InputState>,
+    mode: Entity<SelectState<Vec<String>>>,
     filter: Filter,
     expanded: HashSet<u64>,
     rows: Vec<FamilyRow>,
     list: ListState,
     rem_size: Pixels,
     _query_subscription: Subscription,
+    _mode_subscription: Subscription,
 }
 
 impl ThemePage {
@@ -58,14 +60,49 @@ impl ThemePage {
                 cx.notify();
             }
         });
+        let preferences = [
+            ThemePreference::System,
+            ThemePreference::Light,
+            ThemePreference::Dark,
+        ];
+        let selected = preferences
+            .iter()
+            .position(|preference| *preference == settings::snapshot().theme_preference)
+            .unwrap_or(0);
+        let mode = cx.new(|cx| {
+            SelectState::new(
+                vec!["System".into(), "Light".into(), "Dark".into()],
+                Some(gpui_kit::component::IndexPath::default().row(selected)),
+                window,
+                cx,
+            )
+        });
+        let mode_subscription = cx.subscribe_in(
+            &mode,
+            window,
+            |_, _, event: &SelectEvent<Vec<String>>, _, cx| {
+                if let SelectEvent::Confirm(Some(value)) = event
+                    && let Some(preference) = (match value.as_str() {
+                        "System" => Some(ThemePreference::System),
+                        "Light" => Some(ThemePreference::Light),
+                        "Dark" => Some(ThemePreference::Dark),
+                        _ => None,
+                    })
+                {
+                    ui_themes::change_mode(preference, cx);
+                }
+            },
+        );
         Self {
             query,
+            mode,
             filter: Filter::All,
             expanded: HashSet::new(),
             rows: Vec::new(),
             list: ListState::new(0, ListAlignment::Top, px(100.)),
             rem_size: window.rem_size(),
             _query_subscription: subscription,
+            _mode_subscription: mode_subscription,
         }
     }
 
@@ -90,26 +127,6 @@ impl ThemePage {
                     .variants()
                     .iter()
                     .any(|v| v.name().to_lowercase().contains(query)))
-    }
-
-    fn render_mode() -> impl IntoElement {
-        let current = settings::snapshot().theme_preference;
-        h_flex().gap_2().flex_wrap().children(
-            [
-                (ThemePreference::Light, "Light"),
-                (ThemePreference::Dark, "Dark"),
-                (ThemePreference::System, "System"),
-            ]
-            .into_iter()
-            .enumerate()
-            .map(|(ix, (preference, label))| {
-                Button::new(("theme-appearance", ix))
-                    .small()
-                    .label(label)
-                    .selected(current == preference)
-                    .on_click(move |_, _, cx| ui_themes::change_mode(preference, cx))
-            }),
-        )
     }
 
     fn render_current(kind: ThemeKind, cx: &Context<Self>) -> impl IntoElement {
@@ -161,7 +178,7 @@ impl ThemePage {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("Current {mode}")),
+                            .child(format!("Current {mode} Theme")),
                     )
                     .child(div().truncate().child(name.to_owned())),
             )
@@ -212,7 +229,14 @@ impl ThemePage {
                     .small()
                     .ghost()
                     .disabled(true)
-                    .label("Current ✓")
+                    .label(format!(
+                        "Current {} Theme ✓",
+                        if kind == ThemeKind::Light {
+                            "Light"
+                        } else {
+                            "Dark"
+                        }
+                    ))
             } else {
                 Button::new(("set-current", id))
                     .small()
@@ -362,16 +386,25 @@ impl ThemePage {
     }
 }
 
-impl SettingsView {
-    pub(super) fn theme_page_group(&self) -> SettingGroup {
-        let page = self.theme_page.clone();
-        SettingGroup::new().items(vec![SettingItem::render(move |_, _, _| {
-            page.clone().into_any_element()
-        })])
-    }
-}
-
 impl ThemePage {
+    pub(super) fn sync_mode(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let selected = match settings::snapshot().theme_preference {
+            ThemePreference::System => "System",
+            ThemePreference::Light => "Light",
+            ThemePreference::Dark => "Dark",
+        };
+        if self
+            .mode
+            .read(cx)
+            .selected_value()
+            .is_none_or(|value| value != selected)
+        {
+            self.mode.update(cx, |mode, cx| {
+                mode.set_selected_value(&selected.to_owned(), window, cx);
+            });
+        }
+    }
+
     fn refresh_rows(&mut self, window: &Window, cx: &App) {
         let query = self.query.read(cx).value().to_lowercase();
         let (custom, bundled): (Vec<_>, Vec<_>) = cx
@@ -407,13 +440,17 @@ impl Render for ThemePage {
         v_flex()
             .id("theme-settings-page")
             .min_w_0()
-            .w_full()
+            .size_full()
+            .min_h_0()
             .gap_4()
             .child(
-                v_flex()
-                    .gap_2()
-                    .child("Appearance")
-                    .child(Self::render_mode()),
+                v_flex().gap_2().child("Appearance").child(
+                    Select::new(&self.mode)
+                        .id("theme-appearance")
+                        .small()
+                        .w(rems(14.))
+                        .accessibility_label("Appearance mode"),
+                ),
             )
             .child(
                 v_flex()
@@ -483,7 +520,8 @@ impl Render for ThemePage {
                     })
                 })
                 .w_full()
-                .h(rems(32.))
+                .flex_1()
+                .min_h_0()
             }))
             .children(empty.then(|| {
                 div()

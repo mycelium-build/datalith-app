@@ -6,6 +6,7 @@ mod tests;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use gpui_kit::component::input::EditorState;
 use gpui_kit::component::{
     Colorize as _, IndexPath,
     color_picker::{ColorPickerEvent, ColorPickerState},
@@ -82,6 +83,7 @@ pub struct ThemeEditor {
     show_preview: bool,
     active_color: Option<(u64, String)>,
     preview: Option<themes::ResolvedAppearance>,
+    preview_note: Entity<EditorState>,
     scroll: ScrollHandle,
     error: Option<String>,
     focus: FocusHandle,
@@ -148,6 +150,7 @@ impl ThemeEditor {
                 .global::<ThemeLibrary>()
                 .resolved(edited, cx.global::<FontCatalog>())
                 .ok(),
+            preview_note: cx.new(|cx| EditorState::new(window, cx).default_value("# Field notes\n\nA quiet place to capture the details that matter. Follow the thread, then turn it into a plan.\n\n> Make room for the next idea.\n\nLink the draft to [Project Atlas](atlas.md).\n\n```rust\nlet plan = build(\"Atlas\", 3);\n```")),
             scroll: ScrollHandle::default(),
             error: None,
             focus: cx.focus_handle(),

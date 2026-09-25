@@ -42,6 +42,7 @@ impl Global for ThemeOptions {}
 
 pub struct SettingsView {
     pub(crate) open: bool,
+    theme_open: bool,
     focus_handle: FocusHandle,
     return_focus: Option<FocusHandle>,
     page_index: usize,
@@ -55,14 +56,12 @@ pub struct SettingsView {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     Appearance,
-    Theme,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 3] = [
     SettingsPage::Appearance,
-    SettingsPage::Theme,
     SettingsPage::Server,
     SettingsPage::About,
 ];
@@ -71,7 +70,6 @@ impl SettingsPage {
     const fn title(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
-            Self::Theme => "Theme",
             Self::Server => "Local Server",
             Self::About => "About",
         }
@@ -90,6 +88,7 @@ impl SettingsView {
         });
         Self {
             open: false,
+            theme_open: false,
             focus_handle: cx.focus_handle(),
             return_focus: None,
             page_index: 0,
@@ -102,18 +101,22 @@ impl SettingsView {
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = 0;
         self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
-    pub(crate) const fn open_theme(&mut self) {
+    pub(crate) fn open_theme(&mut self, window: &mut Window, cx: &mut App) {
         self.open = true;
-        self.page_index = if self.has_updater { 2 } else { 1 };
+        self.theme_open = true;
         self.navigation_revision = self.navigation_revision.saturating_add(1);
+        self.theme_page
+            .update(cx, |page, cx| page.sync_mode(window, cx));
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
         self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
@@ -138,6 +141,7 @@ impl SettingsView {
         div()
             .absolute()
             .inset_0()
+            .p(px(32.))
             .bg(cx.theme().overlay)
             .flex()
             .items_center()
@@ -183,13 +187,21 @@ impl SettingsView {
                                     .justify_between()
                                     .border_b(px(1.))
                                     .border_color(cx.theme().border)
-                                    .child(div().text_sm().child("Settings"))
+                                    .child(div().text_sm().child(if self.theme_open {
+                                        "Theme"
+                                    } else {
+                                        "Settings"
+                                    }))
                                     .child(
                                         Button::new("close-settings")
                                             .ghost()
                                             .small()
                                             .icon(IconName::Close)
-                                            .accessibility_label("Close preferences")
+                                            .accessibility_label(if self.theme_open {
+                                                "Close themes"
+                                            } else {
+                                                "Close preferences"
+                                            })
                                             .tooltip("Close")
                                             .on_click(cx.listener(|view, _, window, cx| {
                                                 view.settings.dismiss(window, cx);
@@ -197,15 +209,23 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(
+                            .child(if self.theme_open {
+                                div()
+                                    .size_full()
+                                    .min_h_0()
+                                    .p_4()
+                                    .child(self.theme_page.clone())
+                                    .into_any_element()
+                            } else {
                                 Settings::new(("app-settings", self.navigation_revision))
                                     .with_size(Size::Small)
                                     .default_selected_index(SelectIndex {
                                         page_ix: self.page_index,
                                         group_ix: None,
                                     })
-                                    .pages(self.settings_pages(cx)),
-                            ),
+                                    .pages(self.settings_pages(cx))
+                                    .into_any_element()
+                            }),
                     )
                     .focus_trap("preferences-focus", &self.focus_handle),
             )
@@ -257,9 +277,6 @@ impl SettingsView {
                             Self::display_group(&self.font_size_slider_state),
                             Self::theme_navigation_group(),
                         ]),
-                    SettingsPage::Theme => SettingPage::new(page.title())
-                        .resettable(false)
-                        .groups(vec![self.theme_page_group()]),
                     SettingsPage::Server => {
                         SettingPage::new(page.title()).groups(vec![Self::server_group()])
                     }

@@ -110,7 +110,7 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
         );
 
         app.update(cx, |view, cx| {
-            view.settings.open_theme();
+            view.settings.open_theme(window, cx);
             cx.notify();
         });
         window.render_frame(cx);
@@ -172,14 +172,13 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
     });
     cx.update_window(handle.into(), |_, window, cx| {
         app.update(cx, |app, cx| {
-            app.settings.open_theme();
+            app.settings.open_theme(window, cx);
             app.settings.focus(window, cx);
             cx.notify();
         });
         window.render_frame(cx);
         assert!(window.find("import-theme").visible());
-        assert!(window.find(("theme-appearance", 0usize)).visible());
-        assert!(window.find(("theme-appearance", 2usize)).visible());
+        assert!(window.find("theme-appearance").visible());
         window.click("theme-search", cx);
         window.input("Catppuccin", cx);
     })
@@ -293,7 +292,7 @@ fn theme_page_sets_the_light_slot_from_an_expanded_variant() {
     });
     cx.update_window(handle.into(), |_, window, cx| {
         app.update(cx, |app, cx| {
-            app.settings.open_theme();
+            app.settings.open_theme(window, cx);
             cx.notify();
         });
         window.render_frame(cx);
@@ -329,11 +328,13 @@ fn system_appearance_resolves_the_current_slot_through_the_production_settings_p
     let previous = crate::app::settings::snapshot().theme_preference;
     cx.update_window(handle.into(), |_, window, cx| {
         app.update(cx, |app, cx| {
-            app.settings.open_theme();
+            app.settings.open_theme(window, cx);
             cx.notify();
         });
         window.render_frame(cx);
-        window.click(("theme-appearance", 2usize), cx);
+        window.click("theme-appearance", cx);
+        window.press("home", cx);
+        window.press("enter", cx);
         window.render_frame(cx);
         assert_eq!(
             crate::app::settings::snapshot().theme_preference,
@@ -354,6 +355,39 @@ fn system_appearance_resolves_the_current_slot_through_the_production_settings_p
                 .unwrap()
                 .theme()
                 .background
+        );
+        crate::app::settings::set_theme_preference(previous).unwrap();
+        crate::app::preferences::apply_theme_preference(previous, cx);
+    })
+    .unwrap();
+}
+
+#[test]
+fn theme_mode_list_refreshes_when_the_preference_changes_while_closed() {
+    use crate::app::settings::ThemePreference;
+
+    let mut cx = TestAppContext::single();
+    let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
+    let previous = crate::app::settings::snapshot().theme_preference;
+    cx.update_window(handle.into(), |_, window, cx| {
+        app.update(cx, |app, cx| {
+            app.settings.open_theme(window, cx);
+            cx.notify();
+        });
+        window.render_frame(cx);
+        window.click("close-settings", cx);
+        crate::app::settings::set_theme_preference(ThemePreference::Dark).unwrap();
+        crate::app::preferences::apply_theme_preference(ThemePreference::Dark, cx);
+        app.update(cx, |app, cx| {
+            app.settings.open_theme(window, cx);
+            cx.notify();
+        });
+        window.render_frame(cx);
+        window.click("theme-appearance", cx);
+        window.press("enter", cx);
+        assert_eq!(
+            crate::app::settings::snapshot().theme_preference,
+            ThemePreference::Dark
         );
         crate::app::settings::set_theme_preference(previous).unwrap();
         crate::app::preferences::apply_theme_preference(previous, cx);
@@ -388,10 +422,7 @@ fn manage_themes_from_the_keyboard_opens_the_theme_page() {
             );
             window.render_frame(cx);
             let settings = &app.read(cx).settings;
-            assert_eq!(
-                settings.page_index,
-                if settings.has_updater { 2 } else { 1 }
-            );
+            assert!(settings.theme_open);
             assert!(window.find("import-theme").visible());
             assert!(window.try_find("manage-themes").is_none());
             window.press("tab", cx);

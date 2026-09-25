@@ -156,12 +156,6 @@ impl Render for ShortcutsView {
             .on_key_down(cx.listener(Self::on_key_down))
             .size_full()
             .min_h_0()
-            .border_1()
-            .border_color(if self.focus.is_focused(window) {
-                cx.theme().ring
-            } else {
-                cx.theme().background
-            })
             .bg(cx.theme().background)
             .child(
                 div()
@@ -169,6 +163,11 @@ impl Render for ShortcutsView {
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .text_lg()
+                    .text_color(if self.focus.is_focused(window) {
+                        cx.theme().primary
+                    } else {
+                        cx.theme().foreground
+                    })
                     .child("Keyboard shortcuts"),
             )
             .child(
