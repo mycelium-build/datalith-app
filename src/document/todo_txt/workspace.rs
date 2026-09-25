@@ -58,6 +58,23 @@ impl TodoTxtWorkspace {
         }
     }
 
+    /// An isolated, editable sample with no filesystem destination.
+    pub(crate) fn from_content(content: &str) -> anyhow::Result<Self> {
+        let mut todo = TodoTxt::new(TodoOptions::default())?;
+        todo.tasks = TodoTxtParser::new().parse_file(content)?;
+        Ok(Self {
+            todo,
+            path: PathBuf::new(),
+            search_query: String::new(),
+            filter: FilterKind::All,
+            sort: Some(SortKind::DateCreated),
+            sort_descending: false,
+            expanded: HashSet::new(),
+            selected: None,
+            parse_errors: Vec::new(),
+        })
+    }
+
     pub fn tasks(&self) -> Vec<&Task> {
         self.todo.list()
     }

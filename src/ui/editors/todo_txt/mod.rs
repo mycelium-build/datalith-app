@@ -70,7 +70,26 @@ impl TodoTxtEditor {
     }
 
     pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<TodoTxtState> {
-        let workspace = TodoTxtWorkspace::open(path);
+        Self::from_workspace(TodoTxtWorkspace::open(path), window, cx)
+    }
+
+    pub(crate) fn preview_state(
+        content: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> anyhow::Result<Entity<TodoTxtState>> {
+        Ok(Self::from_workspace(
+            TodoTxtWorkspace::from_content(content)?,
+            window,
+            cx,
+        ))
+    }
+
+    fn from_workspace(
+        workspace: TodoTxtWorkspace,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<TodoTxtState> {
         let total = workspace.task_count();
 
         cx.new(|cx| {
@@ -121,6 +140,7 @@ impl TodoTxtEditor {
             );
 
             TodoTxtState {
+                appearance: None,
                 workspace,
                 priority_picker_open: None,
                 pending_focus_desc: None,
