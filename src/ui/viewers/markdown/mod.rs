@@ -7,9 +7,10 @@ mod frontmatter;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::{ActiveTheme, Theme};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, Focusable, FontWeight, HighlightStyle,
     InteractiveElement, IntoElement, ParentElement, SharedString, SharedUri,
@@ -42,8 +43,10 @@ struct InlineStyle {
 
 struct BlockContext<'a> {
     element_id: &'a mut usize,
-    handler: Entity<FileHandler>,
-    cx: &'a mut App,
+    handler: Option<Entity<FileHandler>>,
+    appearance: &'a Theme,
+    code_font: &'a SharedString,
+    headings_font: &'a SharedString,
 }
 
 impl MarkdownViewer {
@@ -55,7 +58,7 @@ impl MarkdownViewer {
         self.input.focus_handle(cx)
     }
 
-    fn render_image(&self, url: &str, alt: &str, grouped: bool, cx: &App) -> AnyElement {
+    fn render_image(&self, url: &str, alt: &str, grouped: bool, appearance: &Theme) -> AnyElement {
         let container = if grouped {
             div().min_w_0().flex_shrink_1().my_2()
         } else {
@@ -81,8 +84,8 @@ impl MarkdownViewer {
             .p_2()
             .rounded(px(4.))
             .border_1()
-            .border_color(cx.theme().border)
-            .text_color(cx.theme().muted_foreground)
+            .border_color(appearance.border)
+            .text_color(appearance.muted_foreground)
             .text_size(px(BASE_FONT_SIZE * 0.9))
             .child(if alt.is_empty() {
                 format!("[image: {url}]")
@@ -92,35 +95,55 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    pub fn render(&self, handler: Entity<FileHandler>, cx: &mut App) -> AnyElement {
+    pub fn render(&self, handler: Entity<FileHandler>, cx: &App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
+        let appearance = cx.theme().clone();
+        let reading = fonts::family(FontRole::Reading, cx);
+        let headings = fonts::family(FontRole::Headings, cx);
+        let code = appearance.mono_font_family.clone();
+        self.render_document(
+            &content,
+            Some(handler),
+            &appearance,
+            &[reading, headings, code],
+            cx,
+        )
+    }
+
+    /// The same Markdown document renderer used by the workspace, with a
+    /// caller-supplied resolved palette and fonts for isolated theme previews.
+    pub fn render_document(
+        &self,
+        content: &str,
+        handler: Option<Entity<FileHandler>>,
+        appearance: &Theme,
+        fonts: &[SharedString; 3],
+        cx: &App,
+    ) -> AnyElement {
         if content.is_empty() {
             return div()
                 .size_full()
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(appearance.muted_foreground)
                 .child("Empty markdown")
                 .into_any_element();
         }
 
-        let document = parse_markdown(&content);
+        let document = parse_markdown(content);
         let mut elements = Vec::new();
         let mut element_id = 0usize;
-        elements.push(self.render_title(cx));
-        if let Some(frontmatter) = &document.frontmatter {
-            elements.push(render_frontmatter(
-                frontmatter,
-                BASE_FONT_SIZE,
-                &handler,
-                cx,
-            ));
+        elements.push(self.render_title(&fonts[1]));
+        if let (Some(frontmatter), Some(handler)) = (&document.frontmatter, &handler) {
+            elements.push(render_frontmatter(frontmatter, BASE_FONT_SIZE, handler, cx));
         }
         let mut ctx = BlockContext {
             element_id: &mut element_id,
             handler,
-            cx,
+            appearance,
+            code_font: &fonts[2],
+            headings_font: &fonts[1],
         };
         elements.extend(self.render_blocks(&document.blocks, 0, &mut ctx));
 
@@ -132,13 +155,15 @@ impl MarkdownViewer {
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()
-            .font_family(fonts::family(FontRole::Reading, cx))
+            .bg(appearance.background)
+            .text_color(appearance.foreground)
+            .font_family(fonts[0].clone())
             .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements))
             .into_any_element()
     }
 
-    fn render_title(&self, cx: &App) -> AnyElement {
+    fn render_title(&self, headings: &SharedString) -> AnyElement {
         let name = self
             .file_path
             .file_stem()
@@ -149,7 +174,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .font_family(fonts::family(FontRole::Headings, cx))
+            .font_family(headings.clone())
             .font_weight(FontWeight::BOLD)
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
@@ -183,7 +208,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .font_family(fonts::family(FontRole::Headings, ctx.cx))
+            .font_family(ctx.headings_font.clone())
             .text_size(px(BASE_FONT_SIZE * size))
             //.font_weight(FontWeight::BOLD)
             .mt(px(MD_HEADING_MARGIN * size))
@@ -234,7 +259,7 @@ impl MarkdownViewer {
                         let MarkdownInline::Image { url, alt } = inline else {
                             return None;
                         };
-                        Some(self.render_image(url, alt, true, ctx.cx))
+                        Some(self.render_image(url, alt, true, ctx.appearance))
                     });
                     elements.push(
                         div()
@@ -256,7 +281,7 @@ impl MarkdownViewer {
             match inline {
                 MarkdownInline::Code(value) => {
                     flush_inline_text(&mut elements, &mut text, &mut highlights);
-                    elements.push(Self::render_inline_code(value, style, ctx.cx));
+                    elements.push(Self::render_inline_code(value, style, ctx));
                 }
                 MarkdownInline::Link { url, content } => {
                     flush_inline_text(&mut elements, &mut text, &mut highlights);
@@ -266,16 +291,18 @@ impl MarkdownViewer {
                         div()
                             .id(SharedString::from(format!("link-{url}")))
                             .flex()
-                            .text_color(ctx.cx.theme().primary)
+                            .text_color(ctx.appearance.primary)
                             .underline()
-                            .cursor_pointer()
-                            .on_click(move |event: &ClickEvent, _window, cx| {
-                                handler_clone.update(cx, |_, cx| {
-                                    cx.emit(FileHandlerEvent::LinkClicked(
-                                        link_url.clone(),
-                                        event.modifiers().secondary(),
-                                    ));
-                                });
+                            .when(ctx.handler.is_some(), gpui_kit::Styled::cursor_pointer)
+                            .when_some(handler_clone, |link, handler| {
+                                link.on_click(move |event: &ClickEvent, _window, cx| {
+                                    handler.update(cx, |_, cx| {
+                                        cx.emit(FileHandlerEvent::LinkClicked(
+                                            link_url.clone(),
+                                            event.modifiers().secondary(),
+                                        ));
+                                    });
+                                })
                             })
                             .children(self.render_inlines(content, style, ctx))
                             .into_any_element(),
@@ -283,7 +310,7 @@ impl MarkdownViewer {
                 }
                 MarkdownInline::Image { url, alt } => {
                     flush_inline_text(&mut elements, &mut text, &mut highlights);
-                    elements.push(self.render_image(url, alt, false, ctx.cx));
+                    elements.push(self.render_image(url, alt, false, ctx.appearance));
                 }
                 MarkdownInline::Break => {
                     flush_inline_text(&mut elements, &mut text, &mut highlights);
@@ -293,7 +320,7 @@ impl MarkdownViewer {
                     if Self::try_append_inline_text(
                         inline,
                         style,
-                        ctx.cx,
+                        ctx.appearance,
                         &mut text,
                         &mut highlights,
                     ) {
@@ -344,7 +371,7 @@ impl MarkdownViewer {
     fn try_append_inline_text(
         inline: &MarkdownInline,
         style: InlineStyle,
-        cx: &App,
+        appearance: &Theme,
         text: &mut String,
         highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
     ) -> bool {
@@ -352,7 +379,7 @@ impl MarkdownViewer {
             MarkdownInline::Text(value) => {
                 let start = text.len();
                 text.push_str(value);
-                highlights.push((start..text.len(), inline_highlight(style, cx)));
+                highlights.push((start..text.len(), inline_highlight(style, appearance)));
                 true
             }
             MarkdownInline::Strong(children) | MarkdownInline::Emphasis(children) => {
@@ -371,7 +398,7 @@ impl MarkdownViewer {
                     }
                 };
                 for child in children {
-                    Self::try_append_inline_text(child, child_style, cx, text, highlights);
+                    Self::try_append_inline_text(child, child_style, appearance, text, highlights);
                 }
                 true
             }

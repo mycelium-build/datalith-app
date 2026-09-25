@@ -6,6 +6,7 @@ use gpui_kit::component::{
     color_picker::ColorPicker,
     h_flex,
     input::Input,
+    resizable::{h_resizable, resizable_panel},
     scroll::ScrollableElement as _,
     select::Select,
     v_flex,
@@ -13,7 +14,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement, StatefulInteractiveElement as _,
-    Styled as _, Window, div, rems,
+    Styled as _, Window, div,
 };
 
 use crate::app::{
@@ -98,7 +99,6 @@ impl ThemeEditor {
         else {
             return v_flex().into_any_element();
         };
-        let color = gpui_kit::component::try_parse_color(&row.display).ok();
         let active = self
             .active_color
             .as_ref()
@@ -125,24 +125,26 @@ impl ThemeEditor {
                             .truncate()
                             .child(token.replace('.', " · ")),
                     )
-                    .children(color.map(|color| {
-                        div()
-                            .size_4()
-                            .rounded_sm()
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .bg(color)
-                    }))
                     .child(
                         h_flex()
                             .gap_2()
                             .child(
-                                div().w_32().child(
-                                    Input::new(&controls.input)
-                                        .id(format!("color-value-{id}-{token}"))
-                                        .small()
-                                        .aria_label(format!("{token} color")),
-                                ),
+                                div()
+                                    .id(format!("color-input-wrap-{id}-{token}"))
+                                    .w_32()
+                                    .on_click({
+                                        let picker = controls.picker.clone();
+                                        move |_, _, cx| {
+                                            picker
+                                                .update(cx, |picker, cx| picker.set_open(true, cx));
+                                        }
+                                    })
+                                    .child(
+                                        Input::new(&controls.input)
+                                            .id(format!("color-value-{id}-{token}"))
+                                            .small()
+                                            .aria_label(format!("{token} color")),
+                                    ),
                             )
                             .child(
                                 ColorPicker::new(&controls.picker)
@@ -400,15 +402,6 @@ impl Render for ThemeEditor {
         reason = "The editor's header, controls and isolated preview share a single layout"
     )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let family = cx.global::<ThemeLibrary>().family(self.family_id);
-        let Some(family) = family else {
-            return div().child("This theme was deleted").into_any_element();
-        };
-        let status = match family.status() {
-            SaveStatus::Saving => "Saving".to_owned(),
-            SaveStatus::Autosaved => "Autosaved".to_owned(),
-            SaveStatus::Failed(error) => format!("Couldn’t save: {error}"),
-        };
         let preview = self.preview.as_ref().map(|appearance| {
             ThemePreview::new(
                 appearance.theme(),
@@ -419,9 +412,18 @@ impl Render for ThemeEditor {
                     appearance.font(FontRole::Code).clone(),
                 ),
             )
-            .render()
+            .render(&self.preview_note, cx)
             .into_any_element()
         });
+        let family = cx.global::<ThemeLibrary>().family(self.family_id);
+        let Some(family) = family else {
+            return div().child("This theme was deleted").into_any_element();
+        };
+        let status = match family.status() {
+            SaveStatus::Saving => "Saving".to_owned(),
+            SaveStatus::Autosaved => "Autosaved".to_owned(),
+            SaveStatus::Failed(error) => format!("Couldn’t save: {error}"),
+        };
         let narrow = window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 75.;
         // This is a bounded editor viewport, so its content does not participate
         // in sizing the panes. Keep one native scroll owner and direct variant
@@ -454,9 +456,7 @@ impl Render for ThemeEditor {
         let preview_pane = v_flex()
             .id("theme-preview-pane")
             .test_support()
-            .w(rems(28.))
-            .flex_shrink_0()
-            .max_w_full()
+            .w_full()
             .min_w_0()
             .min_h_0()
             .border_color(cx.theme().border)
@@ -478,13 +478,21 @@ impl Render for ThemeEditor {
                 controls.into_any_element()
             }
         } else {
-            h_flex()
-                .items_stretch()
+            div()
                 .flex_1()
                 .min_h_0()
                 .min_w_0()
-                .child(controls)
-                .child(preview_pane)
+                .child(
+                    h_resizable("theme-editor-layout")
+                        .child(resizable_panel().child(controls))
+                        .child(
+                            resizable_panel()
+                                .size(gpui_kit::px(448.))
+                                .size_range(gpui_kit::px(256.)..gpui_kit::px(880.))
+                                .flex_none()
+                                .child(preview_pane),
+                        ),
+                )
                 .into_any_element()
         };
         v_flex()

@@ -246,6 +246,12 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
         );
     });
     cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        // The editor embeds Datalith's production Markdown document renderer.
+        assert!(window.find("markdown-title").visible());
+    })
+    .unwrap();
+    cx.update_window(handle.into(), |_, window, cx| {
         let editor = app
             .read(cx)
             .tabs
@@ -307,14 +313,17 @@ fn editing_the_current_variant_repaints_the_application_theme() {
     });
     cx.update_window(handle.into(), |_, window, cx| {
         app.update(cx, |app, cx| {
-            app.settings.open_theme();
+            app.settings.open_theme(window, cx);
             cx.notify();
         });
         window.render_frame(cx);
-        window.click(
-            ("theme-appearance", usize::from(kind != ThemeKind::Light)),
-            cx,
-        );
+        window.click("theme-appearance", cx);
+        window.press("home", cx);
+        window.press("down", cx);
+        if kind == ThemeKind::Dark {
+            window.press("down", cx);
+        }
+        window.press("enter", cx);
         window.click("theme-search", cx);
         window.input(&name, cx);
     })
@@ -563,6 +572,10 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
             .unwrap()
             .picker
             .clone();
+        window.render_frame(cx);
+        assert!(!picker.read(cx).is_open());
+        window.click(format!("color-value-{variant}-background"), cx);
+        assert!(picker.read(cx).is_open());
         let chosen = gpui_kit::component::try_parse_color("#123456").unwrap();
         picker.update(cx, |picker, cx| picker.select_color(chosen, window, cx));
     })

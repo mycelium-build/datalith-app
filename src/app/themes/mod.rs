@@ -1262,6 +1262,35 @@ fn resolve(
             ))
         })
         .collect();
+    // GPUI resolves omitted colors from the variant's mode-specific fallback.
+    // Expose those *effective* values to the editor as well: Reset must show
+    // Datalith Light for light variants and Datalith Dark for dark variants.
+    if let Ok(serde_json::Value::Object(effective)) = serde_json::to_value(theme.colors)
+        && let Ok(configured) = resolved.colors()
+    {
+        for token in configured.keys() {
+            if colors.contains_key(token) {
+                continue;
+            }
+            let normalized = token.strip_prefix("base.").unwrap_or(token);
+            let field = match token.as_str() {
+                // GPUI 0.6.1 accepts this legacy config key without storing
+                // a distinct resolved color; the group label uses its normal foreground.
+                "group_box.title.foreground" => "group_box_foreground".to_owned(),
+                "input.border" => "input".to_owned(),
+                "slider.background" => "slider_bar".to_owned(),
+                _ => normalized
+                    .strip_suffix(".background")
+                    .unwrap_or(normalized)
+                    .replace('.', "_"),
+            };
+            if let Some(value) = effective.get(&field)
+                && let Ok(color) = serde_json::from_value::<gpui_kit::Hsla>(value.clone())
+            {
+                colors.insert(token.clone(), color);
+            }
+        }
+    }
     if let Some(highlight) = &resolved.config.highlight
         && let Ok(serde_json::Value::Object(values)) = serde_json::to_value(highlight)
     {

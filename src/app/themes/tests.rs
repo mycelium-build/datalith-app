@@ -56,6 +56,23 @@ fn bundled_families_include_every_variant_and_sanitize_ayu() {
 }
 
 #[test]
+fn bundled_chrome_inherits_its_own_surface_when_upstream_omits_tokens() {
+    let sandbox = Sandbox::new();
+    let library = sandbox.library();
+    let latte = library.variant("Catppuccin Latte").unwrap();
+    let colors = latte.document().colors().unwrap();
+    assert_eq!(colors["popover.background"], colors["background"]);
+    assert_eq!(colors["popover.foreground"], colors["foreground"]);
+    let datalith = library
+        .variant("Datalith Dark")
+        .unwrap()
+        .document()
+        .colors()
+        .unwrap();
+    assert_eq!(datalith["tab.background"], datalith["tab_bar.background"]);
+}
+
+#[test]
 fn copy_rename_and_reload_preserve_every_variant_fonts_colors_highlight_and_ids() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
@@ -250,6 +267,79 @@ fn resolved_non_current_preview_is_isolated_from_global_appearance_and_slots() {
         assert_eq!(cx.theme().background, original);
         assert_eq!(library.current(ThemeKind::Light), slots[0]);
         assert_eq!(library.current(ThemeKind::Dark), slots[1]);
+    });
+}
+
+#[test]
+fn reset_uses_the_effective_default_of_each_variants_mode() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let mut library = sandbox.library();
+        let family = library
+            .copy_family(
+                library.family_named("Datalith").unwrap().id(),
+                "Reset by mode",
+            )
+            .unwrap();
+        let ids: Vec<_> = library
+            .family(family)
+            .unwrap()
+            .variants()
+            .iter()
+            .map(ThemeVariant::id)
+            .collect();
+        for id in &ids {
+            library
+                .update_color(*id, "background", Some("#123456".into()))
+                .unwrap();
+            library.update_color(*id, "background", None).unwrap();
+        }
+        let light = library
+            .resolved(ids[0], cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        let dark = library
+            .resolved(ids[1], cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        assert_eq!(light.color("background"), Some(light.theme().background));
+        assert_eq!(dark.color("background"), Some(dark.theme().background));
+        assert_ne!(light.color("background"), dark.color("background"));
+        assert!(
+            library
+                .family(family)
+                .unwrap()
+                .variants()
+                .iter()
+                .all(|variant| variant.document().colors().unwrap()["background"].is_none())
+        );
+    });
+}
+
+#[test]
+fn every_bundled_editor_color_has_a_resolved_value() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let library = sandbox.library();
+        for variant in library.families().flat_map(ThemeFamily::variants) {
+            let name = variant.name();
+            let resolved = library
+                .resolved(
+                    variant.id(),
+                    cx.global::<super::super::fonts::FontCatalog>(),
+                )
+                .unwrap();
+            for token in variant.document().colors().unwrap().keys() {
+                assert!(
+                    resolved.color(token).is_some(),
+                    "{name}: {token} has no effective color"
+                );
+            }
+        }
     });
 }
 

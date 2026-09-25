@@ -75,9 +75,36 @@ pub(super) fn load(cx: &mut gpui_kit::App) -> Vec<Notification> {
 }
 
 pub(super) fn sets() -> impl Iterator<Item = StoredThemeSet> {
-    THEME_SETS
-        .iter()
-        .filter_map(|(_, content)| serde_json::from_str(content).ok())
+    THEME_SETS.iter().filter_map(|(_, content)| {
+        let mut set: StoredThemeSet = serde_json::from_str(content).ok()?;
+        // Several upstream presets omit chrome tokens. If copied verbatim,
+        // the tab bar and popovers (including Settings and Undo) inherit
+        // Datalith's colors rather than the preset's own surfaces.
+        for document in &mut set.themes {
+            let colors = document.colors().ok()?;
+            let background = colors.get("background").and_then(Clone::clone);
+            let foreground = colors.get("foreground").and_then(Clone::clone);
+            let tab_bar = colors
+                .get("tab_bar.background")
+                .and_then(Clone::clone)
+                .or_else(|| background.clone());
+            for (key, source) in [
+                ("popover.background", background.as_ref()),
+                ("popover.foreground", foreground.as_ref()),
+                ("tab.active.background", background.as_ref()),
+                ("tab.active.foreground", foreground.as_ref()),
+                ("tab.background", tab_bar.as_ref()),
+                ("tab.foreground", foreground.as_ref()),
+            ] {
+                if colors.get(key).is_some_and(Option::is_none)
+                    && let Some(source) = source
+                {
+                    document.set_color(key, Some(source.clone())).ok()?;
+                }
+            }
+        }
+        Some(set)
+    })
 }
 
 #[allow(

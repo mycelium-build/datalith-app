@@ -48,7 +48,7 @@ impl SettingsView {
                                 .and_then(|state| state.view.clone())
                             {
                                 view.update(cx, |view, cx| {
-                                    view.settings.open_theme();
+                                    view.settings.open_theme(window, cx);
                                     // The navigation revision replaces the focused button.
                                     // Move focus to the retained modal before its old page drops.
                                     view.settings.focus_handle.focus(window, cx);

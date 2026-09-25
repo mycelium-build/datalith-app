@@ -31,7 +31,7 @@ impl DatalithView {
                 return;
             }
         }
-        self.settings.open_theme();
+        self.settings.open_theme(window, cx);
         self.settings.focus(window, cx);
         cx.notify();
     }
