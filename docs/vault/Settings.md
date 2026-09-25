@@ -2,45 +2,34 @@
 category: reference
 ---
 
-The gear button opens **Settings…**, **Theme…**, and **Shortcuts…**. Open Settings from this menu or the **Datalith** menu, or press **Cmd/Ctrl+,**. Theme and Shortcuts open in dedicated workspace tabs. Shortcuts remain available with **Cmd/Ctrl+/**. Opening either editor again selects its existing tab.
+# Settings
 
-# Theme
+Open **Settings** from the gear button or the Datalith menu, or press **Cmd/Ctrl+,**. **Appearance** contains the display zoom slider. Use **Manage themes** there to open the **Theme** page.
 
-Pick a light theme and a dark theme independently. Both lists include bundled and saved custom themes, sorted by name.
+## Theme
 
-**Cmd/Ctrl+Shift+D** toggles between light and dark mode using the themes you selected here.
+Choose **Light**, **Dark**, or **System** for the application appearance. The light and dark current variants are saved independently. Choosing **Set as Light theme** or **Set as Dark theme** updates only that slot; it does not change the appearance mode. With **System**, the operating system determines which slot is shown.
 
-# Font size
+Search or filter the theme list by **All**, **Light**, **Dark**, or **Custom**. Expand a theme to see its variants and fonts. Custom themes can be edited, renamed, exported, or deleted. Use **Copy & edit** to make a custom copy of a built-in theme. **Import** adds a theme file to Custom; if its name is taken, choose whether to replace an existing custom theme or import a copy. A deleted theme or variant can be restored with **Undo** in the temporary notification.
 
-A slider from `0.5×` to `3.0×` scales the interface font.
+**Cmd/Ctrl+Shift+D** toggles between light and dark appearance while retaining the current variants.
 
-# Fonts
+## Theme editor and fonts
 
-In **Appearance → Fonts**, choose a font for each use:
+Each custom theme opens in its own workspace tab. Reopening that theme focuses its existing tab. Built-in themes must first be copied with **Copy & edit**. Select a variant to edit its suffix, light/dark mode, grouped color and syntax tokens, and four font roles: **Interface**, **Reading**, **Headings**, and **Code and editing**. The editor preview shows the selected variant in a note, a base table, and a todo.txt sample. Editing a non-current variant affects only that preview; editing a current variant updates its application slot live.
 
-- **Interface**: menus, tabs, sidebars and controls.
-- **Reading**: body text in Markdown previews.
-- **Headings**: Markdown titles and headings.
-- **Code and editing**: text editors, inline code and code blocks.
+Colors apply as soon as a value becomes valid. An invalid value is marked beside its field and is restored to the last valid value when the field loses focus. **Reset** removes a token override and restores the Datalith default for the variant's mode. Changes autosave; the editor reports **Saving**, **Autosaved**, or **Couldn’t save** with **Retry** when necessary. Closing its tab does not discard valid changes.
 
-Search the fonts installed on your device, including the bundled Pixeloid Sans. Each field shows a preview, and changes apply immediately and persist across restarts.
+**Add variant** clones the selected variant, including its colors, syntax highlighting, mode, and fonts. When adding a second variant, name both variants in the dialog. Choose **Apply these fonts to all variants** to copy the selected variant's font roles across the theme.
 
-Select **Theme (font name)** to follow the active theme for that role. A personal font takes priority. If a theme does not define a usable font, interface and code use the platform defaults, reading follows the interface font, and headings use Pixeloid Sans. Unavailable font choices are kept so they work again when the font becomes available.
+Font choices belong to each theme variant. There are no personal font overrides in Appearance. An unset role uses Datalith's defaults: interface and code follow the platform, reading follows interface, and headings use Pixeloid Sans. An unavailable font remains saved and is visibly marked; rendering uses that role's fallback until the font becomes available.
 
-When selecting a theme that defines fonts while personal fonts are active, choose **Use theme fonts** to return all four roles to Theme, or **Keep personal fonts** to preserve your choices. Automatic system appearance changes preserve personal fonts.
+Custom themes are individual files in the `themes` folder beside the channel's user `config.json`. Each file holds one theme with all its variants.
 
-# Theme editor
+## Display
 
-Open **Theme…** from the gear or Datalith menu. The editor opens in the document tab bar with the active theme and previews color and font changes immediately throughout the workspace. Personal font overrides still take priority; **Use theme fonts** explicitly resets them.
+The zoom slider scales the interface from `0.5×` to `3.0×` independently of the selected theme and its fonts.
 
-- Select any light or dark theme to apply it and use it as a starting point.
-- Choose a color swatch or search the full list of theme colors. Enter a color or use the color picker. **Reset** removes that color override and uses the light/dark mode default.
-- Define each of the four font roles. **Application default** leaves the role undefined.
-- **Save theme** saves the draft under **Save as**. Bundled themes require a new name; saving an existing custom theme under its current name updates it. A different name creates another copy.
-- **Create from current…** starts a named copy of the current saved theme.
+## Shortcuts
 
-Switching between tabs keeps the draft and its live preview, so you can check the result in a note. An unsaved draft is marked with a dot in the Theme tab. Close editor tabs with their close button or **Cmd/Ctrl+W**; Escape only dismisses a menu or cancels a pending close decision.
-
-Closing the Theme tab, creating another theme, or changing the theme or mode with unsaved changes offers **Save**, **Discard**, and **Continue editing**. Discard restores the saved appearance. Drafts are not retained after closing the application.
-
-Custom themes are independent files in the `themes` subfolder beside your user `config.json`, separate for each Datalith release channel. They load automatically on startup. Each file contains a versioned theme document with colors, the original syntax highlighting, and optional `fonts.interface`, `fonts.reading`, `fonts.headings`, and `fonts.code` families. The legacy `font.family` and `mono_font.family` fields remain supported. Saving a theme preserves your interface zoom.
+Open **Shortcuts** from the gear or Datalith menu, or press **Cmd/Ctrl+/**. It opens a read-only reference tab with actions grouped by category and their current platform shortcuts.

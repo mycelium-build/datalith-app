@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
@@ -36,15 +37,6 @@ impl ThemePreference {
             Self::System => "system",
             Self::Light => "light",
             Self::Dark => "dark",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "system" => Some(Self::System),
-            "light" => Some(Self::Light),
-            "dark" => Some(Self::Dark),
-            _ => None,
         }
     }
 
@@ -133,7 +125,7 @@ impl Default for ServerSettings {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum FontRole {
     Interface,
     Reading,
@@ -143,9 +135,39 @@ pub enum FontRole {
 
 impl FontRole {
     pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Interface => 0,
+            Self::Reading => 1,
+            Self::Headings => 2,
+            Self::Code => 3,
+        }
+    }
+}
+impl ThemeKind {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Light => 0,
+            Self::Dark => 1,
+        }
+    }
+    pub const fn mode(self) -> gpui_kit::component::ThemeMode {
+        match self {
+            Self::Light => gpui_kit::component::ThemeMode::Light,
+            Self::Dark => gpui_kit::component::ThemeMode::Dark,
+        }
+    }
+}
+impl From<gpui_kit::component::ThemeMode> for ThemeKind {
+    fn from(value: gpui_kit::component::ThemeMode) -> Self {
+        match value {
+            gpui_kit::component::ThemeMode::Light => Self::Light,
+            gpui_kit::component::ThemeMode::Dark => Self::Dark,
+        }
+    }
 }
 
-/// Optional personal families. Missing values follow the active theme.
+/// Optional families stored on an individual theme variant.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(default)]
 pub struct FontSettings {
@@ -156,6 +178,11 @@ pub struct FontSettings {
 }
 
 impl FontSettings {
+    pub fn is_empty(&self) -> bool {
+        FontRole::ALL
+            .into_iter()
+            .all(|role| self.family(role).is_none())
+    }
     pub fn family(&self, role: FontRole) -> Option<&str> {
         match role {
             FontRole::Interface => self.interface.as_deref(),
@@ -176,13 +203,6 @@ impl FontSettings {
             .map(|name| name.trim().to_owned())
             .filter(|name| !name.is_empty());
     }
-
-    fn normalized(mut self) -> Self {
-        for role in FontRole::ALL {
-            self.set_family(role, self.family(role).map(str::to_owned));
-        }
-        self
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -194,7 +214,6 @@ pub struct ApplicationSettings {
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
-    pub fonts: FontSettings,
     pub server: ServerSettings,
     pub automatic_updates: bool,
 }
@@ -208,7 +227,6 @@ impl Default for ApplicationSettings {
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
-            fonts: FontSettings::default(),
             server: ServerSettings::default(),
             automatic_updates: true,
         }
@@ -241,8 +259,6 @@ struct StoredSettings {
     dark_theme_name: Option<String>,
     #[serde(default)]
     font_size_multiplier: Option<f64>,
-    #[serde(default)]
-    fonts: FontSettings,
     #[serde(default)]
     server: StoredServerSettings,
     #[serde(default)]
@@ -279,7 +295,6 @@ impl StoredSettings {
             light_theme_name: normalize_theme_name(self.light_theme_name),
             dark_theme_name: normalize_theme_name(self.dark_theme_name),
             font_scale: normalize_font_scale(self.font_size_multiplier.unwrap_or_default()),
-            fonts: self.fonts.normalized(),
             server: ServerSettings::normalized(
                 self.server.enabled.unwrap_or(true),
                 self.server.port.unwrap_or(DEFAULT_SERVER_PORT),
@@ -305,7 +320,6 @@ impl StoredSettings {
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
             font_size_multiplier: Some(settings.font_scale),
-            fonts: settings.fonts.clone(),
             server: StoredServerSettings {
                 enabled: Some(settings.server.enabled()),
                 port: Some(settings.server.port()),
@@ -364,9 +378,24 @@ impl SettingsStore {
         fs::create_dir_all(parent).with_context(|| {
             format!("Failed to create settings directory: {}", parent.display())
         })?;
-        let json = serde_json::to_string(&StoredSettings::from_settings(settings))?;
-        fs::write(&self.file, json)
-            .with_context(|| format!("Failed to write settings: {}", self.file.display()))
+        let json = serde_json::to_vec(&StoredSettings::from_settings(settings))?;
+        let temporary = parent.join(format!(".settings-{:032x}.tmp", rand::random::<u128>()));
+        let result = (|| -> Result<()> {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(&json)?;
+            file.sync_all()?;
+            fs::rename(&temporary, &self.file)?;
+            #[cfg(unix)]
+            fs::File::open(parent)?.sync_all()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.with_context(|| format!("Failed to write settings: {}", self.file.display()))
     }
 }
 
@@ -435,24 +464,17 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }
 
-pub fn select_theme_with_preference(
-    kind: ThemeKind,
-    name: &str,
-    preference: Option<ThemePreference>,
-) -> Result<()> {
-    let name = name.trim();
-    if name.is_empty() {
-        bail!("Theme name cannot be empty");
-    }
-    settings_lock().update(|settings| {
-        match kind {
-            ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
-            ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
-        }
-        if let Some(preference) = preference {
-            settings.theme_preference = preference;
-        }
-    })
+/// Persist both current references in one settings update. A test library may
+/// supply its own isolated file; the running app uses the serialized store.
+pub fn replace_theme_slots(file: Option<&Path>, light: &str, dark: &str) -> Result<()> {
+    let update = |settings: &mut ApplicationSettings| {
+        settings.light_theme_name = Some(light.to_owned());
+        settings.dark_theme_name = Some(dark.to_owned());
+    };
+    file.map_or_else(
+        || settings_lock().update(update),
+        |path| SettingsStore::new(path.to_path_buf()).update(update),
+    )
 }
 
 pub fn set_font_scale(scale: f64) -> Result<()> {
@@ -460,14 +482,6 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
     settings_lock().update(|settings| settings.font_scale = scale)
-}
-
-pub fn use_theme_fonts() -> Result<()> {
-    settings_lock().update(|settings| settings.fonts = FontSettings::default())
-}
-
-pub fn set_font_family(role: FontRole, family: Option<String>) -> Result<()> {
-    settings_lock().update(|settings| settings.fonts.set_family(role, family))
 }
 
 pub fn set_server_enabled(enabled: bool) -> Result<()> {
@@ -504,88 +518,36 @@ mod tests {
     }
 
     #[test]
-    fn older_configs_preserve_typography_defaults() {
+    fn older_configs_preserve_typography_scale() {
         let stored: StoredSettings = serde_json::from_str(
             r#"{"schema_version":2,"theme_preference":"dark","font_size_multiplier":1.2}"#,
         )
         .unwrap();
         let settings = stored.normalized();
-        assert_eq!(settings.fonts, FontSettings::default());
         assert_eq!(settings.theme_preference, ThemePreference::Dark);
         assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
     }
 
     #[test]
-    fn font_choices_round_trip_independently_of_theme_and_reset_per_role() {
-        let file = temp_settings_file("fonts");
+    fn variant_fonts_normalize_names() {
+        let mut fonts = FontSettings::default();
+        fonts.set_family(FontRole::Interface, Some("  Helvetica  ".into()));
+        assert_eq!(fonts.family(FontRole::Interface), Some("Helvetica"));
+        assert!(!fonts.is_empty());
+        fonts.set_family(FontRole::Interface, None);
+        assert!(fonts.is_empty());
+    }
+
+    #[test]
+    fn legacy_personal_fonts_are_ignored_on_read_and_write() {
+        let file = temp_settings_file("legacy-fonts");
+        fs::write(&file, r#"{"fonts":{"interface":"Legacy"}}"#).unwrap();
         let mut store = SettingsStore::new(file.clone());
         store
-            .update(|settings| {
-                settings
-                    .fonts
-                    .set_family(FontRole::Interface, Some("  Helvetica  ".into()));
-                settings
-                    .fonts
-                    .set_family(FontRole::Reading, Some("Georgia".into()));
-                settings
-                    .fonts
-                    .set_family(FontRole::Headings, Some("Pixeloid Sans".into()));
-                settings
-                    .fonts
-                    .set_family(FontRole::Code, Some("Menlo".into()));
-            })
+            .update(|settings| settings.theme_preference = ThemePreference::Dark)
             .unwrap();
-        store
-            .update(|settings| {
-                settings.theme_preference = ThemePreference::Dark;
-                settings.fonts.set_family(FontRole::Reading, None);
-            })
-            .unwrap();
-        let reloaded = SettingsStore::new(file.clone()).snapshot();
-        assert_eq!(
-            reloaded.fonts.family(FontRole::Interface),
-            Some("Helvetica")
-        );
-        assert_eq!(reloaded.fonts.family(FontRole::Reading), None);
-        assert_eq!(
-            reloaded.fonts.family(FontRole::Headings),
-            Some("Pixeloid Sans")
-        );
-        assert_eq!(reloaded.fonts.family(FontRole::Code), Some("Menlo"));
-        assert_eq!(reloaded.theme_preference, ThemePreference::Dark);
+        assert!(!fs::read_to_string(&file).unwrap().contains("fonts"));
         let _ = fs::remove_file(file);
-    }
-
-    #[test]
-    fn stored_fonts_normalize_empty_values_and_preserve_unavailable_names() {
-        let stored: StoredSettings = serde_json::from_str(
-            r#"{"fonts":{"interface":"  ","reading":" Unknown font ","code":" Menlo "}}"#,
-        )
-        .unwrap();
-        let fonts = stored.normalized().fonts;
-        assert_eq!(fonts.family(FontRole::Interface), None);
-        assert_eq!(fonts.family(FontRole::Reading), Some("Unknown font"));
-        assert_eq!(fonts.family(FontRole::Headings), None);
-        assert_eq!(fonts.family(FontRole::Code), Some("Menlo"));
-    }
-
-    #[test]
-    fn failed_font_save_keeps_the_previous_snapshot() {
-        let file = temp_settings_file("fonts-unwritable").join("config.json");
-        let parent = file.parent().unwrap().to_path_buf();
-        fs::write(&parent, "not a directory").unwrap();
-        let mut store = SettingsStore::new(file);
-        assert!(
-            store
-                .update(|settings| {
-                    settings
-                        .fonts
-                        .set_family(FontRole::Code, Some("Menlo".into()));
-                })
-                .is_err()
-        );
-        assert_eq!(store.snapshot().fonts, FontSettings::default());
-        let _ = fs::remove_file(parent);
     }
 
     #[test]

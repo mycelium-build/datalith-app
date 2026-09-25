@@ -72,10 +72,9 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
         }
     };
 
-    let light_theme = super::themes::document(light_name, cx)
-        .map(|document| std::rc::Rc::new(document.config().clone()));
-    let dark_theme = super::themes::document(dark_name, cx)
-        .map(|document| std::rc::Rc::new(document.config().clone()));
+    let library = cx.global::<super::themes::ThemeLibrary>();
+    let light_theme = library.resolved_config(light_name).map(std::rc::Rc::new);
+    let dark_theme = library.resolved_config(dark_name).map(std::rc::Rc::new);
 
     if let Some(theme) = light_theme {
         Theme::global_mut(cx).light_theme = theme;
