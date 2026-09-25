@@ -163,7 +163,7 @@ impl Default for ApplicationSettings {
             font_scale: DEFAULT_FONT_SCALE,
             server: ServerSettings::default(),
             automatic_updates: true,
-            open_new_tab_mode: ViewMode::default(),
+            open_new_tab_mode: ViewMode::Edit,
         }
     }
 }
@@ -252,8 +252,8 @@ impl StoredSettings {
             ),
             automatic_updates: self.automatic_updates.unwrap_or(true),
             open_new_tab_mode: match self.open_new_tab_mode.as_deref() {
-                Some("edit") => ViewMode::Edit,
-                _ => ViewMode::View,
+                Some("view") => ViewMode::View,
+                _ => ViewMode::Edit,
             },
         }
     }
@@ -510,15 +510,33 @@ mod tests {
     fn only_new_tab_mode_changes_when_settings_cannot_be_written() {
         let file = with_store(|store| store.file.clone());
         fs::create_dir(&file).unwrap();
-        let mode_result = set_open_new_tab_mode(ViewMode::Edit);
+        let mode_result = set_open_new_tab_mode(ViewMode::View);
         let theme_result = set_theme_preference(ThemePreference::Dark);
         fs::remove_dir(&file).unwrap();
 
         assert!(mode_result.is_err());
         assert!(theme_result.is_err());
         let settings = snapshot();
-        assert_eq!(settings.open_new_tab_mode(), ViewMode::Edit);
+        assert_eq!(settings.open_new_tab_mode(), ViewMode::View);
         assert_eq!(settings.theme_preference, ThemePreference::System);
+    }
+
+    #[test]
+    fn new_tab_mode_defaults_to_edit_and_preserves_saved_reading_choice() {
+        assert_eq!(
+            ApplicationSettings::default().open_new_tab_mode(),
+            ViewMode::Edit
+        );
+
+        let missing_preference = StoredSettings::default().normalized();
+        assert_eq!(missing_preference.open_new_tab_mode(), ViewMode::Edit);
+
+        let reading_preference: StoredSettings =
+            serde_json::from_str(r#"{"open_new_tab_mode":"view"}"#).unwrap();
+        assert_eq!(
+            reading_preference.normalized().open_new_tab_mode(),
+            ViewMode::View
+        );
     }
 
     #[test]

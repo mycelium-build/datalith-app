@@ -87,7 +87,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use gpui_kit::test::TestWindowExt as _;
-    use gpui_kit::{TestAppContext, WindowHandle};
+    use gpui_kit::{MouseButton, TestAppContext, VisualTestContext, WindowHandle};
 
     use super::*;
     use crate::app::{actions, docs, settings};
@@ -263,6 +263,7 @@ mod tests {
         std::fs::write(second.0.join("Welcome.md"), "# Welcome\n").unwrap();
         std::fs::write(second.0.join("Basics.md"), "# Basics\n").unwrap();
         let mut cx = app();
+        settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let (handle, view) = open(&mut cx, &first.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
@@ -325,6 +326,7 @@ mod tests {
     fn keyboard_mode_change_only_changes_the_active_tab() {
         let vault = VaultFixture::new("keyboard-mode");
         let mut cx = app();
+        settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let (handle, view) = open(&mut cx, &vault.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
@@ -336,6 +338,54 @@ mod tests {
         .unwrap();
         cx.run_until_parked();
         assert_modes(&cx, &view, &[ViewMode::View, ViewMode::Edit]);
+    }
+
+    #[test]
+    fn middle_click_file_tree_opens_a_new_tab_and_reuses_existing_tabs() {
+        let vault = VaultFixture::new("middle-click-tree");
+        let basics = vault.0.join("Basics.md");
+        let c_note = vault.0.join("C.md");
+        std::fs::write(&c_note, "# C\n").unwrap();
+
+        let mut cx = app();
+        settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
+        let (handle, view) = open(&mut cx, &vault.0, true);
+        let first_id = cx.update(|cx| view.read(cx).tabs.active_tab_id().unwrap().clone());
+        assert_modes(&cx, &view, &[ViewMode::View]);
+
+        middle_click_file_tree_row(&mut cx, handle, 0);
+        let second_id = cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(
+                view.tabs.open_paths(),
+                vec![vault.0.join("Welcome.md"), basics.clone()]
+            );
+            assert_eq!(view.tabs.active_path(), Some(basics.as_path()));
+            let active_id = view.tabs.active_tab_id().unwrap().clone();
+            assert_ne!(active_id, first_id);
+            active_id
+        });
+        assert_modes(&cx, &view, &[ViewMode::View, ViewMode::Edit]);
+
+        middle_click_file_tree_row(&mut cx, handle, 0);
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.tabs.open_paths().len(), 2);
+            assert_eq!(view.tabs.active_tab_id(), Some(&second_id));
+        });
+
+        settings::set_open_new_tab_mode(ViewMode::View).unwrap();
+        middle_click_file_tree_row(&mut cx, handle, 1);
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.tabs.open_paths().len(), 3);
+            assert_eq!(view.tabs.active_path(), Some(c_note.as_path()));
+            let (tabs, _) = view.tabs.snapshot(cx);
+            assert_eq!(
+                tabs.iter().map(|tab| tab.mode).collect::<Vec<_>>(),
+                vec![ViewMode::View, ViewMode::Edit, ViewMode::View]
+            );
+        });
     }
 
     #[test]
@@ -464,6 +514,26 @@ mod tests {
             prefer_character_input: false,
         });
         visual.simulate_event(gpui_kit::KeyUpEvent { keystroke });
+    }
+
+    fn middle_click_file_tree_row(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Root>,
+        index: usize,
+    ) {
+        let bounds = cx
+            .update_window(handle.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window.find(("file-tree-row", index)).bounds()
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(handle.into(), cx);
+        let position = bounds.center();
+        let modifiers = gpui_kit::Modifiers::default();
+        visual.simulate_mouse_move(position, None, modifiers);
+        visual.simulate_mouse_down(position, MouseButton::Middle, modifiers);
+        visual.simulate_mouse_up(position, MouseButton::Middle, modifiers);
+        visual.update(gpui_kit::test::TestWindowExt::render_frame);
     }
 
     #[test]

@@ -13,6 +13,9 @@ use gpui_kit::{
     Styled, div, px,
 };
 
+#[cfg(test)]
+use gpui_kit::test::TestSupportExt as _;
+
 use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::vault::path::display_name;
@@ -208,7 +211,21 @@ impl DatalithView {
             row = Self::attach_folder_drop(row, path.to_path_buf(), view, cx);
         }
 
+        #[cfg(test)]
+        let row = row.test_support();
         list_item = list_item.child(row);
+
+        list_item = list_item.on_aux_click(cx.listener({
+            let path = path.to_path_buf();
+            move |this, event: &ClickEvent, window, cx| {
+                if !is_folder && event.is_middle_click() {
+                    this.tree_state
+                        .update(cx, |state, cx| state.set_selected_index(Some(ix), cx));
+                    this.last_sidebar_selection = Some(path.clone());
+                    this.open_file(path.clone(), true, window, cx);
+                }
+            }
+        }));
 
         list_item.on_click(cx.listener({
             let path = path.to_path_buf();
