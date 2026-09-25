@@ -108,12 +108,7 @@ impl DatalithView {
                 Icon::new(self.registry.config_for(&tab.path).icon),
             ),
             super::Tab::Theme { editor, .. } => (
-                if editor.read(cx).has_unsaved_changes() {
-                    "Theme •"
-                } else {
-                    "Theme"
-                }
-                .into(),
+                editor.read(cx).family_name(cx).into(),
                 Icon::new(IconName::Palette),
             ),
             super::Tab::Shortcuts(_) => ("Shortcuts".into(), Icon::new(DatalithIcon::Shortcuts)),

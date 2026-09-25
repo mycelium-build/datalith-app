@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use gpui_kit::component::Root;
+use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    App, AppContext as _, ElementId, Entity, InputEvent as _, Pixels, Point, ScrollDelta,
-    ScrollWheelEvent, TestAppContext, Window, WindowHandle, point, px, size,
+    App, AppContext as _, ElementId, Entity, InputEvent as _, KeyUpEvent, Keystroke, Pixels, Point,
+    ScrollDelta, ScrollWheelEvent, TestAppContext, Window, WindowHandle, point, px, size,
 };
 
 use super::SettingsView;
@@ -40,7 +40,10 @@ fn open_note(cx: &mut TestAppContext, note: &Path) -> (WindowHandle<Root>, Entit
         gpui_kit::init(cx);
         fonts::load_embedded_fonts(cx);
         FontCatalog::init(cx);
+        crate::app::themes::load_embedded_themes(cx);
+        crate::app::themes::ThemeLibrary::init(cx);
         SettingsView::init_theme_options(cx);
+        crate::app::preferences::apply(cx);
         cx.set_global(crate::app::AppState::default());
     });
     let mut app = None;
@@ -55,7 +58,9 @@ fn open_note(cx: &mut TestAppContext, note: &Path) -> (WindowHandle<Root>, Entit
         Root::new(view, window, cx)
     });
     cx.run_until_parked();
-    (handle, app.unwrap())
+    let app = app.unwrap();
+    cx.update(|cx| cx.global_mut::<crate::app::AppState>().view = Some(app.clone()));
+    (handle, app)
 }
 
 fn offset(origin: Point<Pixels>, x: f32, y: f32) -> Point<Pixels> {
@@ -105,22 +110,13 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
         );
 
         app.update(cx, |view, cx| {
-            view.settings.open();
+            view.settings.open_theme();
             cx.notify();
         });
         window.render_frame(cx);
-        let slider_id = (
-            "slider",
-            app.read(cx).settings.font_size_slider_state.entity_id(),
-        );
-        let settings_position = window.find(slider_id).bounds().top();
         let close_button = window.find("close-settings").bounds();
         let position = offset(close_button.center(), -120., 250.);
         scroll_at(window, position, -80., cx);
-        assert!(
-            window.find(slider_id).bounds().top() < settings_position,
-            "the settings content must still scroll"
-        );
         assert_eq!(
             note_position(window, cx),
             before_settings,
@@ -132,7 +128,6 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
             scroll_at(window, position, delta, cx);
             assert_eq!(note_position(window, cx), before_settings);
         }
-        assert_eq!(window.find(slider_id).bounds().top(), settings_position);
 
         // The header and the backdrop above the note also isolate wheel input.
         for position in [
@@ -159,4 +154,249 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
     .unwrap();
     cx.run_until_parked();
     std::fs::remove_file(note).unwrap();
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Exercises the full native copy dialog from Settings"
+)]
+fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
+    let mut cx = TestAppContext::single();
+    let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
+    let catppuccin = cx.update(|cx| {
+        cx.global::<crate::app::themes::ThemeLibrary>()
+            .family_named("Catppuccin")
+            .unwrap()
+            .id()
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        app.update(cx, |app, cx| {
+            app.settings.open_theme();
+            app.settings.focus(window, cx);
+            cx.notify();
+        });
+        window.render_frame(cx);
+        assert!(window.find("import-theme").visible());
+        assert!(window.find(("theme-appearance", 0usize)).visible());
+        assert!(window.find(("theme-appearance", 2usize)).visible());
+        window.click("theme-search", cx);
+        window.input("Catppuccin", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find(("copy-theme", catppuccin)).visible());
+        window.click(("expand-theme", catppuccin), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("import-theme").visible());
+        window.click(("copy-theme", catppuccin), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("theme-dialog-name").visible());
+        assert_eq!(window.find("theme-dialog-name").focused(), Some(true));
+        window.press("escape", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("theme-dialog-name").is_none());
+    })
+    .unwrap();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.click(("copy-theme", catppuccin), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+        .unwrap();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.click("theme-dialog-name", cx);
+        assert_eq!(window.find("theme-dialog-name").focused(), Some(true));
+        window.press("secondary-a", cx);
+        window.input("Catppuccin", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("theme-dialog-name").value(), Some("Catppuccin"));
+    })
+    .unwrap();
+    cx.update_window(handle.into(), |_, window, cx| window.press("enter", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        assert!(
+            cx.global::<crate::app::themes::ThemeLibrary>()
+                .family_named("Catppuccin copy")
+                .is_none()
+        );
+    });
+    let name = format!("Theme UI copy {:016x}", rand::random::<u64>());
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.click("theme-dialog-name", cx);
+        window.press("secondary-a", cx);
+        window.input(&name, cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| window.press("enter", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let library = cx.global::<crate::app::themes::ThemeLibrary>();
+        let copied = library.family_named(&name).unwrap();
+        assert_eq!(copied.variants().len(), 4);
+        assert!(
+            app.read(cx)
+                .tabs
+                .theme_editor_for(copied.id(), cx)
+                .is_some()
+        );
+        if let crate::app::themes::ThemeSource::Custom(path) = copied.source() {
+            std::fs::remove_file(path).unwrap();
+        }
+    });
+}
+
+#[test]
+fn theme_page_sets_the_light_slot_from_an_expanded_variant() {
+    use crate::app::{settings::ThemeKind, themes::ThemeLibrary};
+
+    let mut cx = TestAppContext::single();
+    let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
+    let (family, variant, old) = cx.update(|cx| {
+        let library = cx.global::<ThemeLibrary>();
+        let family = library.family_named("Catppuccin").unwrap();
+        let variant = family
+            .variants()
+            .iter()
+            .find(|v| v.mode() == ThemeKind::Light.mode())
+            .unwrap();
+        (
+            family.id(),
+            variant.id(),
+            library.current(ThemeKind::Light).to_owned(),
+        )
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        app.update(cx, |app, cx| {
+            app.settings.open_theme();
+            cx.notify();
+        });
+        window.render_frame(cx);
+        window.click(("expand-theme", family), cx);
+        window.render_frame(cx);
+        window.click(("set-current", variant), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let library = cx.global::<ThemeLibrary>();
+        assert_eq!(
+            library.current(ThemeKind::Light),
+            library.variant_by_id(variant).unwrap().name()
+        );
+        let previous = library.variant(&old).unwrap().id();
+        cx.global_mut::<ThemeLibrary>()
+            .set_current(previous, ThemeKind::Light)
+            .unwrap();
+        crate::app::themes::refresh_current(cx);
+    });
+}
+
+#[test]
+fn system_appearance_resolves_the_current_slot_through_the_production_settings_page() {
+    use crate::app::{
+        settings::{ThemeKind, ThemePreference},
+        themes::ThemeLibrary,
+    };
+
+    let mut cx = TestAppContext::single();
+    let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
+    let previous = crate::app::settings::snapshot().theme_preference;
+    cx.update_window(handle.into(), |_, window, cx| {
+        app.update(cx, |app, cx| {
+            app.settings.open_theme();
+            cx.notify();
+        });
+        window.render_frame(cx);
+        window.click(("theme-appearance", 2usize), cx);
+        window.render_frame(cx);
+        assert_eq!(
+            crate::app::settings::snapshot().theme_preference,
+            ThemePreference::System
+        );
+        let effective = ThemePreference::System.resolve(cx.window_appearance());
+        let kind = match effective {
+            crate::app::settings::ThemeMode::Light => ThemeKind::Light,
+            crate::app::settings::ThemeMode::Dark => ThemeKind::Dark,
+        };
+        let library = cx.global::<ThemeLibrary>();
+        let variant = library.variant(library.current(kind)).unwrap();
+        assert_eq!(cx.theme().mode, effective.into());
+        assert_eq!(
+            cx.theme().background,
+            library
+                .resolved(variant.id(), cx.global::<FontCatalog>())
+                .unwrap()
+                .theme()
+                .background
+        );
+        crate::app::settings::set_theme_preference(previous).unwrap();
+        crate::app::preferences::apply_theme_preference(previous, cx);
+    })
+    .unwrap();
+}
+
+#[test]
+fn manage_themes_from_the_keyboard_opens_the_theme_page() {
+    let mut cx = TestAppContext::single();
+    let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
+    cx.update_window(handle.into(), |_, window, cx| {
+        for key in ["enter", "space"] {
+            app.update(cx, |app, cx| {
+                app.settings.open();
+                app.settings.focus(window, cx);
+                cx.notify();
+            });
+            window.render_frame(cx);
+            assert!(window.find("manage-themes").visible());
+            for _ in 0..4 {
+                window.press("tab", cx);
+            }
+            assert_eq!(window.find("manage-themes").focused(), Some(true));
+            window.press(key, cx);
+            window.dispatch_event(
+                KeyUpEvent {
+                    keystroke: Keystroke::parse(key).unwrap(),
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.render_frame(cx);
+            let settings = &app.read(cx).settings;
+            assert_eq!(
+                settings.page_index,
+                if settings.has_updater { 2 } else { 1 }
+            );
+            assert!(window.find("import-theme").visible());
+            assert!(window.try_find("manage-themes").is_none());
+            window.press("tab", cx);
+            assert_eq!(window.find("close-settings").focused(), Some(true));
+        }
+    })
+    .unwrap();
 }

@@ -22,7 +22,6 @@ pub enum Tab {
     Document(DocumentTab),
     Theme {
         editor: Entity<ThemeEditor>,
-        _dismiss_subscription: Subscription,
         _change_subscription: Subscription,
     },
     Shortcuts(Entity<ShortcutsView>),
@@ -98,9 +97,13 @@ impl Tabs {
         self.active().and_then(Tab::document)
     }
 
-    pub(crate) fn theme_editor(&self) -> Option<&Entity<ThemeEditor>> {
+    pub(crate) fn theme_editor_for(
+        &self,
+        family_id: u64,
+        cx: &gpui_kit::App,
+    ) -> Option<&Entity<ThemeEditor>> {
         self.entries.iter().find_map(|tab| match tab {
-            Tab::Theme { editor, .. } => Some(editor),
+            Tab::Theme { editor, .. } if editor.read(cx).family_id() == family_id => Some(editor),
             _ => None,
         })
     }
@@ -128,7 +131,7 @@ impl Tabs {
     }
 
     fn insert(&mut self, tab: Tab, new_tab: bool) {
-        // Opening a document must never replace an editor tab and lose its draft.
+        // Opening a document must never replace a long-lived workspace tab.
         if new_tab || self.active_document().is_none() {
             let index = self.entries.len();
             self.entries.push(tab);

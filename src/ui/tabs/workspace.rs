@@ -1,41 +1,74 @@
-use gpui_kit::{AppContext as _, Context, DismissEvent, Focusable as _, Window};
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::{AppContext as _, Context, Focusable as _, Window};
 
 use super::Tab;
 use crate::ui::{DatalithView, shortcuts::ShortcutsView, themes::ThemeEditor};
 
 impl DatalithView {
     pub(crate) fn open_theme_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = if cx.theme().is_dark() {
+            crate::app::settings::ThemeKind::Dark
+        } else {
+            crate::app::settings::ThemeKind::Light
+        };
+        let name = cx
+            .global::<crate::app::themes::ThemeLibrary>()
+            .current(current)
+            .to_owned();
+        let family = cx
+            .global::<crate::app::themes::ThemeLibrary>()
+            .families()
+            .find(|f| f.variants().iter().any(|v| v.name() == name));
+        if let Some(family) = family {
+            let id = family.id();
+            let variant = family
+                .variants()
+                .iter()
+                .find(|v| v.name() == name)
+                .map(crate::app::themes::ThemeVariant::id);
+            if matches!(family.source(), crate::app::themes::ThemeSource::Custom(_)) {
+                self.open_theme_editor_for(id, variant, window, cx);
+                return;
+            }
+        }
+        self.settings.open_theme();
+        self.settings.focus(window, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn open_theme_editor_for(
+        &mut self,
+        family_id: u64,
+        variant: Option<u64>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !cx
+            .global::<crate::app::themes::ThemeLibrary>()
+            .family(family_id)
+            .is_some_and(|family| {
+                matches!(family.source(), crate::app::themes::ThemeSource::Custom(_))
+            })
+        {
+            return;
+        }
         self.settings.close();
         if let Some(index) = self
             .tabs
             .entries
             .iter()
-            .position(|tab| matches!(tab, Tab::Theme { .. }))
+            .position(|tab| matches!(tab, Tab::Theme { editor, .. } if editor.read(cx).family_id() == family_id))
         {
             self.tabs.select(index);
+            if let Some(variant) = variant && let Some(Tab::Theme { editor, .. }) = self.tabs.active() {
+                editor.update(cx, |editor, cx| editor.select(variant, window, cx));
+            }
         } else {
-            let editor = cx.new(|cx| ThemeEditor::new(window, cx));
-            let dismiss = cx.subscribe_in(
-                &editor,
-                window,
-                |view, editor, _: &DismissEvent, window, cx| {
-                    if let Some(index) = view
-                        .tabs
-                        .entries
-                        .iter()
-                        .position(|tab| tab.entity_id() == editor.entity_id())
-                    {
-                        view.tabs.remove(index);
-                        view.focus_active_tab(window, cx);
-                        cx.notify();
-                    }
-                },
-            );
+            let editor = cx.new(|cx| ThemeEditor::new(family_id, variant, window, cx));
             let change = cx.observe(&editor, |_, _, cx| cx.notify());
             self.tabs.insert(
                 Tab::Theme {
                     editor,
-                    _dismiss_subscription: dismiss,
                     _change_subscription: change,
                 },
                 true,
@@ -69,14 +102,7 @@ impl DatalithView {
     }
 
     pub(crate) fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(Tab::Theme { editor, .. }) = self.tabs.entries.get(index) {
-            let editor = editor.clone();
-            if editor.read(cx).has_unsaved_changes() {
-                self.tabs.select(index);
-            }
-            editor.update(cx, |editor, cx| editor.request_close(window, cx));
-            cx.notify();
-        } else if self.tabs.remove(index) {
+        if self.tabs.remove(index) {
             self.focus_active_tab(window, cx);
             cx.notify();
         }

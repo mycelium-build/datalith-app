@@ -1,8 +1,6 @@
-use gpui_kit::component::{ThemeRegistry, notification::Notification};
-use serde::Deserialize;
-
-use super::ThemeDocument;
+use super::{ThemeDocument, storage::StoredThemeSet};
 use crate::ui::notifications;
+use gpui_kit::component::{ThemeRegistry, notification::Notification};
 
 // From https://github.com/longbridge/gpui-component/tree/main/themes
 const THEME_SETS: &[(&str, &str)] = &[
@@ -76,16 +74,31 @@ pub(super) fn load(cx: &mut gpui_kit::App) -> Vec<Notification> {
         .collect()
 }
 
-#[derive(Deserialize)]
-struct ThemeSet {
-    themes: Vec<ThemeDocument>,
-}
-
-pub(super) fn documents() -> impl Iterator<Item = ThemeDocument> {
-    // The registry loader reports malformed bundled files. Read Datalith's font
-    // roles from the same source, before GPUI drops these application fields.
+pub(super) fn sets() -> impl Iterator<Item = StoredThemeSet> {
     THEME_SETS
         .iter()
-        .filter_map(|(_, content)| serde_json::from_str::<ThemeSet>(content).ok())
-        .flat_map(|set| set.themes)
+        .filter_map(|(_, content)| serde_json::from_str(content).ok())
+}
+
+#[allow(
+    clippy::expect_used,
+    reason = "the bundled Datalith asset and its two variants are release-time invariants, verified by domain tests"
+)]
+pub(super) fn defaults() -> [ThemeDocument; 2] {
+    let set: StoredThemeSet =
+        serde_json::from_str(include_str!("../../../assets/themes/datalith.json"))
+            .expect("Bundled Datalith theme must parse");
+    let light = set
+        .themes
+        .iter()
+        .find(|v| v.name() == "Datalith Light")
+        .expect("Datalith Light must exist")
+        .clone();
+    let dark = set
+        .themes
+        .iter()
+        .find(|v| v.name() == "Datalith Dark")
+        .expect("Datalith Dark must exist")
+        .clone();
+    [light, dark]
 }

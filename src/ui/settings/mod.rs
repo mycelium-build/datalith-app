@@ -23,10 +23,10 @@ pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 
 mod about;
 mod appearance;
-mod fonts;
 mod server;
 #[cfg(test)]
 mod tests;
+pub mod theme;
 
 use about::about_page_index;
 
@@ -34,8 +34,6 @@ use about::about_page_index;
 pub struct ThemeOptions {
     pub(crate) light_theme_name: SharedString,
     pub(crate) dark_theme_name: SharedString,
-    pub(crate) light_options: Vec<(SharedString, SharedString)>,
-    pub(crate) dark_options: Vec<(SharedString, SharedString)>,
     pub(crate) font_size_multiplier: f64,
     pub(crate) theme_preference: SharedString,
 }
@@ -47,21 +45,24 @@ pub struct SettingsView {
     focus_handle: FocusHandle,
     return_focus: Option<FocusHandle>,
     page_index: usize,
+    navigation_revision: u64,
     has_updater: bool,
     pub(crate) font_size_slider_state: Entity<SliderState>,
-    font_pickers: Vec<(settings::FontRole, Entity<fonts::FontPicker>)>,
+    theme_page: Entity<theme::ThemePage>,
 }
 
 /// The settings pages, in render order; shortcuts have their own surface.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     Appearance,
+    Theme,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 3] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
     SettingsPage::Appearance,
+    SettingsPage::Theme,
     SettingsPage::Server,
     SettingsPage::About,
 ];
@@ -70,6 +71,7 @@ impl SettingsPage {
     const fn title(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
+            Self::Theme => "Theme",
             Self::Server => "Local Server",
             Self::About => "About",
         }
@@ -91,23 +93,29 @@ impl SettingsView {
             focus_handle: cx.focus_handle(),
             return_focus: None,
             page_index: 0,
+            navigation_revision: 0,
             has_updater: crate::app::update::Updater::get(cx).is_some(),
             font_size_slider_state,
-            font_pickers: settings::FontRole::ALL
-                .into_iter()
-                .map(|role| (role, cx.new(|cx| fonts::FontPicker::new(role, window, cx))))
-                .collect(),
+            theme_page: cx.new(|cx| theme::ThemePage::new(window, cx)),
         }
     }
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
         self.page_index = 0;
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
+    }
+
+    pub(crate) const fn open_theme(&mut self) {
+        self.open = true;
+        self.page_index = if self.has_updater { 2 } else { 1 };
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
         self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
     pub(crate) fn focus(&mut self, window: &mut Window, cx: &mut App) {
@@ -143,9 +151,9 @@ impl SettingsView {
             }))
             .child(
                 div()
-                    .w(rems(43.75))
+                    .w(rems(60.))
                     .max_w_full()
-                    .h(rems(37.5))
+                    .h(rems(42.))
                     .max_h_full()
                     .bg(cx.theme().background)
                     .border(px(1.))
@@ -190,7 +198,7 @@ impl SettingsView {
                                     ),
                             )
                             .child(
-                                Settings::new("app-settings")
+                                Settings::new(("app-settings", self.navigation_revision))
                                     .with_size(Size::Small)
                                     .default_selected_index(SelectIndex {
                                         page_ix: self.page_index,
@@ -203,7 +211,7 @@ impl SettingsView {
             )
     }
 
-    fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+    fn settings_pages(&self, _cx: &Context<DatalithView>) -> Vec<SettingPage> {
         // In dev channel don't display update group
         // NOTE: need to move "General" page when add new content to it
         let general = self.has_updater.then(|| {
@@ -246,10 +254,12 @@ impl SettingsView {
                     SettingsPage::Appearance => SettingPage::new(page.title())
                         .default_open(true)
                         .groups(vec![
-                            Self::theme_group(cx),
                             Self::display_group(&self.font_size_slider_state),
-                            self.fonts_group(),
+                            Self::theme_navigation_group(),
                         ]),
+                    SettingsPage::Theme => SettingPage::new(page.title())
+                        .resettable(false)
+                        .groups(vec![self.theme_page_group()]),
                     SettingsPage::Server => {
                         SettingPage::new(page.title()).groups(vec![Self::server_group()])
                     }

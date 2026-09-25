@@ -1,128 +1,64 @@
-//! Appearance settings page: theme mode, light/dark themes, and font scale.
+//! Appearance settings page: display zoom and navigation to theme editing.
 
 use gpui_kit::component::{
+    button::Button,
     h_flex,
-    setting::{SettingField, SettingGroup, SettingItem},
+    setting::{SettingGroup, SettingItem},
     slider::{Slider, SliderState},
 };
-use gpui_kit::{App, Context, Entity, IntoElement, ParentElement, SharedString, Styled, div};
+use gpui_kit::{App, Entity, IntoElement, ParentElement, Styled, div};
 
-use super::{DatalithView, SettingsView, ThemeOptions};
-use crate::app::settings::{self, ThemePreference};
+use super::{SettingsView, ThemeOptions};
+use crate::app::settings;
 
 impl SettingsView {
     pub(crate) fn init_theme_options(cx: &mut App) {
-        let registry = gpui_kit::component::ThemeRegistry::global(cx);
-        let mut light_options: Vec<(SharedString, SharedString)> = registry
-            .themes()
-            .iter()
-            .filter(|(_, theme)| theme.mode == gpui_kit::component::ThemeMode::Light)
-            .map(|(name, _)| (name.clone(), name.clone()))
-            .collect();
-        light_options.sort_by_key(|(name, _)| name.to_lowercase());
-        let mut dark_options: Vec<(SharedString, SharedString)> = registry
-            .themes()
-            .iter()
-            .filter(|(_, theme)| theme.mode == gpui_kit::component::ThemeMode::Dark)
-            .map(|(name, _)| (name.clone(), name.clone()))
-            .collect();
-        dark_options.sort_by_key(|(name, _)| name.to_lowercase());
-
-        if let Some(library) = cx.try_global::<crate::app::themes::ThemeLibrary>() {
-            light_options = library.options(gpui_kit::component::ThemeMode::Light);
-            dark_options = library.options(gpui_kit::component::ThemeMode::Dark);
-        }
-
         let settings = settings::snapshot();
-        let saved_light = settings
-            .light_theme_name
-            .filter(|name| {
-                crate::app::themes::document(name, cx)
-                    .is_some_and(|theme| theme.mode() == gpui_kit::component::ThemeMode::Light)
-            })
-            .unwrap_or_else(|| {
-                gpui_kit::component::Theme::global(cx)
-                    .light_theme
-                    .name
-                    .to_string()
-            });
-        let saved_dark = settings
-            .dark_theme_name
-            .filter(|name| {
-                crate::app::themes::document(name, cx)
-                    .is_some_and(|theme| theme.mode() == gpui_kit::component::ThemeMode::Dark)
-            })
-            .unwrap_or_else(|| {
-                gpui_kit::component::Theme::global(cx)
-                    .dark_theme
-                    .name
-                    .to_string()
-            });
-        let font_size_multiplier = settings.font_scale;
+        let (saved_light, saved_dark) = cx
+            .try_global::<crate::app::themes::ThemeLibrary>()
+            .map_or_else(
+                || ("Datalith Light".to_owned(), "Datalith Dark".to_owned()),
+                |library| {
+                    (
+                        library.current(settings::ThemeKind::Light).to_owned(),
+                        library.current(settings::ThemeKind::Dark).to_owned(),
+                    )
+                },
+            );
 
         cx.set_global(ThemeOptions {
             light_theme_name: saved_light.into(),
             dark_theme_name: saved_dark.into(),
-            light_options,
-            dark_options,
-            font_size_multiplier,
+            font_size_multiplier: settings.font_scale,
             theme_preference: settings.theme_preference.name().into(),
         });
     }
 
-    fn theme_mode_item() -> SettingItem {
-        let mode_options: Vec<(SharedString, SharedString)> = vec![
-            ("system".into(), "System".into()),
-            ("light".into(), "Light".into()),
-            ("dark".into(), "Dark".into()),
-        ];
-        SettingItem::new(
-            "Mode",
-            SettingField::scrollable_dropdown(
-                mode_options,
-                |cx| cx.global::<ThemeOptions>().theme_preference.clone(),
-                |val: SharedString, cx| Self::apply_theme_preference(&val, cx),
-            ),
-        )
-        .description("Theme mode to be used.")
-    }
-
-    fn apply_theme_preference(val: &SharedString, cx: &mut App) {
-        let Some(preference) = ThemePreference::from_name(val.as_str()) else {
-            return;
-        };
-        crate::ui::themes::change_mode(preference, cx);
-    }
-
-    pub(super) fn theme_group(cx: &Context<DatalithView>) -> SettingGroup {
-        let light_options = cx.global::<ThemeOptions>().light_options.clone();
-        let dark_options = cx.global::<ThemeOptions>().dark_options.clone();
-
-        SettingGroup::new().title("Theme").items(vec![
-            Self::theme_mode_item(),
-            SettingItem::new(
-                "Light Theme",
-                SettingField::scrollable_dropdown(
-                    light_options,
-                    |cx| cx.global::<ThemeOptions>().light_theme_name.clone(),
-                    |val: SharedString, cx| {
-                        crate::ui::themes::select_theme(&val, false, cx);
-                    },
-                ),
-            )
-            .description("Theme used in light mode."),
-            SettingItem::new(
-                "Dark Theme",
-                SettingField::scrollable_dropdown(
-                    dark_options,
-                    |cx| cx.global::<ThemeOptions>().dark_theme_name.clone(),
-                    |val: SharedString, cx| {
-                        crate::ui::themes::select_theme(&val, false, cx);
-                    },
-                ),
-            )
-            .description("Theme used in dark mode."),
-        ])
+    pub(super) fn theme_navigation_group() -> SettingGroup {
+        SettingGroup::new().items(vec![SettingItem::render(|_, _, _| {
+            gpui_kit::component::v_flex()
+                .gap_2()
+                .child("To modify theme and fonts, you can use the theme editor")
+                .child(
+                    Button::new("manage-themes")
+                        .label("Manage themes")
+                        .on_click(|_, window, cx| {
+                            if let Some(view) = cx
+                                .try_global::<crate::app::AppState>()
+                                .and_then(|state| state.view.clone())
+                            {
+                                view.update(cx, |view, cx| {
+                                    view.settings.open_theme();
+                                    // The navigation revision replaces the focused button.
+                                    // Move focus to the retained modal before its old page drops.
+                                    view.settings.focus_handle.focus(window, cx);
+                                    cx.notify();
+                                });
+                            }
+                        }),
+                )
+                .into_any_element()
+        })])
     }
 
     pub(super) fn display_group(font_size_slider_state: &Entity<SliderState>) -> SettingGroup {

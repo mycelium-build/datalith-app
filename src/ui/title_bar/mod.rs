@@ -279,7 +279,7 @@ mod tests {
             assert!(window.try_find("search-trigger").is_none());
             assert!(window.try_find("switcher-trigger").is_none());
             let settings = window.within("popup-menu").find(2_usize);
-            assert_eq!(settings.label(), Some("Settings…"));
+            assert_eq!(settings.label(), Some("Settings"));
             window.within("popup-menu").click(2_usize, cx);
         })
         .unwrap();
