@@ -1,6 +1,6 @@
 //! Cell rendering over projected snapshot values.
 
-use gpui_kit::component::{ActiveTheme, h_flex};
+use gpui_kit::component::{ActiveTheme, Theme, h_flex};
 use gpui_kit::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
@@ -20,6 +20,18 @@ pub(super) fn render_property_cell(
     truncate: bool,
     cx: &App,
 ) -> AnyElement {
+    render_property_cell_with_theme(snapshot, row, property, handler, id, truncate, cx.theme())
+}
+
+pub(super) fn render_property_cell_with_theme(
+    snapshot: &BaseSnapshot,
+    row: &BaseRow,
+    property: &DisplayProperty,
+    handler: &gpui_kit::WeakEntity<FileHandler>,
+    id: ElementId,
+    truncate: bool,
+    theme: &Theme,
+) -> AnyElement {
     if property.source == "file.name" {
         return render_link(
             id,
@@ -27,7 +39,7 @@ pub(super) fn render_property_cell(
             path_text(&row.path),
             truncate,
             handler.clone(),
-            cx,
+            theme,
         );
     }
     let value = snapshot.projection_value(row, &property.source);
@@ -53,7 +65,7 @@ pub(super) fn render_property_cell(
                 target.clone(),
                 false,
                 handler.clone(),
-                cx,
+                theme,
             )
         });
         return h_flex()
@@ -63,7 +75,7 @@ pub(super) fn render_property_cell(
             .into_any_element();
     }
     if let Some((label, target)) = wikilink_parts(value) {
-        return render_link(id, &label, target, truncate, handler.clone(), cx);
+        return render_link(id, &label, target, truncate, handler.clone(), theme);
     }
     div()
         .id(id)
@@ -124,12 +136,12 @@ fn render_link(
     target: String,
     truncate: bool,
     handler: gpui_kit::WeakEntity<FileHandler>,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     div()
         .id(id)
         .when(truncate, Styled::text_ellipsis)
-        .text_color(cx.theme().primary)
+        .text_color(theme.primary)
         .hover(Styled::underline)
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {

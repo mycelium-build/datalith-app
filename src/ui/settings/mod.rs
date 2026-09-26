@@ -1,3 +1,4 @@
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -9,7 +10,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
+    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    rems,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -22,17 +24,16 @@ pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
 mod about;
 mod appearance;
 mod server;
-mod shortcuts;
+#[cfg(test)]
+mod tests;
+pub mod theme;
 
 use about::about_page_index;
-use shortcuts::shortcuts_page_index;
 
 #[derive(Clone)]
 pub struct ThemeOptions {
     pub(crate) light_theme_name: SharedString,
     pub(crate) dark_theme_name: SharedString,
-    pub(crate) light_options: Vec<(SharedString, SharedString)>,
-    pub(crate) dark_options: Vec<(SharedString, SharedString)>,
     pub(crate) font_size_multiplier: f64,
     pub(crate) theme_preference: SharedString,
 }
@@ -41,25 +42,26 @@ impl Global for ThemeOptions {}
 
 pub struct SettingsView {
     pub(crate) open: bool,
+    theme_open: bool,
     focus_handle: FocusHandle,
+    return_focus: Option<FocusHandle>,
     page_index: usize,
+    navigation_revision: u64,
     has_updater: bool,
     pub(crate) font_size_slider_state: Entity<SliderState>,
+    theme_page: Entity<theme::ThemePage>,
 }
 
-/// The settings pages, in render order. Both the page builders and the
-/// shortcuts page index derive from this list, so they cannot drift.
+/// The settings pages, in render order; shortcuts have their own surface.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     Appearance,
-    Shortcuts,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 3] = [
     SettingsPage::Appearance,
-    SettingsPage::Shortcuts,
     SettingsPage::Server,
     SettingsPage::About,
 ];
@@ -68,7 +70,6 @@ impl SettingsPage {
     const fn title(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
-            Self::Shortcuts => "Shortcuts",
             Self::Server => "Local Server",
             Self::About => "About",
         }
@@ -76,7 +77,7 @@ impl SettingsPage {
 }
 
 impl SettingsView {
-    pub(crate) fn new(cx: &mut App) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut App) -> Self {
         let font_size_multiplier = settings::snapshot().font_scale;
         let font_size_slider_state = cx.new(|_| {
             SliderState::new()
@@ -87,26 +88,49 @@ impl SettingsView {
         });
         Self {
             open: false,
+            theme_open: false,
             focus_handle: cx.focus_handle(),
+            return_focus: None,
             page_index: 0,
+            navigation_revision: 0,
             has_updater: crate::app::update::Updater::get(cx).is_some(),
             font_size_slider_state,
+            theme_page: cx.new(|cx| theme::ThemePage::new(window, cx)),
         }
     }
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = 0;
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
-    pub(crate) fn open_shortcuts(&mut self) {
+    pub(crate) fn open_theme(&mut self, window: &mut Window, cx: &mut App) {
         self.open = true;
-        self.page_index = shortcuts_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+        self.theme_open = true;
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
+        self.theme_page
+            .update(cx, |page, cx| page.sync_mode(window, cx));
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = about_page_index().saturating_add(usize::from(self.has_updater)); // "General" page not displayed on dev channel
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
+    }
+
+    pub(crate) fn focus(&mut self, window: &mut Window, cx: &mut App) {
+        self.return_focus = window.focused(cx);
+        self.focus_handle.focus(window, cx);
+    }
+
+    fn dismiss(&mut self, window: &mut Window, cx: &mut App) {
+        self.close();
+        if let Some(focus) = self.return_focus.take() {
+            focus.focus(window, cx);
+        }
     }
 
     pub(crate) const fn close(&mut self) {
@@ -117,19 +141,24 @@ impl SettingsView {
         div()
             .absolute()
             .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
+            .p(px(32.))
+            .bg(cx.theme().overlay)
             .flex()
             .items_center()
             .justify_center()
             .id("settings-backdrop")
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.settings.close();
+            // Keep wheel events on the modal, including at its scroll boundaries.
+            .occlude()
+            .on_click(cx.listener(|view: &mut DatalithView, _, window, cx| {
+                view.settings.dismiss(window, cx);
                 cx.notify();
             }))
             .child(
                 div()
-                    .w(px(700.))
-                    .h(px(600.))
+                    .w(rems(60.))
+                    .max_w_full()
+                    .h(rems(42.))
+                    .max_h_full()
                     .bg(cx.theme().background)
                     .border(px(1.))
                     .border_color(cx.theme().border)
@@ -137,11 +166,11 @@ impl SettingsView {
                     .shadow_lg()
                     .id("settings-panel")
                     .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .track_focus(&self.focus_handle)
                     .on_key_down(cx.listener(
-                        |view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
+                        |view: &mut DatalithView, event: &KeyDownEvent, window, cx| {
                             if event.keystroke.key == "escape" {
-                                view.settings.close();
+                                view.settings.dismiss(window, cx);
+                                cx.stop_propagation();
                                 cx.notify();
                             }
                         },
@@ -155,34 +184,54 @@ impl SettingsView {
                                     .w_full()
                                     .px_2()
                                     .py_1()
-                                    .justify_end()
+                                    .justify_between()
                                     .border_b(px(1.))
                                     .border_color(cx.theme().border)
+                                    .child(div().text_sm().child(if self.theme_open {
+                                        "Theme"
+                                    } else {
+                                        "Settings"
+                                    }))
                                     .child(
                                         Button::new("close-settings")
                                             .ghost()
                                             .small()
                                             .icon(IconName::Close)
-                                            .on_click(cx.listener(|view, _, _, cx| {
-                                                view.settings.close();
+                                            .accessibility_label(if self.theme_open {
+                                                "Close themes"
+                                            } else {
+                                                "Close preferences"
+                                            })
+                                            .tooltip("Close")
+                                            .on_click(cx.listener(|view, _, window, cx| {
+                                                view.settings.dismiss(window, cx);
                                                 cx.notify();
                                             })),
                                     ),
                             )
-                            .child(
-                                Settings::new("app-settings")
+                            .child(if self.theme_open {
+                                div()
+                                    .size_full()
+                                    .min_h_0()
+                                    .p_4()
+                                    .child(self.theme_page.clone())
+                                    .into_any_element()
+                            } else {
+                                Settings::new(("app-settings", self.navigation_revision))
                                     .with_size(Size::Small)
                                     .default_selected_index(SelectIndex {
                                         page_ix: self.page_index,
                                         group_ix: None,
                                     })
-                                    .pages(self.settings_pages(cx)),
-                            ),
-                    ),
+                                    .pages(self.settings_pages(cx))
+                                    .into_any_element()
+                            }),
+                    )
+                    .focus_trap("preferences-focus", &self.focus_handle),
             )
     }
 
-    fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+    fn settings_pages(&self, _cx: &Context<DatalithView>) -> Vec<SettingPage> {
         // In dev channel don't display update group
         // NOTE: need to move "General" page when add new content to it
         let general = self.has_updater.then(|| {
@@ -225,12 +274,9 @@ impl SettingsView {
                     SettingsPage::Appearance => SettingPage::new(page.title())
                         .default_open(true)
                         .groups(vec![
-                            Self::theme_group(cx),
                             Self::display_group(&self.font_size_slider_state),
+                            Self::theme_navigation_group(),
                         ]),
-                    SettingsPage::Shortcuts => {
-                        SettingPage::new(page.title()).groups(Self::shortcuts_groups())
-                    }
                     SettingsPage::Server => {
                         SettingPage::new(page.title()).groups(vec![Self::server_group()])
                     }

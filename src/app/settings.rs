@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
@@ -6,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SCHEMA_VERSION: u32 = 3;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -36,15 +37,6 @@ impl ThemePreference {
             Self::System => "system",
             Self::Light => "light",
             Self::Dark => "dark",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "system" => Some(Self::System),
-            "light" => Some(Self::Light),
-            "dark" => Some(Self::Dark),
-            _ => None,
         }
     }
 
@@ -133,7 +125,88 @@ impl Default for ServerSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FontRole {
+    Interface,
+    Reading,
+    Headings,
+    Code,
+}
+
+impl FontRole {
+    pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Interface => 0,
+            Self::Reading => 1,
+            Self::Headings => 2,
+            Self::Code => 3,
+        }
+    }
+}
+impl ThemeKind {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Light => 0,
+            Self::Dark => 1,
+        }
+    }
+    pub const fn mode(self) -> gpui_kit::component::ThemeMode {
+        match self {
+            Self::Light => gpui_kit::component::ThemeMode::Light,
+            Self::Dark => gpui_kit::component::ThemeMode::Dark,
+        }
+    }
+}
+impl From<gpui_kit::component::ThemeMode> for ThemeKind {
+    fn from(value: gpui_kit::component::ThemeMode) -> Self {
+        match value {
+            gpui_kit::component::ThemeMode::Light => Self::Light,
+            gpui_kit::component::ThemeMode::Dark => Self::Dark,
+        }
+    }
+}
+
+/// Optional families stored on an individual theme variant.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(default)]
+pub struct FontSettings {
+    interface: Option<String>,
+    reading: Option<String>,
+    headings: Option<String>,
+    code: Option<String>,
+}
+
+impl FontSettings {
+    pub fn is_empty(&self) -> bool {
+        FontRole::ALL
+            .into_iter()
+            .all(|role| self.family(role).is_none())
+    }
+    pub fn family(&self, role: FontRole) -> Option<&str> {
+        match role {
+            FontRole::Interface => self.interface.as_deref(),
+            FontRole::Reading => self.reading.as_deref(),
+            FontRole::Headings => self.headings.as_deref(),
+            FontRole::Code => self.code.as_deref(),
+        }
+    }
+
+    pub fn set_family(&mut self, role: FontRole, family: Option<String>) {
+        let value = match role {
+            FontRole::Interface => &mut self.interface,
+            FontRole::Reading => &mut self.reading,
+            FontRole::Headings => &mut self.headings,
+            FontRole::Code => &mut self.code,
+        };
+        *value = family
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
@@ -305,14 +378,38 @@ impl SettingsStore {
         fs::create_dir_all(parent).with_context(|| {
             format!("Failed to create settings directory: {}", parent.display())
         })?;
-        let json = serde_json::to_string(&StoredSettings::from_settings(settings))?;
-        fs::write(&self.file, json)
-            .with_context(|| format!("Failed to write settings: {}", self.file.display()))
+        let json = serde_json::to_vec(&StoredSettings::from_settings(settings))?;
+        let temporary = parent.join(format!(".settings-{:032x}.tmp", rand::random::<u128>()));
+        let result = (|| -> Result<()> {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(&json)?;
+            file.sync_all()?;
+            fs::rename(&temporary, &self.file)?;
+            #[cfg(unix)]
+            fs::File::open(parent)?.sync_all()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.with_context(|| format!("Failed to write settings: {}", self.file.display()))
     }
 }
 
+#[cfg(not(test))]
 fn settings_file() -> PathBuf {
     super::data_dir().join("config.json")
+}
+
+#[cfg(test)]
+fn settings_file() -> PathBuf {
+    // UI integration tests must never read or overwrite personal preferences.
+    std::env::temp_dir()
+        .join(format!("datalith-test-settings-{}", std::process::id()))
+        .join("config.json")
 }
 
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
@@ -367,15 +464,17 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     settings_lock().update(|settings| settings.theme_preference = preference)
 }
 
-pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
-    let name = name.trim();
-    if name.is_empty() {
-        bail!("Theme name cannot be empty");
-    }
-    settings_lock().update(|settings| match kind {
-        ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
-        ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
-    })
+/// Persist both current references in one settings update. A test library may
+/// supply its own isolated file; the running app uses the serialized store.
+pub fn replace_theme_slots(file: Option<&Path>, light: &str, dark: &str) -> Result<()> {
+    let update = |settings: &mut ApplicationSettings| {
+        settings.light_theme_name = Some(light.to_owned());
+        settings.dark_theme_name = Some(dark.to_owned());
+    };
+    file.map_or_else(
+        || settings_lock().update(update),
+        |path| SettingsStore::new(path.to_path_buf()).update(update),
+    )
 }
 
 pub fn set_font_scale(scale: f64) -> Result<()> {
@@ -416,6 +515,39 @@ mod tests {
                 .unwrap_or("test")
                 .replace("::", "-")
         ))
+    }
+
+    #[test]
+    fn older_configs_preserve_typography_scale() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"schema_version":2,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+        let settings = stored.normalized();
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
+        assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn variant_fonts_normalize_names() {
+        let mut fonts = FontSettings::default();
+        fonts.set_family(FontRole::Interface, Some("  Helvetica  ".into()));
+        assert_eq!(fonts.family(FontRole::Interface), Some("Helvetica"));
+        assert!(!fonts.is_empty());
+        fonts.set_family(FontRole::Interface, None);
+        assert!(fonts.is_empty());
+    }
+
+    #[test]
+    fn legacy_personal_fonts_are_ignored_on_read_and_write() {
+        let file = temp_settings_file("legacy-fonts");
+        fs::write(&file, r#"{"fonts":{"interface":"Legacy"}}"#).unwrap();
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| settings.theme_preference = ThemePreference::Dark)
+            .unwrap();
+        assert!(!fs::read_to_string(&file).unwrap().contains("fonts"));
+        let _ = fs::remove_file(file);
     }
 
     #[test]

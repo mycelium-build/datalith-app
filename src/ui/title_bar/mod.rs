@@ -4,6 +4,7 @@ use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex,
+    menu::DropdownMenu as _,
     progress::ProgressCircle,
 };
 use gpui_kit::{
@@ -15,7 +16,7 @@ use gpui_kit::{
 use super::icons::DatalithIcon;
 mod application_menu;
 use crate::app::{
-    actions::{OpenSettings, ToggleQuickSwitcher, ToggleSearch},
+    actions::{OpenSettings, OpenShortcuts, OpenThemeEditor, ToggleQuickSwitcher, ToggleSearch},
     update::{UpdatePresentation, Updater},
 };
 pub use application_menu::ApplicationMenu;
@@ -29,8 +30,8 @@ pub fn render(
 ) -> impl IntoElement {
     TitleBar::new()
         .min_h_8()
-        .bg(cx.theme().tab_bar)
-        .border_color(cx.theme().border)
+        .bg(cx.theme().title_bar)
+        .border_color(cx.theme().title_bar_border)
         // The content owns the traffic-light inset so both sides of the wordmark can have equal width,
         // keeping it at the actual window center on macOS.
         .when(cfg!(target_os = "macos"), gpui_kit::Styled::pl_0)
@@ -75,12 +76,19 @@ fn render_content(
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(|_, _, cx| cx.stop_propagation())
                         .children(update_control)
-                        .child(command_button(
-                            "settings-trigger",
-                            Icon::new(DatalithIcon::Settings),
-                            "Settings…",
-                            OpenSettings,
-                        )),
+                        .child(
+                            Button::new("settings-trigger")
+                                .ghost()
+                                .small()
+                                .icon(Icon::new(DatalithIcon::Settings))
+                                .accessibility_label("Preferences menu")
+                                .tooltip("Settings, theme and shortcuts")
+                                .dropdown_menu(|menu, _, _| {
+                                    menu.menu("Settings", Box::new(OpenSettings))
+                                        .menu("Theme", Box::new(OpenThemeEditor))
+                                        .menu("Shortcuts", Box::new(OpenShortcuts))
+                                }),
+                        ),
                 ),
         )
 }
@@ -322,7 +330,7 @@ mod tests {
                         assert!(search.visible() && switcher.visible() && settings.visible());
                         assert_eq!(search.label(), Some("Search files"));
                         assert_eq!(switcher.label(), Some("Quick switcher"));
-                        assert_eq!(settings.label(), Some("Settings…"));
+                        assert_eq!(settings.label(), Some("Preferences menu"));
                         assert!(search.bounds().right() <= switcher.bounds().left());
                         assert!(switcher.bounds().right() < settings.bounds().left());
                         assert_eq!(search.bounds().center().y, settings.bounds().center().y);
@@ -339,6 +347,26 @@ mod tests {
                 cx.update_window(handle.into(), |_, window, cx| window.click(id, cx))
                     .unwrap();
                 cx.run_until_parked();
+                if id == "settings-trigger" {
+                    cx.update_window(handle.into(), |_, window, cx| {
+                        window.render_frame(cx);
+                        assert_eq!(
+                            window.within("popup-menu").find(0_usize).label(),
+                            Some("Settings")
+                        );
+                        assert_eq!(
+                            window.within("popup-menu").find(1_usize).label(),
+                            Some("Theme")
+                        );
+                        assert_eq!(
+                            window.within("popup-menu").find(2_usize).label(),
+                            Some("Shortcuts")
+                        );
+                        window.within("popup-menu").click(0_usize, cx);
+                    })
+                    .unwrap();
+                    cx.run_until_parked();
+                }
             }
             assert_eq!(*commands.borrow(), ["search", "switcher", "settings"]);
 
@@ -353,6 +381,12 @@ mod tests {
                 }
                 assert_eq!(window.find("settings-trigger").focused(), Some(true));
                 activate_focused_button("enter", window, cx);
+            })
+            .unwrap();
+            cx.run_until_parked();
+            cx.update_window(handle.into(), |_, window, cx| {
+                window.press("down", cx);
+                window.press("enter", cx);
             })
             .unwrap();
             cx.run_until_parked();

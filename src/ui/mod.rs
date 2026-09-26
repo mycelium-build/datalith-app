@@ -6,6 +6,7 @@ pub mod notifications;
 pub mod palette;
 pub mod render;
 pub mod settings;
+mod shortcuts;
 pub mod sidebar;
 pub mod startup;
 pub mod tabs;
@@ -183,26 +184,8 @@ impl DatalithView {
             },
         );
 
-        let settings = SettingsView::new(cx);
-        let font_size_slider_sub = cx.subscribe(
-            &settings.font_size_slider_state,
-            |view, _, event: &SliderEvent, cx| {
-                let SliderEvent::Change(value) = event else {
-                    return;
-                };
-                let val = f64::from(value.start());
-                let new_size = px(BASE_FONT_SIZE * value.start());
-                cx.global_mut::<settings::ThemeOptions>()
-                    .font_size_multiplier = val;
-                gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
-                cx.refresh_windows();
-                if let Err(error) = app_settings::set_font_scale(val) {
-                    view.pending_notifications
-                        .push(notifications::settings_save_failed("font scale", &error));
-                }
-            },
-        );
-
+        let settings = SettingsView::new(window, cx);
+        let font_size_slider_sub = Self::subscribe_font_scale(&settings, cx);
         let appearance_sub = Self::observe_system_appearance(window, cx);
 
         let startup = cx.new(|cx| {
@@ -262,6 +245,27 @@ impl DatalithView {
         view
     }
 
+    fn subscribe_font_scale(settings: &SettingsView, cx: &mut Context<Self>) -> Subscription {
+        cx.subscribe(
+            &settings.font_size_slider_state,
+            |view, _, event: &SliderEvent, cx| {
+                let SliderEvent::Change(value) = event else {
+                    return;
+                };
+                let val = f64::from(value.start());
+                let new_size = px(BASE_FONT_SIZE * value.start());
+                cx.global_mut::<settings::ThemeOptions>()
+                    .font_size_multiplier = val;
+                gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
+                cx.refresh_windows();
+                if let Err(error) = app_settings::set_font_scale(val) {
+                    view.pending_notifications
+                        .push(notifications::settings_save_failed("font scale", &error));
+                }
+            },
+        )
+    }
+
     fn subscribe_tree_events(
         tree_state: &Entity<TreeState>,
         window: &Window,
@@ -287,6 +291,7 @@ impl DatalithView {
                 let effective = preference.resolve(window.appearance()).into();
                 gpui_kit::component::Theme::change(effective, Some(window), cx);
                 gpui_kit::component::Theme::global_mut(cx).mode = effective;
+                crate::app::fonts::apply(cx);
             }
         })
     }

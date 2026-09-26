@@ -84,33 +84,50 @@ impl DatalithView {
             })
             .on_click({
                 let tree_state = self.tree_state.clone();
-                cx.listener(move |view, index, _, cx| {
+                cx.listener(move |view, index, window, cx| {
                     tree_state.update(cx, |state, cx| state.set_selected_index(None, cx));
                     view.last_sidebar_selection = None;
                     view.tabs.select(*index);
+                    view.focus_active_tab(window, cx);
                     cx.notify();
                 })
             })
-            .children(self.tabs.iter().map(|(index, path, _)| {
-                let name = SharedString::from(display_name(path));
-                Tab::new()
-                    .label(name)
-                    .prefix(
-                        Icon::new(self.registry.config_for(path).icon)
-                            .size_3()
-                            .ml_2(),
-                    )
-                    .suffix(
-                        Button::new(format!("close-tab-{index}"))
-                            .icon(IconName::Close)
-                            .ghost()
-                            .xsmall()
-                            .mr_1()
-                            .on_click(cx.listener(move |view, _, _, cx| {
-                                cx.stop_propagation();
-                                view.close_tab(index, cx);
-                            })),
-                    )
-            }))
+            .children(
+                self.tabs
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tab)| self.render_workspace_tab(index, tab, cx)),
+            )
+    }
+
+    fn render_workspace_tab(&self, index: usize, tab: &super::Tab, cx: &Context<Self>) -> Tab {
+        let (name, icon): (SharedString, Icon) = match tab {
+            super::Tab::Document(tab) => (
+                display_name(&tab.path).into(),
+                Icon::new(self.registry.config_for(&tab.path).icon),
+            ),
+            super::Tab::Theme { editor, .. } => (
+                editor.read(cx).family_name(cx).into(),
+                Icon::new(IconName::Palette),
+            ),
+            super::Tab::Shortcuts(_) => ("Shortcuts".into(), Icon::new(DatalithIcon::Shortcuts)),
+        };
+        Tab::new()
+            .label(name.clone())
+            .prefix(icon.size_3().ml_2())
+            .suffix(
+                Button::new(("close-tab", tab.entity_id()))
+                    .icon(IconName::Close)
+                    .ghost()
+                    .xsmall()
+                    .mr_1()
+                    .accessibility_label(format!("Close {name}"))
+                    .tooltip(format!("Close {name}"))
+                    .on_click(cx.listener(move |view, _, window, cx| {
+                        cx.stop_propagation();
+                        view.close_tab(index, window, cx);
+                    })),
+            )
     }
 }
