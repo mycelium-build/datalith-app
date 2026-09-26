@@ -101,49 +101,46 @@ impl ThemeDocument {
         if let Some(ref value) = value {
             gpui_kit::component::try_parse_color(value)?;
         }
-        let mut highlight = serde_json::to_value(&self.config.highlight)?
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        // Use the dependency's schema as the complete list of supported keys,
+        // including optional styles that have never been set in this variant.
+        let schema =
+            serde_json::to_value(gpui_kit::component::highlighter::HighlightThemeStyle::default())?;
+        let mut highlight =
+            serde_json::to_value(self.config.highlight.clone().unwrap_or_default())?
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
         if let Some(syntax) = token.strip_prefix("syntax.") {
-            ensure!(!syntax.is_empty(), "Unknown highlight token");
+            ensure!(
+                schema
+                    .get("syntax")
+                    .and_then(|styles| styles.get(syntax))
+                    .is_some(),
+                "Unknown syntax color"
+            );
             let node = highlight
                 .entry("syntax")
-                .or_insert_with(|| serde_json::json!({}))
-                .as_object_mut()
-                .context("Invalid syntax overrides")?;
-            match value {
-                Some(value) => {
-                    node.entry(syntax)
-                        .or_insert_with(|| serde_json::json!({}))
-                        .as_object_mut()
-                        .context("Invalid syntax style")?
-                        .insert("color".into(), value.into());
+                .or_insert_with(|| serde_json::json!({}));
+            let node = node.as_object_mut().context("Invalid syntax overrides")?;
+            if let Some(value) = value {
+                let style = node.entry(syntax).or_insert(serde_json::Value::Null);
+                if style.is_null() {
+                    *style = serde_json::json!({});
                 }
-                None => {
-                    if let Some(style) = node.get_mut(syntax) {
-                        let style = style.as_object_mut().context("Invalid syntax style")?;
-                        style.remove("color");
-                        if style.is_empty() {
-                            node.remove(syntax);
-                        }
-                    }
-                }
+                style
+                    .as_object_mut()
+                    .context("Invalid syntax style")?
+                    .insert("color".into(), value.into());
+            } else if let Some(style) = node
+                .get_mut(syntax)
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                style.remove("color");
             }
         } else {
             ensure!(
-                token.starts_with("editor.")
-                    || [
-                        "created",
-                        "modified",
-                        "warning",
-                        "conflict",
-                        "hint",
-                        "hidden",
-                        "predictive"
-                    ]
-                    .contains(&token),
-                "Unknown highlight token"
+                schema.get(token).is_some() && token != "syntax",
+                "Unknown highlight color"
             );
             match value {
                 Some(value) => {
@@ -251,10 +248,12 @@ impl ThemeFamily {
 /// A snapshot that may be rendered without modifying any application global.
 #[derive(Clone)]
 pub struct ResolvedAppearance {
+    #[cfg(test)]
     document: ThemeDocument,
     theme: Theme,
     fonts: [SharedString; 4],
     colors: BTreeMap<String, gpui_kit::Hsla>,
+    defined_colors: std::collections::BTreeSet<String>,
 }
 impl ResolvedAppearance {
     pub const fn theme(&self) -> &Theme {
@@ -263,10 +262,8 @@ impl ResolvedAppearance {
     pub fn color(&self, token: &str) -> Option<gpui_kit::Hsla> {
         self.colors.get(token).copied()
     }
-    pub const fn highlight(
-        &self,
-    ) -> Option<&gpui_kit::component::highlighter::HighlightThemeStyle> {
-        self.document.config.highlight.as_ref()
+    pub fn color_is_defined(&self, token: &str) -> bool {
+        self.defined_colors.contains(token)
     }
     #[allow(
         clippy::indexing_slicing,
@@ -613,13 +610,13 @@ impl ThemeLibrary {
         let suffix = suffix.trim();
         ensure!(
             !suffix.is_empty() || self.families[ix].variants.len() == 1,
-            "Enter a variant suffix"
+            "Enter a variant name"
         );
         ensure!(
             !self.families[ix].variants.iter().any(|v| v.id != id
                 && v.name()
                     .eq_ignore_ascii_case(&format!("{} {suffix}", self.families[ix].name))),
-            "Variant suffix already exists"
+            "This variant name already exists"
         );
         let name = if suffix.is_empty() {
             self.families[ix].name.clone()
@@ -669,7 +666,7 @@ impl ThemeLibrary {
             .context("Source variant is unavailable")?
             .clone();
         let suffix = suffix.trim();
-        ensure!(!suffix.is_empty(), "Enter a variant suffix");
+        ensure!(!suffix.is_empty(), "Enter a variant name");
         if self.families[ix].variants.len() == 1 {
             let existing = existing_suffix
                 .context("Name both variants before adding")?
@@ -711,7 +708,7 @@ impl ThemeLibrary {
                 !family.variants.iter().any(|v| family
                     .suffix(v.id)
                     .is_some_and(|s| s.eq_ignore_ascii_case(suffix))),
-                "Variant suffix already exists"
+                "This variant name already exists"
             );
         }
         let mut document = source.document;
@@ -1234,6 +1231,16 @@ pub struct DeletedTheme {
     selection_revisions: [u64; 2],
     removed_variant_id: Option<u64>,
 }
+impl DeletedTheme {
+    pub fn message(&self) -> String {
+        self.removed_variant_id
+            .and_then(|id| self.old.suffix(id))
+            .map_or_else(
+                || format!("Theme “{}” deleted", self.old.name()),
+                |name| format!("Variant “{name}” deleted"),
+            )
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub enum ImportPolicy {
     Replace,
@@ -1265,6 +1272,7 @@ fn resolve(
             ))
         })
         .collect();
+    let mut defined_colors: std::collections::BTreeSet<_> = colors.keys().cloned().collect();
     // GPUI resolves omitted colors from the variant's mode-specific fallback.
     // Expose those *effective* values to the editor as well: Reset must show
     // Datalith Light for light variants and Datalith Dark for dark variants.
@@ -1304,6 +1312,7 @@ fn resolve(
                         if let Some(value) = style.get("color").and_then(serde_json::Value::as_str)
                             && let Ok(color) = gpui_kit::component::try_parse_color(value)
                         {
+                            defined_colors.insert(format!("highlight:syntax.{name}"));
                             colors.insert(format!("highlight:syntax.{name}"), color);
                         }
                     }
@@ -1311,15 +1320,18 @@ fn resolve(
             } else if let Some(value) = value.as_str()
                 && let Ok(color) = gpui_kit::component::try_parse_color(value)
             {
+                defined_colors.insert(format!("highlight:{key}"));
                 colors.insert(format!("highlight:{key}"), color);
             }
         }
     }
     ResolvedAppearance {
+        #[cfg(test)]
         document: resolved,
         theme,
         fonts: families,
         colors,
+        defined_colors,
     }
 }
 

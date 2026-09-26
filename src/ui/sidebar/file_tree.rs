@@ -140,10 +140,13 @@ impl DatalithView {
             Icon::new(this.registry.config_for(path).icon)
         };
 
-        let mut list_item = ListItem::new(ix).selected(selected).pl(px(depth
-            .approx_as::<f32>()
-            .unwrap_or_inf()
-            .mul_add(TREE_INDENT_PX, TREE_PADDING_PX)));
+        let mut list_item = ListItem::new(ix)
+            .selected(selected)
+            .text_color(cx.theme().sidebar_foreground)
+            .pl(px(depth
+                .approx_as::<f32>()
+                .unwrap_or_inf()
+                .mul_add(TREE_INDENT_PX, TREE_PADDING_PX)));
 
         if is_renaming && let Some(rename_state) = this.rename_state.clone() {
             return list_item.child(

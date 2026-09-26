@@ -1,6 +1,7 @@
 //! Appearance settings page: display zoom and navigation to theme editing.
 
 use gpui_kit::component::{
+    ActiveTheme as _,
     button::Button,
     h_flex,
     setting::{SettingGroup, SettingItem},
@@ -35,30 +36,37 @@ impl SettingsView {
     }
 
     pub(super) fn theme_navigation_group() -> SettingGroup {
-        SettingGroup::new().items(vec![SettingItem::render(|_, _, _| {
-            gpui_kit::component::v_flex()
-                .gap_2()
-                .child("To modify theme and fonts, you can use the theme editor")
-                .child(
-                    Button::new("manage-themes")
-                        .label("Manage themes")
-                        .on_click(|_, window, cx| {
-                            if let Some(view) = cx
-                                .try_global::<crate::app::AppState>()
-                                .and_then(|state| state.view.clone())
-                            {
-                                view.update(cx, |view, cx| {
-                                    view.settings.open_theme(window, cx);
-                                    // The navigation revision replaces the focused button.
-                                    // Move focus to the retained modal before its old page drops.
-                                    view.settings.focus_handle.focus(window, cx);
-                                    cx.notify();
-                                });
-                            }
-                        }),
-                )
-                .into_any_element()
-        })])
+        SettingGroup::new()
+            .title("Themes & Fonts")
+            .items(vec![SettingItem::render(|_, _, cx| {
+                gpui_kit::component::v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Choose a theme or customize its colors and fonts."),
+                    )
+                    .child(
+                        Button::new("manage-themes")
+                            .label("Manage themes")
+                            .on_click(|_, window, cx| {
+                                if let Some(view) = cx
+                                    .try_global::<crate::app::AppState>()
+                                    .and_then(|state| state.view.clone())
+                                {
+                                    view.update(cx, |view, cx| {
+                                        view.settings.open_theme(window, cx);
+                                        // The navigation revision replaces the focused button.
+                                        // Move focus to the retained modal before its old page drops.
+                                        view.settings.focus_handle.focus(window, cx);
+                                        cx.notify();
+                                    });
+                                }
+                            }),
+                    )
+                    .into_any_element()
+            })])
     }
 
     pub(super) fn display_group(font_size_slider_state: &Entity<SliderState>) -> SettingGroup {

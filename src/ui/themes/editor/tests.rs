@@ -456,7 +456,7 @@ fn invalid_color_stays_local_and_blur_restores_last_valid_value() {
             .read(cx)
             .edited;
         assert!(
-            window.find(("variant-suffix", edited)).visible(),
+            window.find(("variant-light", edited)).visible(),
             "the clone's controls must be revealed"
         );
     })
@@ -573,7 +573,7 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
             .clone();
         window.render_frame(cx);
         assert!(!picker.read(cx).is_open());
-        window.click(format!("color-value-{variant}-background"), cx);
+        window.click(format!("color-picker-{variant}-background"), cx);
         assert!(picker.read(cx).is_open());
         let chosen = gpui_kit::component::try_parse_color("#123456").unwrap();
         picker.update(cx, |picker, cx| picker.select_color(chosen, window, cx));
@@ -892,6 +892,12 @@ fn switching_variants_updates_visible_font_controls_and_preview() {
             .unwrap()
             .id()
     });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(("select-variant", second), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
     let picker = cx.update(|cx| {
         app.read(cx)
             .tabs
@@ -951,9 +957,15 @@ fn switching_variants_keeps_mode_controls_keyboard_accessible() {
         window.click(("select-variant", second), cx);
         window.render_frame(cx);
         window.click(("select-variant", first), cx);
-        window.click(("variant-suffix", first), cx);
-        window.press("tab", cx);
+        for _ in 0..40 {
+            window.press("tab", cx);
+            if window.find(("variant-light", first)).focused() == Some(true) {
+                break;
+            }
+        }
         assert_eq!(window.find(("variant-light", first)).focused(), Some(true));
+        window.press("tab", cx);
+        assert_eq!(window.find(("variant-dark", first)).focused(), Some(true));
         assert_eq!(
             app.read(cx)
                 .tabs
@@ -1012,8 +1024,19 @@ fn removing_a_variant_and_using_notification_undo_restores_its_editor_controls()
             before
         );
         let editor = app.read(cx).tabs.theme_editor_for(family, cx).unwrap();
-        assert!(editor.read(cx).variants.contains_key(&variant));
+        assert!(cx.global::<ThemeLibrary>().variant_by_id(variant).is_some());
+        assert_ne!(editor.read(cx).edited, variant);
     });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(("select-variant", variant), cx);
+        assert!(
+            window
+                .find(format!("color-value-{variant}-background"))
+                .visible()
+        );
+    })
+    .unwrap();
     cleanup(&cx, family);
 }
 
@@ -1023,19 +1046,19 @@ fn syntax_color_edits_use_the_variant_highlight_override() {
     let (handle, _, family, variant, _) = workspace(&mut cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        for group in ["Surface", "Chrome", "Accent"] {
-            window.click(format!("token-group-{variant}-{group}"), cx);
-            window.render_frame(cx);
-        }
-        window.click(format!("token-group-{variant}-Syntax"), cx);
+        window.click(format!("token-group-{variant}-Advanced"), cx);
+        assert!(
+            window.find("theme-color-search").visible(),
+            "Search bounds {:?}",
+            window.find("theme-color-search").bounds()
+        );
+        window.click("theme-color-search", cx);
+        window.input("highlight:syntax.keyword", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        let target = format!("color-value-{variant}-highlight:syntax.keyword");
-        for _ in 0..30 {
-            if window.find(target.clone()).visible() {
-                break;
-            }
-            scroll_controls(window, -100., cx);
-        }
         window.click(
             format!("color-value-{variant}-highlight:syntax.keyword"),
             cx,
@@ -1303,4 +1326,356 @@ fn first_add_names_both_variants_and_cancel_or_duplicate_does_not_mutate() {
     });
     cleanup(&cx, family);
     cleanup(&cx, initial_family);
+}
+
+#[test]
+fn variant_sidebar_uses_short_names_and_rename_updates_the_selected_variant() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window
+                .find(format!("color-value-{variant}-background"))
+                .bounds()
+                .right(),
+            window
+                .find(format!("color-value-{variant}-foreground"))
+                .bounds()
+                .right()
+        );
+        assert_eq!(
+            window.find(("select-variant", variant)).label(),
+            Some("Latte")
+        );
+        let add = window.find("add-variant").bounds();
+        let last = cx
+            .global::<ThemeLibrary>()
+            .family(family)
+            .unwrap()
+            .variants()
+            .last()
+            .unwrap()
+            .id();
+        assert!(add.top() >= window.find(("select-variant", last)).bounds().bottom());
+        window.click(("rename-variant", variant), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(260));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click("theme-dialog-name", cx);
+        window.press("secondary-a", cx);
+        window.input("Morning", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find(("select-variant", variant)).label(),
+            Some("Morning")
+        );
+        assert_eq!(
+            cx.global::<ThemeLibrary>()
+                .family(family)
+                .unwrap()
+                .suffix(variant),
+            Some("Morning")
+        );
+        let edited = app
+            .read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .read(cx)
+            .edited;
+        assert_eq!(edited, variant);
+    })
+    .unwrap();
+    cleanup(&cx, family);
+}
+
+#[test]
+fn renaming_the_theme_in_its_editor_preserves_variants_and_updates_its_tab() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, original) = workspace(&mut cx);
+    let renamed = format!("{original} renamed");
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click("rename-theme", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    // The native dialog uses a wall-clock entrance animation.
+    std::thread::sleep(std::time::Duration::from_millis(260));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click("theme-dialog-name", cx);
+        window.press("secondary-a", cx);
+        window.input(&renamed, cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let library = cx.global::<ThemeLibrary>();
+        let family_state = library.family(family).unwrap();
+        assert_eq!(family_state.name(), renamed);
+        assert_eq!(family_state.variants().len(), 4);
+        assert_eq!(family_state.suffix(variant), Some("Latte"));
+        assert_eq!(
+            app.read(cx)
+                .tabs
+                .theme_editor_for(family, cx)
+                .unwrap()
+                .read(cx)
+                .family_name(cx),
+            renamed
+        );
+    });
+    cleanup(&cx, family);
+}
+
+#[test]
+fn deletion_notifications_expire_after_five_seconds_for_variants_and_themes() {
+    let mut cx = TestAppContext::single();
+    let (handle, _, family, variant, _) = workspace(&mut cx);
+    for whole_theme in [false, true] {
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            if whole_theme {
+                let deleted = cx
+                    .global_mut::<ThemeLibrary>()
+                    .delete_family(family)
+                    .unwrap();
+                crate::ui::settings::theme::show_undo(family, deleted, window, cx);
+            } else {
+                window.click(("remove-variant", variant), cx);
+            }
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(300));
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(4));
+        cx.run_until_parked();
+        cx.update_window(handle.into(), |_, window, cx| {
+            assert_eq!(
+                Root::read(window, cx)
+                    .notification
+                    .read(cx)
+                    .notifications()
+                    .len(),
+                1
+            );
+        })
+        .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(300));
+        cx.run_until_parked();
+        cx.update_window(handle.into(), |_, window, cx| {
+            assert!(
+                Root::read(window, cx)
+                    .notification
+                    .read(cx)
+                    .notifications()
+                    .is_empty()
+            );
+        })
+        .unwrap();
+    }
+}
+
+#[test]
+fn color_swatch_opens_picker_directly_and_hex_input_does_not() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(format!("color-picker-{variant}-background"), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let editor = app
+            .read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .read(cx);
+        assert!(
+            editor.variants[&variant].colors["background"]
+                .controls
+                .as_ref()
+                .unwrap()
+                .picker
+                .read(cx)
+                .is_open()
+        );
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.press("escape", cx);
+        window.render_frame(cx);
+        window.click(format!("color-value-{variant}-foreground"), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let editor = app
+            .read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .read(cx);
+        assert!(
+            !editor.variants[&variant].colors["foreground"]
+                .controls
+                .as_ref()
+                .unwrap()
+                .picker
+                .read(cx)
+                .is_open()
+        );
+    });
+    cleanup(&cx, family);
+}
+
+#[test]
+fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    let editor = cx.update(|cx| {
+        app.read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .clone()
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(format!("token-group-{variant}-Advanced"), cx);
+        assert_eq!(
+            editor.read(cx).visible_colors.len(),
+            editor.read(cx).variants[&variant].colors.len()
+        );
+        assert!(
+            editor
+                .read(cx)
+                .visible_colors
+                .iter()
+                .any(|key| key == "highlight:editor.gutter.background")
+        );
+        assert!(
+            editor
+                .read(cx)
+                .visible_colors
+                .iter()
+                .any(|key| key == "highlight:error.border")
+        );
+        assert!(
+            window.find("theme-color-search").visible(),
+            "Search bounds {:?}",
+            window.find("theme-color-search").bounds()
+        );
+        window.click("theme-color-search", cx);
+        assert_eq!(
+            window.find("theme-color-search").focused(),
+            Some(true),
+            "Search bounds: {:?}",
+            window.find("theme-color-search").bounds()
+        );
+        window.input("highlight:syntax.tag.doctype", cx);
+        assert_eq!(
+            editor.read(cx).color_query.read(cx).value().as_str(),
+            "highlight:syntax.tag.doctype"
+        );
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            editor.read(cx).visible_colors,
+            vec!["highlight:syntax.tag.doctype"]
+        );
+        window.click(
+            format!("color-value-{variant}-highlight:syntax.tag.doctype"),
+            cx,
+        );
+        window.press("secondary-a", cx);
+        window.input("#123456", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        let document = cx
+            .global::<ThemeLibrary>()
+            .variant_by_id(variant)
+            .unwrap()
+            .document();
+        let highlight = serde_json::to_value(&document.config().highlight).unwrap();
+        assert_eq!(highlight["syntax"]["tag.doctype"]["color"], "#123456ff");
+        window.click(
+            format!("reset-color-{variant}-highlight:syntax.tag.doctype"),
+            cx,
+        );
+        window.click("clear-color-filters", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let editor = editor.read(cx);
+        assert_eq!(
+            editor.visible_colors.len(),
+            editor.variants[&variant].colors.len()
+        );
+        assert!(
+            editor.variants[&variant].colors["highlight:syntax.tag.doctype"]
+                .valid
+                .is_none()
+        );
+    });
+    cleanup(&cx, family);
+}
+
+#[test]
+fn default_font_labels_follow_each_roles_effective_fallback() {
+    let mut cx = TestAppContext::single();
+    let (_, _, family, variant, _) = workspace(&mut cx);
+    cx.update(|cx| {
+        let mut document = cx
+            .global::<ThemeLibrary>()
+            .variant_by_id(variant)
+            .unwrap()
+            .document()
+            .clone();
+        document.set_font(FontRole::Interface, Some("Arial".into()));
+        for role in FontRole::ALL {
+            let choices = font_choices(&document, role, cx);
+            let mut default = document.clone();
+            default.set_font(role, None);
+            let font = cx.global::<FontCatalog>().resolve_roles(&default)[role.index()].clone();
+            assert_eq!(choices[0].label, format!("Default ({font})"));
+            assert_eq!(choices[0].value.as_str(), "");
+        }
+        assert_eq!(
+            font_choices(&document, FontRole::Reading, cx)[0]
+                .label
+                .as_str(),
+            "Default (Arial)"
+        );
+    });
+    cleanup(&cx, family);
 }

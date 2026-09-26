@@ -197,9 +197,10 @@ impl DatalithView {
             .flex_col()
             .size_full()
             .h_full()
-            .bg(cx.theme().tab_bar)
+            .bg(cx.theme().sidebar)
+            .text_color(cx.theme().sidebar_foreground)
             .border_r(px(BORDER_WIDTH))
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().sidebar_border)
             .track_focus(&self.sidebar_focus_handle)
             .on_mouse_down(
                 gpui_kit::MouseButton::Left,

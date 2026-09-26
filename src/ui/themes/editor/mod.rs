@@ -1,5 +1,6 @@
 //! Retained controls for one custom theme family. Valid edits go straight to the library.
 
+mod colors;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -14,8 +15,8 @@ use gpui_kit::component::{
     select::{SelectEvent, SelectState},
 };
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Render, ScrollHandle,
-    SharedString, Subscription, Window,
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
+    Render, ScrollHandle, SharedString, Subscription, Window,
 };
 
 use crate::app::{
@@ -64,9 +65,6 @@ struct ColorControls {
 }
 
 struct VariantControls {
-    suffix: Entity<InputState>,
-    suffix_error: Option<String>,
-    header_focus: FocusHandle,
     fonts: [Entity<Choices>; 4],
     colors: BTreeMap<String, ColorRow>,
     subscriptions: Vec<Subscription>,
@@ -83,6 +81,13 @@ pub struct ThemeEditor {
     preview: Option<themes::ResolvedAppearance>,
     preview_pane: Entity<super::preview::ThemePreview>,
     scroll: ScrollHandle,
+    color_list: ListState,
+    visible_colors: Vec<String>,
+    color_query: Entity<InputState>,
+    color_group: Entity<Choices>,
+    _group_subscription: Subscription,
+    rem_size: gpui_kit::Pixels,
+    _query_subscription: Subscription,
     error: Option<String>,
     focus: FocusHandle,
     _selector_subscription: Subscription,
@@ -121,7 +126,14 @@ impl ThemeEditor {
         let selector = make_choices(
             variants
                 .iter()
-                .map(|v| Choice::new(v.id().to_string(), v.name().to_owned()))
+                .map(|v| {
+                    Choice::new(
+                        v.id().to_string(),
+                        cx.global::<ThemeLibrary>()
+                            .family(family_id)
+                            .map_or_else(|| v.name().to_owned(), |f| render::variant_label(f, v)),
+                    )
+                })
                 .collect(),
             &edited.to_string(),
             window,
@@ -136,31 +148,60 @@ impl ThemeEditor {
                     this.reset_property_scroll();
                 }
             });
+        let color_query =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search all colors…"));
+        let query_subscription = cx.subscribe(&color_query, |this, _, event, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.refresh_color_list(cx);
+                cx.notify();
+            }
+        });
+        let color_group = make_choices(
+            colors::GROUPS
+                .iter()
+                .map(|group| Choice::new(*group, *group))
+                .collect(),
+            "All areas",
+            window,
+            cx,
+        );
+        let group_subscription = cx.subscribe(&color_group, |this, _, event, cx| {
+            if matches!(event, SelectEvent::Confirm(_)) {
+                this.refresh_color_list(cx);
+                cx.notify();
+            }
+        });
         let mut this = Self {
             family_id,
             edited,
             selector,
             variants: HashMap::new(),
-            category: "Surface",
+            category: "Colors",
             show_preview: false,
             active_color: None,
             preview: None,
             preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
             scroll: ScrollHandle::default(),
+            color_list: ListState::new(0, ListAlignment::Top, gpui_kit::px(0.)),
+            visible_colors: Vec::new(),
+            color_query,
+            color_group,
+            _group_subscription: group_subscription,
+            rem_size: window.rem_size(),
+            _query_subscription: query_subscription,
             error: None,
             focus: cx.focus_handle(),
             _selector_subscription: selector_subscription,
         };
         this.refresh_preview(cx);
-        for variant in &variants {
-            this.mount_variant(variant.id(), window, cx);
-        }
+        this.mount_variant(edited, window, cx);
+        this.refresh_color_list(cx);
         this
     }
 
     pub(crate) fn select(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         if !self.variants.contains_key(&id) {
-            return;
+            self.mount_variant(id, window, cx);
         }
         self.set_edited(id, window, cx);
     }
@@ -172,6 +213,7 @@ impl ThemeEditor {
         }
         self.edited = id;
         self.refresh_preview(cx);
+        self.refresh_color_list(cx);
         self.selector.update(cx, |selector, cx| {
             selector.set_selected_value(&id.to_string().into(), window, cx);
         });
@@ -192,7 +234,7 @@ impl ThemeEditor {
         reason = "Retained inputs, pickers and subscriptions are initialized together for one variant"
     )]
     fn mount_variant(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((suffix, document, resolved)) = ({
+        let Some((document, resolved)) = ({
             let library = cx.global::<ThemeLibrary>();
             library.family(self.family_id).and_then(|family| {
                 family
@@ -201,7 +243,6 @@ impl ThemeEditor {
                     .find(|v| v.id() == id)
                     .map(|variant| {
                         (
-                            family.suffix(id).unwrap_or_default().to_owned(),
                             variant.document().clone(),
                             library.resolved(id, cx.global::<FontCatalog>()).ok(),
                         )
@@ -211,51 +252,34 @@ impl ThemeEditor {
             return;
         };
         let mut colors = document.colors().unwrap_or_default();
-        if let Some(appearance) = &resolved {
-            let overrides = document
-                .config()
-                .highlight
-                .as_ref()
-                .and_then(|highlight| serde_json::to_value(highlight).ok())
+        let highlight =
+            serde_json::to_value(document.config().highlight.clone().unwrap_or_default())
                 .unwrap_or_default();
-            if let Some(highlight) = appearance
-                .highlight()
-                .and_then(|highlight| serde_json::to_value(highlight).ok())
-                && let Some(map) = highlight.as_object()
-            {
-                for (key, value) in map {
-                    if key == "syntax" {
-                        if let Some(syntax) = value.as_object() {
-                            for (syntax_key, entry) in syntax {
-                                if entry
+        if let Some(map) = highlight.as_object() {
+            for (key, value) in map {
+                if key == "syntax" {
+                    if let Some(syntax) = value.as_object() {
+                        for (key, style) in syntax {
+                            colors.insert(
+                                format!("highlight:syntax.{key}"),
+                                style
                                     .get("color")
                                     .and_then(serde_json::Value::as_str)
-                                    .is_none()
-                                {
-                                    continue;
-                                }
-                                let valid = overrides
-                                    .get("syntax")
-                                    .and_then(|syntax| syntax.get(syntax_key))
-                                    .and_then(|entry| entry.get("color"))
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(str::to_owned);
-                                colors.insert(format!("highlight:syntax.{syntax_key}"), valid);
-                            }
+                                    .map(str::to_owned),
+                            );
                         }
-                    } else if value.is_string() {
-                        let valid = overrides
-                            .get(key)
-                            .and_then(serde_json::Value::as_str)
-                            .map(str::to_owned);
-                        colors.insert(format!("highlight:{key}"), valid);
                     }
+                } else {
+                    colors.insert(
+                        format!("highlight:{key}"),
+                        value.as_str().map(str::to_owned),
+                    );
                 }
             }
         }
         let fonts = FontRole::ALL.map(|role| {
             let value = document.font(role).unwrap_or_default();
-            make_choices(font_choices(value, cx), value, window, cx)
+            make_choices(font_choices(&document, role, cx), value, window, cx)
         });
         let mut rows = BTreeMap::new();
         for (token, valid) in colors {
@@ -277,44 +301,15 @@ impl ThemeEditor {
                 },
             );
         }
-        let suffix = cx.new(|cx| InputState::new(window, cx).default_value(suffix));
         self.variants.insert(
             id,
             VariantControls {
-                suffix: suffix.clone(),
-                suffix_error: None,
-                header_focus: cx.focus_handle(),
                 fonts,
                 colors: rows,
                 subscriptions: Vec::new(),
             },
         );
         let mut subscriptions = Vec::new();
-        if let Some(controls) = self.variants.get(&id) {
-            subscriptions.push(cx.on_focus_in(
-                &controls.header_focus,
-                window,
-                move |this, window, cx| this.set_edited(id, window, cx),
-            ));
-        }
-        subscriptions.push(
-            cx.subscribe_in(&suffix, window, move |this, _, event, window, cx| {
-                if matches!(event, InputEvent::Focus) {
-                    this.set_edited(id, window, cx);
-                }
-                if matches!(
-                    event,
-                    InputEvent::Change | InputEvent::Blur | InputEvent::PressEnter { .. }
-                ) {
-                    this.rename_suffix(
-                        id,
-                        matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }),
-                        window,
-                        cx,
-                    );
-                }
-            }),
-        );
         let font_states = self
             .variants
             .get(&id)
@@ -340,6 +335,7 @@ impl ThemeEditor {
                         let value = (!value.is_empty()).then(|| value.to_string());
                         let result = cx.global_mut::<ThemeLibrary>().update_font(id, role, value);
                         this.handle_change(result, id, cx);
+                        this.refresh_font_choices(id, window, cx);
                     }
                 },
             ));
@@ -349,7 +345,14 @@ impl ThemeEditor {
         }
     }
 
-    fn edit_color(&mut self, id: u64, token: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn edit_color(
+        &mut self,
+        id: u64,
+        token: &str,
+        open_picker: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some((previous_id, previous_token)) = self.active_color.take() {
             self.blur_color(previous_id, &previous_token, window, cx);
         }
@@ -406,49 +409,14 @@ impl ThemeEditor {
         }
         if let Some(controls) = &row.controls {
             window.focus(&controls.input.focus_handle(cx), cx);
-        }
-        self.active_color = Some((id, token.to_owned()));
-        cx.notify();
-    }
-
-    fn rename_suffix(
-        &mut self,
-        id: u64,
-        commit: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(controls) = self.variants.get_mut(&id) else {
-            return;
-        };
-        let text = controls.suffix.read(cx).value().to_string();
-        let Some(family) = cx.global::<ThemeLibrary>().family(self.family_id) else {
-            return;
-        };
-        let duplicate = family.variants().iter().any(|v| {
-            v.id() != id
-                && family
-                    .suffix(v.id())
-                    .is_some_and(|suffix| suffix.eq_ignore_ascii_case(text.trim()))
-        });
-        controls.suffix_error = if text.trim().is_empty() && family.variants().len() > 1 {
-            Some("Enter a variant suffix".into())
-        } else if duplicate {
-            Some("Variant suffix already exists".into())
-        } else {
-            None
-        };
-        if commit && controls.suffix_error.is_none() && family.suffix(id) != Some(text.trim()) {
-            let result = cx
-                .global_mut::<ThemeLibrary>()
-                .rename_variant(id, &text)
-                .map(|()| self.family_id);
-            let committed = result.is_ok();
-            self.handle_change(result, id, cx);
-            if committed {
-                self.refresh_variants(window, cx);
+            if open_picker {
+                controls
+                    .picker
+                    .update(cx, |picker, cx| picker.set_open(true, cx));
             }
         }
+        self.active_color = Some((id, token.to_owned()));
+        self.color_list.remeasure();
         cx.notify();
     }
 
@@ -467,10 +435,13 @@ impl ThemeEditor {
         let parsed = gpui_kit::component::try_parse_color(&value);
         if parsed.is_err() {
             row.error = Some("Enter a valid color, such as #6750A4".into());
+            self.color_list.remeasure();
             cx.notify();
             return;
         }
-        row.error = None;
+        if row.error.take().is_some() {
+            self.color_list.remeasure();
+        }
         if row.valid.as_deref() == Some(value.as_str()) {
             cx.notify();
             return;
@@ -492,6 +463,8 @@ impl ThemeEditor {
             }
         }
         self.handle_change(result, id, cx);
+        self.refresh_inherited_colors(id, window, cx);
+        self.color_list.remeasure();
     }
 
     fn blur_color(&mut self, id: u64, token: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -505,6 +478,7 @@ impl ThemeEditor {
             controls.input.update(cx, |input, cx| {
                 input.set_value(row.display.clone(), window, cx);
             });
+            self.color_list.remeasure();
             cx.notify();
         }
     }
@@ -535,6 +509,8 @@ impl ThemeEditor {
             }
         }
         self.handle_change(result, id, cx);
+        self.refresh_inherited_colors(id, window, cx);
+        self.color_list.remeasure();
     }
 
     fn sync_color_display(
@@ -558,16 +534,12 @@ impl ThemeEditor {
     }
 
     fn refresh_inherited_colors(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let appearance = cx
-            .global::<ThemeLibrary>()
-            .resolved(id, cx.global::<FontCatalog>())
-            .ok();
-        if let Some(appearance) = appearance
+        if let Some(appearance) = &self.preview
             && let Some(controls) = self.variants.get_mut(&id)
         {
             for (token, row) in &mut controls.colors {
                 if row.valid.is_none() {
-                    let display = resolved_color(&appearance, token).unwrap_or_default();
+                    let display = resolved_color(appearance, token).unwrap_or_default();
                     Self::sync_color_display(row, display, window, cx);
                 }
             }
@@ -577,38 +549,41 @@ impl ThemeEditor {
     fn apply_fonts_to_all(&mut self, from: u64, window: &mut Window, cx: &mut Context<Self>) {
         let result = cx.global_mut::<ThemeLibrary>().apply_fonts_to_all(from);
         if result.is_ok() {
-            let selections: Vec<_> = cx
-                .global::<ThemeLibrary>()
-                .family(self.family_id)
-                .into_iter()
-                .flat_map(crate::app::themes::ThemeFamily::variants)
-                .flat_map(|variant| {
-                    FontRole::ALL.into_iter().map(move |role| {
-                        (
-                            variant.id(),
-                            role,
-                            variant.document().font(role).unwrap_or_default().to_owned(),
-                        )
-                    })
-                })
-                .collect();
-            for (variant, role, name) in selections {
-                if let Some(state) = self
-                    .variants
-                    .get(&variant)
-                    .and_then(|controls| controls.fonts.get(role.index()))
-                {
-                    state.update(cx, |state, cx| {
-                        state.set_items(SearchableVec::new(font_choices(&name, cx)), window, cx);
-                        state.set_selected_value(&name.into(), window, cx);
-                    });
-                }
+            let ids: Vec<_> = self.variants.keys().copied().collect();
+            for id in ids {
+                self.refresh_font_choices(id, window, cx);
             }
         }
         let applied = result.is_ok();
         self.handle_change(result, from, cx);
         if applied {
             themes::refresh_current(cx);
+        }
+    }
+
+    fn refresh_font_choices(&self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(document) = cx
+            .global::<ThemeLibrary>()
+            .variant_by_id(id)
+            .map(|variant| variant.document().clone())
+        else {
+            return;
+        };
+        if let Some(controls) = self.variants.get(&id) {
+            for (role, state) in FontRole::ALL.into_iter().zip(&controls.fonts) {
+                state.update(cx, |state, cx| {
+                    state.set_items(
+                        SearchableVec::new(font_choices(&document, role, cx)),
+                        window,
+                        cx,
+                    );
+                    state.set_selected_value(
+                        &document.font(role).unwrap_or_default().to_owned().into(),
+                        window,
+                        cx,
+                    );
+                });
+            }
         }
     }
 
@@ -675,6 +650,12 @@ impl ThemeEditor {
                     self.refresh_variants(window, cx);
                     self.select(id, window, cx);
                     self.reset_property_scroll();
+                    super::super::settings::theme::dialogs::rename_variant(
+                        self.family_id,
+                        id,
+                        window,
+                        cx,
+                    );
                     ThemeLibrary::schedule_save(self.family_id, cx);
                 }
                 Err(error) => self.error = Some(error.to_string()),
@@ -711,14 +692,15 @@ impl ThemeEditor {
         match cx.global_mut::<ThemeLibrary>().remove_variant(id) {
             Ok(deleted) => {
                 self.variants.remove(&id);
-                if let Some(first) = cx
-                    .global::<ThemeLibrary>()
-                    .family(self.family_id)
-                    .and_then(|family| family.variants().first())
+                if self.edited == id
+                    && let Some(first) = cx
+                        .global::<ThemeLibrary>()
+                        .family(self.family_id)
+                        .and_then(|family| family.variants().first())
                 {
                     self.edited = first.id();
-                    self.refresh_variants(window, cx);
                 }
+                self.refresh_variants(window, cx);
                 themes::refresh_current(cx);
                 crate::ui::settings::SettingsView::init_theme_options(cx);
                 super::super::settings::theme::show_undo(self.family_id, deleted, window, cx);
@@ -746,35 +728,9 @@ impl ThemeEditor {
         if !ids.contains(&self.edited) {
             self.edited = ids.first().copied().unwrap_or_default();
         }
-        for id in &ids {
-            if !self.variants.contains_key(id) {
-                self.mount_variant(*id, window, cx);
-                self.edited = *id;
-                self.reset_property_scroll();
-            }
-        }
-        let suffixes: Vec<_> = cx
-            .global::<ThemeLibrary>()
-            .family(self.family_id)
-            .into_iter()
-            .flat_map(|family| {
-                family.variants().iter().map(|variant| {
-                    (
-                        variant.id(),
-                        family.suffix(variant.id()).unwrap_or_default().to_owned(),
-                    )
-                })
-            })
-            .collect();
-        for (id, suffix) in suffixes {
-            if let Some(controls) = self.variants.get_mut(&id)
-                && controls.suffix.read(cx).value().as_str() != suffix
-            {
-                controls.suffix_error = None;
-                controls
-                    .suffix
-                    .update(cx, |input, cx| input.set_value(suffix, window, cx));
-            }
+        if !self.variants.contains_key(&self.edited) {
+            self.mount_variant(self.edited, window, cx);
+            self.reset_property_scroll();
         }
         let choices: Vec<Choice> = cx
             .global::<ThemeLibrary>()
@@ -782,7 +738,7 @@ impl ThemeEditor {
             .map(|f| {
                 f.variants()
                     .iter()
-                    .map(|v| Choice::new(v.id().to_string(), v.name().to_owned()))
+                    .map(|v| Choice::new(v.id().to_string(), render::variant_label(f, v)))
                     .collect()
             })
             .unwrap_or_default();
@@ -791,10 +747,57 @@ impl ThemeEditor {
             selector.set_selected_value(&self.edited.to_string().into(), window, cx);
         });
         self.refresh_preview(cx);
+        self.refresh_color_list(cx);
         cx.notify();
     }
 
+    fn refresh_color_list(&mut self, cx: &App) {
+        let query = self.color_query.read(cx).value().trim().to_lowercase();
+        let group = self
+            .color_group
+            .read(cx)
+            .selected_value()
+            .map_or("All areas", |value| value.as_str());
+        self.visible_colors = self
+            .variants
+            .get(&self.edited)
+            .map_or_else(Vec::new, |variant| {
+                if self.category == "Advanced" {
+                    variant
+                        .colors
+                        .keys()
+                        .filter(|token| {
+                            (group == "All areas" || colors::group(token) == group)
+                                && (token.to_lowercase().contains(&query)
+                                    || render::color_label(token).to_lowercase().contains(&query)
+                                    || colors::description(token).to_lowercase().contains(&query))
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    render::ESSENTIAL_COLORS
+                        .iter()
+                        .filter(|(token, _, _)| variant.colors.contains_key(*token))
+                        .map(|(token, _, _)| (*token).to_owned())
+                        .collect()
+                }
+            });
+        if self.category == "Advanced" {
+            self.visible_colors.sort_by_cached_key(|token| {
+                (
+                    colors::GROUPS
+                        .iter()
+                        .position(|group| *group == colors::group(token))
+                        .unwrap_or(usize::MAX),
+                    token.clone(),
+                )
+            });
+        }
+        self.color_list.reset(self.visible_colors.len());
+    }
+
     fn reset_property_scroll(&self) {
+        self.color_list.scroll_to(gpui_kit::ListOffset::default());
         self.scroll
             .set_offset(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(0.)));
     }
@@ -828,9 +831,17 @@ fn make_choices(
     })
 }
 
-fn font_choices(selected: &str, cx: &App) -> Vec<Choice> {
+fn font_choices(document: &themes::ThemeDocument, role: FontRole, cx: &App) -> Vec<Choice> {
+    let selected = document.font(role).unwrap_or_default();
     let catalog = cx.global::<FontCatalog>();
-    let mut choices = vec![Choice::new("", "Datalith default")];
+    let mut default = document.clone();
+    default.set_font(role, None);
+    let fallback = catalog
+        .resolve_roles(&default)
+        .into_iter()
+        .nth(role.index())
+        .unwrap_or_default();
+    let mut choices = vec![Choice::new("", format!("Default ({fallback})"))];
     choices.extend(
         catalog
             .families()

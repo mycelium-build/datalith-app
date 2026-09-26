@@ -20,7 +20,7 @@ use crate::ui::{
     viewers::{base::BaseViewState, markdown::MarkdownViewer},
 };
 
-const NOTE: &str = "# Field notes\n\nA quiet place to capture the details that matter. Follow the thread, then turn it into a plan.\n\n> Make room for the next idea.\n\nLink the draft to [Project Atlas](atlas.md).\n\n```rust\nlet plan = build(\"Atlas\", 3);\n```";
+const NOTE: &str = "A quiet place to capture the details that matter. Follow the thread, then turn it into a plan.\n\n> Make room for the next idea.\n\nLink the draft to [Project Atlas](atlas.md).\n\n```rust\nlet plan = build(\"Atlas\", 3);\n```";
 const TASKS: &str = "(A) 2026-09-25 Finalize the user journey +Atlas @design\n(B) 2026-09-25 Prepare the prototype +Atlas @desk\n2026-09-25 Read the team feedback +Atlas @reading\nx 2026-09-24 2026-09-22 Gather inspiration +Atlas\n";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -71,6 +71,63 @@ impl ThemePreview {
     }
 }
 
+// A static specimen shows interface colors without changing the application's theme.
+fn render_interface_sample(appearance: &ResolvedAppearance) -> impl IntoElement {
+    h_flex()
+        .items_stretch()
+        .text_sm()
+        .child(
+            v_flex()
+                .w_24()
+                .p_3()
+                .gap_2()
+                .bg(appearance.theme().sidebar)
+                .text_color(appearance.theme().sidebar_foreground)
+                .child("Workspace")
+                .child("Notes")
+                .child("Projects"),
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .bg(appearance.theme().background)
+                .text_color(appearance.theme().foreground)
+                .child(
+                    h_flex().px_3().py_2().bg(appearance.theme().tab_bar).child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .bg(appearance.theme().tab_active)
+                            .text_color(appearance.theme().tab_active_foreground)
+                            .child("Field notes"),
+                    ),
+                )
+                .child(
+                    h_flex()
+                        .p_3()
+                        .gap_3()
+                        .child(
+                            div()
+                                .px_2()
+                                .py_1()
+                                .rounded(appearance.theme().radius)
+                                .bg(appearance.theme().primary)
+                                .text_color(appearance.theme().primary_foreground)
+                                .child("Primary"),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_color(appearance.theme().muted_foreground)
+                                .child("Secondary text"),
+                        ),
+                ),
+        )
+        .border_b_1()
+        .border_color(appearance.theme().border)
+}
+
 impl Render for ThemePreview {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(appearance) = &self.appearance else {
@@ -114,7 +171,13 @@ impl Render for ThemePreview {
                     .flex_wrap()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(div().flex_1().child("Preview"))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Preview"),
+                    )
                     .children(
                         [
                             (Content::Note, "Note", "preview-note"),
@@ -135,6 +198,7 @@ impl Render for ThemePreview {
                         }),
                     ),
             )
+            .child(render_interface_sample(appearance))
             .child(
                 div()
                     .id("theme-preview-surface")
