@@ -74,6 +74,14 @@ impl VaultSource {
         }
     }
 
+    /// The vault's root path; derived on the fly for embedded vaults.
+    pub fn root(&self) -> Cow<'_, Path> {
+        match self {
+            Self::Directory(root) => Cow::Borrowed(root),
+            Self::Embedded(vault) => Cow::Owned(vault.root()),
+        }
+    }
+
     pub fn paths(&self) -> io::Result<Vec<PathBuf>> {
         match self {
             Self::Embedded(vault) => Ok(vault.paths()),

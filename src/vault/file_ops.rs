@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 
 use crate::vault::VaultCatalog;
 use crate::vault::{links, source};
@@ -16,6 +16,73 @@ pub fn parent_dir(target: &Path) -> PathBuf {
             .parent()
             .map_or_else(|| PathBuf::from("/"), Path::to_path_buf)
     }
+}
+
+#[must_use]
+pub fn normalized_path(path: &Path) -> PathBuf {
+    let source_path = source::is_read_only(path);
+    let absolute = if path.is_absolute() || source_path {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+    };
+    let absolute = if source_path {
+        absolute
+    } else {
+        fs::canonicalize(&absolute).unwrap_or(absolute)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+/// Portable vault-relative form of `path`, such as `notes/today.md`.
+///
+/// Returns `None` for the vault root itself: the format never represents it
+/// with an empty string, so callers drop such entries.
+pub fn path_to_vault_relative(path: &Path, vault_root: &Path) -> Result<Option<String>> {
+    let relative = path
+        .strip_prefix(vault_root)
+        .with_context(|| format!("Workspace path is outside its vault: {}", path.display()))?;
+    let parts = relative
+        .components()
+        .map(|component| match component {
+            Component::Normal(part) => Ok(part.to_string_lossy().into_owned()),
+            _ => bail!("Workspace path must be relative to its vault"),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parts.join("/")))
+}
+
+/// Absolute path inside `vault_root` for a portable vault-relative `path`.
+///
+/// Returns `None` for the empty string: the format never represents the vault
+/// root, so callers drop such entries.
+pub fn path_from_vault_relative(path: &str, vault_root: &Path) -> Result<Option<PathBuf>> {
+    if path.is_empty() {
+        return Ok(None);
+    }
+    let relative = Path::new(path);
+    ensure!(
+        relative
+            .components()
+            .all(|component| matches!(component, Component::Normal(_))),
+        "Workspace path must be relative to its vault"
+    );
+    Ok(Some(vault_root.join(relative)))
 }
 
 #[must_use]
@@ -204,7 +271,7 @@ mod tests {
             rand::random::<u128>()
         ));
         fs::create_dir_all(&personal).unwrap();
-        let catalog = VaultCatalog::open(personal.clone(), RegisteredFileTypes::new([])).unwrap();
+        let catalog = VaultCatalog::open(&personal, RegisteredFileTypes::new([])).unwrap();
         assert!(create(&root).is_err());
         assert!(create_folder(&root).is_err());
         assert!(update(&note, "changed").is_err());
@@ -240,7 +307,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &note, &renamed).unwrap();
@@ -277,7 +344,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &old_folder, &new_folder).unwrap();
@@ -313,7 +380,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(

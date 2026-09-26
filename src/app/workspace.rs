@@ -3,12 +3,13 @@
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::document::handler::ViewMode;
+use crate::vault::file_ops::{path_from_vault_relative, path_to_vault_relative};
 
 const CURRENT_WORKSPACE_SCHEMA_VERSION: u32 = 1;
 
@@ -73,8 +74,8 @@ pub struct Workspace {
 impl Workspace {
     /// Load this machine's workspace for `vault_root`.
     ///
-    /// `Ok(None)` means no workspace has been saved. A saved workspace with no
-    /// tabs is `Ok(Some(Workspace::default()))`.
+    /// `Ok(None)` means no workspace has been saved.
+    /// A saved workspace with no tabs is `Ok(Some(Workspace::default()))`.
     pub fn load(vault_root: &Path, machine_id: &str) -> Result<Option<Self>> {
         let file = workspace_file_path(vault_root, machine_id)?;
         let json = match fs::read_to_string(&file) {
@@ -102,8 +103,9 @@ impl Workspace {
                     tab.id,
                     tab.path
                         .as_deref()
-                        .map(|path| path_from_vault_relative(path, vault_root, false))
-                        .transpose()?,
+                        .map(|path| path_from_vault_relative(path, vault_root))
+                        .transpose()?
+                        .flatten(),
                     tab.mode,
                 ))
             })
@@ -111,13 +113,17 @@ impl Workspace {
         let expanded_folders = stored
             .expanded_folders
             .iter()
-            .map(|path| path_from_vault_relative(path, vault_root, true))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|path| path_from_vault_relative(path, vault_root))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         let sidebar_selection = stored
             .sidebar_selection
             .as_deref()
-            .map(|path| path_from_vault_relative(path, vault_root, true))
-            .transpose()?;
+            .map(|path| path_from_vault_relative(path, vault_root))
+            .transpose()?
+            .flatten();
         let workspace = Self {
             tabs,
             active_tab_id: stored.active_tab_id,
@@ -142,8 +148,9 @@ impl Workspace {
                         path: tab
                             .path
                             .as_deref()
-                            .map(|path| path_to_vault_relative(path, vault_root, false))
-                            .transpose()?,
+                            .map(|path| path_to_vault_relative(path, vault_root))
+                            .transpose()?
+                            .flatten(),
                         mode: tab.mode,
                     })
                 })
@@ -152,13 +159,17 @@ impl Workspace {
             expanded_folders: self
                 .expanded_folders
                 .iter()
-                .map(|path| path_to_vault_relative(path, vault_root, true))
-                .collect::<Result<Vec<_>>>()?,
+                .map(|path| path_to_vault_relative(path, vault_root))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect(),
             sidebar_selection: self
                 .sidebar_selection
                 .as_deref()
-                .map(|path| path_to_vault_relative(path, vault_root, true))
-                .transpose()?,
+                .map(|path| path_to_vault_relative(path, vault_root))
+                .transpose()?
+                .flatten(),
         };
         let file = workspace_file_path(vault_root, machine_id)?;
         let json = serde_json::to_vec_pretty(&stored).context("Failed to serialize workspace")?;
@@ -235,51 +246,6 @@ fn immutable_workspace_dir() -> PathBuf {
 #[cfg(not(test))]
 fn immutable_workspace_dir() -> PathBuf {
     super::data_dir().join("immutable-vaults-workspaces")
-}
-
-fn path_to_vault_relative(
-    path: &Path,
-    vault_root: &Path,
-    allow_vault_root: bool,
-) -> Result<String> {
-    let relative = path
-        .strip_prefix(vault_root)
-        .with_context(|| format!("Workspace path is outside its vault: {}", path.display()))?;
-    relative_path_to_portable_string(relative, allow_vault_root)
-}
-
-fn relative_path_to_portable_string(path: &Path, allow_vault_root: bool) -> Result<String> {
-    let parts = path
-        .components()
-        .map(|component| match component {
-            Component::Normal(part) => Ok(part.to_string_lossy().into_owned()),
-            _ => bail!("Workspace path must be relative to its vault"),
-        })
-        .collect::<Result<Vec<_>>>()?;
-    ensure!(
-        allow_vault_root || !parts.is_empty(),
-        "Workspace tab path cannot be the vault root"
-    );
-    Ok(parts.join("/"))
-}
-
-fn path_from_vault_relative(
-    path: &str,
-    vault_root: &Path,
-    allow_vault_root: bool,
-) -> Result<PathBuf> {
-    if path.is_empty() {
-        ensure!(allow_vault_root, "Workspace tab path cannot be empty");
-        return Ok(vault_root.to_path_buf());
-    }
-    let relative = Path::new(path);
-    ensure!(
-        relative
-            .components()
-            .all(|component| matches!(component, Component::Normal(_))),
-        "Workspace path must be relative to its vault"
-    );
-    Ok(vault_root.join(relative))
 }
 
 fn write_atomically(path: &Path, contents: &[u8]) -> Result<()> {
@@ -457,6 +423,49 @@ mod tests {
             fs::read(&file).expect("re-read invalid tab identity"),
             invalid_tab_id
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn vault_root_entries_are_filtered_from_saved_and_loaded_workspaces() {
+        let root = temp_root("root-filter");
+        let machine = "c3";
+        let id = TabId::new();
+        let workspace = Workspace {
+            tabs: vec![WorkspaceTab::new(
+                id.clone(),
+                Some(root.clone()),
+                ViewMode::Edit,
+            )],
+            active_tab_id: Some(id),
+            expanded_folders: vec![root.clone(), root.join("notes")],
+            sidebar_selection: Some(root.clone()),
+        };
+
+        workspace.save(&root, machine).expect("save filtered workspace");
+
+        let file = workspace_file_path(&root, machine).expect("workspace file path");
+        let json = fs::read_to_string(&file).expect("read workspace file");
+        assert!(!json.contains("\"\""), "root must not be encoded: {json}");
+        let loaded = Workspace::load(&root, machine)
+            .expect("load filtered workspace")
+            .expect("workspace exists");
+        assert_eq!(loaded.tabs[0].path, None);
+        assert_eq!(loaded.expanded_folders, vec![root.join("notes")]);
+        assert_eq!(loaded.sidebar_selection, None);
+
+        fs::write(
+            &file,
+            r#"{"schema_version":1,"tabs":[{"id":"0123456789abcdef0123456789abcdef","path":"","mode":"edit"}],"active_tab_id":null,"expanded_folders":["","notes"],"sidebar_selection":""}"#,
+        )
+        .expect("write legacy root entries");
+        let loaded = Workspace::load(&root, machine)
+            .expect("load legacy root entries")
+            .expect("workspace exists");
+        assert_eq!(loaded.tabs[0].path, None);
+        assert_eq!(loaded.expanded_folders, vec![root.join("notes")]);
+        assert_eq!(loaded.sidebar_selection, None);
 
         let _ = fs::remove_dir_all(root);
     }

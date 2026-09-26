@@ -20,7 +20,6 @@ const CATALOG_WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 pub use types::*;
 
 struct CatalogInner {
-    root: PathBuf,
     source: VaultSource,
     database: CatalogDatabase,
     file_types: RegisteredFileTypes,
@@ -36,13 +35,12 @@ pub struct VaultCatalog {
 }
 
 impl VaultCatalog {
-    pub(crate) fn open(root: PathBuf, file_types: RegisteredFileTypes) -> Result<Self> {
-        let source = VaultSource::for_root(&root)?;
-        let database = pollster::block_on(CatalogDatabase::open(&root))?;
-        let search = SearchEngine::open_existing(&root, file_types.clone())?;
+    pub(crate) fn open(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
+        let source = VaultSource::for_root(root)?;
+        let database = pollster::block_on(CatalogDatabase::open(root))?;
+        let search = SearchEngine::open_existing(root, file_types.clone())?;
 
         let inner = Arc::new(CatalogInner {
-            root,
             source,
             database,
             file_types: file_types.clone(),
@@ -68,7 +66,8 @@ impl VaultCatalog {
 
     fn sync_on_background_thread(inner: &Arc<CatalogInner>, file_types: &RegisteredFileTypes) {
         let result = (|| -> Result<()> {
-            let initial = walk_tracked_files(&inner.root, file_types)?;
+            let root = inner.source.root();
+            let initial = walk_tracked_files(&root, file_types)?;
             let stored = pollster::block_on(inner.database.stored_paths())?;
             let removed = stored
                 .into_iter()
@@ -87,11 +86,8 @@ impl VaultCatalog {
 
             if matches!(&inner.source, VaultSource::Directory(_)) {
                 let (notify_tx, notify_rx) = mpsc::channel();
-                let observed_root = inner
-                    .root
-                    .canonicalize()
-                    .unwrap_or_else(|_| inner.root.clone());
-                let logical_root = inner.root.clone();
+                let observed_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+                let logical_root = root.to_path_buf();
                 let mut watcher = notify::recommended_watcher(
                     move |mut event: notify::Result<notify::Event>| {
                         if let Ok(event) = &mut event {
@@ -107,7 +103,7 @@ impl VaultCatalog {
                         }
                     },
                 )?;
-                watcher.watch(&inner.root, RecursiveMode::Recursive)?;
+                watcher.watch(&root, RecursiveMode::Recursive)?;
 
                 if let Ok(mut guard) = inner.watcher.lock() {
                     *guard = Some(watcher);
@@ -159,7 +155,7 @@ impl VaultCatalog {
 
     #[must_use]
     pub(crate) fn root(&self) -> PathBuf {
-        self.inner.root.clone()
+        self.inner.source.root().into_owned()
     }
 
     #[must_use]
@@ -281,13 +277,14 @@ fn spawn_reconciler(
 fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
     let mut changed = BTreeSet::new();
     let mut removed = BTreeSet::new();
+    let root = inner.source.root();
     let Ok(known) = pollster::block_on(inner.database.stored_paths()) else {
         return;
     };
     let known = known.into_iter().collect::<BTreeSet<_>>();
 
     for path in event_paths {
-        if !path.starts_with(&inner.root) || path.starts_with(inner.root.join(DATALITH_DIR_NAME)) {
+        if !path.starts_with(&root) || path.starts_with(root.join(DATALITH_DIR_NAME)) {
             continue;
         }
         if path.is_dir() {
@@ -401,7 +398,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         let events = catalog.events();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
         while events.try_recv().is_ok() {}
@@ -450,7 +447,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         let events = catalog.events();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
         while events.try_recv().is_ok() {}
@@ -480,7 +477,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let welcome = root.join("Welcome.md");
