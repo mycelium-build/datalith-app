@@ -27,22 +27,8 @@ pub fn machine_id() -> Result<String> {
     Ok(MACHINE_ID.get().cloned().unwrap_or(machine_id))
 }
 
-#[cfg(test)]
 fn identity_data_dir() -> std::path::PathBuf {
-    static TEST_DATA_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
-    TEST_DATA_DIR
-        .get_or_init(|| {
-            let path = std::env::temp_dir()
-                .join(format!("datalith-test-machine-id-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&path);
-            path
-        })
-        .clone()
-}
-
-#[cfg(not(test))]
-fn identity_data_dir() -> std::path::PathBuf {
-    super::data_dir()
+    crate::channel::Channel::current().app_data_dir()
 }
 
 fn load_or_create_machine_id(data_dir: &Path) -> Result<String> {

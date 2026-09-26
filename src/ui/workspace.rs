@@ -147,7 +147,7 @@ impl DatalithView {
                 crate::vault::source::is_dir(&catalog_root),
                 "Vault folder is unavailable"
             );
-                VaultCatalog::open(&catalog_root, file_types)
+            VaultCatalog::open(&catalog_root, file_types)
         });
         let window_handle = window.window_handle();
         self.vault_transition_task = cx.spawn(async move |this, cx| {
@@ -383,7 +383,7 @@ impl DatalithView {
                     crate::vault::source::is_dir(&catalog_root),
                     "Vault folder is unavailable"
                 );
-            VaultCatalog::open(&catalog_root, file_types)
+                VaultCatalog::open(&catalog_root, file_types)
             });
             self.catalog_load_task = cx.spawn(async move |this, cx| {
                 let result = catalog_load.await;

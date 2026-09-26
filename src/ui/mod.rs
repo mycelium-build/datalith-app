@@ -5,7 +5,6 @@ pub mod monolith;
 pub mod notifications;
 pub mod palette;
 pub mod render;
-mod workspace;
 pub mod settings;
 pub mod sidebar;
 pub mod startup;
@@ -14,6 +13,7 @@ pub mod themes;
 pub mod title_bar;
 pub mod viewers;
 pub mod window;
+mod workspace;
 
 pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;

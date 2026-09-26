@@ -27,9 +27,7 @@ pub fn init(cx: &mut gpui_kit::App) {
 
 #[cfg(not(test))]
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join(crate::channel::Channel::current().stem())
+    crate::channel::Channel::current().app_data_dir()
 }
 
 #[cfg(test)]

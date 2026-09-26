@@ -52,7 +52,7 @@ fn vault_root(name: &str) -> PathBuf {
 }
 
 fn reset_catalog_state(root: &Path) {
-    let path = root.join(".datalith");
+    let path = channel::Channel::current().vault_dir(root).unwrap();
     remove_benchmark_dir(&path);
 }
 
@@ -121,13 +121,13 @@ fn bench_warm_start(c: &mut Criterion) {
         generate_vault(&root, &config);
 
         {
-                let catalog = open_catalog(&root);
+            let catalog = open_catalog(&root);
             catalog.wait_until_ready(Duration::from_mins(2));
         }
 
         group.bench_function(format!("{n}_files"), |b| {
             b.iter(|| {
-            let catalog = open_catalog(&root);
+                let catalog = open_catalog(&root);
                 catalog.wait_until_ready(Duration::from_mins(2));
                 std::hint::black_box(&catalog);
             });

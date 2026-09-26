@@ -392,7 +392,11 @@ mod tests {
     fn removing_vaults_preserves_files_and_active_workspace_on_save_failure() {
         let active = VaultFixture::new("close-active");
         let inactive = VaultFixture::new("close-inactive");
-        let inactive_saved_state = inactive.0.join(".datalith/workspace/preserve.json");
+        let channel = crate::channel::Channel::current();
+        let inactive_saved_state = channel
+            .workspace_dir(&inactive.0)
+            .unwrap()
+            .join("preserve.json");
         std::fs::create_dir_all(inactive_saved_state.parent().unwrap()).unwrap();
         std::fs::write(&inactive_saved_state, "keep this workspace").unwrap();
 
@@ -425,8 +429,8 @@ mod tests {
         );
 
         let machine_id = crate::app::workspace::machine_id().unwrap();
-        let workspace_dir = active.0.join(".datalith/workspace");
-        let preserved_dir = active.0.join(".datalith/workspace-preserved");
+        let workspace_dir = channel.workspace_dir(&active.0).unwrap();
+        let preserved_dir = workspace_dir.with_file_name("workspace-preserved");
         let workspace_file = workspace_dir.join(format!("{machine_id}.json"));
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
@@ -550,8 +554,9 @@ mod tests {
         let mut cx = app();
         let (handle, view) = open(&mut cx, &current.0, true);
         let machine_id = crate::app::workspace::machine_id().unwrap();
-        let workspace_dir = current.0.join(".datalith/workspace");
-        let saved_workspace_dir = current.0.join(".datalith/workspace-preserved");
+        let channel = crate::channel::Channel::current();
+        let workspace_dir = channel.workspace_dir(&current.0).unwrap();
+        let saved_workspace_dir = workspace_dir.with_file_name("workspace-preserved");
         let workspace_file = workspace_dir.join(format!("{machine_id}.json"));
         let before = cx.update(|cx| view.read(cx).tabs.snapshot(cx));
         cx.update_window(handle.into(), |_, window, cx| {

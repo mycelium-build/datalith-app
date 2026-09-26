@@ -505,9 +505,7 @@ mod tests {
         assert!(!root.exists());
 
         drop(catalog);
-        let cache = crate::channel::Channel::current()
-            .vault_cache_dir(&root)
-            .unwrap();
+        let cache = crate::channel::Channel::current().vault_dir(&root).unwrap();
         let test_cache_root = cache.parent().unwrap().parent().unwrap();
         let _ = std::fs::remove_dir_all(test_cache_root);
     }

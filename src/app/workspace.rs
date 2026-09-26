@@ -212,40 +212,16 @@ struct StoredWorkspaceTab {
 }
 
 fn workspace_file_path(vault_root: &Path, machine_id: &str) -> Result<PathBuf> {
+    let channel = crate::channel::Channel::current();
     if crate::vault::source::is_read_only(vault_root) {
         let vault = crate::vault::source::embedded_vault(vault_root)
             .filter(|vault| vault.root() == vault_root)
             .context("Unknown immutable vault workspace")?;
-        return Ok(immutable_workspace_dir().join(format!("{}.json", vault.id())));
+        return Ok(channel
+            .immutable_workspace_dir()
+            .join(format!("{}.json", vault.id())));
     }
-    ensure!(
-        !machine_id.is_empty()
-            && machine_id
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-'),
-        "Invalid machine identity"
-    );
-    Ok(vault_root
-        .join(".datalith")
-        .join("workspace")
-        .join(format!("{machine_id}.json")))
-}
-
-#[cfg(test)]
-fn immutable_workspace_dir() -> PathBuf {
-    let test_name = std::thread::current()
-        .name()
-        .unwrap_or("test")
-        .replace("::", "-");
-    std::env::temp_dir().join(format!(
-        "datalith-test-immutable-workspaces-{}-{test_name}",
-        std::process::id()
-    ))
-}
-
-#[cfg(not(test))]
-fn immutable_workspace_dir() -> PathBuf {
-    super::data_dir().join("immutable-vaults-workspaces")
+    channel.workspace_file(vault_root, machine_id)
 }
 
 fn write_atomically(path: &Path, contents: &[u8]) -> Result<()> {
@@ -443,7 +419,9 @@ mod tests {
             sidebar_selection: Some(root.clone()),
         };
 
-        workspace.save(&root, machine).expect("save filtered workspace");
+        workspace
+            .save(&root, machine)
+            .expect("save filtered workspace");
 
         let file = workspace_file_path(&root, machine).expect("workspace file path");
         let json = fs::read_to_string(&file).expect("read workspace file");
@@ -490,10 +468,10 @@ mod tests {
         let first = workspace_file_path(&root, "machine-one").expect("first workspace path");
         let second = workspace_file_path(&root, "machine-two").expect("second workspace path");
         assert_eq!(first, second);
-        assert!(first.starts_with(immutable_workspace_dir()));
+        assert!(first.starts_with(crate::channel::Channel::current().immutable_workspace_dir()));
         assert!(first.ends_with("documentation.json"));
         assert!(!first.starts_with(&root));
         assert!(!root.exists());
-        let _ = fs::remove_dir_all(immutable_workspace_dir());
+        let _ = fs::remove_dir_all(crate::channel::Channel::current().immutable_workspace_dir());
     }
 }
