@@ -12,14 +12,14 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
-    ParentElement, Pixels, Render, SharedString, Styled, Window, div, prelude::FluentBuilder, px,
+    ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    prelude::FluentBuilder, px,
 };
 
 use crate::app::actions::{
     CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
 };
 use crate::app::settings as app_settings;
-use crate::ui::icons::DatalithIcon;
 use crate::ui::notifications;
 use crate::vault::file_ops;
 use crate::vault::path::display_name;
@@ -49,13 +49,11 @@ fn populate_vault_menu(
     let docs_path = crate::app::docs::docs_vault_path();
     let docs_view = view.clone();
     menu = menu.item(
-        PopupMenuItem::new(crate::app::docs::DOCS_VAULT_NAME)
-            .icon(gpui_kit::component::Icon::new(DatalithIcon::Book).size_4())
-            .on_click(move |_, window, cx| {
-                docs_view.update(cx, |view, cx| {
-                    view.set_root_path(docs_path.clone(), None, window, cx);
-                });
-            }),
+        PopupMenuItem::new(crate::app::docs::DOCS_VAULT_NAME).on_click(move |_, window, cx| {
+            docs_view.update(cx, |view, cx| {
+                view.set_root_path(docs_path.clone(), None, window, cx);
+            });
+        }),
     );
     menu = menu.separator();
 
@@ -110,7 +108,13 @@ fn personal_vault_menu_item(
         }
     });
     let item_view = view.clone();
+    let hovered = std::rc::Rc::new(std::cell::Cell::new(false));
+    let render_hovered = hovered.clone();
+    let menu_weak = cx.entity().downgrade();
     PopupMenuItem::element(move |window, _| {
+        let is_row_hovered = render_hovered.get();
+        let hover_state = hovered.clone();
+        let hover_menu = menu_weak.clone();
         let click_close = close.clone();
         let keyboard_close = close.clone();
         let button = Button::new(button_id.clone())
@@ -124,13 +128,22 @@ fn personal_vault_menu_item(
                 keyboard_close(window, cx);
             });
         gpui_kit::component::h_flex()
+            .id(format!("vault-row-{button_id}"))
             .w_full()
             .max_w(vault_menu_row_width(window))
             .min_w_0()
             .items_center()
             .justify_between()
+            .on_hover(move |hovered, _, app| {
+                hover_state.set(*hovered);
+                let _ = hover_menu.update(app, |_, cx| cx.notify());
+            })
             .child(div().flex_1().min_w_0().truncate().child(name.clone()))
-            .child(button.flex_shrink_0())
+            .child(
+                button
+                    .flex_shrink_0()
+                    .when(!is_row_hovered, gpui_kit::Styled::invisible),
+            )
     })
     .on_click(move |_, window, cx| {
         item_view.update(cx, |view, cx| {
