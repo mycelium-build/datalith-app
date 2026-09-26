@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -14,9 +14,9 @@ const MACHINE_ID_FILE: &str = "machine-id.json";
 
 /// Return this installation's stable, app-derived machine identity.
 ///
-/// The OS identifier is hashed before it is written locally or used in a vault
-/// path. If the OS has no supported stable identifier, a random value is
-/// persisted locally and reused on later calls.
+/// The OS identifier is hashed before it is written locally or used in a vault path.
+/// If the OS has no supported stable identifier,
+/// a random value is persisted locally and reused on later calls.
 pub fn machine_id() -> Result<String> {
     static MACHINE_ID: OnceLock<String> = OnceLock::new();
     if let Some(machine_id) = MACHINE_ID.get() {
@@ -146,7 +146,7 @@ fn os_machine_identifier() -> Result<String> {
             }
         }
     }
-    bail!("The operating system has no readable machine identity")
+    anyhow::bail!("The operating system has no readable machine identity")
 }
 
 #[cfg(target_os = "macos")]
@@ -198,7 +198,7 @@ fn os_machine_identifier() -> Result<String> {
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn os_machine_identifier() -> Result<String> {
-    bail!("The operating system has no supported stable machine identity")
+    anyhow::bail!("The operating system has no supported stable machine identity")
 }
 
 #[cfg(test)]
@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(derived.len(), 64);
 
         let root = temp_root();
-        let first = load_or_create_machine_id_with(&root, || bail!("OS ID unavailable"))
+        let first = load_or_create_machine_id_with(&root, || anyhow::bail!("OS ID unavailable"))
             .expect("persist fallback identity");
         let second = load_or_create_machine_id_with(&root, || {
             Ok("different OS identity must not replace persisted value".to_owned())
