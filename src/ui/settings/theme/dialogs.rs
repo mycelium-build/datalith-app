@@ -110,14 +110,14 @@ pub(super) fn copy_family(id: u64, window: &mut Window, cx: &mut App) {
     );
 }
 
-pub(super) fn rename_family(id: u64, window: &mut Window, cx: &mut App) {
+pub fn rename_family(id: u64, window: &mut Window, cx: &mut App) {
     let Some(family) = cx.global::<ThemeLibrary>().family(id) else {
         return;
     };
     let title = format!("Rename “{}”", family.name());
     name_form(
         title,
-        "Updates the prefix of every variant".into(),
+        "The variants and their colors stay together under the new name.".into(),
         family.name().into(),
         "Rename",
         window,
@@ -130,6 +130,34 @@ pub(super) fn rename_family(id: u64, window: &mut Window, cx: &mut App) {
                 .try_global::<crate::app::AppState>()
                 .and_then(|state| state.view.clone())
                 && let Some(editor) = view.read(cx).tabs.theme_editor_for(id, cx).cloned()
+            {
+                editor.update(cx, |editor, cx| editor.refresh_variants(window, cx));
+            }
+            cx.refresh_windows();
+            Ok(())
+        },
+    );
+}
+
+pub fn rename_variant(family_id: u64, id: u64, window: &mut Window, cx: &mut App) {
+    let Some(family) = cx.global::<ThemeLibrary>().family(family_id) else {
+        return;
+    };
+    name_form(
+        "Rename variant".into(),
+        format!("Choose a name for this variant of {}.", family.name()),
+        family.suffix(id).unwrap_or_default().into(),
+        "Rename",
+        window,
+        cx,
+        move |name, window, cx| {
+            cx.global_mut::<ThemeLibrary>().rename_variant(id, name)?;
+            themes::refresh_current(cx);
+            SettingsView::init_theme_options(cx);
+            if let Some(view) = cx
+                .try_global::<crate::app::AppState>()
+                .and_then(|state| state.view.clone())
+                && let Some(editor) = view.read(cx).tabs.theme_editor_for(family_id, cx).cloned()
             {
                 editor.update(cx, |editor, cx| editor.refresh_variants(window, cx));
             }
@@ -187,21 +215,21 @@ pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut Ap
                             div()
                                 .text_sm()
                                 .text_color(cx.theme().muted_foreground)
-                                .child("Give each variant a unique suffix"),
+                                .child("Give each variant a distinct name"),
                         )
                         .child(div().child("Existing variant"))
                         .child(
                             Input::new(&first_content)
                                 .id("existing-variant-suffix")
                                 .small()
-                                .aria_label("Existing variant suffix"),
+                                .aria_label("Existing variant name"),
                         )
                         .child(div().child("New variant"))
                         .child(
                             Input::new(&second_content)
                                 .id("new-variant-suffix")
                                 .small()
-                                .aria_label("New variant suffix"),
+                                .aria_label("New variant name"),
                         )
                         .children(error_content.borrow().as_ref().map(|error| {
                             div()
@@ -220,7 +248,7 @@ pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut Ap
                     &second,
                     Some(&first),
                 ) {
-                    Ok(_) => {
+                    Ok(added) => {
                         ThemeLibrary::schedule_save(family_id, cx);
                         themes::refresh_current(cx);
                         SettingsView::init_theme_options(cx);
@@ -231,7 +259,10 @@ pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut Ap
                             let editor =
                                 view.read(cx).tabs.theme_editor_for(family_id, cx).cloned();
                             if let Some(editor) = editor {
-                                editor.update(cx, |editor, cx| editor.refresh_variants(window, cx));
+                                editor.update(cx, |editor, cx| {
+                                    editor.refresh_variants(window, cx);
+                                    editor.select(added, window, cx);
+                                });
                             }
                         }
                         true

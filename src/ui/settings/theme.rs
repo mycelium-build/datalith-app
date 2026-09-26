@@ -600,11 +600,12 @@ fn delete_family(id: u64, window: &mut Window, cx: &mut App) {
 pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx: &mut App) {
     struct ThemeDeletion;
     let notification_id = rand::random::<u64>();
+    let message = deleted.message();
     let deleted = std::rc::Rc::new(std::cell::RefCell::new(Some(deleted)));
     window.push_notification(
         Notification::new()
             .id1::<ThemeDeletion>(("theme-deletion", notification_id))
-            .title("Theme deleted")
+            .title(message)
             .message("You can restore it with Undo")
             .action(move |_, _, _| {
                 let deleted = deleted.clone();
@@ -645,7 +646,8 @@ pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx:
                             }
                         }
                     })
-            }),
+            })
+            .autohide(true),
         cx,
     );
 }

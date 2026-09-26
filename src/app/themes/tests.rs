@@ -1045,3 +1045,51 @@ fn multi_variant_sets_and_replacements_assign_suffixes_to_unsuffixed_variants() 
     let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(saved["themes"][0]["name"], "Replacing Variant 1");
 }
+
+#[test]
+fn every_highlight_color_can_be_set_from_unset_reset_and_serialized() {
+    let schema =
+        serde_json::to_value(gpui_kit::component::highlighter::HighlightThemeStyle::default())
+            .unwrap();
+    let mut document = ThemeDocument::from_config(ThemeConfig::default());
+    for (key, value) in schema.as_object().unwrap() {
+        let keys = if key == "syntax" {
+            value
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(|scope| format!("syntax.{scope}"))
+                .collect::<Vec<_>>()
+        } else {
+            vec![key.clone()]
+        };
+        for token in keys {
+            document
+                .set_highlight(&token, Some("#123456".into()))
+                .unwrap();
+            let serialized =
+                serde_json::to_value(document.config().highlight.as_ref().unwrap()).unwrap();
+            let color = token.strip_prefix("syntax.").map_or_else(
+                || &serialized[&token],
+                |scope| &serialized["syntax"][scope]["color"],
+            );
+            assert_eq!(color.as_str(), Some("#123456ff"), "{token}");
+            document.set_highlight(&token, None).unwrap();
+            // Null syntax styles must also remain editable after serialization.
+            document = serde_json::from_value(serde_json::to_value(&document).unwrap()).unwrap();
+            document
+                .set_highlight(&token, Some("#654321".into()))
+                .unwrap();
+        }
+    }
+    assert!(
+        document
+            .set_highlight("syntax.not_a_token", Some("#123456".into()))
+            .is_err()
+    );
+    assert!(
+        document
+            .set_highlight("created", Some("#123456".into()))
+            .is_err()
+    );
+}

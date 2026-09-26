@@ -30,8 +30,8 @@ pub fn render(
 ) -> impl IntoElement {
     TitleBar::new()
         .min_h_8()
-        .bg(cx.theme().tab_bar)
-        .border_color(cx.theme().border)
+        .bg(cx.theme().title_bar)
+        .border_color(cx.theme().title_bar_border)
         // The content owns the traffic-light inset so both sides of the wordmark can have equal width,
         // keeping it at the actual window center on macOS.
         .when(cfg!(target_os = "macos"), gpui_kit::Styled::pl_0)
