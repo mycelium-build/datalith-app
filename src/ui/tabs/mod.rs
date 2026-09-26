@@ -9,6 +9,7 @@ use gpui_kit::{Entity, Subscription};
 
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::FileHandler;
+use crate::vault::file_ops;
 
 pub struct Tab {
     id: TabId,
@@ -218,34 +219,7 @@ fn same_document(left: &Path, right: &Path) -> bool {
     if left.as_os_str().is_empty() || right.as_os_str().is_empty() {
         return false;
     }
-    normalized_path(left) == normalized_path(right)
-}
-
-fn normalized_path(path: &Path) -> PathBuf {
-    let source_path = crate::vault::source::is_read_only(path);
-    let absolute = if path.is_absolute() || source_path {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-    };
-    let absolute = if source_path {
-        absolute
-    } else {
-        std::fs::canonicalize(&absolute).unwrap_or(absolute)
-    };
-    let mut normalized = PathBuf::new();
-    for component in absolute.components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                if !normalized.pop() {
-                    normalized.push(component.as_os_str());
-                }
-            }
-            _ => normalized.push(component.as_os_str()),
-        }
-    }
-    normalized
+    file_ops::normalized_path(left) == file_ops::normalized_path(right)
 }
 
 #[cfg(test)]

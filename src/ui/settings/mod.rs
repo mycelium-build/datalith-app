@@ -47,8 +47,8 @@ pub struct SettingsView {
     pub(crate) font_size_slider_state: Entity<SliderState>,
 }
 
-/// The settings pages, in render order. Page builders and shortcut indexes
-/// derive from this list, so they cannot drift.
+/// The settings pages, in render order.
+/// Page builders and shortcut indexes derive from this list, so they cannot drift.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     General,
