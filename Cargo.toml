@@ -70,3 +70,6 @@ panic_in_result_fn = "deny"
 panic = "deny"
 exit = "deny"
 as_conversions = "deny"
+
+[profile.dev]
+debug = "line-tables-only"
