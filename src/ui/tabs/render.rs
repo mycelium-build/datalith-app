@@ -5,6 +5,7 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants},
     h_flex,
     tab::{Tab, TabBar},
+    tag::Tag,
 };
 use gpui_kit::{Context, IntoElement, ParentElement, SharedString, Styled};
 
@@ -54,6 +55,9 @@ impl DatalithView {
                 let can_toggle_mode = handler
                     .as_ref()
                     .is_some_and(|handler| handler.read(cx).can_toggle_mode());
+                let is_read_only = handler
+                    .as_ref()
+                    .is_some_and(|handler| handler.read(cx).is_read_only());
                 let is_editing = handler
                     .as_ref()
                     .is_some_and(|handler| handler.read(cx).is_editing());
@@ -75,6 +79,8 @@ impl DatalithView {
                                 window.dispatch_action(Box::new(ToggleEditorMode), cx);
                             }),
                     );
+                } else if is_read_only {
+                    suffix = suffix.child(Tag::secondary().xsmall().child("Read only"));
                 }
                 suffix.child(
                     Button::new("new-tab")
