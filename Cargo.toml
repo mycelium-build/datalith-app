@@ -71,5 +71,5 @@ panic = "deny"
 exit = "deny"
 as_conversions = "deny"
 
-[profile.dev]
+[profile.dev.package."*"]
 debug = "line-tables-only"
