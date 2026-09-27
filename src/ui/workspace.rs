@@ -19,7 +19,10 @@ fn same_vault_path(left: &Path, right: &Path) -> bool {
 
 fn initial_workspace(root: &Path, first_startup: bool) -> Workspace {
     let welcome = root.join(crate::app::docs::WELCOME_NOTE);
-    let tabs = if first_startup && crate::vault::source::is_file(&welcome) {
+    let tabs = if first_startup
+        && crate::vault::source::is_read_only(root)
+        && crate::vault::source::is_file(&welcome)
+    {
         vec![WorkspaceTab::new(
             TabId::new(),
             Some(welcome),
@@ -40,9 +43,9 @@ fn is_current_vault_load(
     current_generation: u64,
     current_root: Option<&Path>,
     load_generation: u64,
-    load_root: &Path,
+    load_root: Option<&Path>,
 ) -> bool {
-    current_generation == load_generation && current_root == Some(load_root)
+    current_generation == load_generation && current_root == load_root
 }
 
 impl DatalithView {
