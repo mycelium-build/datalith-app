@@ -395,7 +395,7 @@ impl DatalithView {
                         view.vault_load_generation,
                         view.root_path.as_deref(),
                         generation,
-                        &path,
+                        Some(&path),
                     ) {
                         return;
                     }
