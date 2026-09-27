@@ -217,6 +217,9 @@ const fn schema_version() -> u32 {
 
 impl StoredSettings {
     fn normalized(self) -> ApplicationSettings {
+        // A remembered vault means this install is upgrading, not first-run.
+        // `onboarding_complete` is missing from older config files.
+        let onboarding_complete = self.onboarding_complete || self.last_vault.is_some();
         let mut recent_vaults = Vec::new();
         for path in self.recent_vaults.into_iter().map(PathBuf::from) {
             if crate::vault::source::is_dir(&path)
@@ -236,7 +239,7 @@ impl StoredSettings {
                 .map(PathBuf::from)
                 .filter(|path| crate::vault::source::is_dir(path)),
             recent_vaults,
-            onboarding_complete: self.onboarding_complete,
+            onboarding_complete,
             theme_preference: match self.theme_preference.as_deref() {
                 Some("light") => ThemePreference::Light,
                 Some("dark") => ThemePreference::Dark,
@@ -327,12 +330,15 @@ impl SettingsStore {
             .clone()
     }
 
+    /// Apply a preference change.
+    /// The change remains effective for this run even when persistence fails;
+    /// only the write result is returned.
     fn update(&mut self, update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
         let mut next = self.snapshot();
         update(&mut next);
-        self.persist(&next)?;
+        let result = self.persist(&next);
         self.cached = Some(next);
-        Ok(())
+        result
     }
 
     fn persist(&self, settings: &ApplicationSettings) -> Result<()> {
@@ -388,15 +394,8 @@ fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
 }
 
 /// Set the mode for existing documents opened in a new tab.
-/// The choice remains effective for this run even when persistence fails.
 pub fn set_open_new_tab_mode(mode: ViewMode) -> Result<()> {
-    with_store(|store| {
-        let mut settings = store.snapshot();
-        settings.open_new_tab_mode = mode;
-        let result = store.persist(&settings);
-        store.cached = Some(settings);
-        result
-    })
+    update(|settings| settings.open_new_tab_mode = mode)
 }
 
 pub fn record_opened_vault(path: &Path) -> Result<()> {
@@ -507,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn only_new_tab_mode_changes_when_settings_cannot_be_written() {
+    fn preference_changes_remain_effective_when_settings_cannot_be_written() {
         let file = with_store(|store| store.file.clone());
         fs::create_dir(&file).unwrap();
         let mode_result = set_open_new_tab_mode(ViewMode::View);
@@ -518,7 +517,7 @@ mod tests {
         assert!(theme_result.is_err());
         let settings = snapshot();
         assert_eq!(settings.open_new_tab_mode(), ViewMode::View);
-        assert_eq!(settings.theme_preference, ThemePreference::System);
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
     }
 
     #[test]
@@ -781,5 +780,36 @@ mod tests {
         assert_eq!(normalized.recent_vaults, vec![personal.clone()]);
         assert!(normalized.onboarding_complete);
         let _ = fs::remove_dir(personal);
+    }
+
+    #[test]
+    fn remembered_vault_marks_onboarding_complete_when_the_flag_is_missing() {
+        let directory = std::env::temp_dir().join(format!(
+            "datalith-upgrade-vault-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        fs::create_dir_all(&directory).unwrap();
+
+        let stored: StoredSettings =
+            serde_json::from_str(&format!(r#"{{"last_vault":"{}"}}"#, directory.display()))
+                .unwrap();
+        let normalized = stored.normalized();
+        assert!(normalized.onboarding_complete);
+        assert_eq!(normalized.last_vault, Some(directory.clone()));
+
+        let vanished: StoredSettings =
+            serde_json::from_str(r#"{"last_vault":"/gone/vault"}"#).unwrap();
+        let normalized = vanished.normalized();
+        assert!(normalized.onboarding_complete);
+        assert_eq!(normalized.last_vault, None);
+
+        let first_run: StoredSettings = serde_json::from_str(r"{}").unwrap();
+        assert!(!first_run.normalized().onboarding_complete);
+
+        let _ = fs::remove_dir(directory);
     }
 }
