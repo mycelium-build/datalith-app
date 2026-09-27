@@ -73,11 +73,7 @@ impl DatalithView {
         let has_selection = self.tree_state.read(cx).selected_entry().is_some();
 
         if !has_selection {
-            let active_path = self
-                .tabs
-                .active_path()
-                .filter(|path| !path.as_os_str().is_empty())
-                .map(Path::to_path_buf);
+            let active_path = self.tabs.active_path().map(Path::to_path_buf);
 
             if let Some(ref path) = active_path {
                 let id = path.to_string_lossy().to_string();

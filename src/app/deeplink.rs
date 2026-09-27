@@ -101,7 +101,7 @@ fn resolve_in_vault(root: &Path, relative: &str) -> Option<PathBuf> {
     Some(root.join(candidate))
 }
 
-fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
+fn dispatch(link: DeepLink, cx: &AsyncApp) {
     let DeepLink::OpenNote { vault, path } = link else {
         // `launch` needs no work:
         // the OS activates the running app when the scheme fires,
@@ -112,14 +112,14 @@ fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
         app.try_global::<AppState>()
             .and_then(|state| state.view.clone())
     });
-    let Some(view) = view else {
+    let Some(_) = view else {
         // The window is not up yet (cold start);
         // keep the link queued for the next poll.
         pending_lock().push_back(DeepLink::OpenNote { vault, path });
         return;
     };
-    view.update(cx, |view, cx| {
-        // A vault is required: resolve it, and switch to it if needed.
+    // Resolve before scheduling the switch; opening is deferred until that switch succeeds.
+    cx.update(|cx| {
         let Some(vault_path) = resolve_vault_id(&vault, settings::known_vault_paths()) else {
             notifications::push_window_notification(
                 cx,
@@ -127,12 +127,12 @@ fn dispatch(link: DeepLink, cx: &mut AsyncApp) {
             );
             return;
         };
-        if view.root_path.as_deref() != Some(vault_path.as_path()) {
-            view.set_root_path(vault_path.clone(), cx);
-        }
         if let Some(resolved) = resolve_in_vault(&vault_path, &path) {
-            view.pending_open = Some(resolved);
-            cx.notify();
+            super::actions::open_vault_path(
+                vault_path,
+                Some(crate::ui::PendingOpen::Open(resolved)),
+                cx,
+            );
         }
     });
 }

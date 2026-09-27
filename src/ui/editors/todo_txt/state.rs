@@ -57,6 +57,9 @@ impl TodoTxtState {
     }
 
     pub(super) fn add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         let value = self.new_task_input.read(cx).value();
         if !value.trim().is_empty() {
             self.workspace.add_task(&value);
@@ -88,6 +91,9 @@ impl TodoTxtState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         if let Err(error) = self.workspace.toggle_complete(index) {
             window.push_notification(notifications::todo_task_failed("complete task", &error), cx);
             return;
@@ -103,6 +109,9 @@ impl TodoTxtState {
     }
 
     pub(super) fn add_subtask(&mut self, parent_index: usize, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         let outcome = self.workspace.add_subtask(parent_index);
         if let Some(FocusTarget::Task(index)) = outcome.focus {
             self.clear_row_inputs();
@@ -118,6 +127,9 @@ impl TodoTxtState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         let outcome = match self.workspace.delete_task(index) {
             Ok(outcome) => outcome,
             Err(error) => {
@@ -144,16 +156,25 @@ impl TodoTxtState {
     }
 
     pub(super) fn commit_description(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         self.workspace.update_description(index, value);
         self.refresh_after_update(cx);
     }
 
     pub(super) fn commit_date(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         self.workspace.update_date(index, value);
         self.refresh_after_update(cx);
     }
 
     pub(super) fn commit_priority(&mut self, index: usize, value: &str, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            return;
+        }
         self.workspace.update_priority(index, value);
         self.refresh_after_update(cx);
     }

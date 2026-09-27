@@ -18,27 +18,41 @@ pub struct TodoTxtWorkspace {
     expanded: HashSet<usize>,
     selected: Option<usize>,
     parse_errors: Vec<String>,
+    read_only: bool,
 }
 
 impl TodoTxtWorkspace {
     pub fn open(path: &Path) -> Self {
         let path = path.to_path_buf();
+        let read_only = crate::vault::source::is_read_only(&path);
         let mut todo = {
             let options = TodoOptions {
-                file_path: Some(path.to_string_lossy().to_string()),
-                auto_save: true,
+                file_path: (!read_only).then(|| path.to_string_lossy().to_string()),
+                auto_save: !read_only,
                 ..Default::default()
             };
             // `TodoTxt::new` only fails when a configured extension fails to initialize; the default options register no extensions.
             #[allow(clippy::expect_used)]
             TodoTxt::new(options).expect("Failed to create TodoTxt")
         };
-        let parse_errors = todo
-            .load(None)
-            .err()
-            .map(|e| e.to_string())
-            .into_iter()
-            .collect();
+        let parse_errors = if read_only {
+            match crate::vault::source::read_to_string(&path) {
+                Ok(contents) => match TodoTxtParser::new().parse_file(&contents) {
+                    Ok(tasks) => {
+                        todo.tasks = tasks;
+                        Vec::new()
+                    }
+                    Err(error) => vec![error.to_string()],
+                },
+                Err(error) => vec![error.to_string()],
+            }
+        } else {
+            todo.load(None)
+                .err()
+                .map(|error| error.to_string())
+                .into_iter()
+                .collect()
+        };
         let expanded = todo
             .list()
             .iter()
@@ -55,6 +69,7 @@ impl TodoTxtWorkspace {
             expanded,
             selected: None,
             parse_errors,
+            read_only,
         }
     }
 
@@ -86,6 +101,9 @@ impl TodoTxtWorkspace {
     pub const fn sort_descending(&self) -> bool {
         self.sort_descending
     }
+    pub const fn is_read_only(&self) -> bool {
+        self.read_only
+    }
 
     pub fn set_search_query(&mut self, query: String) {
         self.search_query = query;
@@ -106,7 +124,10 @@ impl TodoTxtWorkspace {
     }
 
     pub fn reload_from_disk(&mut self) -> anyhow::Result<ReloadOutcome> {
-        let disk_content = std::fs::read_to_string(&self.path)?;
+        if self.read_only {
+            return Ok(ReloadOutcome::Unchanged);
+        }
+        let disk_content = crate::vault::source::read_to_string(&self.path)?;
         let current_content = TodoTxtSerializer::new()
             .serialize_tasks(&self.todo.tasks)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
@@ -135,6 +156,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn add_task(&mut self, description: &str) {
+        if self.read_only {
+            return;
+        }
         let description = description.trim();
         if description.is_empty() {
             return;
@@ -145,6 +169,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn toggle_complete(&mut self, index: usize) -> anyhow::Result<()> {
+        if self.read_only {
+            return Ok(());
+        }
         if let Some(task) = self.task(index) {
             if task.completed {
                 self.todo.unmark([index_as_i64(index)])?;
@@ -156,6 +183,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn add_subtask(&mut self, parent_index: usize) -> MutationOutcome {
+        if self.read_only {
+            return MutationOutcome::default();
+        }
         let Some(parent) = self.task(parent_index) else {
             return MutationOutcome::default();
         };
@@ -182,6 +212,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn delete_task(&mut self, index: usize) -> anyhow::Result<MutationOutcome> {
+        if self.read_only {
+            return Ok(MutationOutcome::default());
+        }
         let old_len = self.task_count();
         self.todo.remove([index_as_i64(index)])?;
         let new_len = self.task_count();
@@ -215,6 +248,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn update_description(&mut self, index: usize, value: &str) {
+        if self.read_only {
+            return;
+        }
         let parsed = TodoTxtParser::new().parse_line(value).ok();
         self.update(
             index,
@@ -233,6 +269,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn update_date(&mut self, index: usize, value: &str) {
+        if self.read_only {
+            return;
+        }
         self.update(
             index,
             TaskPatch {
@@ -243,6 +282,9 @@ impl TodoTxtWorkspace {
     }
 
     pub fn update_priority(&mut self, index: usize, value: &str) {
+        if self.read_only {
+            return;
+        }
         let priority = if value.is_empty() {
             None
         } else {
@@ -258,6 +300,9 @@ impl TodoTxtWorkspace {
     }
 
     fn update(&mut self, index: usize, patch: TaskPatch) {
+        if self.read_only {
+            return;
+        }
         if let Err(error) = self.todo.update(index_as_i64(index), patch) {
             self.parse_errors.push(format!("Save failed: {error}"));
         }
@@ -406,5 +451,40 @@ mod tests {
         assert_eq!(outcome.focus, Some(FocusTarget::Task(0)));
         assert!(!workspace.is_expanded(0));
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn immutable_todo_source_rejects_every_content_mutation_without_extraction() {
+        let root = crate::vault::source::DOCUMENTATION.root();
+        let path = root.join("Tour.todotxt");
+        let mut workspace = TodoTxtWorkspace::open(&path);
+        assert!(workspace.is_read_only());
+        assert!(workspace.task_count() > 0);
+        assert!(!workspace.task(1).unwrap().completed);
+        assert_eq!(workspace.task(1).unwrap().priority, Some(Priority('A')));
+
+        let before = TodoTxtSerializer::new()
+            .serialize_tasks(&workspace.todo.tasks)
+            .unwrap();
+        workspace.add_task("Should not be added");
+        workspace.toggle_complete(0).unwrap();
+        assert_eq!(workspace.add_subtask(1), MutationOutcome::default());
+        assert_eq!(
+            workspace.delete_task(1).unwrap(),
+            MutationOutcome::default()
+        );
+        workspace.update_description(1, "Changed description");
+        workspace.update_date(1, "2026-09-25");
+        workspace.update_priority(1, "(Z)");
+        assert_eq!(
+            workspace.reload_from_disk().unwrap(),
+            ReloadOutcome::Unchanged
+        );
+
+        let after = TodoTxtSerializer::new()
+            .serialize_tasks(&workspace.todo.tasks)
+            .unwrap();
+        assert_eq!(after, before);
+        assert!(!root.exists());
     }
 }

@@ -52,7 +52,7 @@ fn vault_root(name: &str) -> PathBuf {
 }
 
 fn reset_catalog_state(root: &Path) {
-    let path = root.join(".datalith");
+    let path = channel::Channel::current().vault_dir(root).unwrap();
     remove_benchmark_dir(&path);
 }
 
@@ -67,7 +67,7 @@ fn remove_benchmark_dir(path: &Path) {
     }
 }
 
-fn open_catalog(root: PathBuf) -> VaultCatalog {
+fn open_catalog(root: &Path) -> VaultCatalog {
     // A benchmark cannot proceed if the catalog fails to open, so abort loudly.
     #[allow(clippy::expect_used)]
     VaultCatalog::open(root, md_file_types()).expect("failed to open vault catalog for benchmark")
@@ -93,7 +93,7 @@ fn bench_cold_start(c: &mut Criterion) {
             b.iter_batched(
                 || reset_catalog_state(&root),
                 |()| {
-                    let catalog = open_catalog(root.clone());
+                    let catalog = open_catalog(&root);
                     catalog.wait_until_ready(Duration::from_mins(2));
                     std::hint::black_box(&catalog);
                 },
@@ -121,13 +121,13 @@ fn bench_warm_start(c: &mut Criterion) {
         generate_vault(&root, &config);
 
         {
-            let catalog = open_catalog(root.clone());
+            let catalog = open_catalog(&root);
             catalog.wait_until_ready(Duration::from_mins(2));
         }
 
         group.bench_function(format!("{n}_files"), |b| {
             b.iter(|| {
-                let catalog = open_catalog(root.clone());
+                let catalog = open_catalog(&root);
                 catalog.wait_until_ready(Duration::from_mins(2));
                 std::hint::black_box(&catalog);
             });

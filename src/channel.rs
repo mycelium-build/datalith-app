@@ -1,3 +1,7 @@
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, ensure};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Channel {
     Stable,
@@ -46,11 +50,64 @@ impl Channel {
         }
     }
 
-    pub fn vault_cache_dir(self, root: &std::path::Path) -> std::path::PathBuf {
+    /// Channel-local vault root: `.datalith[/{preview|dev}]`.
+    /// Immutable vaults route to `app_data_dir()/immutable-vault-caches/{vault_id}`.
+    pub fn vault_dir(self, root: &Path) -> Result<PathBuf> {
+        if crate::vault::source::is_read_only(root) {
+            let vault = crate::vault::source::embedded_vault(root)
+                .filter(|vault| vault.root() == root)
+                .context("Unknown immutable vault cache")?;
+            return Ok(self
+                .app_data_dir()
+                .join("immutable-vault-caches")
+                .join(vault.id()));
+        }
         let directory = root.join(crate::vault::DATALITH_DIR_NAME);
-        match self {
+        Ok(match self {
             Self::Stable => directory,
             Self::Preview | Self::Dev => directory.join(self.name()),
+        })
+    }
+
+    /// Directory holding per-machine workspace JSON for `root`.
+    pub fn workspace_dir(self, root: &Path) -> Result<PathBuf> {
+        Ok(self.vault_dir(root)?.join("workspace"))
+    }
+
+    /// Per-machine workspace JSON file for `root`.
+    pub fn workspace_file(self, root: &Path, machine_id: &str) -> Result<PathBuf> {
+        ensure!(
+            !machine_id.is_empty()
+                && machine_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() || byte == b'-'),
+            "Invalid machine identity"
+        );
+        Ok(self.workspace_dir(root)?.join(format!("{machine_id}.json")))
+    }
+
+    /// Directory holding machine-independent workspace JSON for immutable vaults.
+    pub fn immutable_workspace_dir(self) -> PathBuf {
+        self.app_data_dir().join("immutable-vaults-workspaces")
+    }
+
+    /// OS application-data root for this channel.
+    pub fn app_data_dir(self) -> PathBuf {
+        #[cfg(test)]
+        {
+            let test_name = std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-");
+            std::env::temp_dir().join(format!(
+                "datalith-test-cache-{}-{}-{test_name}",
+                self.stem(),
+                std::process::id()
+            ))
+        }
+        #[cfg(not(test))]
+        {
+            dirs::data_dir().unwrap_or_default().join(self.stem())
         }
     }
 
@@ -72,20 +129,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vault_caches_are_separate_and_stable_keeps_its_path() {
-        let root = std::path::Path::new("vault");
+    fn vault_dirs_are_separate_and_stable_keeps_its_path() {
+        let root = Path::new("vault");
         assert_eq!(
-            Channel::Stable.vault_cache_dir(root),
+            Channel::Stable.vault_dir(root).unwrap(),
             root.join(".datalith")
         );
         assert_eq!(
-            Channel::Preview.vault_cache_dir(root),
+            Channel::Preview.vault_dir(root).unwrap(),
             root.join(".datalith/preview")
         );
         assert_eq!(
-            Channel::Dev.vault_cache_dir(root),
+            Channel::Dev.vault_dir(root).unwrap(),
             root.join(".datalith/dev")
         );
+    }
+
+    #[test]
+    fn workspace_files_are_per_channel_and_stable_keeps_its_path() {
+        let root = Path::new("vault");
+        let machine = "a1b2c3";
+        assert_eq!(
+            Channel::Stable.workspace_file(root, machine).unwrap(),
+            root.join(".datalith/workspace/a1b2c3.json")
+        );
+        assert_eq!(
+            Channel::Preview.workspace_file(root, machine).unwrap(),
+            root.join(".datalith/preview/workspace/a1b2c3.json")
+        );
+        assert_eq!(
+            Channel::Dev.workspace_file(root, machine).unwrap(),
+            root.join(".datalith/dev/workspace/a1b2c3.json")
+        );
+        assert!(Channel::Stable.workspace_file(root, "").is_err());
+        assert!(Channel::Stable.workspace_file(root, "not valid!").is_err());
     }
 
     #[test]
@@ -96,6 +173,7 @@ mod tests {
                 assert_ne!(channel.stem(), other.stem());
                 assert_ne!(channel.identifier(), other.identifier());
                 assert_ne!(channel.product_name(), other.product_name());
+                assert_ne!(channel.app_data_dir(), other.app_data_dir());
             }
         }
         assert_eq!(Channel::Stable.stem(), "datalith");
@@ -104,5 +182,31 @@ mod tests {
             Channel::Stable.update_endpoint(),
             Channel::Preview.update_endpoint()
         );
+    }
+
+    #[test]
+    fn immutable_vault_caches_are_channel_local_application_data() {
+        let root = crate::vault::source::DOCUMENTATION.root();
+        let stable = Channel::Stable.vault_dir(&root).unwrap();
+        let preview = Channel::Preview.vault_dir(&root).unwrap();
+        assert_ne!(stable, preview);
+        assert!(stable.ends_with("immutable-vault-caches/documentation"));
+        assert!(preview.ends_with("immutable-vault-caches/documentation"));
+        assert!(!stable.starts_with(&root));
+        assert!(!preview.starts_with(&root));
+        assert!(
+            Channel::Stable
+                .vault_dir(&Path::new("datalith-embedded:").join("unknown"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn immutable_workspace_dir_is_channel_local_application_data() {
+        let stable = Channel::Stable.immutable_workspace_dir();
+        let preview = Channel::Preview.immutable_workspace_dir();
+        assert_ne!(stable, preview);
+        assert!(stable.ends_with("immutable-vaults-workspaces"));
+        assert!(preview.ends_with("immutable-vaults-workspaces"));
     }
 }

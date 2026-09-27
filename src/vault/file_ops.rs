@@ -1,21 +1,88 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 
 use crate::vault::VaultCatalog;
-use crate::vault::links;
+use crate::vault::{links, source};
 
 #[must_use]
 pub fn parent_dir(target: &Path) -> PathBuf {
-    if target.is_dir() {
+    if source::is_dir(target) {
         target.to_path_buf()
     } else {
         target
             .parent()
             .map_or_else(|| PathBuf::from("/"), Path::to_path_buf)
     }
+}
+
+#[must_use]
+pub fn normalized_path(path: &Path) -> PathBuf {
+    let source_path = source::is_read_only(path);
+    let absolute = if path.is_absolute() || source_path {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+    };
+    let absolute = if source_path {
+        absolute
+    } else {
+        fs::canonicalize(&absolute).unwrap_or(absolute)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+/// Portable vault-relative form of `path`, such as `notes/today.md`.
+///
+/// Returns `None` for the vault root itself: the format never represents it
+/// with an empty string, so callers drop such entries.
+pub fn path_to_vault_relative(path: &Path, vault_root: &Path) -> Result<Option<String>> {
+    let relative = path
+        .strip_prefix(vault_root)
+        .with_context(|| format!("Workspace path is outside its vault: {}", path.display()))?;
+    let parts = relative
+        .components()
+        .map(|component| match component {
+            Component::Normal(part) => Ok(part.to_string_lossy().into_owned()),
+            _ => bail!("Workspace path must be relative to its vault"),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parts.join("/")))
+}
+
+/// Absolute path inside `vault_root` for a portable vault-relative `path`.
+///
+/// Returns `None` for the empty string: the format never represents the vault
+/// root, so callers drop such entries.
+pub fn path_from_vault_relative(path: &str, vault_root: &Path) -> Result<Option<PathBuf>> {
+    if path.is_empty() {
+        return Ok(None);
+    }
+    let relative = Path::new(path);
+    ensure!(
+        relative
+            .components()
+            .all(|component| matches!(component, Component::Normal(_))),
+        "Workspace path must be relative to its vault"
+    );
+    Ok(Some(vault_root.join(relative)))
 }
 
 #[must_use]
@@ -28,7 +95,7 @@ pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
     });
     let mut candidate = base_dir.join(name);
     for counter in 1usize.. {
-        if !candidate.exists() {
+        if !source::exists(&candidate) {
             break;
         }
         candidate = base_dir.join(format!("{stem} {counter}{ext}"));
@@ -41,13 +108,18 @@ pub fn create(target: &Path) -> Result<PathBuf> {
 }
 
 pub fn create_with_name(target: &Path, base_name: &str) -> Result<PathBuf> {
+    source::ensure_writable(target)?;
+
     let directory = parent_dir(target);
     let path = unique_name(&directory, base_name);
+    source::ensure_writable(&path)?;
     fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
 
 pub fn create_folder(target: &Path) -> Result<PathBuf> {
+    source::ensure_writable(target)?;
+
     let directory = parent_dir(target);
     let path = unique_name(&directory, "New Folder");
     fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
@@ -55,6 +127,8 @@ pub fn create_folder(target: &Path) -> Result<PathBuf> {
 }
 
 pub fn update(path: &Path, content: &str) -> Result<()> {
+    source::ensure_writable(path)?;
+
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
@@ -64,6 +138,9 @@ pub struct RenameResult {
 }
 
 pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Result<RenameResult> {
+    source::ensure_writable(old_path)?;
+    source::ensure_writable(new_path)?;
+
     let root = catalog.root();
     let mut by_source: BTreeMap<PathBuf, Vec<(usize, String)>> = BTreeMap::new();
     for backlink in catalog.backlinks_under(old_path)? {
@@ -109,7 +186,9 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
 }
 
 pub fn delete(target: &Path) -> Result<()> {
-    if target.is_dir() {
+    source::ensure_writable(target)?;
+
+    if source::is_dir(target) {
         fs::remove_dir_all(target)
             .with_context(|| format!("Failed to delete directory {}", target.display()))?;
     } else {
@@ -120,7 +199,9 @@ pub fn delete(target: &Path) -> Result<()> {
 }
 
 pub fn duplicate(target: &Path) -> Result<PathBuf> {
-    if target.is_dir() {
+    source::ensure_writable(target)?;
+
+    if source::is_dir(target) {
         let parent = target.parent().unwrap_or_else(|| Path::new("/"));
         let name = target
             .file_name()
@@ -181,6 +262,33 @@ mod tests {
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
     #[test]
+    fn immutable_vault_rejects_every_file_mutation() {
+        let root = source::DOCUMENTATION.root();
+        let note = root.join("Welcome.md");
+        let original = source::read(&note).unwrap();
+        let personal = std::env::temp_dir().join(format!(
+            "datalith-read-only-{:032x}",
+            rand::random::<u128>()
+        ));
+        fs::create_dir_all(&personal).unwrap();
+        let catalog = VaultCatalog::open(&personal, RegisteredFileTypes::new([])).unwrap();
+        assert!(create(&root).is_err());
+        assert!(create_folder(&root).is_err());
+        assert!(update(&note, "changed").is_err());
+        assert!(delete(&note).is_err());
+        assert!(duplicate(&note).is_err());
+        assert!(rename(&catalog, &note, &root.join("Renamed.md")).is_err());
+        let personal_note = personal.join("Personal.md");
+        fs::write(&personal_note, "personal").unwrap();
+        assert!(rename(&catalog, &personal_note, &root.join("Personal.md")).is_err());
+        assert!(personal_note.is_file());
+        assert_eq!(source::read(&note).unwrap(), original);
+        assert!(!root.exists());
+        drop(catalog);
+        fs::remove_dir_all(personal).unwrap();
+    }
+
+    #[test]
     fn rename_rewrites_catalogued_backlinks_without_writing_catalog_state() {
         let root =
             std::env::temp_dir().join(format!("datalith-file-ops-rename-{}", std::process::id()));
@@ -199,7 +307,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &note, &renamed).unwrap();
@@ -236,7 +344,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(&catalog, &old_folder, &new_folder).unwrap();
@@ -272,7 +380,7 @@ mod tests {
                 yaml_frontmatter: true,
             },
         )]);
-        let catalog = VaultCatalog::open(root.clone(), file_types).unwrap();
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
 
         let result = rename(

@@ -15,6 +15,7 @@ macro_rules! icon_asset {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DatalithIcon {
     Note,
+    Book,
     Todo,
     Graph,
     Image,
@@ -34,6 +35,7 @@ impl DatalithIcon {
     const fn asset(self) -> (&'static str, &'static str) {
         match self {
             Self::Note => icon_asset!("icons/note.svg"),
+            Self::Book => icon_asset!("icons/book.svg"),
             Self::Todo => icon_asset!("icons/todo.svg"),
             Self::Graph => icon_asset!("icons/graph.svg"),
             Self::Image => icon_asset!("icons/image.svg"),
@@ -60,6 +62,7 @@ impl IconNamed for DatalithIcon {
 pub const ICON_ASSETS: &[(&str, &str)] = &[
     // Custom icons, resolved through `DatalithIcon`.
     DatalithIcon::Note.asset(),
+    DatalithIcon::Book.asset(),
     DatalithIcon::Todo.asset(),
     DatalithIcon::Graph.asset(),
     DatalithIcon::Image.asset(),

@@ -1,20 +1,19 @@
 mod navigation;
 mod render;
 
+pub use navigation::NavigationAction;
+
 use std::path::{Path, PathBuf};
 
 use gpui_kit::{Entity, Subscription};
 
+use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::FileHandler;
-
-#[derive(Clone, Copy, Debug)]
-pub enum NavigationAction {
-    GoBack,
-    GoForward,
-}
+use crate::vault::file_ops;
 
 pub struct Tab {
-    path: PathBuf,
+    id: TabId,
+    path: Option<PathBuf>,
     handler: Entity<FileHandler>,
     _input_subscription: Option<Subscription>,
     _event_subscription: Option<Subscription>,
@@ -49,29 +48,67 @@ impl Tabs {
     }
 
     pub(crate) fn active_path(&self) -> Option<&Path> {
-        self.active().map(|tab| tab.path.as_path())
+        self.active().and_then(|tab| tab.path.as_deref())
     }
 
     pub(crate) fn active_handler(&self) -> Option<&Entity<FileHandler>> {
         self.active().map(|tab| &tab.handler)
     }
 
-    pub(crate) fn handler_for_path(&self, path: &Path) -> Option<&Entity<FileHandler>> {
+    pub(crate) fn active_tab_id(&self) -> Option<&TabId> {
+        self.active().map(|tab| &tab.id)
+    }
+
+    pub(crate) fn handlers_for_path(
+        &self,
+        path: &Path,
+    ) -> impl Iterator<Item = &Entity<FileHandler>> {
         self.entries
             .iter()
-            .find(|tab| tab.path == path)
+            .filter(move |tab| same_document(tab.path.as_deref(), Some(path)))
             .map(|tab| &tab.handler)
     }
 
+    /// Paths of tabs that hold a document. Empty tabs are omitted.
     pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
-        self.entries.iter().map(|tab| tab.path.clone()).collect()
+        self.entries
+            .iter()
+            .filter_map(|tab| tab.path.clone())
+            .collect()
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (usize, &Path, &Entity<FileHandler>)> {
+    pub(crate) fn iter(
+        &self,
+    ) -> impl Iterator<Item = (usize, Option<&Path>, &Entity<FileHandler>)> {
         self.entries
             .iter()
             .enumerate()
-            .map(|(index, tab)| (index, tab.path.as_path(), &tab.handler))
+            .map(|(index, tab)| (index, tab.path.as_deref(), &tab.handler))
+    }
+
+    pub(crate) fn iter_with_id(
+        &self,
+    ) -> impl Iterator<Item = (usize, &TabId, Option<&Path>, &Entity<FileHandler>)> {
+        self.entries
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| (index, &tab.id, tab.path.as_deref(), &tab.handler))
+    }
+
+    pub(crate) fn snapshot(&self, cx: &gpui_kit::App) -> (Vec<WorkspaceTab>, Option<TabId>) {
+        let tabs = self
+            .entries
+            .iter()
+            .map(|tab| {
+                WorkspaceTab::new(
+                    tab.id.clone(),
+                    tab.path.clone(),
+                    tab.handler.read(cx).mode(),
+                )
+            })
+            .collect();
+        let active_id = self.active_tab_id().cloned();
+        (tabs, active_id)
     }
 
     pub(crate) const fn select(&mut self, index: usize) -> bool {
@@ -91,7 +128,31 @@ impl Tabs {
     }
 
     fn find_path(&self, path: &Path) -> Option<usize> {
-        self.entries.iter().position(|tab| tab.path == path)
+        let active = self.active_index();
+        if let Some(index) = active
+            && self
+                .entries
+                .get(index)
+                .is_some_and(|tab| same_document(tab.path.as_deref(), Some(path)))
+        {
+            return Some(index);
+        }
+        self.entries
+            .iter()
+            .position(|tab| same_document(tab.path.as_deref(), Some(path)))
+    }
+
+    pub(crate) fn select_by_id(&mut self, id: &TabId) -> bool {
+        let Some(index) = self.entries.iter().position(|tab| &tab.id == id) else {
+            return false;
+        };
+        self.active = Some(index);
+        true
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+        self.active = None;
     }
 
     fn insert(&mut self, tab: Tab, new_tab: bool) {
@@ -118,8 +179,10 @@ impl Tabs {
 
     pub(crate) fn rename_path(&mut self, old_path: &Path, new_path: &Path) {
         for tab in &mut self.entries {
-            if let Ok(suffix) = tab.path.strip_prefix(old_path) {
-                tab.path = new_path.join(suffix);
+            if let Some(path) = &mut tab.path
+                && let Ok(suffix) = path.strip_prefix(old_path)
+            {
+                *path = new_path.join(suffix);
             }
             for history_path in &mut tab.history {
                 if let Ok(suffix) = history_path.strip_prefix(old_path) {
@@ -142,8 +205,12 @@ fn active_after_removal(active: Option<usize>, removed: usize, remaining: usize)
 }
 
 impl Tab {
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
+    pub(crate) const fn id(&self) -> &TabId {
+        &self.id
+    }
+
+    pub(crate) fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 
     pub(crate) const fn handler(&self) -> &Entity<FileHandler> {
@@ -151,22 +218,41 @@ impl Tab {
     }
 }
 
+fn same_document(left: Option<&Path>, right: Option<&Path>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            file_ops::normalized_path(left) == file_ops::normalized_path(right)
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::active_after_removal;
+    use super::{active_after_removal, same_document};
+    use std::path::Path;
 
     #[test]
-    fn closing_before_active_tab_preserves_the_same_selection() {
+    fn closing_tabs_keeps_a_valid_selection_or_clears_the_last_one() {
         assert_eq!(active_after_removal(Some(2), 0, 2), Some(1));
-    }
-
-    #[test]
-    fn closing_active_last_tab_selects_new_last_tab() {
         assert_eq!(active_after_removal(Some(2), 2, 2), Some(1));
+        assert_eq!(active_after_removal(Some(0), 0, 0), None);
     }
 
     #[test]
-    fn closing_only_tab_clears_selection() {
-        assert_eq!(active_after_removal(Some(0), 0, 0), None);
+    fn document_identity_uses_normalized_paths_and_excludes_empty_tabs() {
+        assert!(same_document(
+            Some(Path::new("./notes/../notes/today.md")),
+            Some(Path::new("notes/today.md"))
+        ));
+        assert!(!same_document(None, Some(Path::new("notes/today.md"))));
+        assert!(!same_document(Some(Path::new("notes/today.md")), None));
+        assert!(!same_document(None, None));
+
+        let embedded = crate::vault::source::DOCUMENTATION.root();
+        assert!(same_document(
+            Some(&embedded.join("examples/../Welcome.md")),
+            Some(&embedded.join("Welcome.md"))
+        ));
     }
 }

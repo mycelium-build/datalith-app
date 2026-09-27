@@ -3,6 +3,7 @@ pub mod file_ops;
 pub mod links;
 pub mod path;
 pub mod search;
+pub mod source;
 
 pub const DATALITH_DIR_NAME: &str = ".datalith";
 

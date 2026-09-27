@@ -32,9 +32,6 @@ impl SettingsView {
     #[allow(clippy::too_many_lines)]
     pub(super) fn about_group() -> SettingGroup {
         let product_name = crate::channel::Channel::current().product_name();
-        let docs_vault = crate::app::docs::docs_vault_path()
-            .to_string_lossy()
-            .to_string();
         SettingGroup::new().title(product_name).items(vec![
             SettingItem::render(move |_options, _window, cx| {
                 v_flex()
@@ -61,12 +58,6 @@ impl SettingsView {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child("A fast, local-first knowledge workspace."),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Docs Vault: {docs_vault}")),
                     )
                     .into_any_element()
             }),
