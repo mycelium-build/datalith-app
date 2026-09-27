@@ -12,6 +12,7 @@ use tantivy::{
 use crate::channel::Channel;
 use crate::document::file_types::RegisteredFileTypes;
 use crate::vault::path::display_name;
+use crate::vault::source;
 
 const INDEX_WRITER_BUDGET: usize = 50_000_000;
 
@@ -35,7 +36,7 @@ impl Indexer {
         }
         let files = changed
             .iter()
-            .filter(|path| is_indexable(path, &self.file_types) && path.is_file())
+            .filter(|path| is_indexable(path, &self.file_types) && source::is_file(path))
             .map(|path| (path.clone(), file_fingerprint(path)))
             .collect();
         add_files(
@@ -51,9 +52,7 @@ impl Indexer {
     }
 
     pub(crate) fn open_existing(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
-        let index_path = Channel::current()
-            .vault_cache_dir(root)
-            .join("search_index");
+        let index_path = Channel::current().vault_dir(root)?.join("search_index");
 
         let mut schema_builder = Schema::builder();
         let path_field = schema_builder.add_text_field("path", STRING | STORED);
@@ -89,7 +88,7 @@ impl Indexer {
                 self.index.writer(INDEX_WRITER_BUDGET)?;
             let files = catalogued_paths
                 .iter()
-                .filter(|path| is_indexable(path, &self.file_types) && path.is_file())
+                .filter(|path| is_indexable(path, &self.file_types) && source::is_file(path))
                 .cloned()
                 .collect::<Vec<_>>();
             index_files(
@@ -121,7 +120,11 @@ pub fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
-    if let Ok(meta) = fs::metadata(path) {
+    if source::is_read_only(path) {
+        if let Ok(contents) = source::read(path) {
+            contents.as_ref().hash(&mut hasher);
+        }
+    } else if let Ok(meta) = fs::metadata(path) {
         meta.len().hash(&mut hasher);
         if let Ok(mtime) = meta.modified()
             && let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH)
@@ -149,7 +152,7 @@ pub fn index_files(
 ) -> tantivy::Result<()> {
     for path in paths {
         let name = display_name(path);
-        let content = fs::read_to_string(path).unwrap_or_default();
+        let content = source::read_to_string(path).unwrap_or_default();
         let fp = file_fingerprint(path);
         writer.add_document(doc!(
             path_field => path.to_string_lossy().as_ref(),
@@ -171,7 +174,7 @@ pub fn add_files(
 ) -> tantivy::Result<()> {
     for (path, fp) in files {
         let name = display_name(path);
-        let content = fs::read_to_string(path).unwrap_or_default();
+        let content = source::read_to_string(path).unwrap_or_default();
         writer.add_document(doc!(
             path_field => path.to_string_lossy().as_ref(),
             name_field => name,
@@ -196,7 +199,7 @@ pub fn incremental_update(
 
     let current: HashMap<PathBuf, u64> = catalogued_paths
         .iter()
-        .filter(|path| is_indexable(path, file_types) && path.is_file())
+        .filter(|path| is_indexable(path, file_types) && source::is_file(path))
         .map(|path| (path.clone(), file_fingerprint(path)))
         .collect();
 

@@ -10,15 +10,16 @@ use crate::ui::{BASE_FONT_SIZE, LINE_HEIGHT};
 
 pub struct MarkdownEditor {
     input: Entity<EditorState>,
+    read_only: bool,
 }
 
 impl MarkdownEditor {
-    pub const fn new(input: Entity<EditorState>) -> Self {
-        Self { input }
+    pub const fn new(input: Entity<EditorState>, read_only: bool) -> Self {
+        Self { input, read_only }
     }
 
     pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<EditorState> {
-        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let content = crate::vault::source::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             EditorState::new(window, cx)
                 .language("markdown")
@@ -42,6 +43,7 @@ impl MarkdownEditor {
                 Editor::new(&self.input)
                     .h_full()
                     .appearance(false)
+                    .readonly(self.read_only)
                     .text_size(px(base_font_size))
                     .line_height(px(base_font_size * line_height)),
             )

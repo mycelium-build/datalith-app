@@ -116,6 +116,15 @@ impl TodoTxtState {
         } else {
             Icon::new(DatalithIcon::ArrowUpAz).size_4()
         };
+        let add_button = (!self.workspace.is_read_only()).then(|| {
+            Button::new("todo-add-btn")
+                .ghost()
+                .icon(IconName::Plus)
+                .mr_1()
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.new_task_input.focus_handle(cx).focus(window, cx);
+                }))
+        });
 
         h_flex()
             .h(px(TODO_HEADER_HEIGHT))
@@ -125,15 +134,7 @@ impl TodoTxtState {
             .px_3()
             .border_b_1()
             .border_color(self.theme(cx).border)
-            .child(
-                Button::new("todo-add-btn")
-                    .ghost()
-                    .icon(IconName::Plus)
-                    .mr_1()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.new_task_input.focus_handle(cx).focus(window, cx);
-                    })),
-            )
+            .children(add_button)
             .child(
                 div()
                     .flex_1()
@@ -146,7 +147,7 @@ impl TodoTxtState {
                                 if let Some(e) = this.desc_inputs.get(&first_fi) {
                                     e.focus_handle(cx).focus(window, cx);
                                 }
-                            } else {
+                            } else if !this.workspace.is_read_only() {
                                 this.new_task_input.focus_handle(cx).focus(window, cx);
                             }
                         }
@@ -252,6 +253,9 @@ impl TodoTxtState {
     }
 
     fn render_new_task_row(&self, cx: &Context<Self>) -> AnyElement {
+        if self.workspace.is_read_only() {
+            return div().h(px(TODO_NEW_ROW_HEIGHT)).w_full().into_any_element();
+        }
         h_flex()
             .h(px(TODO_NEW_ROW_HEIGHT))
             .w_full()

@@ -39,6 +39,12 @@ impl ViewerDependencies {
     }
 }
 
+/// Builds the viewer for a file type, if any.
+///
+/// `editor` is the already-built editor for the same file.
+/// Viewers that render text (markdown, base) read `editor.input()`, the shared editor buffer,
+/// so view mode shows exactly what the editor holds without re-reading the file.
+/// It is `None` for editor-less types.
 pub type ViewerFactory = fn(
     &Path,
     Option<&EditorKind>,
@@ -63,9 +69,10 @@ impl FileRegistry {
                 },
                 icon: DatalithIcon::File,
                 editor_factory: Some(|path, window, cx| {
-                    EditorKind::PlainText(PlainTextEditor::new(PlainTextEditor::new_state(
-                        path, window, cx,
-                    )))
+                    EditorKind::PlainText(PlainTextEditor::new(
+                        PlainTextEditor::new_state(path, window, cx),
+                        crate::vault::source::is_read_only(path),
+                    ))
                 }),
                 viewer_factory: None,
                 reload_adapter: None,
@@ -78,8 +85,8 @@ impl FileRegistry {
         self.configs.insert(extension.to_lowercase(), config);
     }
 
-    pub(crate) fn config_for(&self, path: &Path) -> &FileTypeConfig {
-        path.extension()
+    pub(crate) fn config_for(&self, path: Option<&Path>) -> &FileTypeConfig {
+        path.and_then(Path::extension)
             .and_then(|e| e.to_str())
             .and_then(|ext| self.configs.get(&ext.to_lowercase()))
             .unwrap_or(&self.fallback)
@@ -107,7 +114,8 @@ impl FileRegistry {
         window: &mut Window,
         cx: &mut Context<FileHandler>,
     ) -> FileHandler {
-        let config = self.config_for(path);
+        let config = self.config_for(Some(path));
+        let read_only = crate::vault::source::is_read_only(path);
         let editor = config
             .editor_factory
             .map(|factory| factory(path, window, cx));
@@ -115,6 +123,7 @@ impl FileRegistry {
             .viewer_factory
             .and_then(|factory| factory(path, editor.as_ref(), dependencies, cx));
         FileHandler::new(config.default_mode, editor, viewer)
+            .with_read_only(read_only)
             .with_reload_adapter(config.reload_adapter)
     }
 }
@@ -134,7 +143,10 @@ pub fn default_registry() -> FileRegistry {
             },
             icon: DatalithIcon::Base,
             editor_factory: Some(|path, window, cx| {
-                EditorKind::Base(BaseEditor::new(BaseEditor::new_state(path, window, cx)))
+                EditorKind::Base(BaseEditor::new(
+                    BaseEditor::new_state(path, window, cx),
+                    crate::vault::source::is_read_only(path),
+                ))
             }),
             viewer_factory: Some(|_path, editor, dependencies, cx| {
                 let input = editor?.input()?.clone();
@@ -160,9 +172,10 @@ pub fn default_registry() -> FileRegistry {
             },
             icon: DatalithIcon::Note,
             editor_factory: Some(|path, window, cx| {
-                EditorKind::Markdown(MarkdownEditor::new(MarkdownEditor::new_state(
-                    path, window, cx,
-                )))
+                EditorKind::Markdown(MarkdownEditor::new(
+                    MarkdownEditor::new_state(path, window, cx),
+                    crate::vault::source::is_read_only(path),
+                ))
             }),
             viewer_factory: Some(|path, editor, _dependencies, _cx| {
                 let editor = editor?;

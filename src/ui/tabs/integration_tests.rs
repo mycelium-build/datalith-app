@@ -44,6 +44,7 @@ fn family_editors_have_independent_tabs_and_reopening_focuses_existing_tab() {
             app.close_active_tab(window, cx);
             assert_eq!(app.tabs.entries.len(), 1);
             assert!(app.tabs.theme_editor_for(second, cx).is_some());
+            assert_document_only_restore(app, second, window, cx);
         });
         Root::new(app, window, cx)
     });
@@ -61,4 +62,58 @@ fn family_editors_have_independent_tabs_and_reopening_focuses_existing_tab() {
             }
         }
     });
+}
+
+fn assert_document_only_restore(
+    app: &mut DatalithView,
+    family: u64,
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::Context<DatalithView>,
+) {
+    let path = std::path::Path::new("docs/vault/Welcome.md")
+        .canonicalize()
+        .unwrap();
+    let theme_entity = app.tabs.theme_editor_for(family, cx).unwrap().entity_id();
+    app.open_file(path.clone(), false, window, cx);
+    assert_eq!(app.tabs.entries.len(), 2);
+    assert_eq!(
+        app.tabs.theme_editor_for(family, cx).unwrap().entity_id(),
+        theme_entity
+    );
+    let document_id = app.tabs.active_tab_id().unwrap().clone();
+    app.open_shortcuts(window, cx);
+    assert!(app.tabs.active_handler().is_none());
+    assert!(!app.can_go_back());
+    app.toggle_editor_mode(cx);
+    app.new_empty_tab(cx);
+    let empty_id = app.tabs.active_tab_id().unwrap().clone();
+    assert_ne!(document_id, empty_id);
+    assert_eq!(app.tabs.entries.len(), 4);
+    let saved = app.tabs.snapshot(cx);
+    assert_eq!(saved.0.len(), 2);
+    assert_eq!(saved.0[0].path.as_deref(), Some(path.as_path()));
+    assert_eq!(saved.0[1].path, None);
+    assert_eq!(saved.1.as_ref(), Some(&empty_id));
+
+    app.open_theme_editor_for(family, None, window, cx);
+    let from_theme = app.tabs.snapshot(cx);
+    assert_eq!(from_theme.0, saved.0);
+    assert_eq!(from_theme.1, None);
+    app.open_shortcuts(window, cx);
+    assert_eq!(app.tabs.snapshot(cx), from_theme);
+
+    app.restore_workspace_tabs(saved.0.clone(), saved.1.as_ref(), window, cx);
+    assert_eq!(app.tabs.entries.len(), 2);
+    assert!(
+        app.tabs
+            .entries
+            .iter()
+            .all(|tab| matches!(tab, super::Tab::Document(_)))
+    );
+    assert_eq!(app.tabs.snapshot(cx), saved);
+    assert_eq!(app.tabs.open_paths(), vec![path]);
+    assert!(app.tabs.select_by_id(&document_id));
+    app.open_shortcuts(window, cx);
+    app.close_active_tab(window, cx);
+    assert!(app.tabs.active_handler().is_some());
 }

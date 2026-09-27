@@ -3,11 +3,12 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants},
     h_flex,
     tab::{Tab, TabBar},
+    tag::Tag,
 };
-use gpui_kit::{Context, IntoElement, ParentElement, SharedString, Styled};
+use gpui_kit::{Context, ElementId, IntoElement, ParentElement, SharedString, Styled};
 
 use super::NavigationAction;
-use crate::document::handler::FileHandler;
+use crate::app::actions::ToggleEditorMode;
 use crate::ui::DatalithView;
 use crate::ui::icons::DatalithIcon;
 use crate::vault::path::display_name;
@@ -52,27 +53,32 @@ impl DatalithView {
                 let can_toggle_mode = handler
                     .as_ref()
                     .is_some_and(|handler| handler.read(cx).can_toggle_mode());
+                let is_read_only = handler
+                    .as_ref()
+                    .is_some_and(|handler| handler.read(cx).is_read_only());
                 let is_editing = handler
                     .as_ref()
                     .is_some_and(|handler| handler.read(cx).is_editing());
                 let mut suffix = h_flex().gap_0().px_1();
-                if let Some(handler) = handler
-                    && can_toggle_mode
-                {
-                    let icon = if is_editing {
-                        Icon::new(IconName::Eye)
+                if can_toggle_mode {
+                    let (icon, label) = if is_editing {
+                        (Icon::new(IconName::Eye), "Switch tab to reading mode")
                     } else {
-                        Icon::new(DatalithIcon::Pen)
+                        (Icon::new(DatalithIcon::Pen), "Switch tab to editing mode")
                     };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
                             .ghost()
                             .xsmall()
                             .icon(icon)
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                handler.update(cx, FileHandler::toggle_editing);
-                            })),
+                            .accessibility_label(label)
+                            .tooltip(label)
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(ToggleEditorMode), cx);
+                            }),
                     );
+                } else if is_read_only {
+                    suffix = suffix.child(Tag::secondary().xsmall().child("Read only"));
                 }
                 suffix.child(
                     Button::new("new-tab")
@@ -104,8 +110,8 @@ impl DatalithView {
     fn render_workspace_tab(&self, index: usize, tab: &super::Tab, cx: &Context<Self>) -> Tab {
         let (name, icon): (SharedString, Icon) = match tab {
             super::Tab::Document(tab) => (
-                display_name(&tab.path).into(),
-                Icon::new(self.registry.config_for(&tab.path).icon),
+                tab.path.as_deref().map_or("Untitled", display_name).into(),
+                Icon::new(self.registry.config_for(tab.path.as_deref()).icon),
             ),
             super::Tab::Theme { editor, .. } => (
                 editor.read(cx).family_name(cx).into(),
@@ -117,17 +123,22 @@ impl DatalithView {
             .label(name.clone())
             .prefix(icon.size_3().ml_2())
             .suffix(
-                Button::new(("close-tab", tab.entity_id()))
-                    .icon(IconName::Close)
-                    .ghost()
-                    .xsmall()
-                    .mr_1()
-                    .accessibility_label(format!("Close {name}"))
-                    .tooltip(format!("Close {name}"))
-                    .on_click(cx.listener(move |view, _, window, cx| {
-                        cx.stop_propagation();
-                        view.close_tab(index, window, cx);
-                    })),
+                Button::new(match tab {
+                    super::Tab::Document(tab) => {
+                        ElementId::from(format!("close-tab-{}", tab.id.as_str()))
+                    }
+                    _ => ("close-tab", tab.entity_id()).into(),
+                })
+                .icon(IconName::Close)
+                .ghost()
+                .xsmall()
+                .mr_1()
+                .accessibility_label(format!("Close {name}"))
+                .tooltip(format!("Close {name}"))
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    cx.stop_propagation();
+                    view.close_tab(index, window, cx);
+                })),
             )
     }
 }

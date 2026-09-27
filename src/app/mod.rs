@@ -4,6 +4,7 @@ pub mod deeplink;
 pub mod docs;
 pub mod fonts;
 pub mod keymap;
+mod machine;
 pub mod menus;
 pub mod preferences;
 pub mod settings;
@@ -12,7 +13,9 @@ pub mod system;
 pub mod themes;
 pub mod update;
 pub mod version;
+pub mod workspace;
 
+#[cfg(not(test))]
 use std::path::PathBuf;
 
 pub use state::AppState;
@@ -23,10 +26,9 @@ pub fn init(cx: &mut gpui_kit::App) {
     update::init(cx);
 }
 
+#[cfg(not(test))]
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join(crate::channel::Channel::current().stem())
+    crate::channel::Channel::current().app_data_dir()
 }
 
 #[cfg(test)]

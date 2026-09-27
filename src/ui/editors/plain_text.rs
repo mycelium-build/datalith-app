@@ -17,7 +17,7 @@ pub fn reload_text(
     let Some(input) = handler.input().cloned() else {
         return Ok(ReloadOutcome::Unsupported);
     };
-    let content = std::fs::read_to_string(path)?;
+    let content = crate::vault::source::read_to_string(path)?;
     if input.read(cx).value().as_ref() == content {
         return Ok(ReloadOutcome::Unchanged);
     }
@@ -27,15 +27,16 @@ pub fn reload_text(
 
 pub struct PlainTextEditor {
     input: Entity<EditorState>,
+    read_only: bool,
 }
 
 impl PlainTextEditor {
-    pub const fn new(input: Entity<EditorState>) -> Self {
-        Self { input }
+    pub const fn new(input: Entity<EditorState>, read_only: bool) -> Self {
+        Self { input, read_only }
     }
 
     pub fn new_state(path: &Path, window: &mut Window, cx: &mut App) -> Entity<EditorState> {
-        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let content = crate::vault::source::read_to_string(path).unwrap_or_default();
         cx.new(|cx| {
             EditorState::new(window, cx)
                 .line_number(false)
@@ -52,7 +53,12 @@ impl PlainTextEditor {
     pub(crate) fn render(&self, _cx: &mut App) -> AnyElement {
         div()
             .flex_1()
-            .child(Editor::new(&self.input).h_full().appearance(false))
+            .child(
+                Editor::new(&self.input)
+                    .h_full()
+                    .appearance(false)
+                    .readonly(self.read_only),
+            )
             .into_any_element()
     }
 

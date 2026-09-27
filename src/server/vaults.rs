@@ -28,6 +28,8 @@ pub fn write_note(
     let vault = resolve_vault(vault_id, vaults)
         .ok_or_else(|| ApiError::not_found(format!("Unknown vault: {vault_id}")))?;
 
+    crate::vault::source::ensure_writable(&vault.path)
+        .map_err(|error| ApiError::forbidden(error.to_string()))?;
     let name = sanitize_name(name)?;
     let folder = sanitize_folder(folder)?;
 
@@ -53,7 +55,7 @@ pub fn write_note(
         format!("{name}.md")
     };
     let target = file_ops::unique_name(&directory, &file_name);
-    std::fs::write(&target, document)
+    file_ops::update(&target, &document)
         .map_err(|error| ApiError::internal(format!("Failed to write note: {error}")))?;
 
     let relative = target
@@ -142,6 +144,26 @@ fn sanitize_folder(raw: Option<&str>) -> Result<Option<PathBuf>, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_vault_rejects_api_writes_before_creating_folders() {
+        let path = crate::vault::source::DOCUMENTATION.root();
+        let vaults = [Vault {
+            name: "Documentation".into(),
+            path: path.clone(),
+        }];
+        let error = write_note(
+            &vaults,
+            &path.to_string_lossy(),
+            "Note",
+            Some("new-folder"),
+            &BTreeMap::new(),
+            "content",
+        )
+        .unwrap_err();
+        assert_eq!(error.status, 403);
+        assert!(!path.exists());
+    }
 
     #[test]
     fn names_reject_separators_and_traversal() {

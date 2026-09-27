@@ -45,6 +45,7 @@ fn open_note(cx: &mut TestAppContext, note: &Path) -> (WindowHandle<Root>, Entit
         SettingsView::init_theme_options(cx);
         crate::app::preferences::apply(cx);
         cx.set_global(crate::app::AppState::default());
+        crate::app::actions::register(cx);
     });
     let mut app = None;
     let handle = cx.open_window(size(px(1000.), px(800.)), |window, cx| {
@@ -75,6 +76,15 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
     std::fs::write(&note, "A paragraph in a long note.\n\n".repeat(100)).unwrap();
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, &note);
+    if mode == ViewMode::View {
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.click("toggle-mode", cx);
+        })
+        .unwrap();
+        // Mode changes now use the shared action, dispatched after this update.
+        cx.run_until_parked();
+    }
     cx.update_window(handle.into(), |_, window, cx| {
         let input = app
             .read(cx)
@@ -94,9 +104,6 @@ fn assert_settings_scroll_is_isolated(mode: ViewMode) {
             ViewMode::Edit => input.read(cx).scroll_offset().y,
         };
         window.render_frame(cx);
-        if mode == ViewMode::View {
-            window.click("toggle-mode", cx);
-        }
         let initial = note_position(window, cx);
         window.scroll(
             note_target.clone(),
@@ -430,6 +437,10 @@ fn manage_themes_from_the_keyboard_opens_the_theme_page() {
         for key in ["enter", "space"] {
             app.update(cx, |app, cx| {
                 app.settings.open();
+                app.settings.page_index = super::SETTINGS_PAGES
+                    .iter()
+                    .position(|page| *page == super::SettingsPage::Appearance)
+                    .unwrap();
                 app.settings.focus(window, cx);
                 cx.notify();
             });

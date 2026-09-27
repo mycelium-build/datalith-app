@@ -1,4 +1,4 @@
-use super::DatalithView;
+use super::{DatalithView, PendingOpen};
 use gpui_kit::component::{
     ActiveTheme, Icon, IconName, Root, Sizable, WindowExt,
     button::{Button, ButtonVariants as _},
@@ -12,6 +12,7 @@ use gpui_kit::{
 };
 
 use crate::app::keymap::display_binding;
+use crate::ui::icons::DatalithIcon;
 use crate::ui::monolith::monolith_mark;
 
 const SIDEBAR_WIDTH: f32 = 260.0;
@@ -41,7 +42,12 @@ impl Render for DatalithView {
         }
 
         for path in std::mem::take(&mut self.pending_external_updates) {
-            if let Some(handler) = self.tabs.handler_for_path(&path) {
+            let handlers = self
+                .tabs
+                .handlers_for_path(&path)
+                .cloned()
+                .collect::<Vec<_>>();
+            for handler in handlers {
                 handler.update(cx, |handler, cx| {
                     if let Err(error) = handler.reload_from_disk(&path, window, cx) {
                         eprintln!("Failed to reload {}: {error}", path.display());
@@ -61,9 +67,12 @@ impl Render for DatalithView {
         }
 
         if self.rename_target.is_none()
-            && let Some(path) = self.pending_open.take()
+            && let Some(pending_open) = self.pending_open.take()
         {
-            self.open_file(path, true, window, cx);
+            match pending_open {
+                PendingOpen::Open(path) => self.open_file(path, true, window, cx),
+                PendingOpen::Created(path) => self.open_created_file(path, window, cx),
+            }
         }
 
         if let Some(action) = self.pending_navigation.take() {
@@ -136,13 +145,19 @@ impl Render for DatalithView {
 }
 
 impl DatalithView {
+    fn render_empty_logo(cx: &Context<Self>) -> impl IntoElement {
+        div()
+            .opacity(0.24)
+            .child(monolith_mark(GLYPH_CELL, cx.theme().foreground).monochrome())
+    }
+
     fn render_empty_hint(cx: &Context<Self>, hint: &'static str) -> impl IntoElement {
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .gap_5()
-            .child(monolith_mark(GLYPH_CELL, cx.theme().primary.opacity(0.55)))
+            .child(Self::render_empty_logo(cx))
             .child(div().text_color(cx.theme().muted_foreground).child(hint))
     }
 
@@ -152,30 +167,63 @@ impl DatalithView {
             .size_full()
             .items_center()
             .justify_center()
-            .gap_5()
+            .gap_10()
             .child(
-                Icon::new(IconName::Plus)
-                    .size_8()
-                    .text_color(cx.theme().primary.opacity(0.55)),
+                v_flex()
+                    .items_center()
+                    .gap_4()
+                    .child(Self::render_empty_logo(cx))
+                    .child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Start writing"),
+                    ),
             )
             .child(
-                div()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Start writing"),
-            )
-            .child(
-                h_flex()
-                    .gap_3()
-                    .child(Self::quick_create_button("note", "New note", "md", cx))
-                    .child(Self::quick_create_button("todo", "New todo", "todotxt", cx))
-                    .child(Self::quick_create_button("graph", "New graph", "graph", cx))
-                    .child(Self::quick_create_button("base", "New base", "base", cx)),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground.opacity(0.7))
-                    .child(quick_start_shortcuts()),
+                v_flex()
+                    .items_center()
+                    .gap_6()
+                    .child(
+                        v_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::Plus)
+                                    .size_5()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .child(Self::quick_create_button(
+                                        "note",
+                                        "New note",
+                                        "md",
+                                        DatalithIcon::Note,
+                                        cx,
+                                    ))
+                                    .child(Self::quick_create_button(
+                                        "todo",
+                                        "New todo",
+                                        "todotxt",
+                                        DatalithIcon::Todo,
+                                        cx,
+                                    ))
+                                    .child(Self::quick_create_button(
+                                        "base",
+                                        "New base",
+                                        "base",
+                                        DatalithIcon::Base,
+                                        cx,
+                                    )),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground.opacity(0.7))
+                            .child(quick_start_shortcuts()),
+                    ),
             )
     }
 
@@ -183,11 +231,13 @@ impl DatalithView {
         id: &'static str,
         label: &'static str,
         extension: &'static str,
+        icon: DatalithIcon,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         Button::new(id)
             .ghost()
             .small()
+            .icon(Icon::new(icon))
             .label(label)
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.create_quick_file(extension, cx);
@@ -195,11 +245,19 @@ impl DatalithView {
     }
 
     fn render_editor(&self, cx: &Context<Self>) -> impl IntoElement {
+        let read_only = self
+            .root_path
+            .as_deref()
+            .is_some_and(crate::vault::source::is_read_only);
         if self.tabs.is_empty() {
-            return if self.root_path.is_some() {
-                Self::render_quick_start(cx).into_any_element()
+            return if self.root_path.is_none() {
+                Self::render_empty_hint(cx, "Select a folder from the vault selector")
+                    .into_any_element()
+            } else if read_only {
+                Self::render_empty_hint(cx, "Open a personal vault to create notes")
+                    .into_any_element()
             } else {
-                Self::render_empty_hint(cx, "Select a folder from the menu bar").into_any_element()
+                Self::render_quick_start(cx).into_any_element()
             };
         }
 
@@ -207,8 +265,13 @@ impl DatalithView {
             return div().size_full().into_any_element();
         };
         let content = match active_tab {
-            super::tabs::Tab::Document(tab) if tab.path().as_os_str().is_empty() => {
-                Self::render_quick_start(cx).into_any_element()
+            super::tabs::Tab::Document(tab) if tab.path().is_none() => {
+                if read_only {
+                    Self::render_empty_hint(cx, "Open a personal vault to create notes")
+                        .into_any_element()
+                } else {
+                    Self::render_quick_start(cx).into_any_element()
+                }
             }
             super::tabs::Tab::Document(tab) => tab.handler().clone().into_any_element(),
             super::tabs::Tab::Theme { editor, .. } => editor.clone().into_any_element(),

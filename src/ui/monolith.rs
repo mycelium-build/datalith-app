@@ -104,11 +104,23 @@ pub struct MonolithMark {
     logo: LogoGrid,
     cell: f32,
     color: Hsla,
+    monochrome: bool,
 }
 
 impl MonolithMark {
     pub const fn new(logo: LogoGrid, cell: f32, color: Hsla) -> Self {
-        Self { logo, cell, color }
+        Self {
+            logo,
+            cell,
+            color,
+            monochrome: false,
+        }
+    }
+
+    /// Use one ink color with translucent faces and distinct inscriptions.
+    pub(crate) const fn monochrome(mut self) -> Self {
+        self.monochrome = true;
+        self
     }
 }
 
@@ -172,7 +184,17 @@ impl Element for MonolithMark {
         let origin_x = bounds.origin.x.as_f32();
         let origin_y = bounds.origin.y.as_f32();
         for cell in &self.logo.cells {
-            let color = tier_color(cell.tier, self.color);
+            let color = if self.monochrome {
+                self.color.opacity(match cell.tier {
+                    Tier::Light => 0.65,
+                    Tier::RightSide => 0.25,
+                    Tier::LeftSide => 0.4,
+                    Tier::Inscription => 1.0,
+                    Tier::Top => 0.45,
+                })
+            } else {
+                tier_color(cell.tier, self.color)
+            };
             let x = cell.col.mul_add(self.cell, origin_x);
             let y = cell.row.mul_add(self.cell, origin_y);
             let cell_bounds = Bounds::new(point(px(x), px(y)), size(px(self.cell), px(self.cell)));

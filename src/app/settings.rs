@@ -1,11 +1,14 @@
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+#[cfg(not(test))]
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result, bail};
 use gpui_kit::WindowAppearance;
 use serde::{Deserialize, Serialize};
+
+use crate::document::handler::ViewMode;
 
 const CURRENT_SCHEMA_VERSION: u32 = 3;
 const MAX_RECENT_VAULTS: usize = 10;
@@ -210,12 +213,14 @@ impl FontSettings {
 pub struct ApplicationSettings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
+    pub onboarding_complete: bool,
     pub theme_preference: ThemePreference,
     pub light_theme_name: Option<String>,
     pub dark_theme_name: Option<String>,
     pub font_scale: f64,
     pub server: ServerSettings,
     pub automatic_updates: bool,
+    pub(crate) open_new_tab_mode: ViewMode,
 }
 
 impl Default for ApplicationSettings {
@@ -223,13 +228,22 @@ impl Default for ApplicationSettings {
         Self {
             last_vault: None,
             recent_vaults: Vec::new(),
+            onboarding_complete: false,
             theme_preference: ThemePreference::default(),
             light_theme_name: None,
             dark_theme_name: None,
             font_scale: DEFAULT_FONT_SCALE,
             server: ServerSettings::default(),
             automatic_updates: true,
+            open_new_tab_mode: ViewMode::Edit,
         }
+    }
+}
+
+impl ApplicationSettings {
+    /// The mode applied to existing documents opened in a new tab.
+    pub const fn open_new_tab_mode(&self) -> ViewMode {
+        self.open_new_tab_mode
     }
 }
 
@@ -252,6 +266,8 @@ struct StoredSettings {
     #[serde(default)]
     recent_vaults: Vec<String>,
     #[serde(default)]
+    onboarding_complete: bool,
+    #[serde(default)]
     theme_preference: Option<String>,
     #[serde(default)]
     light_theme_name: Option<String>,
@@ -263,6 +279,8 @@ struct StoredSettings {
     server: StoredServerSettings,
     #[serde(default)]
     automatic_updates: Option<bool>,
+    #[serde(default)]
+    open_new_tab_mode: Option<String>,
 }
 
 const fn schema_version() -> u32 {
@@ -271,9 +289,15 @@ const fn schema_version() -> u32 {
 
 impl StoredSettings {
     fn normalized(self) -> ApplicationSettings {
+        // A remembered vault means this install is upgrading, not first-run.
+        // `onboarding_complete` is missing from older config files.
+        let onboarding_complete = self.onboarding_complete || self.last_vault.is_some();
         let mut recent_vaults = Vec::new();
         for path in self.recent_vaults.into_iter().map(PathBuf::from) {
-            if path.is_dir() && !recent_vaults.contains(&path) {
+            if crate::vault::source::is_dir(&path)
+                && !crate::vault::source::is_read_only(&path)
+                && !recent_vaults.contains(&path)
+            {
                 recent_vaults.push(path);
             }
             if recent_vaults.len() == MAX_RECENT_VAULTS {
@@ -285,8 +309,9 @@ impl StoredSettings {
             last_vault: self
                 .last_vault
                 .map(PathBuf::from)
-                .filter(|path| path.is_dir()),
+                .filter(|path| crate::vault::source::is_dir(path)),
             recent_vaults,
+            onboarding_complete,
             theme_preference: match self.theme_preference.as_deref() {
                 Some("light") => ThemePreference::Light,
                 Some("dark") => ThemePreference::Dark,
@@ -301,6 +326,10 @@ impl StoredSettings {
                 self.server.token,
             ),
             automatic_updates: self.automatic_updates.unwrap_or(true),
+            open_new_tab_mode: match self.open_new_tab_mode.as_deref() {
+                Some("view") => ViewMode::View,
+                _ => ViewMode::Edit,
+            },
         }
     }
 
@@ -316,6 +345,7 @@ impl StoredSettings {
                 .iter()
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect(),
+            onboarding_complete: settings.onboarding_complete,
             theme_preference: Some(settings.theme_preference.name().to_owned()),
             light_theme_name: settings.light_theme_name.clone(),
             dark_theme_name: settings.dark_theme_name.clone(),
@@ -326,6 +356,13 @@ impl StoredSettings {
                 token: settings.server.token.clone(),
             },
             automatic_updates: Some(settings.automatic_updates),
+            open_new_tab_mode: Some(
+                match settings.open_new_tab_mode {
+                    ViewMode::Edit => "edit",
+                    ViewMode::View => "view",
+                }
+                .to_owned(),
+            ),
         }
     }
 }
@@ -365,12 +402,15 @@ impl SettingsStore {
             .clone()
     }
 
+    /// Apply a preference change.
+    /// The change remains effective for this run even when persistence fails;
+    /// only the write result is returned.
     fn update(&mut self, update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
         let mut next = self.snapshot();
         update(&mut next);
-        self.persist(&next)?;
+        let result = self.persist(&next);
         self.cached = Some(next);
-        Ok(())
+        result
     }
 
     fn persist(&self, settings: &ApplicationSettings) -> Result<()> {
@@ -404,41 +444,76 @@ fn settings_file() -> PathBuf {
     super::data_dir().join("config.json")
 }
 
-#[cfg(test)]
-fn settings_file() -> PathBuf {
-    // UI integration tests must never read or overwrite personal preferences.
-    std::env::temp_dir()
-        .join(format!("datalith-test-settings-{}", std::process::id()))
-        .join("config.json")
-}
-
+#[cfg(not(test))]
 static SETTINGS: LazyLock<Mutex<SettingsStore>> =
     LazyLock::new(|| Mutex::new(SettingsStore::new(settings_file())));
 
-fn settings_lock() -> std::sync::MutexGuard<'static, SettingsStore> {
+#[cfg(not(test))]
+fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     // Return the value anyway even if maybe poisoned (mid updating)
-    SETTINGS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    read(
+        &mut SETTINGS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+// UI tests exercise the real settings API without sharing preferences or touching user data.
+#[cfg(test)]
+thread_local! {
+    static TEST_SETTINGS: std::cell::RefCell<SettingsStore> = std::cell::RefCell::new(
+        SettingsStore::new(tests::temp_settings_file("ui"))
+    );
+}
+
+#[cfg(test)]
+fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
+    TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
 }
 
 #[must_use]
 pub fn snapshot() -> ApplicationSettings {
-    settings_lock().snapshot()
+    with_store(SettingsStore::snapshot)
+}
+
+fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
+    with_store(|store| store.update(update))
+}
+
+/// Set the mode for existing documents opened in a new tab.
+pub fn set_open_new_tab_mode(mode: ViewMode) -> Result<()> {
+    update(|settings| settings.open_new_tab_mode = mode)
 }
 
 pub fn record_opened_vault(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
-    settings_lock().update(|settings| {
+    let personal = !crate::vault::source::is_read_only(&path);
+    update(|settings| {
         settings.last_vault = Some(path.clone());
+        settings.onboarding_complete = true;
+        if personal {
+            settings.recent_vaults.retain(|recent| recent != &path);
+            settings.recent_vaults.insert(0, path);
+            settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+        } else {
+            settings.recent_vaults.retain(|recent| recent != &path);
+        }
+    })
+}
+
+/// Forget a personal vault without deleting its folder or saved workspace.
+pub fn remove_recent_vault(path: &Path) -> Result<()> {
+    let path = path.to_path_buf();
+    update(|settings| {
         settings.recent_vaults.retain(|recent| recent != &path);
-        settings.recent_vaults.insert(0, path);
-        settings.recent_vaults.truncate(MAX_RECENT_VAULTS);
+        if settings.last_vault.as_ref() == Some(&path) {
+            settings.last_vault = None;
+        }
     })
 }
 
 pub fn set_automatic_updates(enabled: bool) -> Result<()> {
-    settings_lock().update(|settings| settings.automatic_updates = enabled)
+    update(|settings| settings.automatic_updates = enabled)
 }
 
 /// Vault folders Datalith knows about, last used first:
@@ -456,12 +531,14 @@ pub fn known_vault_paths() -> Vec<PathBuf> {
             paths.push(recent.clone());
         }
     }
-    paths.retain(|path| path.is_dir());
+    paths.retain(|path| {
+        crate::vault::source::is_dir(path) && !crate::vault::source::is_read_only(path)
+    });
     paths
 }
 
 pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
-    settings_lock().update(|settings| settings.theme_preference = preference)
+    update(|settings| settings.theme_preference = preference)
 }
 
 /// Persist both current references in one settings update. A test library may
@@ -472,7 +549,7 @@ pub fn replace_theme_slots(file: Option<&Path>, light: &str, dark: &str) -> Resu
         settings.dark_theme_name = Some(dark.to_owned());
     };
     file.map_or_else(
-        || settings_lock().update(update),
+        || with_store(|store| store.update(update)),
         |path| SettingsStore::new(path.to_path_buf()).update(update),
     )
 }
@@ -481,32 +558,32 @@ pub fn set_font_scale(scale: f64) -> Result<()> {
     if !scale.is_finite() || !(MIN_FONT_SCALE..=MAX_FONT_SCALE).contains(&scale) {
         bail!("Font scale must be between {MIN_FONT_SCALE} and {MAX_FONT_SCALE}");
     }
-    settings_lock().update(|settings| settings.font_scale = scale)
+    update(|settings| settings.font_scale = scale)
 }
 
 pub fn set_server_enabled(enabled: bool) -> Result<()> {
-    settings_lock().update(|settings| settings.server.enabled = enabled)
+    update(|settings| settings.server.enabled = enabled)
 }
 
 pub fn set_server_port(port: u16) -> Result<()> {
     if port == 0 {
         bail!("Server port must be between 1 and 65535");
     }
-    settings_lock().update(|settings| settings.server.port = port)
+    update(|settings| settings.server.port = port)
 }
 
 pub fn set_server_token(token: Option<String>) -> Result<()> {
     let token = token
         .map(|token| token.trim().to_owned())
         .filter(|token| !token.is_empty());
-    settings_lock().update(move |settings| settings.server.token = token)
+    update(move |settings| settings.server.token = token)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn temp_settings_file(test_name: &str) -> PathBuf {
+    pub(super) fn temp_settings_file(test_name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "datalith-settings-{test_name}-{}-{}.json",
             std::process::id(),
@@ -548,6 +625,39 @@ mod tests {
             .unwrap();
         assert!(!fs::read_to_string(&file).unwrap().contains("fonts"));
         let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn preference_changes_remain_effective_when_settings_cannot_be_written() {
+        let file = with_store(|store| store.file.clone());
+        fs::create_dir(&file).unwrap();
+        let mode_result = set_open_new_tab_mode(ViewMode::View);
+        let theme_result = set_theme_preference(ThemePreference::Dark);
+        fs::remove_dir(&file).unwrap();
+
+        assert!(mode_result.is_err());
+        assert!(theme_result.is_err());
+        let settings = snapshot();
+        assert_eq!(settings.open_new_tab_mode(), ViewMode::View);
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
+    }
+
+    #[test]
+    fn new_tab_mode_defaults_to_edit_and_preserves_saved_reading_choice() {
+        assert_eq!(
+            ApplicationSettings::default().open_new_tab_mode(),
+            ViewMode::Edit
+        );
+
+        let missing_preference = StoredSettings::default().normalized();
+        assert_eq!(missing_preference.open_new_tab_mode(), ViewMode::Edit);
+
+        let reading_preference: StoredSettings =
+            serde_json::from_str(r#"{"open_new_tab_mode":"view"}"#).unwrap();
+        assert_eq!(
+            reading_preference.normalized().open_new_tab_mode(),
+            ViewMode::View
+        );
     }
 
     #[test]
@@ -761,6 +871,66 @@ mod tests {
         assert_eq!(reloaded.recent_vaults, vec![directory.clone()]);
         assert_eq!(reloaded.theme_preference, ThemePreference::Dark);
         let _ = fs::remove_file(file);
+        let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn embedded_vault_stays_as_last_vault_but_is_not_a_personal_recent() {
+        let docs = crate::vault::source::DOCUMENTATION.root();
+        let personal = std::env::temp_dir().join(format!(
+            "datalith-personal-vault-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        fs::create_dir_all(&personal).unwrap();
+
+        let normalized = StoredSettings {
+            last_vault: Some(docs.to_string_lossy().into_owned()),
+            recent_vaults: vec![
+                docs.to_string_lossy().into_owned(),
+                personal.to_string_lossy().into_owned(),
+            ],
+            onboarding_complete: true,
+            ..StoredSettings::default()
+        }
+        .normalized();
+
+        assert_eq!(normalized.last_vault, Some(docs));
+        assert_eq!(normalized.recent_vaults, vec![personal.clone()]);
+        assert!(normalized.onboarding_complete);
+        let _ = fs::remove_dir(personal);
+    }
+
+    #[test]
+    fn remembered_vault_marks_onboarding_complete_when_the_flag_is_missing() {
+        let directory = std::env::temp_dir().join(format!(
+            "datalith-upgrade-vault-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        fs::create_dir_all(&directory).unwrap();
+
+        let stored: StoredSettings =
+            serde_json::from_value(serde_json::json!({"last_vault": directory})).unwrap();
+        let normalized = stored.normalized();
+        assert!(normalized.onboarding_complete);
+        assert_eq!(normalized.last_vault, Some(directory.clone()));
+
+        let vanished: StoredSettings =
+            serde_json::from_str(r#"{"last_vault":"/gone/vault"}"#).unwrap();
+        let normalized = vanished.normalized();
+        assert!(normalized.onboarding_complete);
+        assert_eq!(normalized.last_vault, None);
+
+        let first_run: StoredSettings = serde_json::from_str(r"{}").unwrap();
+        assert!(!first_run.normalized().onboarding_complete);
+
         let _ = fs::remove_dir(directory);
     }
 }

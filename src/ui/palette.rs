@@ -142,7 +142,7 @@ impl Palette {
                                 return div().into_any_element();
                             };
                             let file_name = display_name(r).to_string();
-                            let file_icon = view.registry.config_for(r).icon;
+                            let file_icon = view.registry.config_for(Some(r.as_path())).icon;
                             let bg = if Some(i) == selected_idx {
                                 cx.theme().muted
                             } else {
@@ -180,7 +180,7 @@ impl Palette {
                             };
                             let path = entry.path.clone();
                             let name = entry.name.clone();
-                            let file_icon = view.registry.config_for(&path).icon;
+                            let file_icon = view.registry.config_for(Some(&path)).icon;
                             let open_label = if entry.open {
                                 Some(
                                     div()
