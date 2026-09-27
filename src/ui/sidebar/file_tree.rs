@@ -138,7 +138,7 @@ impl DatalithView {
                 IconName::Folder
             })
         } else {
-            Icon::new(this.registry.config_for(path).icon)
+            Icon::new(this.registry.config_for(Some(path)).icon)
         };
 
         let mut list_item = ListItem::new(ix).selected(selected).pl(px(depth

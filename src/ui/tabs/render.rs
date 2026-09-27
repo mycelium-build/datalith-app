@@ -106,8 +106,14 @@ impl DatalithView {
             )
     }
 
-    fn render_tab(&self, index: usize, identity: &str, path: &Path, cx: &Context<Self>) -> Tab {
-        let display_name = display_name(path);
+    fn render_tab(
+        &self,
+        index: usize,
+        identity: &str,
+        path: Option<&Path>,
+        cx: &Context<Self>,
+    ) -> Tab {
+        let display_name = path.map_or("Untitled", display_name);
         let close_label = format!("Close {display_name}");
         Tab::new()
             .label(SharedString::from(display_name))

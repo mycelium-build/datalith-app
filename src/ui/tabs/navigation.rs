@@ -193,7 +193,7 @@ impl DatalithView {
         );
         let tab = Tab {
             id: tab_id,
-            path,
+            path: Some(path),
             handler,
             _input_subscription: input_subscription,
             _event_subscription: Some(event_subscription),
@@ -234,7 +234,7 @@ impl DatalithView {
         self.tabs.insert(
             Tab {
                 id,
-                path: PathBuf::new(),
+                path: None,
                 handler,
                 _input_subscription: None,
                 _event_subscription: None,
@@ -282,7 +282,7 @@ impl DatalithView {
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, tab)| tab.path.starts_with(root))
+            .filter(|(_, tab)| tab.path.as_ref().is_some_and(|path| path.starts_with(root)))
             .map(|(index, _)| index)
             .collect();
         for index in indices.into_iter().rev() {

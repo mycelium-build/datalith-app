@@ -267,14 +267,22 @@ impl DatalithView {
                                             changed_paths.extend(
                                                 view.tabs
                                                     .iter()
-                                                    .filter(|(_, path, _)| path.starts_with(&root))
-                                                    .map(|(_, path, _)| path.to_path_buf()),
+                                                    .filter(|(_, path, _)| {
+                                                        path.is_some_and(|path| {
+                                                            path.starts_with(&root)
+                                                        })
+                                                    })
+                                                    .filter_map(|(_, path, _)| {
+                                                        path.map(Path::to_path_buf)
+                                                    }),
                                             );
                                         }
                                         let handlers = view
                                             .tabs
                                             .iter()
-                                            .filter(|(_, tab_path, _)| tab_path.starts_with(&root))
+                                            .filter(|(_, tab_path, _)| {
+                                                tab_path.is_some_and(|path| path.starts_with(&root))
+                                            })
                                             .map(|(_, _, handler)| handler.clone())
                                             .collect::<Vec<_>>();
                                         for handler in handlers {

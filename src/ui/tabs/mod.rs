@@ -13,7 +13,7 @@ use crate::vault::file_ops;
 
 pub struct Tab {
     id: TabId,
-    path: PathBuf,
+    path: Option<PathBuf>,
     handler: Entity<FileHandler>,
     _input_subscription: Option<Subscription>,
     _event_subscription: Option<Subscription>,
@@ -48,9 +48,7 @@ impl Tabs {
     }
 
     pub(crate) fn active_path(&self) -> Option<&Path> {
-        self.active()
-            .map(|tab| tab.path.as_path())
-            .filter(|path| !path.as_os_str().is_empty())
+        self.active().and_then(|tab| tab.path.as_deref())
     }
 
     pub(crate) fn active_handler(&self) -> Option<&Entity<FileHandler>> {
@@ -67,28 +65,34 @@ impl Tabs {
     ) -> impl Iterator<Item = &Entity<FileHandler>> {
         self.entries
             .iter()
-            .filter(move |tab| same_document(&tab.path, path))
+            .filter(move |tab| same_document(tab.path.as_deref(), Some(path)))
             .map(|tab| &tab.handler)
     }
 
+    /// Paths of tabs that hold a document. Empty tabs are omitted.
     pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
-        self.entries.iter().map(|tab| tab.path.clone()).collect()
+        self.entries
+            .iter()
+            .filter_map(|tab| tab.path.clone())
+            .collect()
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (usize, &Path, &Entity<FileHandler>)> {
+    pub(crate) fn iter(
+        &self,
+    ) -> impl Iterator<Item = (usize, Option<&Path>, &Entity<FileHandler>)> {
         self.entries
             .iter()
             .enumerate()
-            .map(|(index, tab)| (index, tab.path.as_path(), &tab.handler))
+            .map(|(index, tab)| (index, tab.path.as_deref(), &tab.handler))
     }
 
     pub(crate) fn iter_with_id(
         &self,
-    ) -> impl Iterator<Item = (usize, &TabId, &Path, &Entity<FileHandler>)> {
+    ) -> impl Iterator<Item = (usize, &TabId, Option<&Path>, &Entity<FileHandler>)> {
         self.entries
             .iter()
             .enumerate()
-            .map(|(index, tab)| (index, &tab.id, tab.path.as_path(), &tab.handler))
+            .map(|(index, tab)| (index, &tab.id, tab.path.as_deref(), &tab.handler))
     }
 
     pub(crate) fn snapshot(&self, cx: &gpui_kit::App) -> (Vec<WorkspaceTab>, Option<TabId>) {
@@ -98,7 +102,7 @@ impl Tabs {
             .map(|tab| {
                 WorkspaceTab::new(
                     tab.id.clone(),
-                    (!tab.path.as_os_str().is_empty()).then(|| tab.path.clone()),
+                    tab.path.clone(),
                     tab.handler.read(cx).mode(),
                 )
             })
@@ -124,21 +128,18 @@ impl Tabs {
     }
 
     fn find_path(&self, path: &Path) -> Option<usize> {
-        if path.as_os_str().is_empty() {
-            return None;
-        }
         let active = self.active_index();
         if let Some(index) = active
             && self
                 .entries
                 .get(index)
-                .is_some_and(|tab| same_document(&tab.path, path))
+                .is_some_and(|tab| same_document(tab.path.as_deref(), Some(path)))
         {
             return Some(index);
         }
         self.entries
             .iter()
-            .position(|tab| same_document(&tab.path, path))
+            .position(|tab| same_document(tab.path.as_deref(), Some(path)))
     }
 
     pub(crate) fn select_by_id(&mut self, id: &TabId) -> bool {
@@ -178,8 +179,10 @@ impl Tabs {
 
     pub(crate) fn rename_path(&mut self, old_path: &Path, new_path: &Path) {
         for tab in &mut self.entries {
-            if let Ok(suffix) = tab.path.strip_prefix(old_path) {
-                tab.path = new_path.join(suffix);
+            if let Some(path) = &mut tab.path
+                && let Ok(suffix) = path.strip_prefix(old_path)
+            {
+                *path = new_path.join(suffix);
             }
             for history_path in &mut tab.history {
                 if let Ok(suffix) = history_path.strip_prefix(old_path) {
@@ -206,8 +209,8 @@ impl Tab {
         &self.id
     }
 
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
+    pub(crate) fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 
     pub(crate) const fn handler(&self) -> &Entity<FileHandler> {
@@ -215,11 +218,13 @@ impl Tab {
     }
 }
 
-fn same_document(left: &Path, right: &Path) -> bool {
-    if left.as_os_str().is_empty() || right.as_os_str().is_empty() {
-        return false;
+fn same_document(left: Option<&Path>, right: Option<&Path>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            file_ops::normalized_path(left) == file_ops::normalized_path(right)
+        }
+        _ => false,
     }
-    file_ops::normalized_path(left) == file_ops::normalized_path(right)
 }
 
 #[cfg(test)]
@@ -237,15 +242,17 @@ mod tests {
     #[test]
     fn document_identity_uses_normalized_paths_and_excludes_empty_tabs() {
         assert!(same_document(
-            Path::new("./notes/../notes/today.md"),
-            Path::new("notes/today.md")
+            Some(Path::new("./notes/../notes/today.md")),
+            Some(Path::new("notes/today.md"))
         ));
-        assert!(!same_document(Path::new(""), Path::new("notes/today.md")));
+        assert!(!same_document(None, Some(Path::new("notes/today.md"))));
+        assert!(!same_document(Some(Path::new("notes/today.md")), None));
+        assert!(!same_document(None, None));
 
         let embedded = crate::vault::source::DOCUMENTATION.root();
         assert!(same_document(
-            &embedded.join("examples/../Welcome.md"),
-            &embedded.join("Welcome.md")
+            Some(&embedded.join("examples/../Welcome.md")),
+            Some(&embedded.join("Welcome.md"))
         ));
     }
 }

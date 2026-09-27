@@ -243,18 +243,26 @@ impl DatalithView {
     }
 
     fn render_editor(&self, cx: &Context<Self>) -> impl IntoElement {
+        let read_only = self
+            .root_path
+            .as_deref()
+            .is_some_and(crate::vault::source::is_read_only);
         if self.tabs.is_empty() {
-            return if self.root_path.is_some() {
-                Self::render_quick_start(cx).into_any_element()
+            return if self.root_path.is_none() {
+                Self::render_empty_hint(cx, "Select a folder from the vault selector")
+                    .into_any_element()
+            } else if read_only {
+                Self::render_empty_hint(cx, "Open a personal vault to create notes")
+                    .into_any_element()
             } else {
-                Self::render_empty_hint(cx, "Select a folder from the menu bar").into_any_element()
+                Self::render_quick_start(cx).into_any_element()
             };
         }
 
         let Some(active_tab) = self.tabs.active() else {
             return div().size_full().into_any_element();
         };
-        let is_empty = active_tab.path().as_os_str().is_empty();
+        let is_empty = active_tab.path().is_none();
 
         v_flex()
             .size_full()
@@ -262,7 +270,12 @@ impl DatalithView {
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
             .child(if is_empty {
-                Self::render_quick_start(cx).into_any_element()
+                if read_only {
+                    Self::render_empty_hint(cx, "Open a personal vault to create notes")
+                        .into_any_element()
+                } else {
+                    Self::render_quick_start(cx).into_any_element()
+                }
             } else {
                 div()
                     .flex_1()

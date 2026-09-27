@@ -267,6 +267,7 @@ mod tests {
         let (handle, view) = open(&mut cx, &first.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
+                view.open_file(first.0.join("Welcome.md"), true, window, cx);
                 view.open_file(first.0.join("Basics.md"), true, window, cx);
             });
         })
@@ -330,6 +331,7 @@ mod tests {
         let (handle, view) = open(&mut cx, &vault.0, true);
         cx.update_window(handle.into(), |_, window, cx| {
             view.update(cx, |view, cx| {
+                view.open_file(vault.0.join("Welcome.md"), true, window, cx);
                 view.open_file(vault.0.join("Basics.md"), true, window, cx);
             });
             window.render_frame(cx);
@@ -348,8 +350,15 @@ mod tests {
         std::fs::write(&c_note, "# C\n").unwrap();
 
         let mut cx = app();
-        settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
+        settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let (handle, view) = open(&mut cx, &vault.0, true);
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_file(vault.0.join("Welcome.md"), false, window, cx);
+            });
+        })
+        .unwrap();
+        settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
         let first_id = cx.update(|cx| view.read(cx).tabs.active_tab_id().unwrap().clone());
         assert_modes(&cx, &view, &[ViewMode::View]);
 
@@ -421,6 +430,12 @@ mod tests {
         std::fs::write(newer.0.join("Basics.md"), "# Basics\n").unwrap();
         let mut cx = app();
         let (handle, view) = open(&mut cx, &current.0, true);
+        cx.update_window(handle.into(), |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_file(current.0.join("Welcome.md"), false, window, cx);
+            });
+        })
+        .unwrap();
         let machine_id = crate::app::workspace::machine_id().unwrap();
         let channel = crate::channel::Channel::current();
         let workspace_dir = channel.workspace_dir(&current.0).unwrap();

@@ -85,8 +85,8 @@ impl FileRegistry {
         self.configs.insert(extension.to_lowercase(), config);
     }
 
-    pub(crate) fn config_for(&self, path: &Path) -> &FileTypeConfig {
-        path.extension()
+    pub(crate) fn config_for(&self, path: Option<&Path>) -> &FileTypeConfig {
+        path.and_then(Path::extension)
             .and_then(|e| e.to_str())
             .and_then(|ext| self.configs.get(&ext.to_lowercase()))
             .unwrap_or(&self.fallback)
@@ -114,7 +114,7 @@ impl FileRegistry {
         window: &mut Window,
         cx: &mut Context<FileHandler>,
     ) -> FileHandler {
-        let config = self.config_for(path);
+        let config = self.config_for(Some(path));
         let read_only = crate::vault::source::is_read_only(path);
         let editor = config
             .editor_factory
