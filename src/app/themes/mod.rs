@@ -1010,7 +1010,7 @@ impl ThemeLibrary {
         storage::write(to, &family.set())
     }
     pub fn import(&mut self, from: &Path, policy: ImportPolicy) -> Result<u64> {
-        let mut set = storage::read(from, &self.defaults)?;
+        let mut set = storage::read(from)?;
         let existing = self
             .families
             .iter()
@@ -1273,9 +1273,8 @@ fn resolve(
         })
         .collect();
     let mut defined_colors: std::collections::BTreeSet<_> = colors.keys().cloned().collect();
-    // GPUI resolves omitted colors from the variant's mode-specific fallback.
-    // Expose those *effective* values to the editor as well: Reset must show
-    // Datalith Light for light variants and Datalith Dark for dark variants.
+    // Resolve every editor row to the effective GPUI value, while keeping
+    // `defined_colors` limited to colors that the variant actually sets.
     if let Ok(serde_json::Value::Object(effective)) = serde_json::to_value(theme.colors)
         && let Ok(configured) = resolved.colors()
     {
@@ -1302,6 +1301,11 @@ fn resolve(
             }
         }
     }
+    let explicit_highlight = document
+        .config
+        .highlight
+        .as_ref()
+        .and_then(|highlight| serde_json::to_value(highlight).ok());
     if let Some(highlight) = &resolved.config.highlight
         && let Ok(serde_json::Value::Object(values)) = serde_json::to_value(highlight)
     {
@@ -1312,7 +1316,16 @@ fn resolve(
                         if let Some(value) = style.get("color").and_then(serde_json::Value::as_str)
                             && let Ok(color) = gpui_kit::component::try_parse_color(value)
                         {
-                            defined_colors.insert(format!("highlight:syntax.{name}"));
+                            if explicit_highlight
+                                .as_ref()
+                                .and_then(|highlight| highlight.get("syntax"))
+                                .and_then(|styles| styles.get(name))
+                                .and_then(|style| style.get("color"))
+                                .and_then(serde_json::Value::as_str)
+                                .is_some()
+                            {
+                                defined_colors.insert(format!("highlight:syntax.{name}"));
+                            }
                             colors.insert(format!("highlight:syntax.{name}"), color);
                         }
                     }
@@ -1320,7 +1333,14 @@ fn resolve(
             } else if let Some(value) = value.as_str()
                 && let Ok(color) = gpui_kit::component::try_parse_color(value)
             {
-                defined_colors.insert(format!("highlight:{key}"));
+                if explicit_highlight
+                    .as_ref()
+                    .and_then(|highlight| highlight.get(&key))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+                {
+                    defined_colors.insert(format!("highlight:{key}"));
+                }
                 colors.insert(format!("highlight:{key}"), color);
             }
         }
@@ -1341,13 +1361,46 @@ fn merged_document(document: &ThemeDocument, defaults: &[ThemeDocument; 2]) -> T
         ThemeMode::Light => light,
         ThemeMode::Dark => dark,
     };
+    let explicit_colors = document.config.colors.clone();
+    let explicit_highlight = document.config.highlight.clone();
     let mut merged = serde_json::to_value(default).unwrap_or_default();
     if let Ok(value) = serde_json::to_value(document) {
         let mut value = value;
         storage::merge_missing(&mut value, &merged);
         merged = value;
     }
-    serde_json::from_value(merged).unwrap_or_else(|_| default.clone())
+    let mut merged: ThemeDocument =
+        serde_json::from_value(merged).unwrap_or_else(|_| default.clone());
+
+    // Datalith supplies inherited presentation settings and font roles, but
+    // colors are sparse overrides: GPUI owns their mode-aware fallback graph.
+    merged.config.colors = explicit_colors;
+
+    // Keep explicit syntax colors and styles, filling the rest from GPUI's
+    // built-in mode-specific highlight theme instead of Datalith's palette.
+    let default_highlight = gpui_highlight_fallback(document.mode());
+    let mut highlight = explicit_highlight
+        .as_ref()
+        .and_then(|highlight| serde_json::to_value(highlight).ok())
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    if let Ok(default_highlight) = serde_json::to_value(&default_highlight) {
+        storage::merge_missing(&mut highlight, &default_highlight);
+    }
+    merged.config.highlight = serde_json::from_value(highlight)
+        .ok()
+        .or(Some(default_highlight));
+    merged
+}
+
+fn gpui_highlight_fallback(
+    mode: ThemeMode,
+) -> gpui_kit::component::highlighter::HighlightThemeStyle {
+    let theme = if mode == ThemeMode::Dark {
+        gpui_kit::component::highlighter::HighlightTheme::default_dark()
+    } else {
+        gpui_kit::component::highlighter::HighlightTheme::default_light()
+    };
+    theme.style.clone()
 }
 
 #[cfg(not(test))]

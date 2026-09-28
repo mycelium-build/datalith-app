@@ -3,6 +3,7 @@ use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _},
+    checkbox::Checkbox,
     color_picker::ColorPicker,
     h_flex,
     input::Input,
@@ -13,8 +14,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement, StatefulInteractiveElement as _,
-    Styled as _, Window, div, list,
+    Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement,
+    StatefulInteractiveElement as _, Styled as _, Window, div, list,
 };
 
 use crate::{
@@ -25,58 +26,128 @@ use crate::{
     ui::icons::DatalithIcon,
 };
 
-// A small, ordered entry point. The complete theme schema remains editable in Advanced.
+// Base roles first, then common overrides used by the bundled themes and Datalith.
 pub(super) const ESSENTIAL_COLORS: &[(&str, &str, &str)] = &[
     (
         "background",
-        "Page background",
+        "Background",
         "The main workspace and reading surface",
     ),
     ("foreground", "Text", "Body text and interface labels"),
     (
-        "primary.background",
-        "Primary accent",
-        "Primary buttons, note links and highlighted controls",
+        "muted.background",
+        "Muted surface",
+        "Subdued surfaces such as code blocks and note properties",
+    ),
+    ("border", "Borders", "Dividers between panels and controls"),
+    ("primary.background", "Primary", "Primary action background"),
+    (
+        "secondary.background",
+        "Secondary",
+        "Secondary action background",
     ),
     (
         "primary.foreground",
-        "Text on accent",
-        "Labels on primary buttons",
+        "Text on primary",
+        "Text on primary actions and checkbox marks. Reset follows Text.",
     ),
     (
-        "muted.foreground",
-        "Secondary text",
-        "Hints and supporting information",
-    ),
-    ("border", "Borders", "Dividers between panels and controls"),
-    (
-        "sidebar.background",
-        "Sidebar background",
-        "The file navigation panel",
+        "primary.hover.background",
+        "Primary hover",
+        "Hovered primary actions. Reset derives from Primary and Background.",
     ),
     (
-        "sidebar.foreground",
-        "Sidebar text",
-        "File and folder names",
+        "primary.active.background",
+        "Primary pressed",
+        "Pressed primary actions. Reset darkens Primary.",
     ),
     (
-        "tab.active.background",
-        "Active tab",
-        "The selected workspace tab",
+        "link",
+        "Link",
+        "Links in notes, properties and Base. Reset follows Primary.",
+    ),
+    (
+        "selection.background",
+        "Text selection",
+        "Selected text in fields and source editors. Reset follows Primary.",
+    ),
+    (
+        "list.active.background",
+        "Selected row",
+        "Selected files, Todo tasks and choices. Reset derives from Primary and Background.",
+    ),
+    (
+        "list.active.border",
+        "Selected row border",
+        "Selected choices and file context-menu outlines. Reset derives from Primary and Background.",
+    ),
+    (
+        "secondary.foreground",
+        "Text on secondary",
+        "Toolbar buttons and supporting surfaces. Reset follows Text.",
+    ),
+    (
+        "secondary.hover.background",
+        "Secondary hover",
+        "Custom title-bar button hover. Reset derives from Secondary and Background.",
+    ),
+    (
+        "secondary.active.background",
+        "Secondary selected",
+        "Selected or open toolbar buttons. Reset darkens Secondary.",
     ),
     (
         "accent.background",
-        "Selection accent",
-        "Selected items and highlighted surfaces",
+        "Accent",
+        "Menus and general highlights. Reset follows Secondary.",
     ),
     (
-        "muted.background",
-        "Muted surface",
-        "Code blocks and secondary surfaces",
+        "accent.foreground",
+        "Text on accent",
+        "Text on highlighted menu items. Reset follows Text.",
+    ),
+    (
+        "list.hover.background",
+        "Hovered row",
+        "Hovered files and choices. Reset follows Accent.",
+    ),
+    (
+        "scrollbar.thumb.background",
+        "Scrollbar thumb",
+        "Scrollbar handles. Reset follows Accent.",
+    ),
+    (
+        "muted.foreground",
+        "Muted text",
+        "Hints, metadata and completed tasks. Reset blends Muted surface and Text.",
+    ),
+    (
+        "input.border",
+        "Input border",
+        "Text-field and select borders. Reset follows Borders.",
+    ),
+    (
+        "ring",
+        "Focus ring",
+        "Focused text fields and controls. Reset follows the Blue palette color.",
+    ),
+    (
+        "list.background",
+        "List background",
+        "List surface and default table background. Reset follows Background.",
+    ),
+    (
+        "list.head.background",
+        "List / table header",
+        "Default table headers and summary footers. Reset follows the list surface.",
     ),
 ];
 
+pub(super) const GROUP_HEADER_PREFIX: &str = "__color_group__:";
+
 pub(super) const VARIANT_MODE_ROW: &str = "__variant_mode__";
+
+pub(super) const COLOR_ROW_HEIGHT: gpui_kit::Rems = gpui_kit::rems(5.5);
 
 pub(super) fn color_label(token: &str) -> String {
     ESSENTIAL_COLORS
@@ -206,17 +277,12 @@ impl ThemeEditor {
             .active_color
             .as_ref()
             .is_some_and(|(variant, key)| *variant == id && key == token);
-        let source = if row.valid.is_some() {
-            "In variant JSON"
-        } else if self
-            .preview
-            .as_ref()
-            .is_some_and(|appearance| appearance.color_is_defined(token))
-        {
-            "Datalith default"
-        } else {
-            "Component default"
-        };
+        let source = colors::origin(
+            self.preview
+                .as_ref()
+                .is_some_and(|appearance| appearance.color_is_defined(token)),
+        )
+        .label();
         let description = if self.category == "Advanced" {
             colors::description(token).to_owned()
         } else {
@@ -229,20 +295,21 @@ impl ThemeEditor {
 
         v_flex()
             .id(format!("theme-token-{id}-{token}"))
+            .test_support()
             .w_full()
             .px_4()
             .py_3()
             .gap_1()
             .border_b_1()
             .border_color(cx.theme().border)
-            .when(self.category == "Advanced", |row| {
-                row.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!("{}  ·  {}", colors::group(token), token)),
-                )
-            })
+            .child(
+                div()
+                    .id(format!("theme-token-name-{id}-{token}"))
+                    .test_support()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(token.to_owned()),
+            )
             .child(
                 h_flex()
                     .w_full()
@@ -338,6 +405,39 @@ impl ThemeEditor {
             .into_any_element()
     }
 
+    fn render_color_group_heading(
+        id: u64,
+        group: &str,
+        cx: &Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        div()
+            .id(format!("theme-color-group-{id}-{group}"))
+            .w_full()
+            .px_4()
+            .pt_3()
+            .pb_1()
+            .text_sm()
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(cx.theme().muted_foreground)
+            .child(group.to_owned())
+            .into_any_element()
+    }
+
+    fn render_color_origin_filter(
+        origin: colors::ColorOrigin,
+        selected: bool,
+        cx: &Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        Checkbox::new(format!("color-origin-{}", origin.id()))
+            .small()
+            .checked(selected)
+            .label(origin.label())
+            .on_click(cx.listener(move |this, checked, window, cx| {
+                this.set_color_origin(origin, *checked, window, cx);
+            }))
+            .into_any_element()
+    }
+
     fn render_fonts(&self, id: u64, cx: &Context<Self>) -> impl IntoElement {
         v_flex().w_full().gap_4().p_4()
             .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Fonts by interface role"))
@@ -377,11 +477,8 @@ impl ThemeEditor {
                     .ghost()
                     .selected(self.category == category)
                     .label(category)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.category = category;
-                        this.refresh_color_list(cx);
-                        this.reset_property_scroll();
-                        cx.notify();
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.set_category(category, window, cx);
                     }))
             }))
     }
@@ -531,17 +628,38 @@ impl ThemeEditor {
                 .into_any_element();
         }
         let editor = cx.entity();
+        let color_list = self.color_list.clone();
+        let measured_width = color_list.viewport_bounds().size.width;
+        let row_height = COLOR_ROW_HEIGHT.to_pixels(self.rem_size);
         let advanced = self.category == "Advanced";
         let total = self
             .variants
             .get(&id)
             .map_or(0, |variant| variant.colors.len());
-        let filtered = !self.color_query.read(cx).value().is_empty()
-            || self
-                .color_group
-                .read(cx)
-                .selected_value()
-                .is_some_and(|group| group.as_str() != "All areas");
+        let all_groups = if advanced {
+            "All families"
+        } else {
+            "All colors"
+        };
+        let visible_color_count = self
+            .visible_colors
+            .iter()
+            .filter(|token| {
+                token.as_str() != VARIANT_MODE_ROW && !token.starts_with(GROUP_HEADER_PREFIX)
+            })
+            .count();
+        let filtered = advanced
+            && (!self.color_query.read(cx).value().is_empty()
+                || self
+                    .color_group
+                    .read(cx)
+                    .selected_value()
+                    .is_some_and(|group| group.as_str() != all_groups)
+                || !self.color_origins.all_selected());
+        let has_visible_color = self
+            .visible_colors
+            .iter()
+            .any(|token| token != VARIANT_MODE_ROW && !token.starts_with(GROUP_HEADER_PREFIX));
         v_flex()
             .w_full()
             .flex_1()
@@ -556,11 +674,11 @@ impl ThemeEditor {
                         h_flex()
                             .gap_2()
                             .child(div().flex_1().text_sm().child(if advanced {
-                                format!("All colors · {} / {total}", self.visible_colors.len())
+                                format!("All theme colors · {visible_color_count} / {total}")
                             } else {
-                                "Essential colors".into()
+                                "Core colors".into()
                             }))
-                            .when(advanced && filtered, |row| {
+                            .when(filtered, |row| {
                                 row.child(
                                     Button::new("clear-color-filters")
                                         .small()
@@ -572,11 +690,12 @@ impl ThemeEditor {
                                             });
                                             this.color_group.update(cx, |group, cx| {
                                                 group.set_selected_value(
-                                                    &"All areas".into(),
+                                                    &all_groups.into(),
                                                     window,
                                                     cx,
                                                 );
                                             });
+                                            this.color_origins = ColorOriginFilters::default();
                                             this.refresh_color_list(cx);
                                             cx.notify();
                                         })),
@@ -588,33 +707,52 @@ impl ThemeEditor {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(if advanced {
-                                "All theme color tokens"
+                                "All color tokens in the theme schema"
                             } else {
-                                "Core theme colors"
+                                "Base colors and common overrides. Reset restores each color's fallback; component-specific overrides in Advanced take priority."
                             }),
                     )
-                    .when(advanced, |view| {
-                        view.child(
-                            h_flex()
-                                .w_full()
-                                .gap_2()
+                    .when(advanced, |header| {
+                        header.child(
+                            v_flex()
+                                .gap_1()
                                 .child(
-                                    div().w(gpui_kit::rems(12.)).flex_none().child(
-                                        Select::new(&self.color_group)
-                                            .small()
-                                            .w_full()
-                                            .accessibility_label("Color area"),
-                                    ),
+                                    h_flex()
+                                        .w_full()
+                                        .gap_2()
+                                        .child(
+                                            div().w(gpui_kit::rems(12.)).flex_none().child(
+                                                Select::new(&self.color_group)
+                                                    .small()
+                                                    .w_full()
+                                                    .accessibility_label("Component family"),
+                                            ),
+                                        )
+                                        .child(
+                                            div().flex_1().min_w_0().child(
+                                                Input::new(&self.color_query)
+                                                    .id("theme-color-search")
+                                                    .small()
+                                                    .w_full()
+                                                    .aria_label("Search all colors"),
+                                            ),
+                                        ),
                                 )
                                 .child(
-                                    div().flex_1().min_w_0().child(
-                                        Input::new(&self.color_query)
-                                            .id("theme-color-search")
-                                            .small()
-                                            .w_full()
-                                            .aria_label("Search all colors"),
-                                    ),
-                                ),
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Color origin"),
+                                )
+                                .child(h_flex().w_full().gap_4().flex_wrap().children(
+                                    colors::ColorOrigin::ALL.into_iter().map(|origin| {
+                                        Self::render_color_origin_filter(
+                                            origin,
+                                            self.color_origins.includes(origin),
+                                            cx,
+                                        )
+                                    }),
+                                )),
                         )
                     }),
             )
@@ -633,6 +771,10 @@ impl ThemeEditor {
                                     |token| {
                                         if token == VARIANT_MODE_ROW {
                                             Self::render_variant_mode_row(id, cx)
+                                        } else if let Some(group) =
+                                            token.strip_prefix(GROUP_HEADER_PREFIX)
+                                        {
+                                            Self::render_color_group_heading(id, group, cx)
                                         } else {
                                             editor.render_color_row(id, token, cx)
                                         }
@@ -642,10 +784,26 @@ impl ThemeEditor {
                         })
                         .size_full(),
                     )
+                    .child(
+                        gpui_kit::canvas(
+                            move |_, _, _| {
+                                // GPUI clears all height hints on the first layout
+                                // and width changes. Restore off-screen estimates
+                                // after it measures the viewport, without resetting
+                                // the scroll anchor or rendering the entire list.
+                                if color_list.viewport_bounds().size.width != measured_width {
+                                    color_list.with_uniform_item_height(row_height);
+                                }
+                            },
+                            |_, (), _, _| {},
+                        )
+                        .absolute()
+                        .size_full(),
+                    )
                     .vertical_scrollbar(&self.color_list),
             )
-            .when(self.visible_colors.is_empty(), |view| {
-                view.child(div().p_4().text_sm().child("No colors match your search"))
+            .when(!has_visible_color, |view| {
+                view.child(div().p_4().text_sm().child("No colors match these filters"))
             })
             .into_any_element()
     }
@@ -659,7 +817,9 @@ impl Render for ThemeEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.rem_size != window.rem_size() {
             self.rem_size = window.rem_size();
-            self.color_list.remeasure();
+            let scroll_top = self.color_list.logical_scroll_top();
+            self.reset_color_list_layout();
+            self.color_list.scroll_to(scroll_top);
         }
         let Some(family) = cx.global::<ThemeLibrary>().family(self.family_id) else {
             return div()

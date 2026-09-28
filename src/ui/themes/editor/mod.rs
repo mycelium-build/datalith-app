@@ -97,6 +97,41 @@ struct VariantControls {
     subscriptions: Vec<Subscription>,
 }
 
+#[derive(Clone, Copy)]
+struct ColorOriginFilters {
+    theme_defined: bool,
+    component_default: bool,
+}
+
+impl ColorOriginFilters {
+    const fn includes(self, origin: colors::ColorOrigin) -> bool {
+        match origin {
+            colors::ColorOrigin::ThemeDefined => self.theme_defined,
+            colors::ColorOrigin::ComponentDefault => self.component_default,
+        }
+    }
+
+    const fn set(&mut self, origin: colors::ColorOrigin, selected: bool) {
+        match origin {
+            colors::ColorOrigin::ThemeDefined => self.theme_defined = selected,
+            colors::ColorOrigin::ComponentDefault => self.component_default = selected,
+        }
+    }
+
+    const fn all_selected(self) -> bool {
+        self.theme_defined && self.component_default
+    }
+}
+
+impl Default for ColorOriginFilters {
+    fn default() -> Self {
+        Self {
+            theme_defined: true,
+            component_default: true,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RenameTarget {
     Family,
@@ -118,6 +153,7 @@ pub struct ThemeEditor {
     visible_colors: Vec<String>,
     color_query: Entity<InputState>,
     color_group: Entity<Choices>,
+    color_origins: ColorOriginFilters,
     _group_subscription: Subscription,
     rem_size: gpui_kit::Pixels,
     _query_subscription: Subscription,
@@ -184,8 +220,7 @@ impl ThemeEditor {
                     this.reset_property_scroll();
                 }
             });
-        let color_query =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Search all colors…"));
+        let color_query = cx.new(|cx| InputState::new(window, cx).placeholder("Search colors…"));
         let query_subscription = cx.subscribe(&color_query, |this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.refresh_color_list(cx);
@@ -193,11 +228,11 @@ impl ThemeEditor {
             }
         });
         let color_group = make_choices(
-            colors::GROUPS
+            colors::ESSENTIAL_GROUPS
                 .iter()
                 .map(|group| Choice::new(*group, *group))
                 .collect(),
-            "All areas",
+            "All colors",
             window,
             cx,
         );
@@ -222,6 +257,7 @@ impl ThemeEditor {
             visible_colors: Vec::new(),
             color_query,
             color_group,
+            color_origins: ColorOriginFilters::default(),
             _group_subscription: group_subscription,
             rem_size: window.rem_size(),
             _query_subscription: query_subscription,
@@ -243,6 +279,37 @@ impl ThemeEditor {
             self.mount_variant(id, window, cx);
         }
         self.set_edited(id, window, cx);
+    }
+
+    fn set_category(
+        &mut self,
+        category: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.category == category {
+            return;
+        }
+        self.category = category;
+        let (groups, all_groups) = if category == "Advanced" {
+            (colors::FAMILIES, "All families")
+        } else {
+            (colors::ESSENTIAL_GROUPS, "All colors")
+        };
+        let choices: Vec<_> = groups
+            .iter()
+            .map(|group| Choice::new(*group, *group))
+            .collect();
+        self.color_group.update(cx, |group, cx| {
+            group.set_items(SearchableVec::new(choices), window, cx);
+            group.set_selected_value(&all_groups.into(), window, cx);
+        });
+        self.color_query
+            .update(cx, |query, cx| query.set_value("", window, cx));
+        self.color_origins = ColorOriginFilters::default();
+        self.refresh_color_list(cx);
+        self.reset_property_scroll();
+        cx.notify();
     }
 
     // Controls and preview always follow the same edited variant.
@@ -550,6 +617,7 @@ impl ThemeEditor {
             .is_some_and(|(active_id, active_token)| *active_id == id && active_token == token)
         {
             self.active_color = None;
+            self.refresh_color_list(cx);
             self.color_list.remeasure();
             cx.notify();
         }
@@ -672,6 +740,14 @@ impl ThemeEditor {
         }
         self.handle_change(result, id, cx);
         self.refresh_inherited_colors(id, window, cx);
+        if self
+            .active_color
+            .as_ref()
+            .is_some_and(|(active_id, active_token)| *active_id == id && active_token == token)
+        {
+            self.active_color = None;
+        }
+        self.refresh_color_list(cx);
         self.color_list.remeasure();
     }
 
@@ -833,6 +909,7 @@ impl ThemeEditor {
             Ok(()) => {
                 self.refresh_preview(cx);
                 self.refresh_inherited_colors(id, window, cx);
+                self.refresh_color_list(cx);
                 ThemeLibrary::schedule_save(self.family_id, cx);
                 themes::refresh_current(cx);
                 crate::ui::settings::SettingsView::init_theme_options(cx);
@@ -910,50 +987,112 @@ impl ThemeEditor {
 
     fn refresh_color_list(&mut self, cx: &App) {
         let query = self.color_query.read(cx).value().trim().to_lowercase();
-        let group = self
-            .color_group
-            .read(cx)
-            .selected_value()
-            .map_or("All areas", |value| value.as_str());
-        self.visible_colors = self
+        let advanced = self.category == "Advanced";
+        let group = self.color_group.read(cx).selected_value().map_or(
+            if advanced {
+                "All families"
+            } else {
+                "All colors"
+            },
+            |value| value.as_str(),
+        );
+        let origins = self.color_origins;
+        let active_color = self.active_color.as_ref();
+        let preview = self.preview.as_ref();
+        let visible_colors = self
             .variants
             .get(&self.edited)
             .map_or_else(Vec::new, |variant| {
-                if self.category == "Advanced" {
-                    variant
-                        .colors
-                        .keys()
-                        .filter(|token| {
-                            (group == "All areas" || colors::group(token) == group)
-                                && (token.to_lowercase().contains(&query)
-                                    || render::color_label(token).to_lowercase().contains(&query)
-                                    || colors::description(token).to_lowercase().contains(&query))
-                        })
-                        .cloned()
-                        .collect()
+                let mut visible = Vec::new();
+                if advanced {
+                    for category in colors::GROUPS.iter().skip(1) {
+                        let tokens = variant
+                            .colors
+                            .keys()
+                            .filter(|token| {
+                                let active = active_color.is_some_and(|(id, active_token)| {
+                                    *id == self.edited && active_token == *token
+                                });
+                                let origin =
+                                    colors::origin(preview.is_some_and(|appearance| {
+                                        appearance.color_is_defined(token)
+                                    }));
+                                colors::group(token) == *category
+                                    && (group == "All families" || colors::family(token) == group)
+                                    && (origins.includes(origin) || active)
+                                    && (query.is_empty()
+                                        || token.to_lowercase().contains(&query)
+                                        || render::color_label(token)
+                                            .to_lowercase()
+                                            .contains(&query)
+                                        || colors::description(token)
+                                            .to_lowercase()
+                                            .contains(&query))
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        if !tokens.is_empty() {
+                            visible.push(format!("{}{}", render::GROUP_HEADER_PREFIX, category));
+                            visible.extend(tokens);
+                        }
+                    }
                 } else {
-                    std::iter::once(render::VARIANT_MODE_ROW.to_owned())
-                        .chain(
-                            render::ESSENTIAL_COLORS
-                                .iter()
-                                .filter(|(token, _, _)| variant.colors.contains_key(*token))
-                                .map(|(token, _, _)| (*token).to_owned()),
-                        )
-                        .collect()
+                    visible.push(render::VARIANT_MODE_ROW.to_owned());
+                    for group in colors::ESSENTIAL_GROUPS.iter().skip(1) {
+                        let tokens: Vec<_> = render::ESSENTIAL_COLORS
+                            .iter()
+                            .filter(|(token, _, _)| {
+                                colors::essential_group(token) == *group
+                                    && variant.colors.contains_key(*token)
+                            })
+                            .map(|(token, _, _)| (*token).to_owned())
+                            .collect();
+                        if !tokens.is_empty() {
+                            visible.push(format!("{}{group}", render::GROUP_HEADER_PREFIX));
+                            visible.extend(tokens);
+                        }
+                    }
                 }
+                visible
             });
-        if self.category == "Advanced" {
-            self.visible_colors.sort_by_cached_key(|token| {
-                (
-                    colors::GROUPS
-                        .iter()
-                        .position(|group| *group == colors::group(token))
-                        .unwrap_or(usize::MAX),
-                    token.clone(),
-                )
-            });
+        if self.visible_colors != visible_colors {
+            self.visible_colors = visible_colors;
+            self.reset_color_list_layout();
         }
-        self.color_list.reset(self.visible_colors.len());
+    }
+
+    fn reset_color_list_layout(&self) {
+        // The native list measures lazily, so seed plausible row heights for
+        // its scrollbar to reach schema rows that have not been rendered yet.
+        self.color_list.reset_with_uniform_height(
+            self.visible_colors.len(),
+            render::COLOR_ROW_HEIGHT.to_pixels(self.rem_size),
+        );
+    }
+
+    fn set_color_origin(
+        &mut self,
+        origin: colors::ColorOrigin,
+        selected: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some((id, token)) = self.active_color.clone() {
+            if let Some(picker) = self
+                .variants
+                .get(&id)
+                .and_then(|variant| variant.colors.get(&token))
+                .and_then(|row| row.controls.as_ref())
+                .map(|controls| controls.picker.clone())
+            {
+                picker.update(cx, |picker, cx| picker.set_open(false, cx));
+            }
+            self.blur_color(id, &token, window, cx);
+            self.finish_color_edit(id, &token, cx);
+        }
+        self.color_origins.set(origin, selected);
+        self.refresh_color_list(cx);
+        cx.notify();
     }
 
     fn reset_property_scroll(&self) {

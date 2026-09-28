@@ -81,6 +81,11 @@ fn theme_editor_performance() {
             }
         });
         eprintln!("PERF resolve={:?}", start.elapsed() / 10);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(format!("token-group-{first}-Advanced"), cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
         let start = Instant::now();
         cx.update_window(handle.into(), |_, window, cx| {
             for _ in 0..5 {
@@ -234,6 +239,30 @@ fn cleanup(cx: &TestAppContext, id: u64) {
             let _ = std::fs::remove_file(path);
         }
     });
+}
+
+fn visible_color_count(colors: &[String]) -> usize {
+    colors
+        .iter()
+        .filter(|token| {
+            token.as_str() != render::VARIANT_MODE_ROW
+                && !token.starts_with(render::GROUP_HEADER_PREFIX)
+        })
+        .count()
+}
+
+fn token_for_origin(editor: &ThemeEditor, origin: colors::ColorOrigin) -> Option<String> {
+    let preview = editor.preview.as_ref();
+    editor
+        .variants
+        .get(&editor.edited)?
+        .colors
+        .keys()
+        .find_map(|token| {
+            (colors::origin(preview.is_some_and(|appearance| appearance.color_is_defined(token)))
+                == origin)
+                .then(|| token.clone())
+        })
 }
 
 #[test]
@@ -1611,6 +1640,10 @@ fn color_swatch_and_hex_input_open_picker_directly_and_blur_restores_the_row() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Checks schema completeness, search, editing and reset in one UI workflow"
+)]
 fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, variant, _) = workspace(&mut cx);
@@ -1625,9 +1658,16 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
         window.render_frame(cx);
         window.click(format!("token-group-{variant}-Advanced"), cx);
         assert_eq!(
-            editor.read(cx).visible_colors.len(),
+            visible_color_count(&editor.read(cx).visible_colors),
             editor.read(cx).variants[&variant].colors.len()
         );
+        let headers = editor
+            .read(cx)
+            .visible_colors
+            .iter()
+            .filter(|token| token.starts_with(render::GROUP_HEADER_PREFIX))
+            .count();
+        assert!(headers > 2, "Advanced colors should show category headings");
         assert!(
             editor
                 .read(cx)
@@ -1666,7 +1706,10 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
         window.render_frame(cx);
         assert_eq!(
             editor.read(cx).visible_colors,
-            vec!["highlight:syntax.tag.doctype"]
+            vec![
+                render::GROUP_HEADER_PREFIX.to_owned() + "Syntax",
+                "highlight:syntax.tag.doctype".to_owned()
+            ]
         );
         choose_color(
             &app,
@@ -1699,7 +1742,7 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
     cx.update(|cx| {
         let editor = editor.read(cx);
         assert_eq!(
-            editor.visible_colors.len(),
+            visible_color_count(&editor.visible_colors),
             editor.variants[&variant].colors.len()
         );
         assert!(
@@ -1708,6 +1751,461 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
                 .is_none()
         );
     });
+    cleanup(&cx, family);
+}
+
+#[test]
+fn colors_category_keeps_bases_and_common_overrides_without_search() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, _, _) = workspace(&mut cx);
+    let editor = cx.update(|cx| {
+        app.read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .clone()
+    });
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let visible = &editor.read(cx).visible_colors;
+        assert_eq!(visible_color_count(visible), 25);
+        assert!(visible.iter().any(|token| token == "list.background"));
+        for (token, _, _) in render::ESSENTIAL_COLORS {
+            assert!(visible.iter().any(|visible| visible == token), "{token}");
+        }
+        assert!(
+            [
+                "button.background",
+                "caret",
+                "list.even.background",
+                "table.background",
+                "highlight:syntax.keyword",
+            ]
+            .iter()
+            .all(|token| !visible.iter().any(|visible| visible == token)),
+            "less common component details remain in Advanced"
+        );
+        let base_tokens: Vec<_> = visible
+            .iter()
+            .filter(|token| {
+                token.as_str() != render::VARIANT_MODE_ROW
+                    && !token.starts_with(render::GROUP_HEADER_PREFIX)
+            })
+            .take(6)
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            base_tokens,
+            [
+                "background",
+                "foreground",
+                "muted.background",
+                "border",
+                "primary.background",
+                "secondary.background",
+            ]
+        );
+        assert!(window.try_find("theme-color-search").is_none());
+        assert!(window.try_find("clear-color-filters").is_none());
+        assert_eq!(
+            visible.last().map(String::as_str),
+            Some("list.head.background")
+        );
+        editor.update(cx, |editor, cx| {
+            editor.reset_color(editor.edited, "list.active.background", window, cx);
+        });
+        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 25);
+        assert!(
+            editor
+                .read(cx)
+                .visible_colors
+                .iter()
+                .any(|token| token == "list.active.background")
+        );
+    })
+    .unwrap();
+    cleanup(&cx, family);
+}
+
+#[test]
+fn colors_common_overrides_are_reachable_by_scrolling() {
+    let mut cx = TestAppContext::single();
+    let (handle, _, family, variant, _) = workspace(&mut cx);
+    let expected = [
+        "list.active.background",
+        "list.active.border",
+        "list.hover.background",
+        "list.background",
+        "ring",
+        "list.head.background",
+    ];
+
+    for window_size in [size(px(1600.), px(900.)), size(px(680.), px(720.))] {
+        cx.simulate_window_resize(handle.into(), window_size);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            scroll_controls(window, 10000., cx);
+            let mut seen = std::collections::HashSet::new();
+            for _ in 0..32 {
+                let viewport = window.find("theme-controls-scroll").bounds();
+                for token in expected {
+                    if window
+                        .try_find(format!("theme-token-{variant}-{token}"))
+                        .is_some_and(|row| {
+                            row.visible()
+                                && row.bounds().top() >= viewport.top()
+                                && row.bounds().bottom() <= viewport.bottom()
+                        })
+                    {
+                        assert!(
+                            window
+                                .find(format!("theme-token-name-{variant}-{token}"))
+                                .visible(),
+                            "Colors must show the exact key {token}"
+                        );
+                        seen.insert(token);
+                    }
+                }
+                if seen.len() == expected.len() {
+                    break;
+                }
+                window.scroll(
+                    "theme-controls-scroll",
+                    ScrollDelta::Pixels(point(px(0.), -viewport.size.height * 0.5)),
+                    cx,
+                );
+            }
+            let missing: Vec<_> = expected
+                .into_iter()
+                .filter(|token| !seen.contains(token))
+                .collect();
+            assert!(missing.is_empty(), "Colors never displayed {missing:?}");
+        })
+        .unwrap();
+    }
+    cleanup(&cx, family);
+}
+
+#[test]
+fn switching_color_categories_resets_search_and_group_filter() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    let editor = cx.update(|cx| {
+        app.read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .clone()
+    });
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("theme-color-search").is_none());
+
+        editor.update(cx, |editor, cx| {
+            editor.color_group.update(cx, |group, cx| {
+                group.set_selected_value(&"Base colors".into(), window, cx);
+            });
+            editor
+                .color_query
+                .update(cx, |query, cx| query.set_value("sidebar", window, cx));
+            editor.refresh_color_list(cx);
+        });
+        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 25);
+
+        window.click(format!("token-group-{variant}-Advanced"), cx);
+        let editor_state = editor.read(cx);
+        assert_eq!(editor_state.color_query.read(cx).value().as_str(), "");
+        assert_eq!(
+            editor_state
+                .color_group
+                .read(cx)
+                .selected_value()
+                .map(std::string::ToString::to_string),
+            Some("All families".to_owned())
+        );
+        assert_eq!(
+            visible_color_count(&editor_state.visible_colors),
+            editor_state.variants[&variant].colors.len()
+        );
+
+        editor.update(cx, |editor, cx| {
+            editor.color_group.update(cx, |group, cx| {
+                group.set_selected_value(&"Tables".into(), window, cx);
+            });
+            editor.refresh_color_list(cx);
+        });
+        let table_colors: Vec<_> = editor.read(cx).variants[&variant]
+            .colors
+            .keys()
+            .filter(|token| colors::family(token) == "Tables")
+            .cloned()
+            .collect();
+        assert_eq!(
+            editor.read(cx).visible_colors,
+            std::iter::once(render::GROUP_HEADER_PREFIX.to_owned() + "Lists & tables")
+                .chain(table_colors)
+                .collect::<Vec<_>>()
+        );
+        editor.update(cx, |editor, cx| {
+            editor.color_query.update(cx, |query, cx| {
+                query.set_value("not-a-color-token", window, cx);
+            });
+            editor.refresh_color_list(cx);
+        });
+        assert_eq!(editor.read(cx).visible_colors.len(), 0);
+        window.click(format!("token-group-{variant}-Colors"), cx);
+        window.render_frame(cx);
+        let editor_state = editor.read(cx);
+        assert_eq!(editor_state.color_query.read(cx).value().as_str(), "");
+        assert_eq!(
+            editor_state
+                .color_group
+                .read(cx)
+                .selected_value()
+                .map(std::string::ToString::to_string),
+            Some("All colors".to_owned())
+        );
+        assert_eq!(visible_color_count(&editor_state.visible_colors), 25);
+        assert!(window.try_find("theme-color-search").is_none());
+    })
+    .unwrap();
+    cleanup(&cx, family);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Exercises source filtering, an active edit, reset, and clearing in one UI workflow"
+)]
+fn advanced_origin_checkboxes_filter_live_sources_and_reset_immediately() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    let editor = cx.update(|cx| {
+        app.read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .clone()
+    });
+    let (theme_token, component_token) = cx.update(|cx| {
+        let editor = editor.read(cx);
+        (
+            token_for_origin(editor, colors::ColorOrigin::ThemeDefined)
+                .expect("theme fixture should define colors"),
+            token_for_origin(editor, colors::ColorOrigin::ComponentDefault)
+                .expect("component defaults should provide colors"),
+        )
+    });
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(format!("token-group-{variant}-Advanced"), cx);
+        window.render_frame(cx);
+        assert!(editor.read(cx).color_origins.all_selected());
+        assert!(window.try_find("color-origin-datalith-default").is_none());
+        for origin in colors::ColorOrigin::ALL {
+            let checkbox = window.find(format!("color-origin-{}", origin.id()));
+            assert_eq!(checkbox.role(), Some(gpui_kit::Role::CheckBox));
+            assert_eq!(checkbox.checked(), Some(true));
+        }
+        assert_eq!(
+            visible_color_count(&editor.read(cx).visible_colors),
+            editor.read(cx).variants[&variant].colors.len()
+        );
+
+        window.click("color-origin-theme-defined", cx);
+        let visible = &editor.read(cx).visible_colors;
+        assert!(visible.iter().any(|token| token == &component_token));
+        assert!(!visible.iter().any(|token| token == &theme_token));
+
+        editor.update(cx, |editor, cx| {
+            editor.edit_color(variant, &component_token, true, window, cx);
+        });
+        let picker = editor.read(cx).variants[&variant].colors[&component_token]
+            .controls
+            .as_ref()
+            .unwrap()
+            .picker
+            .clone();
+        // A slider edit commits without closing the picker; selecting a palette
+        // swatch would finish the edit and correctly remove this filtered row.
+        let chosen = gpui_kit::component::try_parse_color("#123456").unwrap();
+        picker.update(cx, |picker, cx| picker.update_color(chosen, window, cx));
+    })
+    .unwrap();
+    cx.run_until_parked();
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        assert!(
+            editor
+                .read(cx)
+                .visible_colors
+                .iter()
+                .any(|token| token == &component_token),
+            "the active row must remain available while its origin changes"
+        );
+        window.click("color-origin-component-default", cx);
+        window.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.click("color-origin-theme-defined", cx);
+        let editor_state = editor.read(cx);
+        assert!(editor_state.active_color.is_none());
+        assert!(
+            !editor_state.variants[&variant].colors[&component_token]
+                .controls
+                .as_ref()
+                .unwrap()
+                .picker
+                .read(cx)
+                .is_open()
+        );
+        let visible = &editor.read(cx).visible_colors;
+        assert!(visible.iter().any(|token| token == &theme_token));
+        assert!(visible.iter().any(|token| token == &component_token));
+        editor.update(cx, |editor, cx| {
+            editor.reset_color(variant, &component_token, window, cx);
+        });
+        assert!(
+            !editor
+                .read(cx)
+                .visible_colors
+                .iter()
+                .any(|token| token == &component_token),
+            "reset should immediately restore the component-default origin"
+        );
+        window.click("color-origin-theme-defined", cx);
+        assert!(editor.read(cx).visible_colors.is_empty());
+        window.click("clear-color-filters", cx);
+        assert!(editor.read(cx).color_origins.all_selected());
+        assert_eq!(
+            visible_color_count(&editor.read(cx).visible_colors),
+            editor.read(cx).variants[&variant].colors.len()
+        );
+    })
+    .unwrap();
+    cleanup(&cx, family);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Checks virtualized rendering, resizing, scrolling and edit-close position in one UI workflow"
+)]
+fn advanced_color_list_is_virtualized_and_scrolls_to_the_last_schema_token() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, family, variant, _) = workspace(&mut cx);
+    let editor = cx.update(|cx| {
+        app.read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .clone()
+    });
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(format!("token-group-{variant}-Advanced"), cx);
+        window.render_frame(cx);
+    })
+    .unwrap();
+    cx.simulate_window_resize(handle.into(), size(px(1400.), px(820.)));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+
+        let (all_tokens, last_token, viewport) = {
+            let editor_state = editor.read(cx);
+            let all_tokens: Vec<_> = editor_state.variants[&variant]
+                .colors
+                .keys()
+                .cloned()
+                .collect();
+            let last_token = editor_state
+                .visible_colors
+                .iter()
+                .rev()
+                .find(|token| {
+                    token.as_str() != render::VARIANT_MODE_ROW
+                        && !token.starts_with(render::GROUP_HEADER_PREFIX)
+                })
+                .unwrap()
+                .clone();
+            (
+                all_tokens,
+                last_token,
+                editor_state.color_list.viewport_bounds(),
+            )
+        };
+        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 203);
+        assert!(viewport.size.height > px(0.));
+        assert!(viewport.size.height < window.viewport_size().height);
+
+        let rendered_rows = all_tokens
+            .iter()
+            .filter(|token| {
+                window
+                    .try_find(format!("theme-token-{variant}-{token}"))
+                    .is_some()
+            })
+            .count();
+        assert!(rendered_rows > 0);
+        assert!(
+            rendered_rows < all_tokens.len(),
+            "only viewport rows should render"
+        );
+        assert!(
+            window
+                .try_find(format!("theme-token-{variant}-{last_token}"))
+                .is_none(),
+            "the last schema item must begin outside the viewport"
+        );
+
+        let wheel_delta = px(-viewport.size.height.as_f32() * 0.8);
+        for _ in 0..64 {
+            window.scroll(
+                "theme-controls-scroll",
+                ScrollDelta::Pixels(point(px(0.), wheel_delta)),
+                cx,
+            );
+            if window
+                .try_find(format!("theme-token-{variant}-{last_token}"))
+                .is_some_and(|row| {
+                    row.visible()
+                        && row.bounds().top() >= viewport.top()
+                        && row.bounds().bottom() <= viewport.bottom()
+                })
+            {
+                break;
+            }
+        }
+        assert!(editor.read(cx).color_list.logical_scroll_top().item_ix > 0);
+        let last_row = window.find(format!("theme-token-{variant}-{last_token}"));
+        assert!(
+            last_row.visible(),
+            "the native list should scroll to the tail"
+        );
+        let viewport = editor.read(cx).color_list.viewport_bounds();
+        assert!(last_row.bounds().top() >= viewport.top());
+        assert!(last_row.bounds().bottom() <= viewport.bottom());
+
+        editor.update(cx, |editor, cx| {
+            editor.edit_color(variant, &last_token, false, window, cx);
+            editor.finish_color_edit(variant, &last_token, cx);
+        });
+        window.render_frame(cx);
+        assert!(
+            window
+                .find(format!("theme-token-{variant}-{last_token}"))
+                .visible(),
+            "closing an edit should preserve the current scroll position"
+        );
+    })
+    .unwrap();
     cleanup(&cx, family);
 }
 

@@ -291,7 +291,9 @@ impl MarkdownViewer {
                         div()
                             .id(SharedString::from(format!("link-{url}")))
                             .flex()
-                            .text_color(ctx.appearance.primary)
+                            .text_color(ctx.appearance.link)
+                            .hover(|style| style.text_color(ctx.appearance.link_hover))
+                            .active(|style| style.text_color(ctx.appearance.link_active))
                             .underline()
                             .when(ctx.handler.is_some(), gpui_kit::Styled::cursor_pointer)
                             .when_some(handler_clone, |link, handler| {

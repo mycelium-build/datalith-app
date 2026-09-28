@@ -46,7 +46,7 @@ impl TodoTxtState {
         let read_only = self.workspace.is_read_only();
 
         let row_bg = if is_selected {
-            self.theme(cx).accent.opacity(0.1)
+            self.theme(cx).list_active
         } else {
             gpui_kit::transparent_black()
         };
@@ -123,11 +123,7 @@ impl TodoTxtState {
         for project in &task.projects {
             row = row.child(super::render_pill(
                 &format!("+{project}"),
-                if task.completed {
-                    self.theme(cx).muted_foreground
-                } else {
-                    self.theme(cx).info
-                },
+                self.theme(cx).muted_foreground,
             ));
         }
 
@@ -135,11 +131,7 @@ impl TodoTxtState {
         for context in &task.contexts {
             row = row.child(super::render_pill(
                 &format!("@{context}"),
-                if task.completed {
-                    self.theme(cx).muted_foreground
-                } else {
-                    self.theme(cx).success
-                },
+                self.theme(cx).muted_foreground,
             ));
         }
 

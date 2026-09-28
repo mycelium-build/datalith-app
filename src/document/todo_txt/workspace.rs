@@ -73,7 +73,7 @@ impl TodoTxtWorkspace {
         }
     }
 
-    /// An isolated, editable sample with no filesystem destination.
+    /// An isolated, read-only sample with no filesystem destination.
     pub(crate) fn from_content(content: &str) -> anyhow::Result<Self> {
         let mut todo = TodoTxt::new(TodoOptions::default())?;
         todo.tasks = TodoTxtParser::new().parse_file(content)?;
@@ -87,7 +87,7 @@ impl TodoTxtWorkspace {
             expanded: HashSet::new(),
             selected: None,
             parse_errors: Vec::new(),
-            read_only: false,
+            read_only: true,
         })
     }
 

@@ -22,30 +22,38 @@ Syntax styles also accept `font_style` and `font_weight`. Editing a syntax color
 
 ## Where a color comes from
 
-Resolution is **variant JSON → bundled Datalith Light/Dark → GPUI component default**. Each missing or null value inherits the corresponding mode-specific Datalith entry. If that entry is also absent, GPUI computes a fallback from its palette or related colors. Some optional editor colors remain unset.
+Color resolution is **variant JSON → GPUI component default**. Missing or null colors are passed through to GPUI, which computes a fallback from its mode-specific palette or related colors. Other themes no longer inherit colors or syntax styles from Datalith Light/Dark. Non-color defaults, including fonts, keep their existing behavior. Some optional editor colors remain unset.
 
-The editor labels these origins **In variant JSON**, **Datalith default**, and **Component default**. Reset removes only the variant override. It does not remove Datalith's inherited value. A theme copied from a preset can already contain many explicit colors: changing `primary.background` or `base.blue` does not override all those explicit values.
+The editor labels explicit colors **Theme defined** and component fallbacks **Component Default**. Reset removes only the variant override, restoring the component fallback. Copying a preset preserves its explicit values.
+
+The **Colors** tab contains six base roles: `background`, `foreground`, `muted.background`, `border`, `primary.background`, and `secondary.background`, with no search. It also exposes 19 common overrides: `muted.foreground`, `primary.foreground`, `primary.hover.background`, `primary.active.background`, `secondary.foreground`, `secondary.hover.background`, `secondary.active.background`, `accent.background`, `accent.foreground`, `link`, `selection.background`, `list.active.background`, `list.active.border`, `list.hover.background`, `list.background`, `list.head.background`, `input.border`, `ring`, and `scrollbar.thumb.background`. Rows show the exact JSON key in Colors and Advanced. These settings remain visible even when unset; Reset restores their normal GPUI fallback. The focus-ring key is `ring` and falls back to `blue`. Other component-specific overrides remain in **Advanced**. Advanced includes all 203 recognized color entries, even those also shown in Colors, in a virtualized list with category headings, component-family filtering, search, and independent origin checkboxes.
+
+GPUI Kit's fallbacks apply only when a color is absent: Link and caret use Primary; text/list selection use Primary with their component's opacity treatment; Accent uses Secondary; muted text blends Muted with Foreground; list hover uses Accent; table colors reuse list roles. Explicit component colors always take precedence.
+
+Datalith Dark and macOS Classic Dark explicitly define `link = #419CFF`; other bundled variants do not. All 30 bundled variants explicitly define `list.active.background`. Reset these fields in a custom copy to restore their relationship to Primary. Reset does not rewrite any other explicit colors.
 
 ## Effects in current Datalith views
 
 | What to change | Relevant keys |
 | --- | --- |
 | Main workspace and note text | `background`, `foreground` |
-| Muted text, code-block surfaces, separators | `muted.foreground`, `muted.background`, `border` |
-| Links in rendered notes | `primary.background`; `link` controls library link components instead |
-| File sidebar | `sidebar.background`, `sidebar.foreground`, `sidebar.border`; file row hover/selection use `list.*` |
-| Workspace tabs | `tab.*`, `tab_bar.background` |
+| General action colors and text | `primary.*`, `secondary.*`, `accent.*`; Primary can back links/text selection, Secondary backs Accent, and Accent can back list hover/scrollbar/sidebar accent when their specific colors are unset |
+| Muted text, code-block and note-property surfaces, separators | `muted.foreground`, `muted.background`, `border` |
+| Links in rendered notes, note properties and Base | `link`, `link.hover`, `link.active` |
+| File sidebar | `sidebar.background`, `sidebar.foreground`, `sidebar.border`; file row hover/selection use `list.hover.background` and `list.active.background` through the standard GPUI tree |
+| Workspace tabs | `tab.foreground`, `tab.active.background`, `tab.active.foreground`, `tab_bar.background` |
 | Window title bar | `title_bar.background` and the library title-bar border |
-| Buttons | `button.*`; absent values fall back to matching `primary.*`, `secondary.*`, etc. |
+| Buttons | Default and Primary `button.*` colors for those variants; ghost buttons use `secondary.background`, `secondary.foreground`, and `secondary.active.background` |
 | Text fields and selection | `input.border`, `caret`, `ring`, `selection.background` |
-| Menus, dialogs, popovers | `popover.*`, `overlay`, list and button colors |
-| Tables in notes and Shortcuts | Library `table.*` fields used by those table components |
-| Base tables | Shared workspace colors; their headers and footers use `tab_bar.background`, not `table.head.background` |
-| Todo.txt | Shared workspace colors plus success, warning, info and danger roles |
+| Menus, dialogs, popovers | `popover.*`, `overlay`, `accent.*`, and button colors |
+| Tables in notes | `table.background`, `table.head.background`, `table.head.foreground`, `table.row.border`; outer border uses `border` |
+| Shortcuts table | General background/text, muted header, and `table.row.border` |
+| Base table headers and footers | `table.head.background`, `table.head.foreground`, `table.foot.background`, `table.foot.foreground`; table body uses its existing roles |
+| Todo.txt | Shared workspace colors plus success, warning and danger roles; selected tasks use `list.active.background`, while project and context pills are neutral |
 | Markdown/YAML source syntax | `highlight.syntax.*`, where the language grammar emits a matching token |
 | Source editor surface and current line | `highlight.editor.background`, `highlight.editor.active_line.background` |
 
-The Note/Base/Todo preview displays the rendered content. Syntax colors affect source editing, not code fences in the rendered note.
+The Note/Base/Graph/Todo preview displays the rendered content; Todo.txt is read-only. Syntax colors affect source editing, not code fences in the rendered note.
 
 ## Recognized fields with limited or no current effect
 
@@ -54,7 +62,9 @@ The Note/Base/Todo preview displays the rendered content. Syntax colors affect s
 - Diagnostic colors are stored, but Datalith currently supplies no diagnostic provider. GPUI's source editor consumes the error/warning/info/hint foregrounds when diagnostics are present; this does not mean all imported diagnostic backgrounds are painted.
 - `group_box.title.foreground` is recognized by the schema but is not applied by GPUI Kit 0.6.1.
 - Chart, accordion, group-box, description-list, skeleton, status-bar and tiles colors target components not currently used by Datalith screens.
-- `window.border` is Linux-only. Sidebar primary/accent fields target the library Sidebar component; Datalith's custom file sidebar uses the surface/text/border and `list.*` fields described above.
+- `window.border` is Linux-only. `sidebar.primary.*` and `sidebar.accent.*` are not used by Datalith's file rows; their hover and selection use `list.*`.
+- `tab.background` is stored, but the current tab component uses the tab-bar surface for inactive tabs. The active tab has its own colors.
+- `table.active.*`, `table.even.background`, and `table.hover.background` are not painted by Datalith's current simple/custom tables.
 - Not every syntax token is emitted by every language. A stored token can therefore have no visible occurrence in the current document.
 
 These entries remain accessible in Advanced; they are not presented as essential customization controls.

@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use gpui_kit::component::{Theme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_kit::component::{scroll::Scrollbar, scroll::ScrollbarMode};
 use gpui_kit::{
-    AnyElement, Context, ElementId, Font, InteractiveElement, IntoElement, ParentElement, Pixels,
-    ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
+    AnyElement, Context, ElementId, Font, Hsla, InteractiveElement, IntoElement, ParentElement,
+    Pixels, ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
 };
 
 use crate::document::base::{BaseView, TableRowHeight};
@@ -57,7 +57,7 @@ fn build_table_header(
         .w_full()
         .min_w(table_min_width)
         .h(px(TABLE_HEADER_HEIGHT))
-        .bg(theme.tab_bar)
+        .bg(theme.table_head)
         .border_b_1()
         .border_color(theme.border)
         .children(
@@ -72,7 +72,7 @@ fn build_table_header(
                         .flex_shrink_0()
                         .px_2()
                         .items_center()
-                        .text_color(theme.muted_foreground)
+                        .text_color(theme.table_head_foreground)
                         .child(snapshot.definition.display_label(property).to_string())
                 }),
         )
@@ -82,7 +82,8 @@ fn build_table_header(
 fn render_summary_column(
     display: Option<&super::snapshot::SummaryDisplay>,
     width: Pixels,
-    theme: &Theme,
+    title_color: Hsla,
+    text_color: Hsla,
 ) -> AnyElement {
     let title = display.map_or(String::new(), |display| display.title.clone());
     let text = display.map_or(String::new(), |display| display.text.clone());
@@ -93,13 +94,8 @@ fn render_summary_column(
         .flex_shrink_0()
         .px_2()
         .justify_center()
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(title),
-        )
-        .child(div().text_sm().text_color(theme.foreground).child(text))
+        .child(div().text_xs().text_color(title_color).child(title))
+        .child(div().text_sm().text_color(text_color).child(text))
         .into_any_element()
 }
 
@@ -118,7 +114,7 @@ fn build_table_footer(
             .w_full()
             .min_w(table_min_width)
             .h(px(TABLE_FOOTER_HEIGHT))
-            .bg(theme.tab_bar)
+            .bg(theme.table_foot)
             .border_t_1()
             .border_color(theme.border)
             .children(
@@ -126,7 +122,12 @@ fn build_table_footer(
                     .iter()
                     .zip(column_widths.iter())
                     .map(|(property, width)| {
-                        render_summary_column(snapshot.summary_for(&property.source), *width, theme)
+                        render_summary_column(
+                            snapshot.summary_for(&property.source),
+                            *width,
+                            theme.table_foot_foreground,
+                            theme.table_foot_foreground,
+                        )
                     }),
             )
             .into_any_element(),
@@ -362,7 +363,12 @@ fn render_group_header(
                             let display = summaries
                                 .iter()
                                 .find(|display| display.source == property.source);
-                            render_summary_column(display, *width, theme)
+                            render_summary_column(
+                                display,
+                                *width,
+                                theme.muted_foreground,
+                                theme.foreground,
+                            )
                         },
                     )),
             );

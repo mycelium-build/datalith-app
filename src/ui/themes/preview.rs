@@ -227,7 +227,10 @@ mod tests {
                 window.render_frame(cx);
                 assert!(window.find("graph-view").visible());
                 window.click("preview-todo", cx);
-                assert!(window.find("todo-add-btn").visible());
+                assert!(window.try_find("todo-add-btn").is_none());
+                assert_eq!(window.find(("todo-check", 0_usize)).checked(), Some(false));
+                window.click(("todo-check", 0_usize), cx);
+                assert_eq!(window.find(("todo-check", 0_usize)).checked(), Some(false));
                 window.click("preview-note", cx);
                 assert_eq!(cx.theme().background, global);
                 assert_eq!(

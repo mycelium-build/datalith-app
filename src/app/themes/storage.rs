@@ -21,7 +21,7 @@ pub(super) struct StoredThemeSet {
     pub themes: Vec<ThemeDocument>,
 }
 
-pub(super) fn read(path: &Path, defaults: &[ThemeDocument; 2]) -> Result<StoredThemeSet> {
+pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
     let text = fs::read_to_string(path)?;
     let mut value: Value = serde_json::from_str(&text)?;
     if !value.is_object() {
@@ -60,7 +60,10 @@ pub(super) fn read(path: &Path, defaults: &[ThemeDocument; 2]) -> Result<StoredT
         .as_array_mut()
         .context("Theme variants must be an array")?;
     if variants.is_empty() {
-        variants.push(serde_json::to_value(&defaults[0])?);
+        variants.push(serde_json::json!({
+            "name": name,
+            "mode": "light"
+        }));
     }
     let multi = variants.len() > 1;
     for (ix, variant) in variants.iter_mut().enumerate() {
@@ -75,8 +78,8 @@ pub(super) fn read(path: &Path, defaults: &[ThemeDocument; 2]) -> Result<StoredT
         } else {
             ThemeMode::Light
         };
-        // Leave missing tokens unset in storage so Reset continues to inherit
-        // Datalith defaults. `resolved` fills them for presentation.
+        // Leave missing tokens unset in storage so runtime resolution can use
+        // GPUI's mode-aware fallbacks. `resolved` fills effective values for presentation.
         let variant_name = object
             .get("name")
             .and_then(Value::as_str)
@@ -207,7 +210,7 @@ impl ThemeLibrary {
         }
         paths.sort();
         for path in paths {
-            match read(&path, &self.defaults).and_then(|mut set| {
+            match read(&path).and_then(|mut set| {
                 if self
                     .families
                     .iter()

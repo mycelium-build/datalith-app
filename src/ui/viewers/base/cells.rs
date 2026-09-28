@@ -141,8 +141,9 @@ fn render_link(
     div()
         .id(id)
         .when(truncate, Styled::text_ellipsis)
-        .text_color(theme.primary)
-        .hover(Styled::underline)
+        .text_color(theme.link)
+        .hover(|style| style.text_decoration_1().text_color(theme.link_hover))
+        .active(|style| style.text_color(theme.link_active))
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
             if let Some(handler) = handler.upgrade() {

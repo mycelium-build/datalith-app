@@ -36,6 +36,10 @@ impl Drop for Sandbox {
     }
 }
 
+fn color_after_theme_serialization(color: gpui_kit::Hsla) -> gpui_kit::Hsla {
+    serde_json::from_value(serde_json::to_value(color).unwrap()).unwrap()
+}
+
 #[test]
 fn bundled_families_include_every_variant_and_sanitize_ayu() {
     let sandbox = Sandbox::new();
@@ -56,13 +60,13 @@ fn bundled_families_include_every_variant_and_sanitize_ayu() {
 }
 
 #[test]
-fn bundled_chrome_inherits_its_own_surface_when_upstream_omits_tokens() {
+fn bundled_presets_keep_omitted_chrome_tokens_unset() {
     let sandbox = Sandbox::new();
     let library = sandbox.library();
     let latte = library.variant("Catppuccin Latte").unwrap();
     let colors = latte.document().colors().unwrap();
-    assert_eq!(colors["popover.background"], colors["background"]);
-    assert_eq!(colors["popover.foreground"], colors["foreground"]);
+    assert_eq!(colors["popover.background"], None);
+    assert_eq!(colors["popover.foreground"], None);
     let datalith = library
         .variant("Datalith Dark")
         .unwrap()
@@ -303,8 +307,14 @@ fn reset_uses_the_effective_default_of_each_variants_mode() {
         let dark = library
             .resolved(ids[1], cx.global::<super::super::fonts::FontCatalog>())
             .unwrap();
-        assert_eq!(light.color("background"), Some(light.theme().background));
-        assert_eq!(dark.color("background"), Some(dark.theme().background));
+        assert_eq!(
+            light.color("background"),
+            Some(color_after_theme_serialization(light.theme().background))
+        );
+        assert_eq!(
+            dark.color("background"),
+            Some(color_after_theme_serialization(dark.theme().background))
+        );
         assert_ne!(light.color("background"), dark.color("background"));
         assert!(
             library
@@ -315,6 +325,226 @@ fn reset_uses_the_effective_default_of_each_variants_mode() {
                 .all(|variant| variant.document().colors().unwrap()["background"].is_none())
         );
     });
+}
+
+fn assert_sparse_variant_fallbacks(library: &mut ThemeLibrary, variant_id: u64, cx: &App) {
+    let variant = library.variant_by_id(variant_id).unwrap();
+    let resolved = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    let colors = variant.document().colors().unwrap();
+    let theme = resolved.theme();
+    let mode = variant.mode();
+    let name = variant.name().to_owned();
+    let gpui_highlight = if mode == ThemeMode::Dark {
+        gpui_kit::component::highlighter::HighlightTheme::default_dark()
+    } else {
+        gpui_kit::component::highlighter::HighlightTheme::default_light()
+    };
+    let gpui_string =
+        serde_json::to_value(&gpui_highlight.style).unwrap()["syntax"]["string"]["color"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+    assert_eq!(colors["background"], None);
+    assert_eq!(colors["link"], None);
+    assert_eq!(colors["list.active.background"], None);
+    assert_eq!(
+        resolved.color("background"),
+        Some(color_after_theme_serialization(theme.background))
+    );
+    assert_eq!(
+        resolved.color("highlight:syntax.string"),
+        Some(gpui_kit::component::try_parse_color(&gpui_string).unwrap()),
+        "{name} omitted syntax colors use GPUI's mode-specific default"
+    );
+    assert_eq!(
+        resolved.color("link"),
+        Some(color_after_theme_serialization(theme.primary))
+    );
+    assert_eq!(
+        resolved.color("list.active.background"),
+        Some(color_after_theme_serialization(theme.list_active))
+    );
+    assert_eq!(theme.table_active, theme.list_active);
+    assert_eq!(theme.selection, theme.primary.alpha(theme.selection.a));
+    assert!(!resolved.color_is_defined("link"));
+    assert!(!resolved.color_is_defined("list.active.background"));
+    assert!(!resolved.color_is_defined("highlight:syntax.string"));
+    assert!(resolved.color_is_defined("primary.background"));
+    assert!(
+        library
+            .resolved_config(&name)
+            .unwrap()
+            .colors
+            .background
+            .is_none(),
+        "{name} keeps omitted background sparse for GPUI"
+    );
+
+    let old_list_active = theme.list_active;
+    let next_primary = if mode == ThemeMode::Dark {
+        "#f97316"
+    } else {
+        "#0f766e"
+    };
+    library
+        .update_color(variant_id, "primary.background", Some(next_primary.into()))
+        .unwrap();
+    let changed = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    assert_eq!(
+        changed.color("link"),
+        Some(color_after_theme_serialization(changed.theme().primary))
+    );
+    assert_ne!(changed.theme().list_active, old_list_active);
+    assert_eq!(changed.theme().table_active, changed.theme().list_active);
+    assert_eq!(
+        changed.color("list.active.background"),
+        Some(color_after_theme_serialization(changed.theme().list_active))
+    );
+
+    library
+        .update_color(variant_id, "primary.background", None)
+        .unwrap();
+    let reset = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    assert_eq!(
+        reset.color("link"),
+        Some(color_after_theme_serialization(reset.theme().primary))
+    );
+    assert_eq!(
+        reset.color("list.active.background"),
+        Some(color_after_theme_serialization(reset.theme().list_active))
+    );
+    assert!(!reset.color_is_defined("primary.background"));
+}
+
+#[test]
+fn sparse_theme_colors_follow_gpui_fallbacks_in_both_modes() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let mut library = sandbox.library();
+        let import = sandbox.root.join("sparse.json");
+        std::fs::write(
+            &import,
+            r##"{"name":"Sparse","themes":[{"name":"Sparse Light","mode":"light","colors":{"primary.background":"#c05621"}},{"name":"Sparse Dark","mode":"dark","colors":{"primary.background":"#3b82f6"}}]}"##,
+        )
+        .unwrap();
+        let family = library.import(&import, ImportPolicy::Copy).unwrap();
+        let variant_ids: Vec<_> = library
+            .family(family)
+            .unwrap()
+            .variants()
+            .iter()
+            .map(ThemeVariant::id)
+            .collect();
+        for variant_id in variant_ids {
+            assert_sparse_variant_fallbacks(&mut library, variant_id, cx);
+        }
+    });
+}
+
+#[test]
+fn explicit_link_selection_and_highlight_colors_survive_gpui_fallbacks() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let mut library = sandbox.library();
+        let import = sandbox.root.join("explicit.json");
+        std::fs::write(
+            &import,
+            r##"{"name":"Explicit","themes":[{"name":"Explicit","mode":"light","colors":{"primary.background":"#c05621","link":"#12ab34","list.active.background":"#7543c2"},"highlight":{"syntax":{"keyword":{"color":"#fedcba"}}}}]}"##,
+        )
+        .unwrap();
+        let family = library.import(&import, ImportPolicy::Copy).unwrap();
+        let variant = &library.family(family).unwrap().variants()[0];
+        let variant_id = variant.id();
+        let resolved = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        let color = |hex| gpui_kit::component::try_parse_color(hex).unwrap();
+
+        assert_eq!(resolved.color("link"), Some(color("#12ab34")));
+        assert_eq!(resolved.color("list.active.background"), Some(color("#7543c2")));
+        assert_eq!(resolved.color("highlight:syntax.keyword"), Some(color("#fedcba")));
+        assert!(resolved.color_is_defined("link"));
+        assert!(resolved.color_is_defined("list.active.background"));
+        assert!(resolved.color_is_defined("highlight:syntax.keyword"));
+        assert!(!resolved.color_is_defined("highlight:syntax.string"));
+
+        let gpui_default = gpui_kit::component::highlighter::HighlightTheme::default_light();
+        let gpui_string = serde_json::to_value(&gpui_default.style).unwrap()["syntax"]["string"]
+            ["color"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            resolved.color("highlight:syntax.string"),
+            Some(color(&gpui_string)),
+            "an omitted syntax color comes from GPUI's light highlight theme"
+        );
+
+        library
+            .update_color(variant_id, "primary.background", Some("#0011aa".into()))
+            .unwrap();
+        let changed = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        assert_eq!(changed.color("link"), Some(color("#12ab34")));
+        assert_eq!(changed.color("list.active.background"), Some(color("#7543c2")));
+
+        library.update_color(variant_id, "link", None).unwrap();
+        library
+            .update_color(variant_id, "list.active.background", None)
+            .unwrap();
+        let reset = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        assert_eq!(
+            reset.color("link"),
+            Some(color_after_theme_serialization(reset.theme().primary))
+        );
+        assert_eq!(
+            reset.color("list.active.background"),
+            Some(color_after_theme_serialization(reset.theme().list_active))
+        );
+        assert_eq!(reset.theme().table_active, reset.theme().list_active);
+        assert!(!reset.color_is_defined("link"));
+        assert!(!reset.color_is_defined("list.active.background"));
+    });
+}
+
+#[test]
+fn empty_import_does_not_persist_datalith_colors_or_highlights() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let import = sandbox.root.join("empty.json");
+    std::fs::write(&import, r#"{"name":"Empty","themes":[]}"#).unwrap();
+
+    let family = library.import(&import, ImportPolicy::Copy).unwrap();
+    let stored = match library.family(family).unwrap().source() {
+        ThemeSource::Custom(path) => path,
+        ThemeSource::Bundled => unreachable!(),
+    };
+    let value: serde_json::Value = serde_json::from_slice(&std::fs::read(stored).unwrap()).unwrap();
+    assert!(value["themes"][0]["colors"]["background"].is_null());
+    assert!(value["themes"][0]["highlight"].is_null());
+    assert_eq!(
+        library.family(family).unwrap().variants()[0]
+            .document()
+            .colors()
+            .unwrap()["background"],
+        None
+    );
 }
 
 #[test]

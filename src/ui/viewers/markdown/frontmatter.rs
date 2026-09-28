@@ -102,7 +102,7 @@ pub(super) fn render_frontmatter(
     }
 
     div()
-        .bg(cx.theme().tab_bar)
+        .bg(cx.theme().muted)
         .rounded(px(MD_FRONTMATTER_RADIUS))
         .p(px(MD_FRONTMATTER_PADDING))
         .mb(px(MD_FRONTMATTER_MARGIN))
@@ -120,7 +120,9 @@ fn render_link(
     let target = target.to_string();
     div()
         .id(ElementId::NamedInteger("frontmatter-link".into(), id))
-        .text_color(cx.theme().primary)
+        .text_color(cx.theme().link)
+        .hover(|style| style.text_color(cx.theme().link_hover))
+        .active(|style| style.text_color(cx.theme().link_active))
         .underline()
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
