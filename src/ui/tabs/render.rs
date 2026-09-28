@@ -115,7 +115,7 @@ impl DatalithView {
             ),
             super::Tab::Theme { editor, .. } => (
                 editor.read(cx).family_name(cx).into(),
-                Icon::new(IconName::Palette),
+                Icon::new(DatalithIcon::Palette),
             ),
             super::Tab::Shortcuts(_) => ("Shortcuts".into(), Icon::new(DatalithIcon::Shortcuts)),
         };

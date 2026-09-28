@@ -5,7 +5,7 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, px, size};
 
 #[test]
-fn family_editors_have_independent_tabs_and_reopening_focuses_existing_tab() {
+fn family_editors_have_independent_tabs_and_theme_command_reopens_the_picker() {
     let mut cx = TestAppContext::single();
     let (first, second) = cx.update(|cx| {
         gpui_kit::init(cx);
@@ -29,6 +29,7 @@ fn family_editors_have_independent_tabs_and_reopening_focuses_existing_tab() {
             .unwrap();
         (first, second)
     });
+    let mut view = None;
     let handle = cx.open_window(size(px(1200.), px(900.)), |window, cx| {
         let app = cx.new(|cx| DatalithView::new(false, vec![], window, cx));
         app.update(cx, |app, cx| {
@@ -41,16 +42,30 @@ fn family_editors_have_independent_tabs_and_reopening_focuses_existing_tab() {
             app.open_theme_editor_for(first, None, window, cx);
             assert_eq!(app.tabs.entries.len(), 2);
             assert_eq!(app.tabs.active().unwrap().entity_id(), initial);
+            app.open_theme_editor(window, cx);
+            assert!(app.settings.open);
+        });
+        view = Some(app.clone());
+        Root::new(app, window, cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("close-settings").visible());
+        assert!(window.find("theme-appearance").visible());
+    })
+    .unwrap();
+    let view = view.unwrap();
+    cx.update_window(handle.into(), |_, window, cx| {
+        view.update(cx, |app, cx| {
+            app.settings.close();
             app.close_active_tab(window, cx);
             assert_eq!(app.tabs.entries.len(), 1);
             assert!(app.tabs.theme_editor_for(second, cx).is_some());
             assert_document_only_restore(app, second, window, cx);
         });
-        Root::new(app, window, cx)
-    });
-    cx.run_until_parked();
-    cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
-        .unwrap();
+    })
+    .unwrap();
     cx.update(|cx| {
         for id in [first, second] {
             if let Some(themes::ThemeSource::Custom(path)) = cx

@@ -76,6 +76,8 @@ pub(super) const ESSENTIAL_COLORS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+pub(super) const VARIANT_MODE_ROW: &str = "__variant_mode__";
+
 pub(super) fn color_label(token: &str) -> String {
     ESSENTIAL_COLORS
         .iter()
@@ -120,20 +122,19 @@ impl ThemeEditor {
                 .gap_2()
                 .child(
                     div()
-                        .id(format!("color-picker-{id}-{token}"))
+                        .id(format!("color-value-{id}-{token}"))
                         .test_support()
                         .child(
                             ColorPicker::new(&controls.picker)
                                 .small()
+                                .w_32()
+                                .label(if row.display.is_empty() {
+                                    "Not set".to_owned()
+                                } else {
+                                    row.display.clone()
+                                })
                                 .accessibility_label(format!("Pick {label} color")),
                         ),
-                )
-                .child(
-                    Input::new(&controls.input)
-                        .id(format!("color-value-{id}-{token}"))
-                        .small()
-                        .w_24()
-                        .aria_label(format!("{label} color")),
                 )
                 .child(
                     Button::new(format!("reset-color-{id}-{token}"))
@@ -153,37 +154,39 @@ impl ThemeEditor {
             h_flex()
                 .gap_2()
                 .child(
-                    Button::new(format!("color-picker-{id}-{token}"))
+                    Button::new(format!("color-value-{id}-{token}"))
                         .small()
-                        .outline()
+                        .ghost()
+                        .w_32()
+                        .justify_start()
                         .tooltip(format!("Choose {label} color…"))
-                        .accessibility_label(format!("Pick {label} color"))
+                        .accessibility_label(format!("Edit {label} color"))
                         .children(
                             gpui_kit::component::try_parse_color(&row.display)
                                 .ok()
                                 .map(|color| div().size_4().rounded_sm().bg(color)),
                         )
+                        .label(if row.display.is_empty() {
+                            "Not set".to_owned()
+                        } else {
+                            row.display.clone()
+                        })
                         .on_click(cx.listener({
                             let token = token.to_owned();
                             move |this, _, window, cx| this.edit_color(id, &token, true, window, cx)
                         })),
                 )
                 .child(
-                    Button::new(format!("color-value-{id}-{token}"))
+                    Button::new(format!("reset-color-{id}-{token}"))
                         .small()
                         .ghost()
-                        .w_24()
-                        .label(if row.display.is_empty() {
-                            "Not set".to_owned()
-                        } else {
-                            row.display.clone()
-                        })
-                        .accessibility_label(format!("Edit {label} color"))
+                        .icon(IconName::Undo)
+                        .tooltip("Use automatic color")
+                        .accessibility_label(format!("Reset {label} to automatic"))
+                        .disabled(row.valid.is_none())
                         .on_click(cx.listener({
                             let token = token.to_owned();
-                            move |this, _, window, cx| {
-                                this.edit_color(id, &token, false, window, cx);
-                            }
+                            move |this, _, window, cx| this.reset_color(id, &token, window, cx)
                         })),
                 )
                 .into_any_element()
@@ -276,9 +279,68 @@ impl ThemeEditor {
             .into_any_element()
     }
 
+    fn render_variant_mode_row(id: u64, cx: &Context<Self>) -> gpui_kit::AnyElement {
+        let mode = cx
+            .global::<ThemeLibrary>()
+            .variant_by_id(id)
+            .map(ThemeVariant::mode);
+        v_flex()
+            .id(format!("theme-token-{id}-{VARIANT_MODE_ROW}"))
+            .test_support()
+            .w_full()
+            .px_4()
+            .py_3()
+            .gap_1()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_3()
+                    .flex_wrap()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(div().text_sm().child("Appearance"))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Whether this variant is used in light or dark mode"),
+                            ),
+                    )
+                    .child(
+                        h_flex().gap_1().children(
+                            [
+                                (
+                                    "variant-light",
+                                    "Light",
+                                    gpui_kit::component::ThemeMode::Light,
+                                ),
+                                ("variant-dark", "Dark", gpui_kit::component::ThemeMode::Dark),
+                            ]
+                            .into_iter()
+                            .map(|(key, label, value)| {
+                                Button::new((key, id))
+                                    .small()
+                                    .ghost()
+                                    .label(label)
+                                    .selected(mode == Some(value))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.change_variant_mode(id, value, window, cx);
+                                    }))
+                            }),
+                        ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn render_fonts(&self, id: u64, cx: &Context<Self>) -> impl IntoElement {
         v_flex().w_full().gap_4().p_4()
-            .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Choose a font for each role. Default shows the font that will actually be used."))
+            .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Fonts by interface role"))
             .children(self.variants.get(&id).into_iter().flat_map(|controls| FontRole::ALL.into_iter().zip(controls.fonts.iter()))
                 .map(|(role, state)| {
                     let unavailable = cx.global::<ThemeLibrary>().variant_by_id(id)
@@ -301,77 +363,27 @@ impl ThemeEditor {
                 .on_click(cx.listener(move |this, _, window, cx| this.apply_fonts_to_all(id, window, cx))))
     }
 
-    fn render_variant_header(
-        &self,
-        family: &ThemeFamily,
-        cx: &Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    fn render_category_tabs(&self, cx: &Context<Self>) -> impl IntoElement {
         let id = self.edited;
-        let Some(variant) = family.variants().iter().find(|v| v.id() == id) else {
-            return div().into_any_element();
-        };
-        v_flex()
+        h_flex()
             .p_4()
-            .gap_3()
+            .gap_1()
+            .flex_wrap()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(
-                h_flex()
-                    .gap_3()
-                    .flex_wrap()
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_1()
-                            .child(div().text_sm().child(variant_label(family, variant)))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Appearance defaults"),
-                            ),
-                    )
-                    .child(
-                        h_flex().gap_1().children(
-                            [
-                                (
-                                    "variant-light",
-                                    "Light",
-                                    gpui_kit::component::ThemeMode::Light,
-                                ),
-                                ("variant-dark", "Dark", gpui_kit::component::ThemeMode::Dark),
-                            ]
-                            .into_iter()
-                            .map(|(key, label, mode)| {
-                                Button::new((key, id))
-                                    .small()
-                                    .ghost()
-                                    .label(label)
-                                    .selected(variant.mode() == mode)
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.change_variant_mode(id, mode, window, cx);
-                                    }))
-                            }),
-                        ),
-                    ),
-            )
-            .child(h_flex().gap_1().flex_wrap().children(
-                ["Colors", "Fonts", "Advanced"].into_iter().map(|category| {
-                    Button::new(format!("token-group-{id}-{category}"))
-                        .small()
-                        .ghost()
-                        .selected(self.category == category)
-                        .label(category)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.category = category;
-                            this.refresh_color_list(cx);
-                            this.reset_property_scroll();
-                            cx.notify();
-                        }))
-                }),
-            ))
-            .into_any_element()
+            .children(["Colors", "Fonts", "Advanced"].into_iter().map(|category| {
+                Button::new(format!("token-group-{id}-{category}"))
+                    .small()
+                    .ghost()
+                    .selected(self.category == category)
+                    .label(category)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.category = category;
+                        this.refresh_color_list(cx);
+                        this.reset_property_scroll();
+                        cx.notify();
+                    }))
+            }))
     }
 
     fn render_add_variant(cx: &Context<Self>) -> Button {
@@ -391,10 +403,7 @@ impl ThemeEditor {
             .tooltip("Rename variant")
             .accessibility_label("Rename variant")
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.select(id, window, cx);
-                this.show_preview = false;
-                crate::ui::settings::theme::dialogs::rename_variant(this.family_id, id, window, cx);
-                cx.notify();
+                this.start_variant_rename(id, window, cx);
             }))
     }
 
@@ -433,29 +442,74 @@ impl ThemeEditor {
                     .gap_1()
                     .children(family.variants().iter().map(|variant| {
                         let id = variant.id();
-                        h_flex()
-                            .gap_1()
-                            .child(
+                        let group = format!("theme-variant-row-{id}");
+                        let editing = self.rename_target == Some(RenameTarget::Variant(id));
+                        div()
+                            .id(group.clone())
+                            .test_support()
+                            .group(group.clone())
+                            .relative()
+                            .w_full()
+                            .child(if editing {
+                                self.rename_input.as_ref().map_or_else(
+                                    || div().into_any_element(),
+                                    |input| {
+                                        Input::new(input)
+                                            .id(format!("variant-name-input-{id}"))
+                                            .small()
+                                            .w_full()
+                                            .min_w_0()
+                                            .aria_label("Variant name")
+                                            .into_any_element()
+                                    },
+                                )
+                            } else {
+                                let label = variant_label(family, variant);
                                 Button::new(("select-variant", id))
-                                    .flex_1()
+                                    .w_full()
                                     .min_w_0()
                                     .small()
                                     .ghost()
                                     .selected(id == self.edited)
-                                    .justify_start()
-                                    .label(variant_label(family, variant))
+                                    .pr_16()
+                                    .accessibility_label(label.clone())
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .truncate()
+                                            .text_left()
+                                            .child(label),
+                                    )
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.select(id, window, cx);
                                         this.reset_property_scroll();
-                                    })),
-                            )
-                            .child(Self::render_rename_variant(id, cx))
-                            .child(Self::render_remove_variant(id, cx))
+                                    }))
+                                    .into_any_element()
+                            })
+                            .children((!editing).then(|| {
+                                h_flex()
+                                    .absolute()
+                                    .right_0()
+                                    .top_0()
+                                    .h_full()
+                                    .items_center()
+                                    .pr_1()
+                                    .gap_1()
+                                    .invisible()
+                                    .group_hover(group, gpui_kit::Styled::visible)
+                                    .child(Self::render_rename_variant(id, cx))
+                                    .child(Self::render_remove_variant(id, cx))
+                            }))
                     }))
                     .child(div().mt_2().child(Self::render_add_variant(cx))),
             )
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "The color header, filters, and virtualized token list form one retained panel"
+    )]
     fn render_properties(&self, cx: &Context<Self>) -> gpui_kit::AnyElement {
         let id = self.edited;
         if self.category == "Fonts" {
@@ -488,34 +542,111 @@ impl ThemeEditor {
                 .read(cx)
                 .selected_value()
                 .is_some_and(|group| group.as_str() != "All areas");
-        v_flex().w_full().flex_1().min_h_0()
-            .child(v_flex().w_full().flex_none().p_4().gap_2()
-                .child(h_flex().gap_2()
-                    .child(div().flex_1().text_sm().child(if advanced { format!("All colors · {} / {total}", self.visible_colors.len()) } else { "Essential colors".into() }))
-                    .when(advanced && filtered, |row| row.child(Button::new("clear-color-filters").small().ghost().label("Clear filters")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.color_query.update(cx, |query, cx| query.set_value("", window, cx));
-                            this.color_group.update(cx, |group, cx| group.set_selected_value(&"All areas".into(), window, cx));
-                            this.refresh_color_list(cx);
-                            cx.notify();
-                        })))))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(if advanced {
-                    "Browse by area or search a color. Includes unset colors. Source colors affect editing; they do not recolor the rendered note."
-                } else {
-                    "Start here to change the overall appearance. Advanced contains every component and source-editor color."
-                }))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child("In variant JSON = explicit value. Datalith default = inherited from Light/Dark. Component default = calculated or unset. Reset removes the override."))
-                .when(advanced, |view| view.child(h_flex().w_full().gap_2()
-                    .child(div().w(gpui_kit::rems(12.)).flex_none().child(Select::new(&self.color_group).small().w_full().accessibility_label("Color area")))
-                    .child(div().flex_1().min_w_0().child(Input::new(&self.color_query).id("theme-color-search").small().w_full().aria_label("Search all colors"))))))
-            .child(div().id("theme-controls-scroll").test_support().relative().flex_1().min_h_0()
-                .child(list(self.color_list.clone(), move |ix, _, cx| {
-                    editor.update(cx, |editor, cx| {
-                        editor.visible_colors.get(ix).map_or_else(|| div().into_any_element(), |token| editor.render_color_row(id, token, cx))
-                    })
-                }).size_full())
-                .vertical_scrollbar(&self.color_list))
-            .when(self.visible_colors.is_empty(), |view| view.child(div().p_4().text_sm().child("No colors match your search")))
+        v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                v_flex()
+                    .w_full()
+                    .flex_none()
+                    .p_4()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(div().flex_1().text_sm().child(if advanced {
+                                format!("All colors · {} / {total}", self.visible_colors.len())
+                            } else {
+                                "Essential colors".into()
+                            }))
+                            .when(advanced && filtered, |row| {
+                                row.child(
+                                    Button::new("clear-color-filters")
+                                        .small()
+                                        .ghost()
+                                        .label("Clear filters")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.color_query.update(cx, |query, cx| {
+                                                query.set_value("", window, cx);
+                                            });
+                                            this.color_group.update(cx, |group, cx| {
+                                                group.set_selected_value(
+                                                    &"All areas".into(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                            this.refresh_color_list(cx);
+                                            cx.notify();
+                                        })),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(if advanced {
+                                "All theme color tokens"
+                            } else {
+                                "Core theme colors"
+                            }),
+                    )
+                    .when(advanced, |view| {
+                        view.child(
+                            h_flex()
+                                .w_full()
+                                .gap_2()
+                                .child(
+                                    div().w(gpui_kit::rems(12.)).flex_none().child(
+                                        Select::new(&self.color_group)
+                                            .small()
+                                            .w_full()
+                                            .accessibility_label("Color area"),
+                                    ),
+                                )
+                                .child(
+                                    div().flex_1().min_w_0().child(
+                                        Input::new(&self.color_query)
+                                            .id("theme-color-search")
+                                            .small()
+                                            .w_full()
+                                            .aria_label("Search all colors"),
+                                    ),
+                                ),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .id("theme-controls-scroll")
+                    .test_support()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        list(self.color_list.clone(), move |ix, _, cx| {
+                            editor.update(cx, |editor, cx| {
+                                editor.visible_colors.get(ix).map_or_else(
+                                    || div().into_any_element(),
+                                    |token| {
+                                        if token == VARIANT_MODE_ROW {
+                                            Self::render_variant_mode_row(id, cx)
+                                        } else {
+                                            editor.render_color_row(id, token, cx)
+                                        }
+                                    },
+                                )
+                            })
+                        })
+                        .size_full(),
+                    )
+                    .vertical_scrollbar(&self.color_list),
+            )
+            .when(self.visible_colors.is_empty(), |view| {
+                view.child(div().p_4().text_sm().child("No colors match your search"))
+            })
             .into_any_element()
     }
 }
@@ -549,7 +680,7 @@ impl Render for ThemeEditor {
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .child(self.render_variant_header(family, cx))
+            .child(self.render_category_tabs(cx))
             .child(self.render_properties(cx));
         let preview = v_flex()
             .id("theme-preview-pane")
@@ -588,6 +719,37 @@ impl Render for ThemeEditor {
                 )
                 .into_any_element()
         };
+        let family_title = if self.rename_target == Some(RenameTarget::Family) {
+            self.rename_input.as_ref().map_or_else(
+                || div().into_any_element(),
+                |input| {
+                    Input::new(input)
+                        .id("theme-name-input")
+                        .small()
+                        .w_64()
+                        .max_w_full()
+                        .aria_label("Theme name")
+                        .into_any_element()
+                },
+            )
+        } else {
+            h_flex()
+                .min_w_0()
+                .gap_1()
+                .child(div().text_lg().truncate().child(family.name().to_owned()))
+                .child(
+                    Button::new("rename-theme")
+                        .small()
+                        .ghost()
+                        .icon(Icon::new(DatalithIcon::Pen))
+                        .tooltip("Rename theme")
+                        .accessibility_label("Rename theme")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.start_family_rename(window, cx);
+                        })),
+                )
+                .into_any_element()
+        };
         v_flex()
             .id("theme-editor")
             .size_full()
@@ -603,22 +765,7 @@ impl Render for ThemeEditor {
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .flex_wrap()
-                    .child(div().text_lg().truncate().child(family.name().to_owned()))
-                    .child(
-                        Button::new("rename-theme")
-                            .small()
-                            .ghost()
-                            .icon(Icon::new(DatalithIcon::Pen))
-                            .tooltip("Rename theme…")
-                            .accessibility_label("Rename theme")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                crate::ui::settings::theme::dialogs::rename_family(
-                                    this.family_id,
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(family_title)
                     .child(div().flex_1())
                     .child(
                         div()
@@ -660,22 +807,47 @@ impl Render for ThemeEditor {
                     .child(error.clone())
             }))
             .when(!show_navigation, |view| {
+                let group = "compact-theme-variant-row";
+                let editing = self.rename_target == Some(RenameTarget::Variant(id));
                 view.child(
                     v_flex()
                         .p_3()
                         .gap_1()
                         .child(
                             h_flex()
+                                .id(group)
+                                .group(group)
+                                .w_full()
                                 .gap_2()
                                 .child(div().text_sm().child("Variant"))
-                                .child(
+                                .child(if editing {
+                                    self.rename_input.as_ref().map_or_else(
+                                        || div().into_any_element(),
+                                        |input| {
+                                            Input::new(input)
+                                                .id(format!("variant-name-input-{id}"))
+                                                .small()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .aria_label("Variant name")
+                                                .into_any_element()
+                                        },
+                                    )
+                                } else {
                                     Select::new(&self.selector)
                                         .flex_1()
                                         .small()
-                                        .accessibility_label("Edited variant"),
-                                )
-                                .child(Self::render_rename_variant(id, cx))
-                                .child(Self::render_remove_variant(id, cx)),
+                                        .accessibility_label("Edited variant")
+                                        .into_any_element()
+                                })
+                                .children((!editing).then(|| {
+                                    h_flex()
+                                        .gap_1()
+                                        .invisible()
+                                        .group_hover(group, gpui_kit::Styled::visible)
+                                        .child(Self::render_rename_variant(id, cx))
+                                        .child(Self::render_remove_variant(id, cx))
+                                })),
                         )
                         .child(Self::render_add_variant(cx)),
                 )

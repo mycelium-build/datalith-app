@@ -95,6 +95,11 @@ impl BaseViewState {
         appearance: std::rc::Rc<gpui_kit::component::Theme>,
         cx: &mut Context<Self>,
     ) {
+        if let Some(graph) = &self.graph {
+            graph.update(cx, |graph, cx| {
+                graph.set_preview_appearance(appearance.clone(), cx);
+            });
+        }
         self.preview_appearance = Some(appearance);
         cx.notify();
     }
@@ -262,6 +267,9 @@ impl BaseViewState {
             cx.new(|cx| graph::GraphState::new(handler, cx))
         });
         entity.update(cx, |graph, cx| {
+            if let Some(appearance) = &self.preview_appearance {
+                graph.set_preview_appearance(appearance.clone(), cx);
+            }
             graph.set_snapshot(has_nodes.then_some(built), reset_view, cx);
         });
     }

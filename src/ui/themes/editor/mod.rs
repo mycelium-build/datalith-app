@@ -15,8 +15,8 @@ use gpui_kit::component::{
     select::{SelectEvent, SelectState},
 };
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    Render, ScrollHandle, SharedString, Subscription, Window,
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Hsla, ListAlignment, ListState,
+    Render, Rgba, ScrollHandle, SharedString, Subscription, Window,
 };
 
 use crate::app::{
@@ -64,10 +64,43 @@ struct ColorControls {
     _subscriptions: Vec<Subscription>,
 }
 
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "channels are clamped to 0..=1 and rounded before the bounded u8 conversion"
+)]
+fn color_hex(color: Hsla) -> String {
+    let rgba = Rgba::from(color);
+    let channel = |value: f32| (value.clamp(0., 1.) * 255.).round() as u8;
+    if rgba.a < 1. {
+        format!(
+            "#{:02x}{:02x}{:02x}{:02x}",
+            channel(rgba.r),
+            channel(rgba.g),
+            channel(rgba.b),
+            channel(rgba.a)
+        )
+    } else {
+        format!(
+            "#{:02x}{:02x}{:02x}",
+            channel(rgba.r),
+            channel(rgba.g),
+            channel(rgba.b)
+        )
+    }
+}
+
 struct VariantControls {
     fonts: [Entity<Choices>; 4],
     colors: BTreeMap<String, ColorRow>,
     subscriptions: Vec<Subscription>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RenameTarget {
+    Family,
+    Variant(u64),
 }
 
 pub struct ThemeEditor {
@@ -89,6 +122,9 @@ pub struct ThemeEditor {
     rem_size: gpui_kit::Pixels,
     _query_subscription: Subscription,
     error: Option<String>,
+    rename_target: Option<RenameTarget>,
+    rename_input: Option<Entity<InputState>>,
+    rename_subscription: Option<Subscription>,
     focus: FocusHandle,
     _selector_subscription: Subscription,
 }
@@ -190,6 +226,9 @@ impl ThemeEditor {
             rem_size: window.rem_size(),
             _query_subscription: query_subscription,
             error: None,
+            rename_target: None,
+            rename_input: None,
+            rename_subscription: None,
             focus: cx.focus_handle(),
             _selector_subscription: selector_subscription,
         };
@@ -354,6 +393,15 @@ impl ThemeEditor {
         cx: &mut Context<Self>,
     ) {
         if let Some((previous_id, previous_token)) = self.active_color.take() {
+            if let Some(picker) = self
+                .variants
+                .get(&previous_id)
+                .and_then(|variant| variant.colors.get(&previous_token))
+                .and_then(|row| row.controls.as_ref())
+                .map(|controls| controls.picker.clone())
+            {
+                picker.update(cx, |picker, cx| picker.set_open(false, cx));
+            }
             self.blur_color(previous_id, &previous_token, window, cx);
         }
         self.select(id, window, cx);
@@ -372,22 +420,34 @@ impl ThemeEditor {
             }
             let token = token.to_owned();
             let key = token.clone();
+            let picker_for_blur = picker.clone();
             let input_subscription = cx.subscribe_in(
                 &input,
                 window,
                 move |this, _, event, window, cx| match event {
                     InputEvent::Focus => this.select(id, window, cx),
                     InputEvent::Change => this.change_color(id, &key, window, cx),
-                    InputEvent::Blur => this.blur_color(id, &key, window, cx),
+                    InputEvent::Blur => {
+                        this.blur_color(id, &key, window, cx);
+                        if !picker_for_blur.read(cx).is_open() {
+                            this.finish_color_edit(id, &key, cx);
+                        }
+                    }
                     InputEvent::PressEnter { .. } => {}
                 },
             );
+            let picker_key = token.clone();
+            let picker_observer = cx.observe_in(&picker, window, move |this, picker, _, cx| {
+                if !picker.read(cx).is_open() {
+                    this.finish_color_edit(id, &picker_key, cx);
+                }
+            });
             let picker_subscription =
                 cx.subscribe_in(&picker, window, move |this, _, event, window, cx| {
                     let ColorPickerEvent::Change(color) = event;
                     if let Some(color) = color {
                         this.select(id, window, cx);
-                        let text = color.to_hex();
+                        let text = color_hex(*color);
                         if let Some(controls) = this
                             .variants
                             .get(&id)
@@ -404,11 +464,11 @@ impl ThemeEditor {
             row.controls = Some(ColorControls {
                 input,
                 picker,
-                _subscriptions: vec![input_subscription, picker_subscription],
+                _subscriptions: vec![input_subscription, picker_subscription, picker_observer],
             });
         }
         if let Some(controls) = &row.controls {
-            window.focus(&controls.input.focus_handle(cx), cx);
+            window.focus(&controls.picker.focus_handle(cx), cx);
             if open_picker {
                 controls
                     .picker
@@ -481,6 +541,108 @@ impl ThemeEditor {
             self.color_list.remeasure();
             cx.notify();
         }
+    }
+
+    fn finish_color_edit(&mut self, id: u64, token: &str, cx: &mut Context<Self>) {
+        if self
+            .active_color
+            .as_ref()
+            .is_some_and(|(active_id, active_token)| *active_id == id && active_token == token)
+        {
+            self.active_color = None;
+            self.color_list.remeasure();
+            cx.notify();
+        }
+    }
+
+    fn start_rename(
+        &mut self,
+        target: RenameTarget,
+        value: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let input = cx.new(|cx| InputState::new(window, cx).default_value(value));
+        let subscription =
+            cx.subscribe_in(
+                &input,
+                window,
+                move |this, _, event, window, cx| match event {
+                    InputEvent::Change => {
+                        this.error = None;
+                        cx.notify();
+                    }
+                    InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                        this.commit_rename(target, window, cx);
+                    }
+                    InputEvent::Focus => {}
+                },
+            );
+        self.rename_target = Some(target);
+        self.rename_input = Some(input.clone());
+        self.rename_subscription = Some(subscription);
+        self.error = None;
+        input.focus_handle(cx).focus(window, cx);
+        window.dispatch_action(Box::new(gpui_kit::component::input::SelectAll), cx);
+        cx.notify();
+    }
+
+    fn start_family_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(name) = cx
+            .global::<ThemeLibrary>()
+            .family(self.family_id)
+            .map(|family| family.name().to_owned())
+        else {
+            return;
+        };
+        self.start_rename(RenameTarget::Family, name, window, cx);
+    }
+
+    fn start_variant_rename(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.select(id, window, cx);
+        let Some(name) = cx
+            .global::<ThemeLibrary>()
+            .family(self.family_id)
+            .and_then(|family| family.suffix(id))
+            .map(str::to_owned)
+        else {
+            return;
+        };
+        self.show_preview = false;
+        self.start_rename(RenameTarget::Variant(id), name, window, cx);
+    }
+
+    fn commit_rename(&mut self, target: RenameTarget, window: &mut Window, cx: &mut Context<Self>) {
+        if self.rename_target != Some(target) {
+            return;
+        }
+        let Some(value) = self
+            .rename_input
+            .as_ref()
+            .map(|input| input.read(cx).value().to_string())
+        else {
+            return;
+        };
+        let result = match target {
+            RenameTarget::Family => cx
+                .global_mut::<ThemeLibrary>()
+                .rename_family(self.family_id, &value),
+            RenameTarget::Variant(id) => cx.global_mut::<ThemeLibrary>().rename_variant(id, &value),
+        };
+        match result {
+            Ok(()) => {
+                self.rename_target = None;
+                self.rename_input = None;
+                self.rename_subscription = None;
+                self.error = None;
+                themes::refresh_current(cx);
+                crate::ui::settings::SettingsView::init_theme_options(cx);
+                self.refresh_variants(window, cx);
+                self.focus.focus(window, cx);
+            }
+            Err(error) => self.error = Some(error.to_string()),
+        }
+        cx.notify();
     }
 
     fn reset_color(&mut self, id: u64, token: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -650,12 +812,7 @@ impl ThemeEditor {
                     self.refresh_variants(window, cx);
                     self.select(id, window, cx);
                     self.reset_property_scroll();
-                    super::super::settings::theme::dialogs::rename_variant(
-                        self.family_id,
-                        id,
-                        window,
-                        cx,
-                    );
+                    self.start_variant_rename(id, window, cx);
                     ThemeLibrary::schedule_save(self.family_id, cx);
                 }
                 Err(error) => self.error = Some(error.to_string()),
@@ -775,10 +932,13 @@ impl ThemeEditor {
                         .cloned()
                         .collect()
                 } else {
-                    render::ESSENTIAL_COLORS
-                        .iter()
-                        .filter(|(token, _, _)| variant.colors.contains_key(*token))
-                        .map(|(token, _, _)| (*token).to_owned())
+                    std::iter::once(render::VARIANT_MODE_ROW.to_owned())
+                        .chain(
+                            render::ESSENTIAL_COLORS
+                                .iter()
+                                .filter(|(token, _, _)| variant.colors.contains_key(*token))
+                                .map(|(token, _, _)| (*token).to_owned()),
+                        )
                         .collect()
                 }
             });

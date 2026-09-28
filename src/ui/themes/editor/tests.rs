@@ -9,8 +9,8 @@ use crate::{
 use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    Focusable as _, InputEvent as _, ScrollDelta, ScrollWheelEvent, TestAppContext, WindowHandle,
-    point, px, size,
+    Focusable as _, InputEvent as _, ScrollDelta, ScrollWheelEvent, TestAppContext, Window,
+    WindowHandle, point, px, size,
 };
 
 /// Explicit wall-clock probe of the production editor, excluded from correctness runs.
@@ -92,9 +92,7 @@ fn theme_editor_performance() {
         let frame = start.elapsed() / 5;
         let start = Instant::now();
         cx.update_window(handle.into(), |_, window, cx| {
-            window.click(format!("color-value-{first}-background"), cx);
-            window.press("secondary-a", cx);
-            window.input("#123456", cx);
+            choose_editor_color(&editor, first, "background", "#123456", window, cx);
         })
         .unwrap();
         cx.run_until_parked();
@@ -189,6 +187,45 @@ fn workspace(
     (handle, view, family_id, variant_id, name)
 }
 
+fn choose_editor_color(
+    editor: &Entity<ThemeEditor>,
+    variant: u64,
+    token: &str,
+    value: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    editor.update(cx, |editor, cx| {
+        editor.edit_color(variant, token, true, window, cx);
+    });
+    let picker = editor.read(cx).variants[&variant].colors[token]
+        .controls
+        .as_ref()
+        .unwrap()
+        .picker
+        .clone();
+    let color = gpui_kit::component::try_parse_color(value).unwrap();
+    picker.update(cx, |picker, cx| picker.select_color(color, window, cx));
+}
+
+fn choose_color(
+    app: &Entity<DatalithView>,
+    family: u64,
+    variant: u64,
+    token: &str,
+    value: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let editor = app
+        .read(cx)
+        .tabs
+        .theme_editor_for(family, cx)
+        .unwrap()
+        .clone();
+    choose_editor_color(&editor, variant, token, value, window, cx);
+}
+
 fn cleanup(cx: &TestAppContext, id: u64) {
     cx.update(|cx| {
         if let Some(family) = cx.global::<ThemeLibrary>().family(id)
@@ -216,9 +253,7 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
     });
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(format!("color-value-{variant}-background"), cx);
-        window.press("secondary-a", cx);
-        window.input("#123456", cx);
+        choose_color(&app, family, variant, "background", "#123456", window, cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -304,39 +339,17 @@ fn editing_the_current_variant_repaints_the_application_theme() {
     use crate::app::settings::ThemeKind;
 
     let mut cx = TestAppContext::single();
-    let (handle, app, family, variant, name) = workspace(&mut cx);
+    let (handle, app, family, variant, _) = workspace(&mut cx);
     let preference = crate::app::settings::snapshot().theme_preference;
     let (kind, old) = cx.update(|cx| {
         let library = cx.global::<ThemeLibrary>();
         let kind = ThemeKind::from(library.variant_by_id(variant).unwrap().mode());
         (kind, library.current(kind).to_owned())
     });
-    cx.update_window(handle.into(), |_, window, cx| {
-        app.update(cx, |app, cx| {
-            app.settings.open_theme(window, cx);
-            cx.notify();
-        });
-        window.render_frame(cx);
-        window.click("theme-appearance", cx);
-        window.press("home", cx);
-        window.press("down", cx);
-        if kind == ThemeKind::Dark {
-            window.press("down", cx);
-        }
-        window.press("enter", cx);
-        window.click("theme-search", cx);
-        window.input(&name, cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
+    cx.update(|cx| crate::ui::themes::set_current(variant, kind, cx));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("set-current", variant), cx);
-        window.click("close-settings", cx);
-        window.render_frame(cx);
-        window.click(format!("color-value-{variant}-background"), cx);
-        window.press("secondary-a", cx);
-        window.input("#234567", cx);
+        choose_color(&app, family, variant, "background", "#234567", window, cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -366,20 +379,32 @@ fn editing_the_current_variant_repaints_the_application_theme() {
 }
 
 #[test]
-fn invalid_color_stays_local_and_blur_restores_last_valid_value() {
+#[allow(
+    clippy::too_many_lines,
+    reason = "covers invalid picker input and the resulting cloned variant in one workflow"
+)]
+fn invalid_picker_hex_keeps_the_last_color_when_a_variant_is_cloned() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, variant, _) = workspace(&mut cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(format!("color-value-{variant}-background"), cx);
-        window.press("secondary-a", cx);
-        window.input("#123456", cx);
+        choose_color(&app, family, variant, "background", "#123456", window, cx);
     })
     .unwrap();
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
-        window.press("secondary-a", cx);
-        window.input("invalid", cx);
+        let editor = app.read(cx).tabs.theme_editor_for(family, cx).unwrap();
+        let picker = editor.read(cx).variants[&variant].colors["background"]
+            .controls
+            .as_ref()
+            .unwrap()
+            .picker
+            .clone();
+        assert!(
+            picker
+                .update(cx, |picker, cx| picker.commit_hex("invalid", window, cx))
+                .is_none()
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -388,7 +413,7 @@ fn invalid_color_stays_local_and_blur_restores_last_valid_value() {
         assert!(
             editor.read(cx).variants[&variant].colors["background"]
                 .error
-                .is_some()
+                .is_none()
         );
         assert_eq!(
             cx.global::<ThemeLibrary>()
@@ -414,15 +439,17 @@ fn invalid_color_stays_local_and_blur_restores_last_valid_value() {
                 .is_none()
         );
         assert_eq!(
-            editor.read(cx).variants[&variant].colors["background"]
-                .controls
-                .as_ref()
-                .unwrap()
-                .input
-                .read(cx)
-                .value()
-                .as_str(),
-            "#123456"
+            color_hex(
+                editor.read(cx).variants[&variant].colors["background"]
+                    .controls
+                    .as_ref()
+                    .unwrap()
+                    .picker
+                    .read(cx)
+                    .value()
+                    .unwrap()
+            ),
+            "#123456".to_owned()
         );
         let editor = editor.read(cx);
         assert_ne!(editor.edited, variant);
@@ -478,10 +505,9 @@ fn changing_mode_refreshes_inherited_inputs_and_pickers_but_keeps_overrides() {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click(format!("color-value-{variant}-background"), cx);
+        window.press("escape", cx);
         window.click(format!("reset-color-{variant}-background"), cx);
-        window.click(format!("color-value-{variant}-border"), cx);
-        window.press("secondary-a", cx);
-        window.input("#123456", cx);
+        choose_color(&app, family, variant, "border", "#123456", window, cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -572,8 +598,6 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
             .picker
             .clone();
         window.render_frame(cx);
-        assert!(!picker.read(cx).is_open());
-        window.click(format!("color-picker-{variant}-background"), cx);
         assert!(picker.read(cx).is_open());
         let chosen = gpui_kit::component::try_parse_color("#123456").unwrap();
         picker.update(cx, |picker, cx| picker.select_color(chosen, window, cx));
@@ -582,9 +606,7 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        let chosen = gpui_kit::component::try_parse_color("#123456")
-            .unwrap()
-            .to_hex();
+        let chosen = color_hex(gpui_kit::component::try_parse_color("#123456").unwrap());
         assert_eq!(
             editor.read(cx).variants[&variant].colors["background"]
                 .controls
@@ -606,6 +628,9 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
                 .as_deref(),
             Some(chosen.as_str())
         );
+        window.click(format!("color-value-{variant}-background"), cx);
+        window.press("escape", cx);
+        window.render_frame(cx);
         window.click(format!("reset-color-{variant}-background"), cx);
         window.render_frame(cx);
         let expected = cx
@@ -684,7 +709,7 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
 #[test]
 fn failed_autosave_exposes_retry_and_retries_after_storage_recovers() {
     let mut cx = TestAppContext::single();
-    let (handle, _, family, variant, _) = workspace(&mut cx);
+    let (handle, app, family, variant, _) = workspace(&mut cx);
     let path = cx.update(
         |cx| match cx.global::<ThemeLibrary>().family(family).unwrap().source() {
             ThemeSource::Custom(path) => path.clone(),
@@ -695,9 +720,7 @@ fn failed_autosave_exposes_retry_and_retries_after_storage_recovers() {
     std::fs::create_dir(&path).unwrap();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(format!("color-value-{variant}-background"), cx);
-        window.press("secondary-a", cx);
-        window.input("#123456", cx);
+        choose_color(&app, family, variant, "background", "#123456", window, cx);
     })
     .unwrap();
     cx.executor()
@@ -840,7 +863,7 @@ fn switching_variants_updates_visible_color_controls_and_preview() {
             second
         );
         window.click(("select-variant", first), cx);
-        window.click(format!("color-value-{first}-background"), cx);
+        choose_color(&app, family, first, "background", "#225588", window, cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -857,11 +880,6 @@ fn switching_variants_updates_visible_color_controls_and_preview() {
             Some(first.to_string().as_str())
         );
     });
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.press("secondary-a", cx);
-        window.input("#225588", cx);
-    })
-    .unwrap();
     cx.run_until_parked();
     cx.update(|cx| {
         assert_eq!(
@@ -957,6 +975,17 @@ fn switching_variants_keeps_mode_controls_keyboard_accessible() {
         window.click(("select-variant", second), cx);
         window.render_frame(cx);
         window.click(("select-variant", first), cx);
+        window.click(format!("token-group-{first}-Fonts"), cx);
+        window.render_frame(cx);
+        assert!(window.try_find(("variant-light", first)).is_none());
+        assert!(window.try_find(("variant-dark", first)).is_none());
+        window.click(format!("token-group-{first}-Colors"), cx);
+        window.render_frame(cx);
+        assert!(
+            window
+                .find(format!("theme-token-{first}-{}", render::VARIANT_MODE_ROW))
+                .visible()
+        );
         for _ in 0..40 {
             window.press("tab", cx);
             if window.find(("variant-light", first)).focused() == Some(true) {
@@ -993,6 +1022,7 @@ fn removing_a_variant_and_using_notification_undo_restores_its_editor_controls()
     });
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
+        window.hover(("select-variant", variant), cx);
         window.click(("remove-variant", variant), cx);
         window.render_frame(cx);
         assert_eq!(
@@ -1043,7 +1073,7 @@ fn removing_a_variant_and_using_notification_undo_restores_its_editor_controls()
 #[test]
 fn syntax_color_edits_use_the_variant_highlight_override() {
     let mut cx = TestAppContext::single();
-    let (handle, _, family, variant, _) = workspace(&mut cx);
+    let (handle, app, family, variant, _) = workspace(&mut cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click(format!("token-group-{variant}-Advanced"), cx);
@@ -1059,12 +1089,15 @@ fn syntax_color_edits_use_the_variant_highlight_override() {
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(
-            format!("color-value-{variant}-highlight:syntax.keyword"),
+        choose_color(
+            &app,
+            family,
+            variant,
+            "highlight:syntax.keyword",
+            "#345678",
+            window,
             cx,
         );
-        window.press("secondary-a", cx);
-        window.input("#345678", cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -1348,6 +1381,10 @@ fn variant_sidebar_uses_short_names_and_rename_updates_the_selected_variant() {
             window.find(("select-variant", variant)).label(),
             Some("Latte")
         );
+        let variant_row = window.find(format!("theme-variant-row-{variant}")).bounds();
+        let variant_button = window.find(("select-variant", variant)).bounds();
+        assert_eq!(variant_button.left(), variant_row.left());
+        assert_eq!(variant_button.right(), variant_row.right());
         let add = window.find("add-variant").bounds();
         let last = cx
             .global::<ThemeLibrary>()
@@ -1358,21 +1395,24 @@ fn variant_sidebar_uses_short_names_and_rename_updates_the_selected_variant() {
             .unwrap()
             .id();
         assert!(add.top() >= window.find(("select-variant", last)).bounds().bottom());
+        assert!(!window.find(("rename-variant", variant)).visible());
+        assert!(!window.find(("remove-variant", variant)).visible());
+        window.hover(("select-variant", variant), cx);
+        assert!(window.find(("rename-variant", variant)).visible());
+        assert!(window.find(("remove-variant", variant)).visible());
         window.click(("rename-variant", variant), cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(260));
-    cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("theme-dialog-name", cx);
+        assert_eq!(
+            window
+                .find(format!("variant-name-input-{variant}"))
+                .focused(),
+            Some(true)
+        );
         window.press("secondary-a", cx);
         window.input("Morning", cx);
+        window.press("enter", cx);
     })
     .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
-        .unwrap();
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -1408,21 +1448,13 @@ fn renaming_the_theme_in_its_editor_preserves_variants_and_updates_its_tab() {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click("rename-theme", cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    // The native dialog uses a wall-clock entrance animation.
-    std::thread::sleep(std::time::Duration::from_millis(260));
-    cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("theme-dialog-name", cx);
+        assert_eq!(window.find("theme-name-input").focused(), Some(true));
         window.press("secondary-a", cx);
         window.input(&renamed, cx);
+        window.press("enter", cx);
     })
     .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
-        .unwrap();
     cx.run_until_parked();
     cx.update(|cx| {
         let library = cx.global::<ThemeLibrary>();
@@ -1457,6 +1489,7 @@ fn deletion_notifications_expire_after_five_seconds_for_variants_and_themes() {
                     .unwrap();
                 crate::ui::settings::theme::show_undo(family, deleted, window, cx);
             } else {
+                window.hover(("select-variant", variant), cx);
                 window.click(("remove-variant", variant), cx);
             }
         })
@@ -1499,12 +1532,12 @@ fn deletion_notifications_expire_after_five_seconds_for_variants_and_themes() {
 }
 
 #[test]
-fn color_swatch_opens_picker_directly_and_hex_input_does_not() {
+fn color_swatch_and_hex_input_open_picker_directly_and_blur_restores_the_row() {
     let mut cx = TestAppContext::single();
     let (handle, app, family, variant, _) = workspace(&mut cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(format!("color-picker-{variant}-background"), cx);
+        window.click(format!("color-value-{variant}-background"), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -1539,6 +1572,31 @@ fn color_swatch_opens_picker_directly_and_hex_input_does_not() {
             .theme_editor_for(family, cx)
             .unwrap()
             .read(cx);
+        assert!(
+            editor.variants[&variant].colors["foreground"]
+                .controls
+                .as_ref()
+                .unwrap()
+                .picker
+                .read(cx)
+                .is_open()
+        );
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.press("escape", cx);
+        window.render_frame(cx);
+        window.click(format!("token-group-{variant}-Fonts"), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let editor = app
+            .read(cx)
+            .tabs
+            .theme_editor_for(family, cx)
+            .unwrap()
+            .read(cx);
+        assert!(editor.active_color.is_none());
         assert!(
             !editor.variants[&variant].colors["foreground"]
                 .controls
@@ -1610,12 +1668,15 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
             editor.read(cx).visible_colors,
             vec!["highlight:syntax.tag.doctype"]
         );
-        window.click(
-            format!("color-value-{variant}-highlight:syntax.tag.doctype"),
+        choose_color(
+            &app,
+            family,
+            variant,
+            "highlight:syntax.tag.doctype",
+            "#123456",
+            window,
             cx,
         );
-        window.press("secondary-a", cx);
-        window.input("#123456", cx);
     })
     .unwrap();
     cx.run_until_parked();

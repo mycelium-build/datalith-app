@@ -27,6 +27,7 @@ const TASKS: &str = "(A) 2026-09-25 Finalize the user journey +Atlas @design\n(B
 enum Content {
     Note,
     Base,
+    Graph,
     Todo,
 }
 
@@ -34,6 +35,7 @@ pub(super) struct ThemePreview {
     appearance: Option<ResolvedAppearance>,
     note: Entity<EditorState>,
     base: Result<Entity<BaseViewState>, String>,
+    graph: Result<Entity<BaseViewState>, String>,
     todo: Result<Entity<TodoTxtState>, String>,
     content: Content,
 }
@@ -44,6 +46,7 @@ impl ThemePreview {
             appearance: None,
             note: cx.new(|cx| EditorState::new(window, cx).default_value(NOTE)),
             base: BaseViewState::preview(window, cx).map_err(|error| error.to_string()),
+            graph: BaseViewState::graph_preview(window, cx).map_err(|error| error.to_string()),
             todo: TodoTxtEditor::preview_state(TASKS, window, cx)
                 .map_err(|error| error.to_string()),
             content: Content::Note,
@@ -62,6 +65,11 @@ impl ThemePreview {
                     base.set_preview_appearance(theme.clone(), cx);
                 });
             }
+            if let Ok(graph) = &self.graph {
+                graph.update(cx, |graph, cx| {
+                    graph.set_preview_appearance(theme.clone(), cx);
+                });
+            }
             if let Ok(todo) = &self.todo {
                 todo.update(cx, |todo, cx| todo.set_preview_appearance(theme, cx));
             }
@@ -69,63 +77,6 @@ impl ThemePreview {
         self.appearance = appearance;
         cx.notify();
     }
-}
-
-// A static specimen shows interface colors without changing the application's theme.
-fn render_interface_sample(appearance: &ResolvedAppearance) -> impl IntoElement {
-    h_flex()
-        .items_stretch()
-        .text_sm()
-        .child(
-            v_flex()
-                .w_24()
-                .p_3()
-                .gap_2()
-                .bg(appearance.theme().sidebar)
-                .text_color(appearance.theme().sidebar_foreground)
-                .child("Workspace")
-                .child("Notes")
-                .child("Projects"),
-        )
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .bg(appearance.theme().background)
-                .text_color(appearance.theme().foreground)
-                .child(
-                    h_flex().px_3().py_2().bg(appearance.theme().tab_bar).child(
-                        div()
-                            .px_2()
-                            .py_1()
-                            .bg(appearance.theme().tab_active)
-                            .text_color(appearance.theme().tab_active_foreground)
-                            .child("Field notes"),
-                    ),
-                )
-                .child(
-                    h_flex()
-                        .p_3()
-                        .gap_3()
-                        .child(
-                            div()
-                                .px_2()
-                                .py_1()
-                                .rounded(appearance.theme().radius)
-                                .bg(appearance.theme().primary)
-                                .text_color(appearance.theme().primary_foreground)
-                                .child("Primary"),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_color(appearance.theme().muted_foreground)
-                                .child("Secondary text"),
-                        ),
-                ),
-        )
-        .border_b_1()
-        .border_color(appearance.theme().border)
 }
 
 impl Render for ThemePreview {
@@ -155,6 +106,10 @@ impl Render for ThemePreview {
                 |error| div().p_3().child(error.clone()).into_any_element(),
                 |base| base.clone().into_any_element(),
             ),
+            Content::Graph => self.graph.as_ref().map_or_else(
+                |error| div().p_3().child(error.clone()).into_any_element(),
+                |graph| graph.clone().into_any_element(),
+            ),
             Content::Todo => self.todo.as_ref().map_or_else(
                 |error| div().p_3().child(error.clone()).into_any_element(),
                 |todo| todo.clone().into_any_element(),
@@ -182,6 +137,7 @@ impl Render for ThemePreview {
                         [
                             (Content::Note, "Note", "preview-note"),
                             (Content::Base, "Base", "preview-base"),
+                            (Content::Graph, "Graph", "preview-graph"),
                             (Content::Todo, "Todo.txt", "preview-todo"),
                         ]
                         .into_iter()
@@ -198,7 +154,6 @@ impl Render for ThemePreview {
                         }),
                     ),
             )
-            .child(render_interface_sample(appearance))
             .child(
                 div()
                     .id("theme-preview-surface")
@@ -268,6 +223,9 @@ mod tests {
                 assert!(window.find("base-view-Projects").visible());
                 window.click("base-view-Projects", cx);
                 assert!(window.find("base-view-Projects").visible());
+                window.click("preview-graph", cx);
+                window.render_frame(cx);
+                assert!(window.find("graph-view").visible());
                 window.click("preview-todo", cx);
                 assert!(window.find("todo-add-btn").visible());
                 window.click("preview-note", cx);
@@ -283,6 +241,7 @@ mod tests {
                     appearance.theme().background
                 );
                 assert!(preview.read(cx).base.is_ok());
+                assert!(preview.read(cx).graph.is_ok());
                 assert!(preview.read(cx).todo.is_ok());
             })
             .unwrap();
