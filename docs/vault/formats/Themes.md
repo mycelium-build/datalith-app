@@ -53,7 +53,7 @@ Datalith Dark and macOS Classic Dark explicitly define `link = #419CFF`; other b
 | Markdown/YAML source syntax | `highlight.syntax.*`, where the language grammar emits a matching token |
 | Source editor surface and current line | `highlight.editor.background`, `highlight.editor.active_line.background` |
 
-The Note/Base/Graph/Todo preview displays the rendered content; Todo.txt is read-only. Syntax colors affect source editing, not code fences in the rendered note.
+The Note/Base/Graph/Todo previews are read-only. Their content and controls, including focus rings and menus, follow the theme being edited. Searching, filtering, and exploring the samples do not modify their documents. The surrounding editor keeps the application's active theme. Syntax colors affect source editing, not code fences in the rendered note.
 
 ## Recognized fields with limited or no current effect
 
