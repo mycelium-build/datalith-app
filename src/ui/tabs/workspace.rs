@@ -62,7 +62,7 @@ impl DatalithView {
         {
             self.tabs.select(index);
         } else {
-            let view = cx.new(|cx| ShortcutsView::new(cx));
+            let view = cx.new(ShortcutsView::new);
             self.tabs.insert(Tab::Shortcuts(view), true);
         }
         self.focus_active_tab(window, cx);

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::handler::ViewMode;
 
-const CURRENT_SCHEMA_VERSION: u32 = 3;
+const CURRENT_SCHEMA_VERSION: u32 = 4;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -221,6 +221,7 @@ pub struct ApplicationSettings {
     pub server: ServerSettings,
     pub automatic_updates: bool,
     pub(crate) open_new_tab_mode: ViewMode,
+    pub(crate) shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
 }
 
 impl Default for ApplicationSettings {
@@ -236,6 +237,7 @@ impl Default for ApplicationSettings {
             server: ServerSettings::default(),
             automatic_updates: true,
             open_new_tab_mode: ViewMode::Edit,
+            shortcut_overrides: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -281,6 +283,8 @@ struct StoredSettings {
     automatic_updates: Option<bool>,
     #[serde(default)]
     open_new_tab_mode: Option<String>,
+    #[serde(default)]
+    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
 }
 
 const fn schema_version() -> u32 {
@@ -330,6 +334,25 @@ impl StoredSettings {
                 Some("view") => ViewMode::View,
                 _ => ViewMode::Edit,
             },
+            shortcut_overrides: self
+                .shortcut_overrides
+                .into_iter()
+                .filter_map(|(id, binding)| {
+                    if id.is_empty() {
+                        return None;
+                    }
+                    match binding {
+                        Some(binding)
+                            if !binding.contains(char::is_whitespace)
+                                && gpui_kit::Keystroke::parse(&binding).is_ok() =>
+                        {
+                            Some((id, Some(binding)))
+                        }
+                        Some(_) => None,
+                        None => Some((id, None)),
+                    }
+                })
+                .collect(),
         }
     }
 
@@ -363,6 +386,7 @@ impl StoredSettings {
                 }
                 .to_owned(),
             ),
+            shortcut_overrides: settings.shortcut_overrides.clone(),
         }
     }
 }
@@ -478,6 +502,12 @@ pub fn snapshot() -> ApplicationSettings {
 
 fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
     with_store(|store| store.update(update))
+}
+
+pub fn set_shortcut_overrides(
+    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
+) -> Result<()> {
+    update(|settings| settings.shortcut_overrides = shortcut_overrides)
 }
 
 /// Set the mode for existing documents opened in a new tab.
@@ -727,6 +757,24 @@ mod tests {
             SettingsStore::new(file.clone()).snapshot().theme_preference,
             ThemePreference::System
         );
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn shortcut_reassignments_and_explicit_unbound_state_round_trip() {
+        let file = temp_settings_file("shortcut-overrides");
+        let mut store = SettingsStore::new(file.clone());
+        let overrides = std::collections::BTreeMap::from([
+            ("new-note".to_owned(), Some("secondary-x".to_owned())),
+            ("close-tab".to_owned(), None),
+        ]);
+
+        store
+            .update(|settings| settings.shortcut_overrides = overrides.clone())
+            .unwrap();
+
+        let reloaded = SettingsStore::new(file.clone()).snapshot();
+        assert_eq!(reloaded.shortcut_overrides, overrides);
         let _ = fs::remove_file(file);
     }
 

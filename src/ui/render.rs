@@ -11,7 +11,7 @@ use gpui_kit::{
     Window, div, px,
 };
 
-use crate::app::keymap::display_binding;
+use crate::app::keymap;
 use crate::ui::icons::DatalithIcon;
 use crate::ui::monolith::monolith_mark;
 
@@ -21,9 +21,16 @@ const GLYPH_CELL: f32 = 4.0;
 fn quick_start_shortcuts() -> String {
     format!(
         "{} search  ·  {} new tab  ·  {} focus sidebar",
-        display_binding("secondary-shift-f"),
-        display_binding("secondary-t"),
-        display_binding("secondary-0"),
+        shortcut_label("search-files"),
+        shortcut_label("new-tab"),
+        shortcut_label("focus-sidebar"),
+    )
+}
+
+fn shortcut_label(id: &str) -> String {
+    keymap::binding_for(id).map_or_else(
+        || "No shortcut".to_owned(),
+        |binding| keymap::display_binding(&binding),
     )
 }
 

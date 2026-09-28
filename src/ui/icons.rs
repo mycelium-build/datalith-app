@@ -98,6 +98,8 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     icon_asset!("icons/chevron-right.svg"),
     icon_asset!("icons/plus.svg"),
     icon_asset!("icons/close.svg"),
+    icon_asset!("icons/undo.svg"),
+    icon_asset!("icons/triangle-alert.svg"),
     icon_asset!("icons/check.svg"),
     icon_asset!("icons/eye.svg"),
     icon_asset!("icons/inbox.svg"),
