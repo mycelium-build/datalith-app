@@ -1,16 +1,16 @@
 //! Read-only keyboard shortcut reference in a dedicated workspace tab.
 
-use gpui_kit::base::{StyledExt as _, TestSupportExt as _};
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
-    ActiveTheme, Sizable as _,
+    ActiveTheme,
     scroll::Scrollbar,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
     v_flex,
 };
 use gpui_kit::{
-    App, Context, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyDownEvent,
-    Keystroke, ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled, Window, div, point, px, rems,
+    App, Context, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement,
+    KeyDownEvent, Keystroke, ParentElement, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, div, point, px, rems,
 };
 
 struct ShortcutGroup {
@@ -60,52 +60,11 @@ impl ShortcutsView {
         cx.notify();
     }
 
-    fn render_table(&self, cx: &App) -> Table {
-        let mut table = Table::new()
-            .small()
-            .accessibility_label("Keyboard shortcuts")
-            .child(
-                TableHeader::new().child(
-                    TableRow::new()
-                        .child(
-                            TableHead::new().col_span(2).child(
-                                div()
-                                    .id("shortcuts-action-header")
-                                    .test_support()
-                                    .aria_label("Action")
-                                    .child("Action"),
-                            ),
-                        )
-                        .child(
-                            TableHead::new().child(
-                                div()
-                                    .id("shortcuts-binding-header")
-                                    .test_support()
-                                    .aria_label("Shortcut")
-                                    .child("Shortcut"),
-                            ),
-                        ),
-                ),
-            );
+    fn render_tables(&self, cx: &App) -> impl IntoElement {
+        let mut groups = v_flex().gap_5();
 
         for group in &self.groups {
-            let mut body = TableBody::new().child(
-                TableRow::new().child(
-                    TableHead::new()
-                        .col_span(3)
-                        .pt_4()
-                        .pb_1()
-                        .font_bold()
-                        .text_color(cx.theme().foreground)
-                        .child(
-                            div()
-                                .id(format!("shortcuts-category-{}", group.category))
-                                .test_support()
-                                .aria_label(group.category.clone())
-                                .child(group.category.clone()),
-                        ),
-                ),
-            );
+            let mut body = TableBody::new();
             for (action, binding) in &group.rows {
                 body = body.child(
                     TableRow::new()
@@ -115,29 +74,91 @@ impl ShortcutsView {
                                     .id(format!("shortcut-action-{}-{binding}", group.category))
                                     .test_support()
                                     .aria_label(action.clone())
+                                    .text_color(cx.theme().foreground)
                                     .child(action.clone()),
                             ),
                         )
                         .child(
-                            TableCell::new()
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .text_color(cx.theme().muted_foreground)
-                                .child(
-                                    div()
-                                        .id(format!(
-                                            "shortcut-binding-{}-{binding}",
-                                            group.category
-                                        ))
-                                        .test_support()
-                                        .aria_label(binding.clone())
-                                        .child(binding.clone()),
-                                ),
+                            TableCell::new().child(
+                                div()
+                                    .id(format!("shortcut-binding-{}-{binding}", group.category))
+                                    .test_support()
+                                    .aria_label(binding.clone())
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_sm()
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .bg(cx.theme().muted)
+                                    .font_family(cx.theme().mono_font_family.clone())
+                                    .text_color(cx.theme().foreground)
+                                    .child(binding.clone()),
+                            ),
                         ),
                 );
             }
-            table = table.child(body);
+
+            let table = Table::new()
+                .accessibility_label(format!("{} shortcuts", group.category))
+                .rounded_lg()
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().background)
+                .text_color(cx.theme().foreground)
+                .child(
+                    TableHeader::new()
+                        .bg(cx.theme().muted)
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            TableRow::new()
+                                .child(
+                                    TableHead::new().col_span(2).child(
+                                        div()
+                                            .id(format!(
+                                                "shortcuts-action-header-{}",
+                                                group.category
+                                            ))
+                                            .test_support()
+                                            .aria_label("Action")
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child("Action"),
+                                    ),
+                                )
+                                .child(
+                                    TableHead::new().child(
+                                        div()
+                                            .id(format!(
+                                                "shortcuts-binding-header-{}",
+                                                group.category
+                                            ))
+                                            .test_support()
+                                            .aria_label("Shortcut")
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child("Shortcut"),
+                                    ),
+                                ),
+                        ),
+                )
+                .child(body);
+
+            groups = groups.child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id(format!("shortcuts-category-{}", group.category))
+                            .test_support()
+                            .aria_label(group.category.clone())
+                            .text_base()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(cx.theme().foreground)
+                            .child(group.category.clone()),
+                    )
+                    .child(div().w_full().child(table)),
+            );
         }
-        table
+
+        groups
     }
 }
 
@@ -148,7 +169,7 @@ impl Focusable for ShortcutsView {
 }
 
 impl Render for ShortcutsView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .id("shortcuts-editor")
             .test_support()
@@ -159,15 +180,13 @@ impl Render for ShortcutsView {
             .bg(cx.theme().background)
             .child(
                 div()
-                    .p_4()
+                    .px_6()
+                    .py_4()
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .text_lg()
-                    .text_color(if self.focus.is_focused(window) {
-                        cx.theme().primary
-                    } else {
-                        cx.theme().foreground
-                    })
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(cx.theme().foreground)
                     .child("Keyboard shortcuts"),
             )
             .child(
@@ -185,11 +204,11 @@ impl Render for ShortcutsView {
                             .child(
                                 div()
                                     .w_full()
-                                    .max_w(rems(52.))
+                                    .max_w(rems(56.))
                                     .mx_auto()
-                                    .px_4()
-                                    .pb_4()
-                                    .child(self.render_table(cx)),
+                                    .px_6()
+                                    .py_6()
+                                    .child(self.render_tables(cx)),
                             ),
                     )
                     .child(
@@ -316,11 +335,11 @@ mod tests {
             assert_eq!(window.find("shortcuts-editor").focused(), Some(true));
             assert_eq!(window.find(("table", 0_usize)).role(), Some(Role::Table));
             assert_eq!(
-                window.find("shortcuts-action-header").label(),
+                window.find("shortcuts-action-header-File").label(),
                 Some("Action")
             );
             assert_eq!(
-                window.find("shortcuts-binding-header").label(),
+                window.find("shortcuts-binding-header-File").label(),
                 Some("Shortcut")
             );
             assert_eq!(window.find("shortcuts-category-File").label(), Some("File"));
@@ -330,13 +349,19 @@ mod tests {
             let key = window.find(format!("shortcut-binding-File-{binding}"));
             assert_eq!(action.label(), Some("New note"));
             assert_eq!(key.label(), Some(binding.as_str()));
+
+            let next_binding = keymap::display_binding("secondary-shift-n");
+            let next_action = window.find(format!("shortcut-action-File-{next_binding}"));
+            let next_key = window.find(format!("shortcut-binding-File-{next_binding}"));
+            assert_eq!(action.bounds().left(), next_action.bounds().left());
+            assert_eq!(key.bounds().left(), next_key.bounds().left());
             assert_eq!(
                 action.bounds().left(),
-                window.find("shortcuts-action-header").bounds().left()
+                window.find("shortcuts-action-header-File").bounds().left()
             );
             assert_eq!(
                 key.bounds().left(),
-                window.find("shortcuts-binding-header").bounds().left()
+                window.find("shortcuts-binding-header-File").bounds().left()
             );
 
             let before = shortcuts.read(cx).scroll.offset().y;
