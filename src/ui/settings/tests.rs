@@ -7,8 +7,11 @@ use gpui_kit::{
     ScrollDelta, ScrollWheelEvent, TestAppContext, Window, WindowHandle, point, px, size,
 };
 
-use super::SettingsView;
-use crate::app::fonts::{self, FontCatalog};
+use crate::app::{
+    fonts::{self, FontCatalog},
+    settings::{ThemeKind, ThemePreference},
+    themes::{self, ThemeLibrary},
+};
 use crate::document::handler::ViewMode;
 use crate::ui::DatalithView;
 
@@ -40,9 +43,8 @@ fn open_note(cx: &mut TestAppContext, note: &Path) -> (WindowHandle<Root>, Entit
         gpui_kit::init(cx);
         fonts::load_embedded_fonts(cx);
         FontCatalog::init(cx);
-        crate::app::themes::load_embedded_themes(cx);
-        crate::app::themes::ThemeLibrary::init(cx);
-        SettingsView::init_theme_options(cx);
+        themes::load_embedded_themes(cx);
+        ThemeLibrary::init(cx);
         crate::app::preferences::apply(cx);
         cx.set_global(crate::app::AppState::default());
         crate::app::actions::register(cx);
@@ -172,7 +174,7 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
     let catppuccin = cx.update(|cx| {
-        cx.global::<crate::app::themes::ThemeLibrary>()
+        cx.global::<ThemeLibrary>()
             .family_named("Catppuccin")
             .unwrap()
             .id()
@@ -245,7 +247,7 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
     cx.run_until_parked();
     cx.update(|cx| {
         assert!(
-            cx.global::<crate::app::themes::ThemeLibrary>()
+            cx.global::<ThemeLibrary>()
                 .family_named("Catppuccin copy")
                 .is_none()
         );
@@ -262,7 +264,7 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
         .unwrap();
     cx.run_until_parked();
     cx.update(|cx| {
-        let library = cx.global::<crate::app::themes::ThemeLibrary>();
+        let library = cx.global::<ThemeLibrary>();
         let copied = library.family_named(&name).unwrap();
         assert_eq!(copied.variants().len(), 4);
         assert!(
@@ -279,17 +281,15 @@ fn theme_page_filters_families_and_opens_the_native_copy_dialog() {
 
 #[test]
 fn theme_page_sets_the_light_slot_from_a_compact_variant() {
-    assert_compact_selection(crate::app::settings::ThemeKind::Light);
+    assert_compact_selection(ThemeKind::Light);
 }
 
 #[test]
 fn theme_page_sets_the_dark_slot_from_a_compact_variant() {
-    assert_compact_selection(crate::app::settings::ThemeKind::Dark);
+    assert_compact_selection(ThemeKind::Dark);
 }
 
-fn assert_compact_selection(kind: crate::app::settings::ThemeKind) {
-    use crate::app::themes::ThemeLibrary;
-
+fn assert_compact_selection(kind: ThemeKind) {
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
     let (family, variant, old, query) = cx.update(|cx| {
@@ -346,17 +346,12 @@ fn assert_compact_selection(kind: crate::app::settings::ThemeKind) {
         cx.global_mut::<ThemeLibrary>()
             .set_current(previous, kind)
             .unwrap();
-        crate::app::themes::refresh_current(cx);
+        themes::refresh_current(cx);
     });
 }
 
 #[test]
 fn system_appearance_resolves_the_current_slot_through_the_production_settings_page() {
-    use crate::app::{
-        settings::{ThemeKind, ThemePreference},
-        themes::ThemeLibrary,
-    };
-
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
     let previous = crate::app::settings::snapshot().theme_preference;
@@ -398,8 +393,6 @@ fn system_appearance_resolves_the_current_slot_through_the_production_settings_p
 
 #[test]
 fn theme_mode_list_refreshes_when_the_preference_changes_while_closed() {
-    use crate::app::settings::ThemePreference;
-
     let mut cx = TestAppContext::single();
     let (handle, app) = open_note(&mut cx, Path::new("docs/vault/Welcome.md"));
     let previous = crate::app::settings::snapshot().theme_preference;

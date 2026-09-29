@@ -11,6 +11,13 @@ use super::{
     valid_variant_name,
 };
 
+/// Loading can retain a usable theme even when its repaired document cannot be saved.
+#[derive(Debug)]
+pub(super) enum LoadFailure {
+    Read { theme: String, error: anyhow::Error },
+    Normalization { theme: String, error: anyhow::Error },
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub(super) struct StoredThemeSet {
@@ -23,7 +30,10 @@ pub(super) struct StoredThemeSet {
 
 pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
     let text = fs::read_to_string(path)?;
-    let mut value: Value = serde_json::from_str(&text)?;
+    parse(serde_json::from_str(&text)?)
+}
+
+fn parse(mut value: Value) -> Result<StoredThemeSet> {
     if !value.is_object() {
         value = Value::Object(serde_json::Map::default());
     }
@@ -83,8 +93,10 @@ pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
         let variant_name = object
             .get("name")
             .and_then(Value::as_str)
-            .unwrap_or_default();
-        if variant_name.trim().is_empty() {
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        if variant_name.is_empty() {
             object.insert(
                 "name".into(),
                 if multi {
@@ -94,6 +106,8 @@ pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
                 }
                 .into(),
             );
+        } else {
+            object.insert("name".into(), variant_name.into());
         }
         object.insert(
             "mode".into(),
@@ -106,7 +120,11 @@ pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
         );
         sanitize_variant(object);
     }
-    Ok(serde_json::from_value(value)?)
+    let mut set: StoredThemeSet = serde_json::from_value(value)?;
+    for document in &mut set.themes {
+        document.normalize_fonts();
+    }
+    Ok(set)
 }
 
 fn sanitize_variant(variant: &mut serde_json::Map<String, Value>) {
@@ -191,11 +209,16 @@ pub(super) fn merge_missing(value: &mut Value, defaults: &Value) {
 }
 
 impl ThemeLibrary {
-    pub(super) fn load(&mut self) -> Vec<(String, anyhow::Error)> {
+    pub(super) fn load(&mut self) -> Vec<LoadFailure> {
         let entries = match fs::read_dir(&self.directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
-            Err(error) => return vec![("Custom themes".into(), error.into())],
+            Err(error) => {
+                return vec![LoadFailure::Read {
+                    theme: "Custom themes".into(),
+                    error: error.into(),
+                }];
+            }
         };
         let mut paths = Vec::new();
         let mut errors = Vec::new();
@@ -205,12 +228,17 @@ impl ThemeLibrary {
                     paths.push(entry.path());
                 }
                 Ok(_) => {}
-                Err(error) => errors.push(("Custom themes".into(), error.into())),
+                Err(error) => errors.push(LoadFailure::Read {
+                    theme: "Custom themes".into(),
+                    error: error.into(),
+                }),
             }
         }
         paths.sort();
         for path in paths {
-            match read(&path).and_then(|mut set| {
+            let result = (|| -> Result<()> {
+                let before: Value = serde_json::from_slice(&fs::read(&path)?)?;
+                let mut set = parse(before.clone())?;
                 if self
                     .families
                     .iter()
@@ -228,19 +256,26 @@ impl ThemeLibrary {
                         variant.set_name(&format!("{name}{suffix}"));
                     }
                 }
-                let before = serde_json::to_value(&set)?;
                 let id = self.insert_set(set, ThemeSource::Custom(path.clone()))?;
                 let normalized = self
                     .family(id)
                     .context("Loaded theme is unavailable")?
                     .set();
-                if serde_json::to_value(&normalized)? != before {
-                    write(&path, &normalized)?;
+                if serde_json::to_value(&normalized)? != before
+                    && let Err(error) = self.flush_family(id)
+                {
+                    errors.push(LoadFailure::Normalization {
+                        theme: normalized.name.to_string(),
+                        error,
+                    });
                 }
-                Ok(id)
-            }) {
-                Ok(_) => {}
-                Err(error) => errors.push((path.display().to_string(), error)),
+                Ok(())
+            })();
+            if let Err(error) = result {
+                errors.push(LoadFailure::Read {
+                    theme: path.display().to_string(),
+                    error,
+                });
             }
         }
         errors
@@ -262,7 +297,11 @@ impl ThemeLibrary {
                 || variants
                     .iter()
                     .any(|v| v.document.name().eq_ignore_ascii_case(document.name()))
-                || self.variant(document.name()).is_some()
+                || self
+                    .families
+                    .iter()
+                    .flat_map(|family| &family.variants)
+                    .any(|variant| variant.name().eq_ignore_ascii_case(document.name()))
             {
                 let mut n = 1usize;
                 let name = loop {

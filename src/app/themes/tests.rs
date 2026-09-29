@@ -1,3 +1,8 @@
+use std::fs;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
+
 use super::*;
 
 struct Sandbox {
@@ -9,7 +14,7 @@ impl Sandbox {
             "datalith-theme-domain-{:032x}",
             rand::random::<u128>()
         ));
-        std::fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&root).unwrap();
         Self { root }
     }
     fn library(&self) -> ThemeLibrary {
@@ -22,8 +27,7 @@ impl Sandbox {
     }
     fn saved_slots(&self) -> (String, String) {
         let value: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(self.root.join("preferences.json")).unwrap())
-                .unwrap();
+            serde_json::from_slice(&fs::read(self.root.join("preferences.json")).unwrap()).unwrap();
         (
             value["light_theme_name"].as_str().unwrap().into(),
             value["dark_theme_name"].as_str().unwrap().into(),
@@ -32,7 +36,7 @@ impl Sandbox {
 }
 impl Drop for Sandbox {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -176,9 +180,9 @@ fn remove_falls_back_in_family_then_to_datalith_and_undo_restores_exact_slots() 
 fn tolerant_load_repairs_missing_tokens_but_skips_unreadable_json() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
-    std::fs::create_dir_all(&library.directory).unwrap();
-    std::fs::write(library.directory.join("broken.json"), "{").unwrap();
-    std::fs::write(library.directory.join("partial.json"),r##"{"name":"Partial","themes":[{"name":"Partial Shade","mode":"dark","colors":{"background":"#113355"}}]}"##).unwrap();
+    fs::create_dir_all(&library.directory).unwrap();
+    fs::write(library.directory.join("broken.json"), "{").unwrap();
+    fs::write(library.directory.join("partial.json"),r##"{"name":"Partial","themes":[{"name":"Partial Shade","mode":"dark","colors":{"background":"#113355"}}]}"##).unwrap();
     let errors = library.load();
     assert_eq!(errors.len(), 1);
     let variant = library.variant("Partial Shade").unwrap();
@@ -204,12 +208,19 @@ fn import_conflicts_export_round_trip_and_revision_flush_keep_latest() {
         .unwrap();
     let export = sandbox.root.join("export.json");
     library.export(id, &export).unwrap();
-    let exported: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&export).unwrap()).unwrap();
+    let exported: serde_json::Value = serde_json::from_slice(&fs::read(&export).unwrap()).unwrap();
     assert!(exported.get("schema_version").is_none());
     assert_eq!(exported["themes"].as_array().unwrap().len(), 2);
-    assert!(library.import(&export, ImportPolicy::Replace).is_ok());
-    let copied = library.import(&export, ImportPolicy::Copy).unwrap();
+    let prepared = library.prepare_import(&export).unwrap();
+    assert!(
+        library
+            .import_prepared(&prepared, ImportPolicy::Replace)
+            .is_ok()
+    );
+    let prepared = library.prepare_import(&export).unwrap();
+    let copied = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
     assert_eq!(library.family(copied).unwrap().name(), "Working copy");
     let variant = library.family(copied).unwrap().variants()[0].id();
     library
@@ -432,12 +443,13 @@ fn sparse_theme_colors_follow_gpui_fallbacks_in_both_modes() {
         let sandbox = Sandbox::new();
         let mut library = sandbox.library();
         let import = sandbox.root.join("sparse.json");
-        std::fs::write(
+        fs::write(
             &import,
             r##"{"name":"Sparse","themes":[{"name":"Sparse Light","mode":"light","colors":{"primary.background":"#c05621"}},{"name":"Sparse Dark","mode":"dark","colors":{"primary.background":"#3b82f6"}}]}"##,
         )
         .unwrap();
-        let family = library.import(&import, ImportPolicy::Copy).unwrap();
+        let prepared = library.prepare_import(&import).unwrap();
+        let family = library.import_prepared(&prepared, ImportPolicy::Copy).unwrap();
         let variant_ids: Vec<_> = library
             .family(family)
             .unwrap()
@@ -460,12 +472,13 @@ fn explicit_link_selection_and_highlight_colors_survive_gpui_fallbacks() {
         let sandbox = Sandbox::new();
         let mut library = sandbox.library();
         let import = sandbox.root.join("explicit.json");
-        std::fs::write(
+        fs::write(
             &import,
             r##"{"name":"Explicit","themes":[{"name":"Explicit","mode":"light","colors":{"primary.background":"#c05621","link":"#12ab34","list.active.background":"#7543c2"},"highlight":{"syntax":{"keyword":{"color":"#fedcba"}}}}]}"##,
         )
         .unwrap();
-        let family = library.import(&import, ImportPolicy::Copy).unwrap();
+        let prepared = library.prepare_import(&import).unwrap();
+        let family = library.import_prepared(&prepared, ImportPolicy::Copy).unwrap();
         let variant = &library.family(family).unwrap().variants()[0];
         let variant_id = variant.id();
         let resolved = library
@@ -528,14 +541,18 @@ fn empty_import_does_not_persist_datalith_colors_or_highlights() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
     let import = sandbox.root.join("empty.json");
-    std::fs::write(&import, r#"{"name":"Empty","themes":[]}"#).unwrap();
+    fs::write(&import, r#"{"name":"Empty","themes":[]}"#).unwrap();
 
-    let family = library.import(&import, ImportPolicy::Copy).unwrap();
+    let prepared = library.prepare_import(&import).unwrap();
+
+    let family = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
     let stored = match library.family(family).unwrap().source() {
         ThemeSource::Custom(path) => path,
         ThemeSource::Bundled => unreachable!(),
     };
-    let value: serde_json::Value = serde_json::from_slice(&std::fs::read(stored).unwrap()).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(stored).unwrap()).unwrap();
     assert!(value["themes"][0]["colors"]["background"].is_null());
     assert!(value["themes"][0]["highlight"].is_null());
     assert_eq!(
@@ -602,24 +619,24 @@ fn failed_preference_write_cannot_leave_dangling_refs_or_claim_rename_or_delete(
         ThemeSource::Custom(path) => path.clone(),
         ThemeSource::Bundled => unreachable!(),
     };
-    let before = std::fs::read(&path).unwrap();
+    let before = fs::read(&path).unwrap();
     let prefs = sandbox.root.join("preferences.json");
-    std::fs::remove_file(&prefs).unwrap();
-    std::fs::create_dir(&prefs).unwrap();
+    fs::remove_file(&prefs).unwrap();
+    fs::create_dir(&prefs).unwrap();
     assert!(library.rename_family(id, "Renamed").is_err());
     assert!(library.remove_variant(light).is_err());
     assert!(library.set_current(light, ThemeKind::Light).is_err());
     assert_eq!(library.family(id).unwrap().name(), "Working");
     assert_eq!(library.current(ThemeKind::Light), "Working Light");
-    assert_eq!(std::fs::read(path).unwrap(), before);
+    assert_eq!(fs::read(path).unwrap(), before);
 }
 
 #[test]
 fn valid_but_damaged_variant_keeps_healthy_tokens_and_unavailable_fonts() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
-    std::fs::create_dir_all(&library.directory).unwrap();
-    std::fs::write(library.directory.join("damaged.json"), r##"{"name":"Damaged","themes":[{"name":"Damaged","mode":"dark","colors":{"background":"#123456","foreground":42,"border":"not-a-color"},"fonts":{"interface":"Not installed","code":12},"highlight":{"editor.foreground":"#abcdef","editor.background":"bad","syntax":{"keyword":{"color":"invalid"},"string":{"color":"#765432"}}}}]}"##).unwrap();
+    fs::create_dir_all(&library.directory).unwrap();
+    fs::write(library.directory.join("damaged.json"), r##"{"name":"Damaged","themes":[{"name":"Damaged","mode":"dark","colors":{"background":"#123456","foreground":42,"border":"not-a-color"},"fonts":{"interface":"Not installed","code":12},"highlight":{"editor.foreground":"#abcdef","editor.background":"bad","syntax":{"keyword":{"color":"invalid"},"string":{"color":"#765432"}}}}]}"##).unwrap();
     let errors = library.load();
     assert!(errors.is_empty(), "{errors:?}");
     let document = library.get("Damaged").unwrap();
@@ -644,13 +661,21 @@ fn import_never_replaces_a_built_in_and_built_in_conflict_copies_whole_family() 
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
     let file = sandbox.root.join("builtin.json");
-    std::fs::write(
+    fs::write(
         &file,
         include_str!("../../../assets/themes/catppuccin.json"),
     )
     .unwrap();
-    assert!(library.import(&file, ImportPolicy::Replace).is_err());
-    let id = library.import(&file, ImportPolicy::Copy).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    assert!(
+        library
+            .import_prepared(&prepared, ImportPolicy::Replace)
+            .is_err()
+    );
+    let prepared = library.prepare_import(&file).unwrap();
+    let id = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
     assert_eq!(library.family(id).unwrap().name(), "Catppuccin copy");
     assert_eq!(library.family(id).unwrap().variants().len(), 4);
 }
@@ -660,18 +685,21 @@ fn importing_a_damaged_name_persists_the_normalized_variant() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
     let file = sandbox.root.join("import.json");
-    std::fs::write(
+    fs::write(
         &file,
         r#"{"name":"Imported","themes":[{"name":"Unrelated","mode":"light"}]}"#,
     )
     .unwrap();
-    let id = library.import(&file, ImportPolicy::Copy).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    let id = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
     assert_eq!(library.family(id).unwrap().variants()[0].name(), "Imported");
     let path = match library.family(id).unwrap().source() {
         ThemeSource::Custom(path) => path,
         ThemeSource::Bundled => unreachable!(),
     };
-    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     assert_eq!(saved["themes"][0]["name"], "Imported");
 }
 
@@ -690,8 +718,8 @@ fn autosave_failure_keeps_valid_model_and_retry_reports_truthfully() {
         ThemeSource::Custom(path) => path.clone(),
         ThemeSource::Bundled => unreachable!(),
     };
-    std::fs::remove_file(&path).unwrap();
-    std::fs::create_dir(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
     library
         .update_color(variant, "background", Some("#abcdef".into()))
         .unwrap();
@@ -710,7 +738,7 @@ fn autosave_failure_keeps_valid_model_and_retry_reports_truthfully() {
             .unwrap()["background"],
         Some("#abcdef".into())
     );
-    std::fs::remove_dir(&path).unwrap();
+    fs::remove_dir(&path).unwrap();
     library.retry(id).unwrap();
     assert!(matches!(
         library.family(id).unwrap().status(),
@@ -853,11 +881,11 @@ fn mono_to_multi_names_both_variants_atomically_and_removal_keeps_suffix() {
         ThemeSource::Custom(path) => path.clone(),
         ThemeSource::Bundled => unreachable!(),
     };
-    let saved_theme = std::fs::read(&path).unwrap();
+    let saved_theme = fs::read(&path).unwrap();
     let prefs = sandbox.root.join("preferences.json");
     let backup = sandbox.root.join("preferences.backup");
-    std::fs::rename(&prefs, &backup).unwrap();
-    std::fs::create_dir(&prefs).unwrap();
+    fs::rename(&prefs, &backup).unwrap();
+    fs::create_dir(&prefs).unwrap();
     assert!(
         library
             .add_variant(family, original, "Second", Some("First"))
@@ -866,9 +894,9 @@ fn mono_to_multi_names_both_variants_atomically_and_removal_keeps_suffix() {
     assert_eq!(library.family(family).unwrap().variants().len(), 1);
     assert_eq!(library.variant_by_id(original).unwrap().name(), "Solo");
     assert_eq!(library.current(ThemeKind::Light), "Solo");
-    assert_eq!(std::fs::read(&path).unwrap(), saved_theme);
-    std::fs::remove_dir(&prefs).unwrap();
-    std::fs::rename(&backup, &prefs).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), saved_theme);
+    fs::remove_dir(&prefs).unwrap();
+    fs::rename(&backup, &prefs).unwrap();
     let added = library
         .add_variant(family, original, "Second", Some("First"))
         .unwrap();
@@ -1040,11 +1068,16 @@ fn replacing_a_current_family_uses_another_imported_variant_of_the_same_mode() {
     library.set_current(first, ThemeKind::Light).unwrap();
     let file = sandbox.root.join("replacement.json");
     library.export(id, &file).unwrap();
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
     value["themes"][0]["name"] = "Replacing New light".into();
-    std::fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
-    assert_eq!(library.import(&file, ImportPolicy::Replace).unwrap(), id);
+    fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    assert_eq!(
+        library
+            .import_prepared(&prepared, ImportPolicy::Replace)
+            .unwrap(),
+        id
+    );
     assert_eq!(library.current(ThemeKind::Light), "Replacing New light");
     assert_eq!(sandbox.saved_slots().0, "Replacing New light");
 }
@@ -1060,18 +1093,20 @@ fn replacing_with_a_malformed_variant_name_keeps_the_family_prefix_and_current_s
     library.set_current(first, ThemeKind::Light).unwrap();
     let file = sandbox.root.join("malformed-replacement.json");
     library.export(id, &file).unwrap();
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
     value["themes"][0]["name"] = "Unrelated name".into();
-    std::fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
-    library.import(&file, ImportPolicy::Replace).unwrap();
+    fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    library
+        .import_prepared(&prepared, ImportPolicy::Replace)
+        .unwrap();
     assert_eq!(library.current(ThemeKind::Light), "Replacing Variant 1");
     assert_eq!(sandbox.saved_slots().0, "Replacing Variant 1");
     let path = match library.family(id).unwrap().source() {
         ThemeSource::Custom(path) => path,
         ThemeSource::Bundled => unreachable!(),
     };
-    let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let stored: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     assert_eq!(stored["themes"][0]["name"], "Replacing Variant 1");
 }
 
@@ -1142,11 +1177,11 @@ fn undo_variant_rejects_a_name_claimed_since_removal_before_writing() {
         ThemeSource::Custom(path) => path.clone(),
         ThemeSource::Bundled => unreachable!(),
     };
-    let bytes = std::fs::read(&path).unwrap();
+    let bytes = fs::read(&path).unwrap();
     let slots = sandbox.saved_slots();
     assert!(library.undo_delete(deleted).is_err());
     assert!(library.variant_by_id(light).is_none());
-    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(fs::read(&path).unwrap(), bytes);
     assert_eq!(sandbox.saved_slots(), slots);
 }
 
@@ -1259,11 +1294,13 @@ fn multi_variant_sets_and_replacements_assign_suffixes_to_unsuffixed_variants() 
     let copied = library.copy_family(source, "Replacing").unwrap();
     let file = sandbox.root.join("unsuffixed-replacement.json");
     library.export(copied, &file).unwrap();
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
     value["themes"][0]["name"] = "Replacing".into();
-    std::fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
-    library.import(&file, ImportPolicy::Replace).unwrap();
+    fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    library
+        .import_prepared(&prepared, ImportPolicy::Replace)
+        .unwrap();
     assert_eq!(
         library.family(copied).unwrap().variants()[0].name(),
         "Replacing Variant 1"
@@ -1272,7 +1309,7 @@ fn multi_variant_sets_and_replacements_assign_suffixes_to_unsuffixed_variants() 
         ThemeSource::Custom(path) => path,
         ThemeSource::Bundled => unreachable!(),
     };
-    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     assert_eq!(saved["themes"][0]["name"], "Replacing Variant 1");
 }
 
@@ -1322,4 +1359,191 @@ fn every_highlight_color_can_be_set_from_unset_reset_and_serialized() {
             .set_highlight("created", Some("#123456".into()))
             .is_err()
     );
+}
+
+#[test]
+fn prepared_import_detects_normalized_conflicts_and_keeps_the_reviewed_document() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let source = library.family_named("Datalith").unwrap().id();
+    let solar = library.copy_family(source, "Solar").unwrap();
+    let untitled = library.copy_family(source, "Untitled theme").unwrap();
+    let file = sandbox.root.join("import.json");
+    for (json, expected) in [
+        (
+            r#"{"name":" Solar ","themes":[{"name":" Solar Light ","mode":"light"}]}"#,
+            solar,
+        ),
+        (r#"{"themes":[{"mode":"light"}]}"#, untitled),
+    ] {
+        fs::write(&file, json).unwrap();
+        let prepared = library.prepare_import(&file).unwrap();
+        assert_eq!(prepared.conflict(), Some(expected));
+        fs::write(&file, r#"{"name":"Changed after preparation"}"#).unwrap();
+        assert_eq!(
+            library
+                .import_prepared(&prepared, ImportPolicy::Replace)
+                .unwrap(),
+            expected
+        );
+        assert_eq!(library.family(expected).unwrap().variants().len(), 1);
+        assert!(library.family_named("Changed after preparation").is_none());
+    }
+}
+
+#[test]
+fn prepared_import_rechecks_collisions_created_while_choosing_a_policy() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("import.json");
+    fs::write(&file, r#"{"name":"Solar"}"#).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    assert_eq!(prepared.conflict(), None);
+    let source = library.family_named("Datalith").unwrap().id();
+    let existing = library.copy_family(source, "Solar").unwrap();
+    let copied = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
+    assert_eq!(library.family(copied).unwrap().name(), "Solar copy");
+    assert_eq!(library.family(existing).unwrap().variants().len(), 2);
+}
+
+#[test]
+fn loaded_variant_names_are_unique_across_families_ignoring_case() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    fs::create_dir_all(&library.directory).unwrap();
+    fs::write(
+        library.directory.join("1.json"),
+        r#"{"name":"A","themes":[{"name":"A B","mode":"light"}]}"#,
+    )
+    .unwrap();
+    fs::write(
+        library.directory.join("2.json"),
+        r#"{"name":"a b","themes":[{"name":"a b","mode":"light"}]}"#,
+    )
+    .unwrap();
+    assert!(library.load().is_empty());
+    let first = library.variant("A B").unwrap().id();
+    assert!(library.variant("a b").is_none());
+    assert_eq!(
+        library.family_named("a b").unwrap().variants()[0].name(),
+        "a b Variant 2"
+    );
+    library.rename_variant(first, "B").unwrap();
+    let mut reloaded = sandbox.library();
+    assert!(reloaded.load().is_empty());
+    assert!(reloaded.variant("A B").is_some());
+    assert!(reloaded.variant("a b Variant 2").is_some());
+}
+
+#[test]
+fn imported_variant_names_and_selected_references_survive_reload() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("import.json");
+    fs::write(
+        &file,
+        r#"{"name":" Solar ","themes":[{"name":" Solar Light ","mode":"light"}]}"#,
+    )
+    .unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    let id = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
+    let variant = &library.family(id).unwrap().variants()[0];
+    assert_eq!(variant.name(), "Solar Light");
+    library.set_current(variant.id(), ThemeKind::Light).unwrap();
+    let (saved, _) = sandbox.saved_slots();
+    assert_eq!(saved, "Solar Light");
+    let mut reloaded = sandbox.library();
+    assert!(reloaded.load().is_empty());
+    assert_eq!(reloaded.variant(&saved).unwrap().name(), "Solar Light");
+
+    fs::write(&file, r#"{"name":"Duplicates","themes":[{"name":"Duplicates Light"},{"name":"Duplicates Light "}]}"#).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    assert!(
+        library
+            .import_prepared(&prepared, ImportPolicy::Copy)
+            .is_err()
+    );
+    assert!(library.family_named("Duplicates").is_none());
+}
+
+#[test]
+fn imported_fonts_normalize_roles_and_legacy_before_propagation_and_export() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("fonts.json");
+    fs::write(&file, r#"{"name":"Fonts","themes":[{"name":"Fonts Light","mode":"light","font.family":" Legacy UI ","mono_font.family":" Legacy Code ","fonts":{"interface":"   ","reading":" Georgia ","headings":" Uninstalled Family ","code":" Role Code "}},{"name":"Fonts Dark","mode":"dark"}]}"#).unwrap();
+    let prepared = library.prepare_import(&file).unwrap();
+    let id = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
+    let variant = &library.family(id).unwrap().variants()[0];
+    let source = variant.id();
+    let expected = ["Legacy UI", "Georgia", "Uninstalled Family", "Role Code"];
+    for (role, expected) in FontRole::ALL.into_iter().zip(expected) {
+        assert_eq!(variant.document().font(role), Some(expected));
+    }
+    library.apply_fonts_to_all(source).unwrap();
+    library.export(id, &file).unwrap();
+    let stored = storage::read(&file).unwrap();
+    for document in stored.themes {
+        for (role, expected) in FontRole::ALL.into_iter().zip(expected) {
+            assert_eq!(document.font(role), Some(expected));
+        }
+        assert_eq!(document.config().font_family.as_deref(), Some("Legacy UI"));
+        assert_eq!(
+            document.config().mono_font_family.as_deref(),
+            Some("Role Code")
+        );
+    }
+    let mut document = library.variant_by_id(source).unwrap().document().clone();
+    for role in FontRole::ALL {
+        document.set_font(role, Some("   ".into()));
+        assert_eq!(document.font(role), None);
+    }
+    assert_eq!(document.config().font_family, None);
+    assert_eq!(document.config().mono_font_family, None);
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_normalization_write_is_pending_and_can_be_retried() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    fs::create_dir_all(&library.directory).unwrap();
+    let path = library.directory.join("imported.json");
+    let original = r#"{"name":"Imported","themes":[{"name":"Unrelated","mode":"light"}]}"#;
+    fs::write(&path, original).unwrap();
+    let permissions = fs::metadata(&library.directory).unwrap().permissions();
+    fs::set_permissions(&library.directory, fs::Permissions::from_mode(0o555)).unwrap();
+    // Elevated users can bypass Unix directory permissions, so this fault requires
+    // an unprivileged runner. Restore permissions before every assertion/return.
+    let probe = library.directory.join("write-probe");
+    if fs::write(&probe, b"").is_ok() {
+        fs::set_permissions(&library.directory, permissions).unwrap();
+        eprintln!("Skipping permission fault: this user can write to a read-only directory");
+        return;
+    }
+    let errors = library.load();
+    fs::set_permissions(&library.directory, permissions).unwrap();
+    assert_eq!(errors.len(), 1);
+    assert!(matches!(
+        errors.first(),
+        Some(LoadFailure::Normalization { .. })
+    ));
+    let family = library.family_named("Imported").unwrap();
+    let id = family.id();
+    assert_eq!(family.variants()[0].name(), "Imported");
+    assert!(matches!(family.status(), SaveStatus::Failed(_)));
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    assert!(library.flush_pending().is_empty());
+    assert!(matches!(
+        library.family(id).unwrap().status(),
+        SaveStatus::Autosaved
+    ));
+    let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["themes"][0]["name"], "Imported");
 }

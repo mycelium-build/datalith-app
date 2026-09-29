@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use percent_encoding::percent_decode_str;
 
-use crate::app::{fonts, settings::FontRole};
+use crate::app::fonts;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
@@ -97,14 +97,12 @@ impl MarkdownViewer {
 
     pub fn render(&self, handler: Entity<FileHandler>, cx: &App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
-        let appearance = cx.theme().clone();
-        let reading = fonts::family(FontRole::Reading, cx);
-        let headings = fonts::family(FontRole::Headings, cx);
-        let code = appearance.mono_font_family.clone();
+        let appearance = cx.theme();
+        let [_, reading, headings, code] = fonts::families(cx);
         self.render_document(
             &content,
             Some(handler),
-            &appearance,
+            appearance,
             &[reading, headings, code],
             cx,
         )

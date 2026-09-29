@@ -69,7 +69,8 @@ impl Tabs {
         self.active_document().map(|tab| &tab.handler)
     }
 
-    pub(crate) fn active_tab_id(&self) -> Option<&TabId> {
+    /// ID of the active document, or `None` when a tool tab is active or no tab is active.
+    pub(crate) fn active_document_id(&self) -> Option<&TabId> {
         self.active_document().map(|tab| &tab.id)
     }
 
@@ -93,7 +94,9 @@ impl Tabs {
             .collect()
     }
 
-    pub(crate) fn iter(
+    /// Iterate over document tabs with their indices in the full tab collection.
+    /// Indices can have gaps where theme or shortcuts tabs are omitted.
+    pub(crate) fn iter_documents(
         &self,
     ) -> impl Iterator<Item = (usize, Option<&Path>, &Entity<FileHandler>)> {
         self.entries.iter().enumerate().filter_map(|(index, tab)| {
@@ -131,7 +134,7 @@ impl Tabs {
                 )
             })
             .collect();
-        let active_id = self.active_tab_id().cloned();
+        let active_id = self.active_document_id().cloned();
         (tabs, active_id)
     }
 

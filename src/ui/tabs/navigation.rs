@@ -342,7 +342,6 @@ mod tests {
     use super::{DatalithView, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
-    use crate::ui::settings::SettingsView;
 
     #[test]
     fn navigation_preserves_tab_identity_modes_and_only_history_creates_duplicates() {
@@ -364,7 +363,6 @@ mod tests {
             crate::app::fonts::FontCatalog::init(cx);
             crate::app::themes::load_embedded_themes(cx);
             crate::app::themes::ThemeLibrary::init(cx);
-            SettingsView::init_theme_options(cx);
         });
         crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let window_handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {
@@ -381,36 +379,36 @@ mod tests {
                 .unwrap();
             view.update(cx, |view, cx| {
                 view.open_file(a.clone(), true, window, cx);
-                let first = view.tabs.active_tab_id().unwrap().clone();
+                let first = view.tabs.active_document_id().unwrap().clone();
                 view.open_file(b.clone(), false, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View
                 );
                 crate::app::settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
                 view.open_file(a.clone(), true, window, cx);
-                let second = view.tabs.active_tab_id().unwrap().clone();
+                let second = view.tabs.active_document_id().unwrap().clone();
                 assert_ne!(first, second);
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::Edit
                 );
                 view.open_file(b.clone(), true, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_back(window, cx);
                 assert_eq!(view.tabs.open_paths(), vec![a.clone(), a.clone()]);
                 assert_eq!(view.tabs.handlers_for_path(&a).count(), 2);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View
                 );
                 view.open_file(a.clone(), true, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_forward(window, cx);
                 assert_eq!(view.tabs.active_path(), Some(b.as_path()));
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_back(window, cx);
                 let saved = view.tabs.snapshot(cx);
                 assert_eq!(
@@ -422,14 +420,14 @@ mod tests {
                 assert!(!view.can_go_back());
                 crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
                 view.open_created_file(created.clone(), window, cx);
-                let created_id = view.tabs.active_tab_id().unwrap().clone();
+                let created_id = view.tabs.active_document_id().unwrap().clone();
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::Edit
                 );
                 view.close_active_tab(window, cx);
                 view.open_file(created.clone(), true, window, cx);
-                assert_ne!(view.tabs.active_tab_id(), Some(&created_id));
+                assert_ne!(view.tabs.active_document_id(), Some(&created_id));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View

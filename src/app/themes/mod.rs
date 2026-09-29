@@ -6,7 +6,8 @@ mod storage;
 mod tests;
 
 use std::{
-    collections::BTreeMap,
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     rc::Rc,
     sync::atomic::{AtomicU64, Ordering},
@@ -14,12 +15,17 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail, ensure};
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeConfig, ThemeMode, ThemeRegistry};
+use gpui_kit::component::{
+    ActiveTheme as _, Theme, ThemeConfig, ThemeMode, ThemeRegistry,
+    highlighter::{HighlightTheme, HighlightThemeStyle},
+    notification::Notification,
+    try_parse_color,
+};
 use gpui_kit::{App, Global, SharedString, Subscription};
 use serde::{Deserialize, Serialize};
 
 use super::settings::{self, FontRole, FontSettings, ThemeKind};
-use storage::StoredThemeSet;
+use storage::{LoadFailure, StoredThemeSet};
 
 const DEFAULT_LIGHT: &str = "Datalith Light";
 const DEFAULT_DARK: &str = "Datalith Dark";
@@ -36,7 +42,7 @@ fn valid_variant_name(family: &str, variant: &str, multi: bool) -> bool {
             .is_some_and(|suffix| !suffix.trim().is_empty())
 }
 
-pub fn load_embedded_themes(cx: &mut App) -> Vec<gpui_kit::component::notification::Notification> {
+pub fn load_embedded_themes(cx: &mut App) -> Vec<Notification> {
     embedded::load(cx)
 }
 
@@ -75,12 +81,24 @@ impl ThemeDocument {
         })
     }
     pub fn set_font(&mut self, role: FontRole, family: Option<String>) {
+        self.fonts.set_family(role, family);
+        let family = self
+            .fonts
+            .family(role)
+            .map(|family| SharedString::from(family.to_owned()));
         match role {
-            FontRole::Interface => self.config.font_family = family.clone().map(Into::into),
-            FontRole::Code => self.config.mono_font_family = family.clone().map(Into::into),
+            FontRole::Interface => self.config.font_family = family,
+            FontRole::Code => self.config.mono_font_family = family,
             FontRole::Reading | FontRole::Headings => {}
         }
-        self.fonts.set_family(role, family);
+    }
+    fn normalize_fonts(&mut self) {
+        for role in FontRole::ALL {
+            self.fonts
+                .set_family(role, self.fonts.family(role).map(str::to_owned));
+            let family = self.font(role).map(str::to_owned);
+            self.set_font(role, family);
+        }
     }
     pub fn colors(&self) -> Result<BTreeMap<String, Option<String>>> {
         Ok(serde_json::from_value(serde_json::to_value(
@@ -91,7 +109,7 @@ impl ThemeDocument {
         let mut colors = self.colors()?;
         let color = colors.get_mut(token).context("Unknown theme color")?;
         if let Some(value) = &value {
-            gpui_kit::component::try_parse_color(value)?;
+            try_parse_color(value)?;
         }
         *color = value;
         self.config.colors = serde_json::from_value(serde_json::to_value(colors)?)?;
@@ -99,12 +117,11 @@ impl ThemeDocument {
     }
     pub fn set_highlight(&mut self, token: &str, value: Option<String>) -> Result<()> {
         if let Some(ref value) = value {
-            gpui_kit::component::try_parse_color(value)?;
+            try_parse_color(value)?;
         }
         // Use the dependency's schema as the complete list of supported keys,
         // including optional styles that have never been set in this variant.
-        let schema =
-            serde_json::to_value(gpui_kit::component::highlighter::HighlightThemeStyle::default())?;
+        let schema = serde_json::to_value(HighlightThemeStyle::default())?;
         let mut highlight =
             serde_json::to_value(self.config.highlight.clone().unwrap_or_default())?
                 .as_object()
@@ -158,6 +175,19 @@ impl ThemeDocument {
     }
     pub const fn set_mode(&mut self, mode: ThemeMode) {
         self.config.mode = mode;
+    }
+}
+
+/// A normalized import retained while the user chooses how to handle a conflict.
+#[derive(Clone)]
+pub struct PreparedThemeImport {
+    set: StoredThemeSet,
+    conflict: Option<u64>,
+}
+impl PreparedThemeImport {
+    /// The existing family with the same normalized, case-insensitive name.
+    pub const fn conflict(&self) -> Option<u64> {
+        self.conflict
     }
 }
 
@@ -253,7 +283,7 @@ pub struct ResolvedAppearance {
     theme: Theme,
     fonts: [SharedString; 4],
     colors: BTreeMap<String, gpui_kit::Hsla>,
-    defined_colors: std::collections::BTreeSet<String>,
+    defined_colors: BTreeSet<String>,
 }
 impl ResolvedAppearance {
     pub const fn theme(&self) -> &Theme {
@@ -300,12 +330,28 @@ impl Global for ThemeLibrary {}
     reason = "indices come from validated family lookups or exhaustive ThemeKind/FontRole mappings"
 )]
 impl ThemeLibrary {
-    pub fn init(cx: &mut App) -> Vec<gpui_kit::component::notification::Notification> {
+    pub fn init(cx: &mut App) -> Vec<Notification> {
         let mut library = Self::new(directory());
         for set in embedded::sets() {
             let _ = library.insert_set(set, ThemeSource::Bundled);
         }
-        let errors = library.load();
+        let errors: Vec<_> = library
+            .load()
+            .into_iter()
+            .map(|failure| match failure {
+                LoadFailure::Read { theme, error } => {
+                    crate::ui::notifications::theme_load_failed(&theme, &error)
+                }
+                LoadFailure::Normalization { theme, error } => {
+                    crate::ui::notifications::settings_save_failed(
+                        &format!(
+                            "normalized changes to the {theme} theme (loaded for this session)"
+                        ),
+                        &error,
+                    )
+                }
+            })
+            .collect();
         let prefs = settings::snapshot();
         let mut pending = Vec::new();
         for (ix, saved) in [prefs.light_theme_name, prefs.dark_theme_name]
@@ -342,10 +388,7 @@ impl ThemeLibrary {
         cx.global_mut::<Self>().quit_subscription = Some(quit_subscription);
         if let Some(error) = preference_error {
             // The fallback stays valid in memory; report the preference failure.
-            let mut notifications: Vec<_> = errors
-                .into_iter()
-                .map(|(name, error)| crate::ui::notifications::theme_load_failed(&name, &error))
-                .collect();
+            let mut notifications = errors;
             notifications.push(crate::ui::notifications::theme_load_failed(
                 "Current themes",
                 &error,
@@ -353,11 +396,7 @@ impl ThemeLibrary {
             notifications.extend(pending);
             return notifications;
         }
-        pending.extend(
-            errors
-                .into_iter()
-                .map(|(name, error)| crate::ui::notifications::theme_load_failed(&name, &error)),
-        );
+        pending.extend(errors);
         pending
     }
 
@@ -1009,8 +1048,23 @@ impl ThemeLibrary {
         );
         storage::write(to, &family.set())
     }
-    pub fn import(&mut self, from: &Path, policy: ImportPolicy) -> Result<u64> {
-        let mut set = storage::read(from)?;
+    /// Read and normalize once, so conflict detection and import share the same document.
+    pub fn prepare_import(&self, from: &Path) -> Result<PreparedThemeImport> {
+        let set = storage::read(from)?;
+        let conflict = self
+            .families
+            .iter()
+            .find(|family| family.name.eq_ignore_ascii_case(&set.name))
+            .map(ThemeFamily::id);
+        Ok(PreparedThemeImport { set, conflict })
+    }
+    /// Commit the prepared document using the chosen conflict policy.
+    pub fn import_prepared(
+        &mut self,
+        prepared: &PreparedThemeImport,
+        policy: ImportPolicy,
+    ) -> Result<u64> {
+        let mut set = prepared.set.clone();
         let existing = self
             .families
             .iter()
@@ -1265,14 +1319,9 @@ fn resolve(
         .colors()
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|(key, value)| {
-            Some((
-                key,
-                gpui_kit::component::try_parse_color(value.as_deref()?).ok()?,
-            ))
-        })
+        .filter_map(|(key, value)| Some((key, try_parse_color(value.as_deref()?).ok()?)))
         .collect();
-    let mut defined_colors: std::collections::BTreeSet<_> = colors.keys().cloned().collect();
+    let mut defined_colors: BTreeSet<_> = colors.keys().cloned().collect();
     // Resolve every editor row to the effective GPUI value, while keeping
     // `defined_colors` limited to colors that the variant actually sets.
     if let Ok(serde_json::Value::Object(effective)) = serde_json::to_value(theme.colors)
@@ -1314,7 +1363,7 @@ fn resolve(
                 if let Some(styles) = value.as_object() {
                     for (name, style) in styles {
                         if let Some(value) = style.get("color").and_then(serde_json::Value::as_str)
-                            && let Ok(color) = gpui_kit::component::try_parse_color(value)
+                            && let Ok(color) = try_parse_color(value)
                         {
                             if explicit_highlight
                                 .as_ref()
@@ -1331,7 +1380,7 @@ fn resolve(
                     }
                 }
             } else if let Some(value) = value.as_str()
-                && let Ok(color) = gpui_kit::component::try_parse_color(value)
+                && let Ok(color) = try_parse_color(value)
             {
                 if explicit_highlight
                     .as_ref()
@@ -1392,13 +1441,11 @@ fn merged_document(document: &ThemeDocument, defaults: &[ThemeDocument; 2]) -> T
     merged
 }
 
-fn gpui_highlight_fallback(
-    mode: ThemeMode,
-) -> gpui_kit::component::highlighter::HighlightThemeStyle {
+fn gpui_highlight_fallback(mode: ThemeMode) -> HighlightThemeStyle {
     let theme = if mode == ThemeMode::Dark {
-        gpui_kit::component::highlighter::HighlightTheme::default_dark()
+        HighlightTheme::default_dark()
     } else {
-        gpui_kit::component::highlighter::HighlightTheme::default_light()
+        HighlightTheme::default_light()
     };
     theme.style.clone()
 }
@@ -1412,20 +1459,25 @@ fn directory() -> PathBuf {
     std::env::temp_dir().join(format!("datalith-test-themes-{}", std::process::id()))
 }
 
-pub fn document(name: &str, cx: &App) -> Option<ThemeDocument> {
-    cx.try_global::<ThemeLibrary>()
+/// Borrow a library document, falling back to the registry before initialization.
+pub fn document<'a>(name: &str, cx: &'a App) -> Option<Cow<'a, ThemeDocument>> {
+    if let Some(document) = cx
+        .try_global::<ThemeLibrary>()
         .and_then(|library| library.get(name))
-        .cloned()
-        .or_else(|| {
-            ThemeRegistry::global(cx)
-                .themes()
-                .get(name)
-                .map(|config| ThemeDocument::from_config((**config).clone()))
-        })
+    {
+        return Some(Cow::Borrowed(document));
+    }
+    ThemeRegistry::global(cx)
+        .themes()
+        .get(name)
+        .map(|config| Cow::Owned(ThemeDocument::from_config((**config).clone())))
 }
-pub fn active_document(cx: &App) -> ThemeDocument {
+
+/// Borrow the active document, constructing a fallback before library initialization.
+pub fn active_document(cx: &App) -> Cow<'_, ThemeDocument> {
     let config = active_config(cx);
-    document(&config.name, cx).unwrap_or_else(|| ThemeDocument::from_config((**config).clone()))
+    document(&config.name, cx)
+        .unwrap_or_else(|| Cow::Owned(ThemeDocument::from_config((**config).clone())))
 }
 fn active_config(cx: &App) -> &Rc<ThemeConfig> {
     if cx.theme().is_dark() {

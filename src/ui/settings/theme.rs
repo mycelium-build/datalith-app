@@ -19,7 +19,6 @@ use gpui_kit::{
     Styled as _, Subscription, Window, div, list, px, rems,
 };
 
-use super::SettingsView;
 use crate::app::{
     fonts::FontCatalog,
     settings::{self, FontRole, ThemeKind, ThemePreference},
@@ -588,7 +587,6 @@ fn delete_family(id: u64, window: &mut Window, cx: &mut App) {
     match cx.global_mut::<ThemeLibrary>().delete_family(id) {
         Ok(deleted) => {
             themes::refresh_current(cx);
-            SettingsView::init_theme_options(cx);
             show_undo(id, deleted, window, cx);
         }
         Err(error) => {
@@ -625,7 +623,6 @@ pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx:
                                 );
                             } else {
                                 themes::refresh_current(cx);
-                                SettingsView::init_theme_options(cx);
                                 if let Some(view) = cx
                                     .try_global::<crate::app::AppState>()
                                     .and_then(|state| state.view.clone())
@@ -664,7 +661,7 @@ fn import_theme(cx: &App) {
             && let Some(path) = paths.first()
         {
             let path = path.clone();
-            cx.update(|cx| dialogs::import_family(path, cx));
+            cx.update(|cx| dialogs::import_family(&path, cx));
         }
     })
     .detach();

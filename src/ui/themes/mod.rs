@@ -28,7 +28,6 @@ pub fn set_current(id: u64, kind: ThemeKind, cx: &mut App) {
         return;
     }
     themes::refresh_current(cx);
-    crate::ui::settings::SettingsView::init_theme_options(cx);
 }
 
 pub fn change_mode(preference: ThemePreference, cx: &mut App) {
@@ -37,8 +36,6 @@ pub fn change_mode(preference: ThemePreference, cx: &mut App) {
             cx,
             notifications::settings_save_failed("theme mode", &error),
         );
-        return;
     }
     crate::app::preferences::apply_theme_preference(preference, cx);
-    crate::ui::settings::SettingsView::init_theme_options(cx);
 }

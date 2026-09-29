@@ -182,8 +182,6 @@ impl DatalithView {
                 };
                 let val = f64::from(value.start());
                 let new_size = px(BASE_FONT_SIZE * value.start());
-                cx.global_mut::<settings::ThemeOptions>()
-                    .font_size_multiplier = val;
                 gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
                 cx.refresh_windows();
                 if let Err(error) = app_settings::set_font_scale(val) {
@@ -271,7 +269,7 @@ impl DatalithView {
                                         if !view.vault_db_ready_notified {
                                             changed_paths.extend(
                                                 view.tabs
-                                                    .iter()
+                                                    .iter_documents()
                                                     .filter(|(_, path, _)| {
                                                         path.is_some_and(|path| {
                                                             path.starts_with(&root)
@@ -284,7 +282,7 @@ impl DatalithView {
                                         }
                                         let handlers = view
                                             .tabs
-                                            .iter()
+                                            .iter_documents()
                                             .filter(|(_, tab_path, _)| {
                                                 tab_path.is_some_and(|path| path.starts_with(&root))
                                             })

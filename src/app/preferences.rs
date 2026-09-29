@@ -7,7 +7,6 @@ use gpui_kit::{App, px};
 
 use crate::app::settings::{self, ThemePreference};
 use crate::ui::notifications;
-use crate::ui::settings::ThemeOptions;
 
 const DEFAULT_LIGHT_THEME: &str = "Datalith Light";
 const DEFAULT_DARK_THEME: &str = "Datalith Dark";
@@ -78,11 +77,9 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
 
     if let Some(theme) = light_theme {
         Theme::global_mut(cx).light_theme = theme;
-        cx.global_mut::<ThemeOptions>().light_theme_name = light_name.into();
     }
     if let Some(theme) = dark_theme {
         Theme::global_mut(cx).dark_theme = theme;
-        cx.global_mut::<ThemeOptions>().dark_theme_name = dark_name.into();
     }
 
     apply_theme_preference(preference, cx);
@@ -94,12 +91,10 @@ pub fn apply(cx: &mut App) -> Vec<Notification> {
 }
 
 /// Applies a [`ThemePreference`] to the current session:
-/// syncs the settings UI,
 /// pins or clears the native window appearance,
 /// resolves the effective mode against the resulting system appearance,
 /// and repaints all windows.
 pub fn apply_theme_preference(preference: ThemePreference, cx: &mut App) {
-    cx.global_mut::<ThemeOptions>().theme_preference = preference.name().into();
     cx.set_window_appearance(preference.to_window_appearance());
     let effective = preference.resolve(cx.window_appearance()).into();
     Theme::change(effective, None, cx);

@@ -125,7 +125,6 @@ mod tests {
             crate::app::fonts::FontCatalog::init(cx);
             crate::app::themes::load_embedded_themes(cx);
             crate::app::themes::ThemeLibrary::init(cx);
-            crate::ui::settings::SettingsView::init_theme_options(cx);
             cx.set_global(AppState::default());
             actions::register(cx);
             crate::app::keymap::register(cx);
@@ -171,7 +170,7 @@ mod tests {
             let view = view.read(cx);
             let actual = view
                 .tabs
-                .iter()
+                .iter_documents()
                 .map(|(_, _, handler)| handler.read(cx).mode)
                 .collect::<Vec<_>>();
             assert_eq!(actual, modes);
@@ -362,7 +361,7 @@ mod tests {
         })
         .unwrap();
         settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
-        let first_id = cx.update(|cx| view.read(cx).tabs.active_tab_id().unwrap().clone());
+        let first_id = cx.update(|cx| view.read(cx).tabs.active_document_id().unwrap().clone());
         assert_modes(&cx, &view, &[ViewMode::View]);
 
         middle_click_file_tree_row(&mut cx, handle, 0);
@@ -373,7 +372,7 @@ mod tests {
                 vec![vault.0.join("Welcome.md"), basics.clone()]
             );
             assert_eq!(view.tabs.active_path(), Some(basics.as_path()));
-            let active_id = view.tabs.active_tab_id().unwrap().clone();
+            let active_id = view.tabs.active_document_id().unwrap().clone();
             assert_ne!(active_id, first_id);
             active_id
         });
@@ -383,7 +382,7 @@ mod tests {
         cx.update(|cx| {
             let view = view.read(cx);
             assert_eq!(view.tabs.open_paths().len(), 2);
-            assert_eq!(view.tabs.active_tab_id(), Some(&second_id));
+            assert_eq!(view.tabs.active_document_id(), Some(&second_id));
         });
 
         settings::set_open_new_tab_mode(ViewMode::View).unwrap();

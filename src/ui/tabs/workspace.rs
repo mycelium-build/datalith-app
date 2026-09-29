@@ -4,7 +4,7 @@ use super::Tab;
 use crate::ui::{DatalithView, shortcuts::ShortcutsView, themes::ThemeEditor};
 
 impl DatalithView {
-    pub(crate) fn open_theme_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_themes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings.open_theme(window, cx);
         self.settings.focus(window, cx);
         cx.notify();

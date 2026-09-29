@@ -10,7 +10,10 @@ use crate::app::{AppState, settings::ThemePreference, system};
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::ui::{PendingOpen, notifications, settings::DOCS_URL};
+use crate::ui::{
+    DatalithView, PendingOpen, notifications,
+    settings::{DOCS_URL, SettingsView},
+};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -33,7 +36,7 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
-        OpenThemeEditor,
+        OpenThemes,
         CheckForUpdates,
         OpenShortcuts,
         OpenDocumentation,
@@ -110,7 +113,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_8);
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
-    cx.on_action(open_theme_editor);
+    cx.on_action(open_themes);
     cx.on_action(open_shortcuts);
     cx.on_action(open_documentation);
     cx.on_action(open_about);
@@ -348,7 +351,7 @@ pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
 }
 
 pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
-    with_workspace_window(crate::ui::DatalithView::close_active_tab, cx);
+    with_workspace_window(DatalithView::close_active_tab, cx);
 }
 
 pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
@@ -385,16 +388,12 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
     crate::ui::themes::change_mode(preference, cx);
 }
 
-pub fn open_theme_editor(_: &OpenThemeEditor, cx: &mut App) {
-    with_workspace_window(crate::ui::DatalithView::open_theme_editor, cx);
+pub fn open_themes(_: &OpenThemes, cx: &mut App) {
+    with_workspace_window(DatalithView::open_themes, cx);
 }
 
 fn with_workspace_window(
-    update: fn(
-        &mut crate::ui::DatalithView,
-        &mut gpui_kit::Window,
-        &mut gpui_kit::Context<crate::ui::DatalithView>,
-    ),
+    update: fn(&mut DatalithView, &mut gpui_kit::Window, &mut gpui_kit::Context<DatalithView>),
     cx: &mut App,
 ) {
     if let Some(window) = cx.active_window() {
@@ -408,7 +407,7 @@ fn with_workspace_window(
     }
 }
 
-fn open_preferences(open: fn(&mut crate::ui::settings::SettingsView), cx: &mut App) {
+fn open_preferences(open: fn(&mut SettingsView), cx: &mut App) {
     if let Some(window) = cx.active_window() {
         cx.defer(move |cx| {
             let _ = window.update(cx, |_, window, cx| {
@@ -423,11 +422,11 @@ fn open_preferences(open: fn(&mut crate::ui::settings::SettingsView), cx: &mut A
 }
 
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {
-    open_preferences(crate::ui::settings::SettingsView::open, cx);
+    open_preferences(SettingsView::open, cx);
 }
 
 pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
-    with_workspace_window(crate::ui::DatalithView::open_shortcuts, cx);
+    with_workspace_window(DatalithView::open_shortcuts, cx);
 }
 
 pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
@@ -440,7 +439,7 @@ pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
 }
 
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
-    open_preferences(crate::ui::settings::SettingsView::open_about, cx);
+    open_preferences(SettingsView::open_about, cx);
 }
 
 pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {

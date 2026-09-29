@@ -38,7 +38,6 @@ fn main() {
         app::fonts::FontCatalog::init(cx);
         pending_notifications.extend(app::themes::load_embedded_themes(cx));
         pending_notifications.extend(app::themes::ThemeLibrary::init(cx));
-        ui::settings::SettingsView::init_theme_options(cx);
 
         pending_notifications.extend(app::preferences::apply(cx));
         cx.set_global(app::AppState::default());

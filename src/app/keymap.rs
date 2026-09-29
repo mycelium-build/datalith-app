@@ -81,24 +81,7 @@ impl ShortcutRegistry {
     pub(crate) fn set(&mut self, id: &str, binding: &str, cx: &mut App) -> anyhow::Result<()> {
         let binding = normalize_binding(binding)
             .ok_or_else(|| anyhow::anyhow!("That key combination is not supported."))?;
-        let Some(index) = SHORTCUTS.iter().position(|definition| definition.id == id) else {
-            anyhow::bail!("Unknown shortcut.");
-        };
-
-        let mut next = self.bindings.clone();
-        for (other_index, current) in next.iter_mut().enumerate() {
-            if other_index != index
-                && current
-                    .as_deref()
-                    .is_some_and(|current| same_binding(current, &binding))
-            {
-                *current = None;
-            }
-        }
-        if let Some(current) = next.get_mut(index) {
-            *current = Some(binding);
-        }
-        self.replace(next, cx)
+        self.update_one(id, Some(binding), cx)
     }
 
     pub(crate) fn remove(&mut self, id: &str, cx: &mut App) -> anyhow::Result<()> {
@@ -538,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn last_saved_custom_assignment_wins_a_conflict() {
+    fn later_shortcut_definition_wins_conflicting_saved_overrides() {
         let overrides = BTreeMap::from([
             ("new-note".to_owned(), Some("secondary-x".to_owned())),
             ("new-folder".to_owned(), Some("secondary-x".to_owned())),

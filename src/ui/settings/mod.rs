@@ -8,9 +8,8 @@ use gpui_kit::component::{
     v_flex,
 };
 use gpui_kit::{
-    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
-    rems,
+    App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, StatefulInteractiveElement, Styled, Window, div, px, rems,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -29,16 +28,6 @@ mod tests;
 pub mod theme;
 
 use about::about_page_index;
-
-#[derive(Clone)]
-pub struct ThemeOptions {
-    pub(crate) light_theme_name: SharedString,
-    pub(crate) dark_theme_name: SharedString,
-    pub(crate) font_size_multiplier: f64,
-    pub(crate) theme_preference: SharedString,
-}
-
-impl Global for ThemeOptions {}
 
 pub struct SettingsView {
     pub(crate) open: bool,

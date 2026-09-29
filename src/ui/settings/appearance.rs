@@ -7,34 +7,11 @@ use gpui_kit::component::{
     setting::{SettingGroup, SettingItem},
     slider::{Slider, SliderState},
 };
-use gpui_kit::{App, Entity, IntoElement, ParentElement, Styled, div};
+use gpui_kit::{Entity, IntoElement, ParentElement, Styled, div};
 
-use super::{SettingsView, ThemeOptions};
-use crate::app::settings;
+use super::SettingsView;
 
 impl SettingsView {
-    pub(crate) fn init_theme_options(cx: &mut App) {
-        let settings = settings::snapshot();
-        let (saved_light, saved_dark) = cx
-            .try_global::<crate::app::themes::ThemeLibrary>()
-            .map_or_else(
-                || ("Datalith Light".to_owned(), "Datalith Dark".to_owned()),
-                |library| {
-                    (
-                        library.current(settings::ThemeKind::Light).to_owned(),
-                        library.current(settings::ThemeKind::Dark).to_owned(),
-                    )
-                },
-            );
-
-        cx.set_global(ThemeOptions {
-            light_theme_name: saved_light.into(),
-            dark_theme_name: saved_dark.into(),
-            font_size_multiplier: settings.font_scale,
-            theme_preference: settings.theme_preference.name().into(),
-        });
-    }
-
     pub(super) fn theme_navigation_group() -> SettingGroup {
         SettingGroup::new()
             .title("Themes & Fonts")

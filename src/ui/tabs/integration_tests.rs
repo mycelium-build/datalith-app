@@ -1,5 +1,5 @@
 use crate::app::{AppState, fonts, themes};
-use crate::ui::{DatalithView, settings::SettingsView};
+use crate::ui::DatalithView;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, px, size};
@@ -12,7 +12,6 @@ fn family_editors_have_independent_tabs_and_theme_command_reopens_the_picker() {
         fonts::FontCatalog::init(cx);
         themes::load_embedded_themes(cx);
         themes::ThemeLibrary::init(cx);
-        SettingsView::init_theme_options(cx);
         cx.set_global(AppState::default());
         let source = cx
             .global::<themes::ThemeLibrary>()
@@ -42,7 +41,7 @@ fn family_editors_have_independent_tabs_and_theme_command_reopens_the_picker() {
             app.open_theme_editor_for(first, None, window, cx);
             assert_eq!(app.tabs.entries.len(), 2);
             assert_eq!(app.tabs.active().unwrap().entity_id(), initial);
-            app.open_theme_editor(window, cx);
+            app.open_themes(window, cx);
             assert!(app.settings.open);
         });
         view = Some(app.clone());
@@ -95,13 +94,13 @@ fn assert_document_only_restore(
         app.tabs.theme_editor_for(family, cx).unwrap().entity_id(),
         theme_entity
     );
-    let document_id = app.tabs.active_tab_id().unwrap().clone();
+    let document_id = app.tabs.active_document_id().unwrap().clone();
     app.open_shortcuts(window, cx);
     assert!(app.tabs.active_handler().is_none());
     assert!(!app.can_go_back());
     app.toggle_editor_mode(cx);
     app.new_empty_tab(cx);
-    let empty_id = app.tabs.active_tab_id().unwrap().clone();
+    let empty_id = app.tabs.active_document_id().unwrap().clone();
     assert_ne!(document_id, empty_id);
     assert_eq!(app.tabs.entries.len(), 4);
     let saved = app.tabs.snapshot(cx);

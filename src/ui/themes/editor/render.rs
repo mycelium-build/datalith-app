@@ -1,7 +1,7 @@
-use super::*;
+use super::{ColorOriginFilters, ColorRow, PropertyRow, RenameTarget, ThemeEditor, colors};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, ThemeMode,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     color_picker::ColorPicker,
@@ -10,16 +10,17 @@ use gpui_kit::component::{
     resizable::{h_resizable, resizable_panel},
     scroll::ScrollableElement as _,
     select::Select,
-    v_flex,
+    try_parse_color, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement,
-    StatefulInteractiveElement as _, Styled as _, Window, div, list,
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement, Rems,
+    Render, StatefulInteractiveElement as _, Styled, Window, canvas, div, list, rems,
 };
 
 use crate::{
     app::{
+        fonts::FontCatalog,
         settings::FontRole,
         themes::{SaveStatus, ThemeFamily, ThemeLibrary, ThemeVariant},
     },
@@ -143,11 +144,10 @@ pub(super) const ESSENTIAL_COLORS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-pub(super) const GROUP_HEADER_PREFIX: &str = "__color_group__:";
-
+// Preserve the native row identity across the typed property-list migration.
 pub(super) const VARIANT_MODE_ROW: &str = "__variant_mode__";
 
-pub(super) const COLOR_ROW_HEIGHT: gpui_kit::Rems = gpui_kit::rems(5.5);
+pub(super) const COLOR_ROW_HEIGHT: Rems = rems(5.5);
 
 pub(super) fn color_label(token: &str) -> String {
     ESSENTIAL_COLORS
@@ -187,7 +187,7 @@ impl ThemeEditor {
         row: &ColorRow,
         active: bool,
         cx: &Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    ) -> AnyElement {
         if let Some(controls) = row.controls.as_ref().filter(|_| active) {
             h_flex()
                 .gap_2()
@@ -233,7 +233,7 @@ impl ThemeEditor {
                         .tooltip(format!("Choose {label} color…"))
                         .accessibility_label(format!("Edit {label} color"))
                         .children(
-                            gpui_kit::component::try_parse_color(&row.display)
+                            try_parse_color(&row.display)
                                 .ok()
                                 .map(|color| div().size_4().rounded_sm().bg(color)),
                         )
@@ -264,7 +264,7 @@ impl ThemeEditor {
         }
     }
 
-    fn render_color_row(&self, id: u64, token: &str, cx: &Context<Self>) -> gpui_kit::AnyElement {
+    fn render_color_row(&self, id: u64, token: &str, cx: &Context<Self>) -> AnyElement {
         let Some(row) = self
             .variants
             .get(&id)
@@ -346,7 +346,7 @@ impl ThemeEditor {
             .into_any_element()
     }
 
-    fn render_variant_mode_row(id: u64, cx: &Context<Self>) -> gpui_kit::AnyElement {
+    fn render_variant_mode_row(id: u64, cx: &Context<Self>) -> AnyElement {
         let mode = cx
             .global::<ThemeLibrary>()
             .variant_by_id(id)
@@ -381,12 +381,8 @@ impl ThemeEditor {
                     .child(
                         h_flex().gap_1().children(
                             [
-                                (
-                                    "variant-light",
-                                    "Light",
-                                    gpui_kit::component::ThemeMode::Light,
-                                ),
-                                ("variant-dark", "Dark", gpui_kit::component::ThemeMode::Dark),
+                                ("variant-light", "Light", ThemeMode::Light),
+                                ("variant-dark", "Dark", ThemeMode::Dark),
                             ]
                             .into_iter()
                             .map(|(key, label, value)| {
@@ -405,11 +401,7 @@ impl ThemeEditor {
             .into_any_element()
     }
 
-    fn render_color_group_heading(
-        id: u64,
-        group: &str,
-        cx: &Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    fn render_color_group_heading(id: u64, group: &str, cx: &Context<Self>) -> AnyElement {
         div()
             .id(format!("theme-color-group-{id}-{group}"))
             .w_full()
@@ -427,7 +419,7 @@ impl ThemeEditor {
         origin: colors::ColorOrigin,
         selected: bool,
         cx: &Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    ) -> AnyElement {
         Checkbox::new(format!("color-origin-{}", origin.id()))
             .small()
             .checked(selected)
@@ -517,7 +509,7 @@ impl ThemeEditor {
     fn render_navigation(&self, family: &ThemeFamily, cx: &Context<Self>) -> impl IntoElement {
         v_flex()
             .id("theme-variant-navigation")
-            .w(gpui_kit::rems(13.))
+            .w(rems(13.))
             .flex_none()
             .min_h_0()
             .border_r_1()
@@ -540,26 +532,24 @@ impl ThemeEditor {
                     .children(family.variants().iter().map(|variant| {
                         let id = variant.id();
                         let group = format!("theme-variant-row-{id}");
-                        let editing = self.rename_target == Some(RenameTarget::Variant(id));
+                        let rename = self
+                            .rename
+                            .as_ref()
+                            .filter(|session| session.target == RenameTarget::Variant(id));
                         div()
                             .id(group.clone())
                             .test_support()
                             .group(group.clone())
                             .relative()
                             .w_full()
-                            .child(if editing {
-                                self.rename_input.as_ref().map_or_else(
-                                    || div().into_any_element(),
-                                    |input| {
-                                        Input::new(input)
-                                            .id(format!("variant-name-input-{id}"))
-                                            .small()
-                                            .w_full()
-                                            .min_w_0()
-                                            .aria_label("Variant name")
-                                            .into_any_element()
-                                    },
-                                )
+                            .child(if let Some(session) = rename {
+                                Input::new(&session.input)
+                                    .id(format!("variant-name-input-{id}"))
+                                    .small()
+                                    .w_full()
+                                    .min_w_0()
+                                    .aria_label("Variant name")
+                                    .into_any_element()
                             } else {
                                 let label = variant_label(family, variant);
                                 Button::new(("select-variant", id))
@@ -584,7 +574,7 @@ impl ThemeEditor {
                                     }))
                                     .into_any_element()
                             })
-                            .children((!editing).then(|| {
+                            .children(rename.is_none().then(|| {
                                 h_flex()
                                     .absolute()
                                     .right_0()
@@ -594,7 +584,7 @@ impl ThemeEditor {
                                     .pr_1()
                                     .gap_1()
                                     .invisible()
-                                    .group_hover(group, gpui_kit::Styled::visible)
+                                    .group_hover(group, Styled::visible)
                                     .child(Self::render_rename_variant(id, cx))
                                     .child(Self::render_remove_variant(id, cx))
                             }))
@@ -607,7 +597,7 @@ impl ThemeEditor {
         clippy::too_many_lines,
         reason = "The color header, filters, and virtualized token list form one retained panel"
     )]
-    fn render_properties(&self, cx: &Context<Self>) -> gpui_kit::AnyElement {
+    fn render_properties(&self, cx: &Context<Self>) -> AnyElement {
         let id = self.edited;
         if self.category == "Fonts" {
             return div()
@@ -642,11 +632,9 @@ impl ThemeEditor {
             "All colors"
         };
         let visible_color_count = self
-            .visible_colors
+            .property_rows
             .iter()
-            .filter(|token| {
-                token.as_str() != VARIANT_MODE_ROW && !token.starts_with(GROUP_HEADER_PREFIX)
-            })
+            .filter(|row| matches!(row, PropertyRow::Color(_)))
             .count();
         let filtered = advanced
             && (!self.color_query.read(cx).value().is_empty()
@@ -656,10 +644,7 @@ impl ThemeEditor {
                     .selected_value()
                     .is_some_and(|group| group.as_str() != all_groups)
                 || !self.color_origins.all_selected());
-        let has_visible_color = self
-            .visible_colors
-            .iter()
-            .any(|token| token != VARIANT_MODE_ROW && !token.starts_with(GROUP_HEADER_PREFIX));
+        let has_visible_color = visible_color_count > 0;
         v_flex()
             .w_full()
             .flex_1()
@@ -721,7 +706,7 @@ impl ThemeEditor {
                                         .w_full()
                                         .gap_2()
                                         .child(
-                                            div().w(gpui_kit::rems(12.)).flex_none().child(
+                                            div().w(rems(12.)).flex_none().child(
                                                 Select::new(&self.color_group)
                                                     .small()
                                                     .w_full()
@@ -766,18 +751,12 @@ impl ThemeEditor {
                     .child(
                         list(self.color_list.clone(), move |ix, _, cx| {
                             editor.update(cx, |editor, cx| {
-                                editor.visible_colors.get(ix).map_or_else(
+                                editor.property_rows.get(ix).map_or_else(
                                     || div().into_any_element(),
-                                    |token| {
-                                        if token == VARIANT_MODE_ROW {
-                                            Self::render_variant_mode_row(id, cx)
-                                        } else if let Some(group) =
-                                            token.strip_prefix(GROUP_HEADER_PREFIX)
-                                        {
-                                            Self::render_color_group_heading(id, group, cx)
-                                        } else {
-                                            editor.render_color_row(id, token, cx)
-                                        }
+                                    |row| match row {
+                                        PropertyRow::VariantMode => Self::render_variant_mode_row(id, cx),
+                                        PropertyRow::GroupHeading(group) => Self::render_color_group_heading(id, group, cx),
+                                        PropertyRow::Color(token) => editor.render_color_row(id, token, cx),
                                     },
                                 )
                             })
@@ -785,7 +764,7 @@ impl ThemeEditor {
                         .size_full(),
                     )
                     .child(
-                        gpui_kit::canvas(
+                        canvas(
                             move |_, _, _| {
                                 // GPUI clears all height hints on the first layout
                                 // and width changes. Restore off-screen estimates
@@ -868,10 +847,10 @@ impl Render for ThemeEditor {
                         .child(resizable_panel().child(controls))
                         .child(
                             resizable_panel()
-                                .size(gpui_kit::rems(28.).to_pixels(window.rem_size()))
+                                .size(rems(28.).to_pixels(window.rem_size()))
                                 .size_range(
-                                    gpui_kit::rems(20.).to_pixels(window.rem_size())
-                                        ..gpui_kit::rems(55.).to_pixels(window.rem_size()),
+                                    rems(20.).to_pixels(window.rem_size())
+                                        ..rems(55.).to_pixels(window.rem_size()),
                                 )
                                 .flex_none()
                                 .child(preview),
@@ -879,11 +858,31 @@ impl Render for ThemeEditor {
                 )
                 .into_any_element()
         };
-        let family_title = if self.rename_target == Some(RenameTarget::Family) {
-            self.rename_input.as_ref().map_or_else(
-                || div().into_any_element(),
-                |input| {
-                    Input::new(input)
+        let family_title = self
+            .rename
+            .as_ref()
+            .filter(|session| session.target == RenameTarget::Family)
+            .map_or_else(
+                || {
+                    h_flex()
+                        .min_w_0()
+                        .gap_1()
+                        .child(div().text_lg().truncate().child(family.name().to_owned()))
+                        .child(
+                            Button::new("rename-theme")
+                                .small()
+                                .ghost()
+                                .icon(Icon::new(DatalithIcon::Pen))
+                                .tooltip("Rename theme")
+                                .accessibility_label("Rename theme")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.start_family_rename(window, cx);
+                                })),
+                        )
+                        .into_any_element()
+                },
+                |session| {
+                    Input::new(&session.input)
                         .id("theme-name-input")
                         .small()
                         .w_64()
@@ -891,25 +890,7 @@ impl Render for ThemeEditor {
                         .aria_label("Theme name")
                         .into_any_element()
                 },
-            )
-        } else {
-            h_flex()
-                .min_w_0()
-                .gap_1()
-                .child(div().text_lg().truncate().child(family.name().to_owned()))
-                .child(
-                    Button::new("rename-theme")
-                        .small()
-                        .ghost()
-                        .icon(Icon::new(DatalithIcon::Pen))
-                        .tooltip("Rename theme")
-                        .accessibility_label("Rename theme")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.start_family_rename(window, cx);
-                        })),
-                )
-                .into_any_element()
-        };
+            );
         v_flex()
             .id("theme-editor")
             .size_full()
@@ -968,7 +949,10 @@ impl Render for ThemeEditor {
             }))
             .when(!show_navigation, |view| {
                 let group = "compact-theme-variant-row";
-                let editing = self.rename_target == Some(RenameTarget::Variant(id));
+                let rename = self
+                    .rename
+                    .as_ref()
+                    .filter(|session| session.target == RenameTarget::Variant(id));
                 view.child(
                     v_flex()
                         .p_3()
@@ -980,19 +964,14 @@ impl Render for ThemeEditor {
                                 .w_full()
                                 .gap_2()
                                 .child(div().text_sm().child("Variant"))
-                                .child(if editing {
-                                    self.rename_input.as_ref().map_or_else(
-                                        || div().into_any_element(),
-                                        |input| {
-                                            Input::new(input)
-                                                .id(format!("variant-name-input-{id}"))
-                                                .small()
-                                                .flex_1()
-                                                .min_w_0()
-                                                .aria_label("Variant name")
-                                                .into_any_element()
-                                        },
-                                    )
+                                .child(if let Some(session) = rename {
+                                    Input::new(&session.input)
+                                        .id(format!("variant-name-input-{id}"))
+                                        .small()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .aria_label("Variant name")
+                                        .into_any_element()
                                 } else {
                                     Select::new(&self.selector)
                                         .flex_1()
@@ -1000,11 +979,11 @@ impl Render for ThemeEditor {
                                         .accessibility_label("Edited variant")
                                         .into_any_element()
                                 })
-                                .children((!editing).then(|| {
+                                .children(rename.is_none().then(|| {
                                     h_flex()
                                         .gap_1()
                                         .invisible()
-                                        .group_hover(group, gpui_kit::Styled::visible)
+                                        .group_hover(group, Styled::visible)
                                         .child(Self::render_rename_variant(id, cx))
                                         .child(Self::render_remove_variant(id, cx))
                                 })),

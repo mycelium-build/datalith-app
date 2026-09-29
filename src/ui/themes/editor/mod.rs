@@ -16,7 +16,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, Hsla, ListAlignment, ListState,
-    Render, Rgba, ScrollHandle, SharedString, Subscription, Window,
+    Rgba, ScrollHandle, SharedString, Subscription, Window,
 };
 
 use crate::app::{
@@ -26,28 +26,28 @@ use crate::app::{
 };
 
 #[derive(Clone)]
-struct Choice {
-    value: SharedString,
+struct Choice<T = SharedString> {
+    value: T,
     label: SharedString,
 }
-impl Choice {
-    fn new(value: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
+impl<T> Choice<T> {
+    fn new(value: impl Into<T>, label: impl Into<SharedString>) -> Self {
         Self {
             value: value.into(),
             label: label.into(),
         }
     }
 }
-impl SearchableListItem for Choice {
-    type Value = SharedString;
+impl<T: Clone + PartialEq> SearchableListItem for Choice<T> {
+    type Value = T;
     fn title(&self) -> SharedString {
         self.label.clone()
     }
-    fn value(&self) -> &SharedString {
+    fn value(&self) -> &T {
         &self.value
     }
 }
-type Choices = SelectState<SearchableVec<Choice>>;
+type Choices<T = SharedString> = SelectState<SearchableVec<Choice<T>>>;
 
 struct ColorRow {
     controls: Option<ColorControls>,
@@ -92,7 +92,7 @@ fn color_hex(color: Hsla) -> String {
 }
 
 struct VariantControls {
-    fonts: [Entity<Choices>; 4],
+    fonts: [Entity<Choices<Option<SharedString>>>; 4],
     colors: BTreeMap<String, ColorRow>,
     subscriptions: Vec<Subscription>,
 }
@@ -138,6 +138,19 @@ enum RenameTarget {
     Variant(u64),
 }
 
+struct RenameSession {
+    target: RenameTarget,
+    input: Entity<InputState>,
+    _subscription: Subscription,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PropertyRow {
+    Color(String),
+    GroupHeading(&'static str),
+    VariantMode,
+}
+
 pub struct ThemeEditor {
     family_id: u64,
     edited: u64,
@@ -150,7 +163,7 @@ pub struct ThemeEditor {
     preview_pane: Entity<super::preview::ThemePreview>,
     scroll: ScrollHandle,
     color_list: ListState,
-    visible_colors: Vec<String>,
+    property_rows: Vec<PropertyRow>,
     color_query: Entity<InputState>,
     color_group: Entity<Choices>,
     color_origins: ColorOriginFilters,
@@ -158,9 +171,7 @@ pub struct ThemeEditor {
     rem_size: gpui_kit::Pixels,
     _query_subscription: Subscription,
     error: Option<String>,
-    rename_target: Option<RenameTarget>,
-    rename_input: Option<Entity<InputState>>,
-    rename_subscription: Option<Subscription>,
+    rename: Option<RenameSession>,
     focus: FocusHandle,
     _selector_subscription: Subscription,
 }
@@ -195,7 +206,7 @@ impl ThemeEditor {
             .filter(|id| variants.iter().any(|v| v.id() == *id))
             .or_else(|| variants.first().map(crate::app::themes::ThemeVariant::id))
             .unwrap_or_default();
-        let selector = make_choices(
+        let selector: Entity<Choices> = make_choices(
             variants
                 .iter()
                 .map(|v| {
@@ -207,7 +218,7 @@ impl ThemeEditor {
                     )
                 })
                 .collect(),
-            &edited.to_string(),
+            &edited.to_string().into(),
             window,
             cx,
         );
@@ -227,12 +238,12 @@ impl ThemeEditor {
                 cx.notify();
             }
         });
-        let color_group = make_choices(
+        let color_group: Entity<Choices> = make_choices(
             colors::ESSENTIAL_GROUPS
                 .iter()
                 .map(|group| Choice::new(*group, *group))
                 .collect(),
-            "All colors",
+            &"All colors".into(),
             window,
             cx,
         );
@@ -254,7 +265,7 @@ impl ThemeEditor {
             preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
             scroll: ScrollHandle::default(),
             color_list: ListState::new(0, ListAlignment::Top, gpui_kit::px(0.)),
-            visible_colors: Vec::new(),
+            property_rows: Vec::new(),
             color_query,
             color_group,
             color_origins: ColorOriginFilters::default(),
@@ -262,9 +273,7 @@ impl ThemeEditor {
             rem_size: window.rem_size(),
             _query_subscription: query_subscription,
             error: None,
-            rename_target: None,
-            rename_input: None,
-            rename_subscription: None,
+            rename: None,
             focus: cx.focus_handle(),
             _selector_subscription: selector_subscription,
         };
@@ -384,8 +393,8 @@ impl ThemeEditor {
             }
         }
         let fonts = FontRole::ALL.map(|role| {
-            let value = document.font(role).unwrap_or_default();
-            make_choices(font_choices(&document, role, cx), value, window, cx)
+            let value = document.font(role).map(SharedString::from);
+            make_choices(font_choices(&document, role, cx), &value, window, cx)
         });
         let mut rows = BTreeMap::new();
         for (token, valid) in colors {
@@ -438,7 +447,7 @@ impl ThemeEditor {
                 move |this, _, event, window, cx| {
                     if let SelectEvent::Confirm(Some(value)) = event {
                         this.select(id, window, cx);
-                        let value = (!value.is_empty()).then(|| value.to_string());
+                        let value = value.as_ref().map(ToString::to_string);
                         let result = cx.global_mut::<ThemeLibrary>().update_font(id, role, value);
                         this.handle_change(result, id, cx);
                         this.refresh_font_choices(id, window, cx);
@@ -646,9 +655,11 @@ impl ThemeEditor {
                     InputEvent::Focus => {}
                 },
             );
-        self.rename_target = Some(target);
-        self.rename_input = Some(input.clone());
-        self.rename_subscription = Some(subscription);
+        self.rename = Some(RenameSession {
+            target,
+            input: input.clone(),
+            _subscription: subscription,
+        });
         self.error = None;
         input.focus_handle(cx).focus(window, cx);
         window.dispatch_action(Box::new(gpui_kit::component::input::SelectAll), cx);
@@ -681,16 +692,14 @@ impl ThemeEditor {
     }
 
     fn commit_rename(&mut self, target: RenameTarget, window: &mut Window, cx: &mut Context<Self>) {
-        if self.rename_target != Some(target) {
-            return;
-        }
-        let Some(value) = self
-            .rename_input
+        let Some(session) = self
+            .rename
             .as_ref()
-            .map(|input| input.read(cx).value().to_string())
+            .filter(|session| session.target == target)
         else {
             return;
         };
+        let value = session.input.read(cx).value().to_string();
         let result = match target {
             RenameTarget::Family => cx
                 .global_mut::<ThemeLibrary>()
@@ -699,12 +708,9 @@ impl ThemeEditor {
         };
         match result {
             Ok(()) => {
-                self.rename_target = None;
-                self.rename_input = None;
-                self.rename_subscription = None;
+                self.rename = None;
                 self.error = None;
                 themes::refresh_current(cx);
-                crate::ui::settings::SettingsView::init_theme_options(cx);
                 self.refresh_variants(window, cx);
                 self.focus.focus(window, cx);
             }
@@ -816,7 +822,7 @@ impl ThemeEditor {
                         cx,
                     );
                     state.set_selected_value(
-                        &document.font(role).unwrap_or_default().to_owned().into(),
+                        &document.font(role).map(SharedString::from),
                         window,
                         cx,
                     );
@@ -912,7 +918,6 @@ impl ThemeEditor {
                 self.refresh_color_list(cx);
                 ThemeLibrary::schedule_save(self.family_id, cx);
                 themes::refresh_current(cx);
-                crate::ui::settings::SettingsView::init_theme_options(cx);
                 cx.notify();
             }
             Err(error) => {
@@ -936,7 +941,6 @@ impl ThemeEditor {
                 }
                 self.refresh_variants(window, cx);
                 themes::refresh_current(cx);
-                crate::ui::settings::SettingsView::init_theme_options(cx);
                 super::super::settings::theme::show_undo(self.family_id, deleted, window, cx);
                 cx.notify();
             }
@@ -999,7 +1003,7 @@ impl ThemeEditor {
         let origins = self.color_origins;
         let active_color = self.active_color.as_ref();
         let preview = self.preview.as_ref();
-        let visible_colors = self
+        let property_rows = self
             .variants
             .get(&self.edited)
             .map_or_else(Vec::new, |variant| {
@@ -1032,12 +1036,12 @@ impl ThemeEditor {
                             .cloned()
                             .collect::<Vec<_>>();
                         if !tokens.is_empty() {
-                            visible.push(format!("{}{}", render::GROUP_HEADER_PREFIX, category));
-                            visible.extend(tokens);
+                            visible.push(PropertyRow::GroupHeading(category));
+                            visible.extend(tokens.into_iter().map(PropertyRow::Color));
                         }
                     }
                 } else {
-                    visible.push(render::VARIANT_MODE_ROW.to_owned());
+                    visible.push(PropertyRow::VariantMode);
                     for group in colors::ESSENTIAL_GROUPS.iter().skip(1) {
                         let tokens: Vec<_> = render::ESSENTIAL_COLORS
                             .iter()
@@ -1048,15 +1052,15 @@ impl ThemeEditor {
                             .map(|(token, _, _)| (*token).to_owned())
                             .collect();
                         if !tokens.is_empty() {
-                            visible.push(format!("{}{group}", render::GROUP_HEADER_PREFIX));
-                            visible.extend(tokens);
+                            visible.push(PropertyRow::GroupHeading(group));
+                            visible.extend(tokens.into_iter().map(PropertyRow::Color));
                         }
                     }
                 }
                 visible
             });
-        if self.visible_colors != visible_colors {
-            self.visible_colors = visible_colors;
+        if self.property_rows != property_rows {
+            self.property_rows = property_rows;
             self.reset_color_list_layout();
         }
     }
@@ -1065,7 +1069,7 @@ impl ThemeEditor {
         // The native list measures lazily, so seed plausible row heights for
         // its scrollbar to reach schema rows that have not been rendered yet.
         self.color_list.reset_with_uniform_height(
-            self.visible_colors.len(),
+            self.property_rows.len(),
             render::COLOR_ROW_HEIGHT.to_pixels(self.rem_size),
         );
     }
@@ -1109,15 +1113,15 @@ impl ThemeEditor {
     }
 }
 
-fn make_choices(
-    items: Vec<Choice>,
-    selected: &str,
+fn make_choices<T: Clone + PartialEq + 'static>(
+    items: Vec<Choice<T>>,
+    selected: &T,
     window: &mut Window,
     cx: &mut App,
-) -> Entity<Choices> {
+) -> Entity<Choices<T>> {
     let ix = items
         .iter()
-        .position(|choice| choice.value == selected)
+        .position(|choice| &choice.value == selected)
         .unwrap_or(0);
     cx.new(|cx| {
         SelectState::new(
@@ -1130,8 +1134,12 @@ fn make_choices(
     })
 }
 
-fn font_choices(document: &themes::ThemeDocument, role: FontRole, cx: &App) -> Vec<Choice> {
-    let selected = document.font(role).unwrap_or_default();
+fn font_choices(
+    document: &themes::ThemeDocument,
+    role: FontRole,
+    cx: &App,
+) -> Vec<Choice<Option<SharedString>>> {
+    let selected = document.font(role);
     let catalog = cx.global::<FontCatalog>();
     let mut default = document.clone();
     default.set_font(role, None);
@@ -1140,16 +1148,18 @@ fn font_choices(document: &themes::ThemeDocument, role: FontRole, cx: &App) -> V
         .into_iter()
         .nth(role.index())
         .unwrap_or_default();
-    let mut choices = vec![Choice::new("", format!("Default ({fallback})"))];
+    let mut choices = vec![Choice::new(None, format!("Default ({fallback})"))];
     choices.extend(
         catalog
             .families()
             .iter()
-            .map(|family| Choice::new(family.clone(), family.clone())),
+            .map(|family| Choice::new(Some(family.clone()), family.clone())),
     );
-    if !selected.is_empty() && !catalog.contains(selected) {
+    if let Some(selected) = selected
+        && !catalog.contains(selected)
+    {
         choices.push(Choice::new(
-            selected.to_owned(),
+            Some(SharedString::from(selected)),
             format!("{selected} (unavailable)"),
         ));
     }

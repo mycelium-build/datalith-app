@@ -9,7 +9,7 @@ use gpui_kit::{App, Global, SharedString};
 use crate::ui::notifications;
 
 use super::settings::{self, FontRole};
-use super::themes::ThemeDocument;
+use super::themes::{ThemeDocument, active_document};
 
 pub const PIXELOID_FONT: &str = "Pixeloid Sans";
 
@@ -77,8 +77,7 @@ pub fn apply(cx: &mut App) {
     if cx.try_global::<FontCatalog>().is_none() {
         return;
     }
-    let interface = family(FontRole::Interface, cx);
-    let code = family(FontRole::Code, cx);
+    let [interface, _, _, code] = families(cx);
     let theme = Theme::global_mut(cx);
     // Keep the independent interface scale stable across theme selection.
     theme.font_size = gpui_kit::px(
@@ -89,29 +88,19 @@ pub fn apply(cx: &mut App) {
     Theme::sync_base(cx);
 }
 
-pub fn family(role: FontRole, cx: &App) -> SharedString {
-    default_family(role, cx)
-}
-
-/// The resolved font for the active slot, also used by documents.
-pub fn default_family(role: FontRole, cx: &App) -> SharedString {
-    let catalog = cx.try_global::<FontCatalog>();
-    if let Some(catalog) = catalog {
-        let [interface, reading, headings, code] =
-            catalog.resolve_roles(&super::themes::active_document(cx));
-        return match role {
-            FontRole::Interface => interface,
-            FontRole::Reading => reading,
-            FontRole::Headings => headings,
-            FontRole::Code => code,
-        };
+/// Resolve the active slot's interface, reading, headings, and code fonts once.
+/// Before catalog initialization, use the runtime theme's font families.
+pub fn families(cx: &App) -> [SharedString; 4] {
+    if let Some(catalog) = cx.try_global::<FontCatalog>() {
+        return catalog.resolve_roles(&active_document(cx));
     }
-    match role {
-        FontRole::Interface | FontRole::Reading | FontRole::Headings => {
-            cx.theme().font_family.clone()
-        }
-        FontRole::Code => cx.theme().mono_font_family.clone(),
-    }
+    let theme = cx.theme();
+    [
+        theme.font_family.clone(),
+        theme.font_family.clone(),
+        theme.font_family.clone(),
+        theme.mono_font_family.clone(),
+    ]
 }
 
 pub fn load_embedded_fonts(cx: &App) -> Vec<Notification> {

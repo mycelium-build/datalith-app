@@ -1,10 +1,16 @@
+use std::{
+    fs,
+    time::{Duration, Instant},
+};
+
 use super::*;
 use crate::{
     app::{
         AppState, fonts, preferences,
-        themes::{ThemeLibrary, ThemeSource},
+        settings::ThemeKind,
+        themes::{ImportPolicy, ThemeLibrary, ThemeSource},
     },
-    ui::{DatalithView, settings::SettingsView},
+    ui::DatalithView,
 };
 use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::test::TestWindowExt as _;
@@ -21,7 +27,6 @@ use gpui_kit::{
     reason = "Reports separately timed phases of one production editor workflow"
 )]
 fn theme_editor_performance() {
-    use std::time::{Duration, Instant};
     let mut slowest_open = Duration::ZERO;
     let mut slowest_frame = Duration::ZERO;
     let counts = std::env::var("THEME_PERF_VARIANTS")
@@ -158,7 +163,6 @@ fn workspace(
         FontCatalog::init(cx);
         themes::load_embedded_themes(cx);
         ThemeLibrary::init(cx);
-        SettingsView::init_theme_options(cx);
         preferences::apply(cx);
         cx.set_global(AppState::default());
         let source = cx
@@ -236,18 +240,15 @@ fn cleanup(cx: &TestAppContext, id: u64) {
         if let Some(family) = cx.global::<ThemeLibrary>().family(id)
             && let ThemeSource::Custom(path) = family.source()
         {
-            let _ = std::fs::remove_file(path);
+            let _ = fs::remove_file(path);
         }
     });
 }
 
-fn visible_color_count(colors: &[String]) -> usize {
+fn visible_color_count(colors: &[PropertyRow]) -> usize {
     colors
         .iter()
-        .filter(|token| {
-            token.as_str() != render::VARIANT_MODE_ROW
-                && !token.starts_with(render::GROUP_HEADER_PREFIX)
-        })
+        .filter(|row| matches!(row, PropertyRow::Color(_)))
         .count()
 }
 
@@ -273,10 +274,10 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
     let slots = cx.update(|cx| {
         [
             cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Light)
+                .current(ThemeKind::Light)
                 .to_owned(),
             cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Dark)
+                .current(ThemeKind::Dark)
                 .to_owned(),
         ]
     });
@@ -299,13 +300,11 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
         );
         assert_eq!(cx.theme().background, original);
         assert_eq!(
-            cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Light),
+            cx.global::<ThemeLibrary>().current(ThemeKind::Light),
             slots[0]
         );
         assert_eq!(
-            cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Dark),
+            cx.global::<ThemeLibrary>().current(ThemeKind::Dark),
             slots[1]
         );
     });
@@ -342,16 +341,15 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
             Some("#123456")
         );
     });
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(450));
+    cx.executor().advance_clock(Duration::from_millis(450));
     cx.run_until_parked();
     cx.update(|cx| {
         let path = match cx.global::<ThemeLibrary>().family(family).unwrap().source() {
             ThemeSource::Custom(path) => path.clone(),
             ThemeSource::Bundled => unreachable!(),
         };
-        let saved = std::fs::read_to_string(&path)
-            .expect("valid edit must autosave even after closing its tab");
+        let saved =
+            fs::read_to_string(&path).expect("valid edit must autosave even after closing its tab");
         assert!(saved.contains("#123456"));
         ThemeLibrary::init(cx);
         let reloaded = cx.global::<ThemeLibrary>().family_named(&name).unwrap();
@@ -359,14 +357,12 @@ fn editing_a_non_current_variant_updates_only_its_preview_and_persists_after_clo
             reloaded.variants()[0].document().colors().unwrap()["background"].as_deref(),
             Some("#123456")
         );
-        std::fs::remove_file(path).unwrap();
+        fs::remove_file(path).unwrap();
     });
 }
 
 #[test]
 fn editing_the_current_variant_repaints_the_application_theme() {
-    use crate::app::settings::ThemeKind;
-
     let mut cx = TestAppContext::single();
     let (handle, app, family, variant, _) = workspace(&mut cx);
     let preference = crate::app::settings::snapshot().theme_preference;
@@ -702,8 +698,7 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
         );
     })
     .unwrap();
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(450));
+    cx.executor().advance_clock(Duration::from_millis(450));
     cx.run_until_parked();
     cx.update(|cx| {
         assert!(matches!(
@@ -731,7 +726,7 @@ fn picker_edit_and_reset_update_model_input_and_picker_across_save() {
                 .unwrap()["background"]
                 .is_none()
         );
-        std::fs::remove_file(path).unwrap();
+        fs::remove_file(path).unwrap();
     });
 }
 
@@ -745,15 +740,14 @@ fn failed_autosave_exposes_retry_and_retries_after_storage_recovers() {
             ThemeSource::Bundled => unreachable!(),
         },
     );
-    std::fs::remove_file(&path).unwrap();
-    std::fs::create_dir(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         choose_color(&app, family, variant, "background", "#123456", window, cx);
     })
     .unwrap();
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(450));
+    cx.executor().advance_clock(Duration::from_millis(450));
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -762,7 +756,7 @@ fn failed_autosave_exposes_retry_and_retries_after_storage_recovers() {
             crate::app::themes::SaveStatus::Failed(_)
         ));
         assert!(window.find("retry-theme-save").visible());
-        std::fs::remove_dir(&path).unwrap();
+        fs::remove_dir(&path).unwrap();
         window.click("retry-theme-save", cx);
         window.render_frame(cx);
         assert!(window.try_find("retry-theme-save").is_none());
@@ -770,7 +764,7 @@ fn failed_autosave_exposes_retry_and_retries_after_storage_recovers() {
             cx.global::<ThemeLibrary>().family(family).unwrap().status(),
             crate::app::themes::SaveStatus::Autosaved
         ));
-        assert!(std::fs::read_to_string(&path).unwrap().contains("#123456"));
+        assert!(fs::read_to_string(&path).unwrap().contains("#123456"));
     })
     .unwrap();
     cleanup(&cx, family);
@@ -784,10 +778,10 @@ fn changing_each_font_role_through_native_select_keeps_app_fonts_and_slots_uncha
     let slots = cx.update(|cx| {
         [
             cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Light)
+                .current(ThemeKind::Light)
                 .to_owned(),
             cx.global::<ThemeLibrary>()
-                .current(crate::app::settings::ThemeKind::Dark)
+                .current(ThemeKind::Dark)
                 .to_owned(),
         ]
     });
@@ -834,13 +828,11 @@ fn changing_each_font_role_through_native_select_keeps_app_fonts_and_slots_uncha
             );
             assert_eq!(cx.theme().font_family, before);
             assert_eq!(
-                cx.global::<ThemeLibrary>()
-                    .current(crate::app::settings::ThemeKind::Light),
+                cx.global::<ThemeLibrary>().current(ThemeKind::Light),
                 slots[0]
             );
             assert_eq!(
-                cx.global::<ThemeLibrary>()
-                    .current(crate::app::settings::ThemeKind::Dark),
+                cx.global::<ThemeLibrary>().current(ThemeKind::Dark),
                 slots[1]
             );
         });
@@ -1066,7 +1058,7 @@ fn removing_a_variant_and_using_notification_undo_restores_its_editor_controls()
         assert!(!editor.read(cx).variants.contains_key(&variant));
     })
     .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click("undo-theme-delete", cx);
@@ -1183,7 +1175,7 @@ fn narrow_editor_switches_between_independently_scrolling_controls_and_preview()
 }
 
 #[test]
-fn importing_a_theme_with_a_custom_name_conflict_creates_a_copy() {
+fn importing_a_theme_with_a_padded_custom_name_offers_and_creates_a_copy() {
     let mut cx = TestAppContext::single();
     let (handle, _, family, _, name) = workspace(&mut cx);
     let path = cx.update(
@@ -1192,9 +1184,16 @@ fn importing_a_theme_with_a_custom_name_conflict_creates_a_copy() {
             ThemeSource::Bundled => unreachable!(),
         },
     );
-    cx.update(|cx| crate::ui::settings::theme::dialogs::import_family(path, cx));
+    let mut data: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    data["name"] = serde_json::json!(format!("  {name}  "));
+    let import = std::env::temp_dir().join(format!(
+        "datalith-padded-import-{:016x}.json",
+        rand::random::<u64>()
+    ));
+    fs::write(&import, serde_json::to_vec(&data).unwrap()).unwrap();
+    cx.update(|cx| crate::ui::settings::theme::dialogs::import_family(&import, cx));
     cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find("copy-theme-import").visible());
@@ -1211,10 +1210,93 @@ fn importing_a_theme_with_a_custom_name_conflict_creates_a_copy() {
             library.family(family).unwrap().variants().len()
         );
         if let ThemeSource::Custom(path) = copied.source() {
-            std::fs::remove_file(path).unwrap();
+            fs::remove_file(path).unwrap();
         }
     });
+    fs::remove_file(import).unwrap();
     cleanup(&cx, family);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Exercises the missing-name conflict through the dialog, editor and persisted file"
+)]
+fn importing_a_theme_without_a_name_offers_and_replaces_the_untitled_family() {
+    let mut cx = TestAppContext::single();
+    let (handle, app, workspace_family, _, _) = workspace(&mut cx);
+    let directory = std::env::temp_dir().join(format!(
+        "datalith-unnamed-import-{:016x}",
+        rand::random::<u64>()
+    ));
+    fs::create_dir_all(&directory).unwrap();
+    let import = directory.join("import.json");
+    fs::write(
+        &import,
+        r##"{"themes":[{"mode":"light","colors":{"background":"#123456"}}]}"##,
+    )
+    .unwrap();
+    // Keep the fixed fallback name out of the shared process theme directory.
+    let mut library = ThemeLibrary::new(directory.join("themes"));
+    let prepared = library.prepare_import(&import).unwrap();
+    let family = library
+        .import_prepared(&prepared, ImportPolicy::Copy)
+        .unwrap();
+    let variant = library.family(family).unwrap().variants()[0].id();
+    fs::write(
+        &import,
+        r##"{"themes":[{"mode":"light","colors":{"background":"#654321"}}]}"##,
+    )
+    .unwrap();
+    cleanup(&cx, workspace_family);
+    cx.update(|cx| cx.set_global(library));
+    cx.update_window(handle.into(), |_, window, cx| {
+        app.update(cx, |app, cx| {
+            app.open_theme_editor_for(family, Some(variant), window, cx);
+        });
+    })
+    .unwrap();
+    cx.update(|cx| crate::ui::settings::theme::dialogs::import_family(&import, cx));
+    cx.run_until_parked();
+    std::thread::sleep(Duration::from_millis(300));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("copy-theme-import").visible());
+        assert!(window.find("replace-theme-import").visible());
+        window.click("replace-theme-import", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let library = cx.global::<ThemeLibrary>();
+        assert_eq!(library.family_named("Untitled theme").unwrap().id(), family);
+        assert!(library.family_named("Untitled theme copy").is_none());
+        assert_eq!(
+            library
+                .variant_by_id(variant)
+                .unwrap()
+                .document()
+                .colors()
+                .unwrap()["background"]
+                .as_deref(),
+            Some("#654321")
+        );
+        let editor = app.read(cx).tabs.theme_editor_for(family, cx).unwrap();
+        assert_eq!(
+            editor.read(cx).variants[&variant].colors["background"]
+                .display
+                .as_str(),
+            "#654321"
+        );
+        let ThemeSource::Custom(path) = library.family(family).unwrap().source() else {
+            unreachable!();
+        };
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(saved["themes"][0]["colors"]["background"], "#654321");
+    });
+    drop(app);
+    drop(cx);
+    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -1228,17 +1310,16 @@ fn replacing_a_custom_theme_refreshes_its_open_editor() {
                 ThemeSource::Bundled => unreachable!(),
             },
         );
-    let mut data: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    let mut data: serde_json::Value = serde_json::from_slice(&fs::read(source).unwrap()).unwrap();
     data["themes"][0]["colors"]["background"] = serde_json::json!("#123456");
     let import = std::env::temp_dir().join(format!(
         "datalith-replace-{:016x}.json",
         rand::random::<u64>()
     ));
-    std::fs::write(&import, serde_json::to_vec(&data).unwrap()).unwrap();
-    cx.update(|cx| crate::ui::settings::theme::dialogs::import_family(import.clone(), cx));
+    fs::write(&import, serde_json::to_vec(&data).unwrap()).unwrap();
+    cx.update(|cx| crate::ui::settings::theme::dialogs::import_family(&import, cx));
     cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click("replace-theme-import", cx);
@@ -1264,7 +1345,7 @@ fn replacing_a_custom_theme_refreshes_its_open_editor() {
             "#123456"
         );
     });
-    std::fs::remove_file(import).unwrap();
+    fs::remove_file(import).unwrap();
     cleanup(&cx, family);
 }
 
@@ -1329,7 +1410,7 @@ fn first_add_names_both_variants_and_cancel_or_duplicate_does_not_mutate() {
     .unwrap();
     // Dialog 0.6.1 uses a 250 ms wall-clock entrance animation. Wait before
     // hit-testing its fields; faster editor frames must not type into the first field.
-    std::thread::sleep(std::time::Duration::from_millis(260));
+    std::thread::sleep(Duration::from_millis(260));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click("new-variant-suffix", cx);
@@ -1339,7 +1420,7 @@ fn first_add_names_both_variants_and_cancel_or_duplicate_does_not_mutate() {
     })
     .unwrap();
     cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
         .unwrap();
     cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
@@ -1362,7 +1443,7 @@ fn first_add_names_both_variants_and_cancel_or_duplicate_does_not_mutate() {
     })
     .unwrap();
     cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
         .unwrap();
     cx.update_window(handle.into(), |_, window, cx| window.click("ok", cx))
@@ -1524,11 +1605,9 @@ fn deletion_notifications_expire_after_five_seconds_for_variants_and_themes() {
         })
         .unwrap();
         cx.run_until_parked();
-        cx.executor()
-            .advance_clock(std::time::Duration::from_millis(300));
+        cx.executor().advance_clock(Duration::from_millis(300));
         cx.run_until_parked();
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(4));
+        cx.executor().advance_clock(Duration::from_secs(4));
         cx.run_until_parked();
         cx.update_window(handle.into(), |_, window, cx| {
             assert_eq!(
@@ -1541,11 +1620,9 @@ fn deletion_notifications_expire_after_five_seconds_for_variants_and_themes() {
             );
         })
         .unwrap();
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(2));
+        cx.executor().advance_clock(Duration::from_secs(2));
         cx.run_until_parked();
-        cx.executor()
-            .advance_clock(std::time::Duration::from_millis(300));
+        cx.executor().advance_clock(Duration::from_millis(300));
         cx.run_until_parked();
         cx.update_window(handle.into(), |_, window, cx| {
             assert!(
@@ -1658,29 +1735,29 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
         window.render_frame(cx);
         window.click(format!("token-group-{variant}-Advanced"), cx);
         assert_eq!(
-            visible_color_count(&editor.read(cx).visible_colors),
+            visible_color_count(&editor.read(cx).property_rows),
             editor.read(cx).variants[&variant].colors.len()
         );
         let headers = editor
             .read(cx)
-            .visible_colors
+            .property_rows
             .iter()
-            .filter(|token| token.starts_with(render::GROUP_HEADER_PREFIX))
+            .filter(|row| matches!(row, PropertyRow::GroupHeading(_)))
             .count();
         assert!(headers > 2, "Advanced colors should show category headings");
         assert!(
             editor
                 .read(cx)
-                .visible_colors
+                .property_rows
                 .iter()
-                .any(|key| key == "highlight:editor.gutter.background")
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == "highlight:editor.gutter.background"))
         );
         assert!(
             editor
                 .read(cx)
-                .visible_colors
+                .property_rows
                 .iter()
-                .any(|key| key == "highlight:error.border")
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == "highlight:error.border"))
         );
         assert!(
             window.find("theme-color-search").visible(),
@@ -1705,10 +1782,10 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            editor.read(cx).visible_colors,
+            editor.read(cx).property_rows,
             vec![
-                render::GROUP_HEADER_PREFIX.to_owned() + "Syntax",
-                "highlight:syntax.tag.doctype".to_owned()
+                PropertyRow::GroupHeading("Syntax"),
+                PropertyRow::Color("highlight:syntax.tag.doctype".to_owned())
             ]
         );
         choose_color(
@@ -1742,7 +1819,7 @@ fn advanced_includes_unset_syntax_and_status_colors_and_clears_filters() {
     cx.update(|cx| {
         let editor = editor.read(cx);
         assert_eq!(
-            visible_color_count(&editor.visible_colors),
+            visible_color_count(&editor.property_rows),
             editor.variants[&variant].colors.len()
         );
         assert!(
@@ -1768,11 +1845,20 @@ fn colors_category_keeps_bases_and_common_overrides_without_search() {
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        let visible = &editor.read(cx).visible_colors;
+        let visible = &editor.read(cx).property_rows;
         assert_eq!(visible_color_count(visible), 25);
-        assert!(visible.iter().any(|token| token == "list.background"));
+        assert!(
+            visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == "list.background"))
+        );
         for (token, _, _) in render::ESSENTIAL_COLORS {
-            assert!(visible.iter().any(|visible| visible == token), "{token}");
+            assert!(
+                visible
+                    .iter()
+                    .any(|row| matches!(row, PropertyRow::Color(value) if value == token)),
+                "{token}"
+            );
         }
         assert!(
             [
@@ -1783,17 +1869,18 @@ fn colors_category_keeps_bases_and_common_overrides_without_search() {
                 "highlight:syntax.keyword",
             ]
             .iter()
-            .all(|token| !visible.iter().any(|visible| visible == token)),
+            .all(|token| !visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(value) if value == token))),
             "less common component details remain in Advanced"
         );
         let base_tokens: Vec<_> = visible
             .iter()
-            .filter(|token| {
-                token.as_str() != render::VARIANT_MODE_ROW
-                    && !token.starts_with(render::GROUP_HEADER_PREFIX)
+            .filter_map(|row| match row {
+                PropertyRow::Color(token) => Some(token.as_str()),
+                PropertyRow::GroupHeading(_) | PropertyRow::VariantMode => None,
             })
             .take(6)
-            .map(String::as_str)
             .collect();
         assert_eq!(
             base_tokens,
@@ -1809,20 +1896,16 @@ fn colors_category_keeps_bases_and_common_overrides_without_search() {
         assert!(window.try_find("theme-color-search").is_none());
         assert!(window.try_find("clear-color-filters").is_none());
         assert_eq!(
-            visible.last().map(String::as_str),
-            Some("list.head.background")
+            visible.last(),
+            Some(&PropertyRow::Color("list.head.background".to_owned()))
         );
         editor.update(cx, |editor, cx| {
             editor.reset_color(editor.edited, "list.active.background", window, cx);
         });
-        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 25);
-        assert!(
-            editor
-                .read(cx)
-                .visible_colors
-                .iter()
-                .any(|token| token == "list.active.background")
-        );
+        assert_eq!(visible_color_count(&editor.read(cx).property_rows), 25);
+        assert!(editor.read(cx).property_rows.iter().any(
+            |row| matches!(row, PropertyRow::Color(token) if token == "list.active.background")
+        ));
     })
     .unwrap();
     cleanup(&cx, family);
@@ -1912,7 +1995,7 @@ fn switching_color_categories_resets_search_and_group_filter() {
                 .update(cx, |query, cx| query.set_value("sidebar", window, cx));
             editor.refresh_color_list(cx);
         });
-        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 25);
+        assert_eq!(visible_color_count(&editor.read(cx).property_rows), 25);
 
         window.click(format!("token-group-{variant}-Advanced"), cx);
         let editor_state = editor.read(cx);
@@ -1926,7 +2009,7 @@ fn switching_color_categories_resets_search_and_group_filter() {
             Some("All families".to_owned())
         );
         assert_eq!(
-            visible_color_count(&editor_state.visible_colors),
+            visible_color_count(&editor_state.property_rows),
             editor_state.variants[&variant].colors.len()
         );
 
@@ -1936,16 +2019,15 @@ fn switching_color_categories_resets_search_and_group_filter() {
             });
             editor.refresh_color_list(cx);
         });
-        let table_colors: Vec<_> = editor.read(cx).variants[&variant]
+        let table_colors = editor.read(cx).variants[&variant]
             .colors
             .keys()
             .filter(|token| colors::family(token) == "Tables")
-            .cloned()
-            .collect();
+            .cloned();
         assert_eq!(
-            editor.read(cx).visible_colors,
-            std::iter::once(render::GROUP_HEADER_PREFIX.to_owned() + "Lists & tables")
-                .chain(table_colors)
+            editor.read(cx).property_rows,
+            std::iter::once(PropertyRow::GroupHeading("Lists & tables"))
+                .chain(table_colors.map(PropertyRow::Color))
                 .collect::<Vec<_>>()
         );
         editor.update(cx, |editor, cx| {
@@ -1954,7 +2036,7 @@ fn switching_color_categories_resets_search_and_group_filter() {
             });
             editor.refresh_color_list(cx);
         });
-        assert_eq!(editor.read(cx).visible_colors.len(), 0);
+        assert_eq!(editor.read(cx).property_rows.len(), 0);
         window.click(format!("token-group-{variant}-Colors"), cx);
         window.render_frame(cx);
         let editor_state = editor.read(cx);
@@ -1967,7 +2049,7 @@ fn switching_color_categories_resets_search_and_group_filter() {
                 .map(std::string::ToString::to_string),
             Some("All colors".to_owned())
         );
-        assert_eq!(visible_color_count(&editor_state.visible_colors), 25);
+        assert_eq!(visible_color_count(&editor_state.property_rows), 25);
         assert!(window.try_find("theme-color-search").is_none());
     })
     .unwrap();
@@ -2011,14 +2093,22 @@ fn advanced_origin_checkboxes_filter_live_sources_and_reset_immediately() {
             assert_eq!(checkbox.checked(), Some(true));
         }
         assert_eq!(
-            visible_color_count(&editor.read(cx).visible_colors),
+            visible_color_count(&editor.read(cx).property_rows),
             editor.read(cx).variants[&variant].colors.len()
         );
 
         window.click("color-origin-theme-defined", cx);
-        let visible = &editor.read(cx).visible_colors;
-        assert!(visible.iter().any(|token| token == &component_token));
-        assert!(!visible.iter().any(|token| token == &theme_token));
+        let visible = &editor.read(cx).property_rows;
+        assert!(
+            visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &component_token))
+        );
+        assert!(
+            !visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &theme_token))
+        );
 
         editor.update(cx, |editor, cx| {
             editor.edit_color(variant, &component_token, true, window, cx);
@@ -2041,9 +2131,9 @@ fn advanced_origin_checkboxes_filter_live_sources_and_reset_immediately() {
         assert!(
             editor
                 .read(cx)
-                .visible_colors
+                .property_rows
                 .iter()
-                .any(|token| token == &component_token),
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &component_token)),
             "the active row must remain available while its origin changes"
         );
         window.click("color-origin-component-default", cx);
@@ -2065,26 +2155,34 @@ fn advanced_origin_checkboxes_filter_live_sources_and_reset_immediately() {
                 .read(cx)
                 .is_open()
         );
-        let visible = &editor.read(cx).visible_colors;
-        assert!(visible.iter().any(|token| token == &theme_token));
-        assert!(visible.iter().any(|token| token == &component_token));
+        let visible = &editor.read(cx).property_rows;
+        assert!(
+            visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &theme_token))
+        );
+        assert!(
+            visible
+                .iter()
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &component_token))
+        );
         editor.update(cx, |editor, cx| {
             editor.reset_color(variant, &component_token, window, cx);
         });
         assert!(
             !editor
                 .read(cx)
-                .visible_colors
+                .property_rows
                 .iter()
-                .any(|token| token == &component_token),
+                .any(|row| matches!(row, PropertyRow::Color(token) if token == &component_token)),
             "reset should immediately restore the component-default origin"
         );
         window.click("color-origin-theme-defined", cx);
-        assert!(editor.read(cx).visible_colors.is_empty());
+        assert!(editor.read(cx).property_rows.is_empty());
         window.click("clear-color-filters", cx);
         assert!(editor.read(cx).color_origins.all_selected());
         assert_eq!(
-            visible_color_count(&editor.read(cx).visible_colors),
+            visible_color_count(&editor.read(cx).property_rows),
             editor.read(cx).variants[&variant].colors.len()
         );
     })
@@ -2126,12 +2224,12 @@ fn advanced_color_list_is_virtualized_and_scrolls_to_the_last_schema_token() {
                 .cloned()
                 .collect();
             let last_token = editor_state
-                .visible_colors
+                .property_rows
                 .iter()
                 .rev()
-                .find(|token| {
-                    token.as_str() != render::VARIANT_MODE_ROW
-                        && !token.starts_with(render::GROUP_HEADER_PREFIX)
+                .find_map(|row| match row {
+                    PropertyRow::Color(token) => Some(token),
+                    PropertyRow::GroupHeading(_) | PropertyRow::VariantMode => None,
                 })
                 .unwrap()
                 .clone();
@@ -2141,7 +2239,7 @@ fn advanced_color_list_is_virtualized_and_scrolls_to_the_last_schema_token() {
                 editor_state.color_list.viewport_bounds(),
             )
         };
-        assert_eq!(visible_color_count(&editor.read(cx).visible_colors), 203);
+        assert_eq!(visible_color_count(&editor.read(cx).property_rows), 203);
         assert!(viewport.size.height > px(0.));
         assert!(viewport.size.height < window.viewport_size().height);
 
@@ -2212,7 +2310,7 @@ fn advanced_color_list_is_virtualized_and_scrolls_to_the_last_schema_token() {
 #[test]
 fn default_font_labels_follow_each_roles_effective_fallback() {
     let mut cx = TestAppContext::single();
-    let (_, _, family, variant, _) = workspace(&mut cx);
+    let (handle, app, family, variant, _) = workspace(&mut cx);
     cx.update(|cx| {
         let mut document = cx
             .global::<ThemeLibrary>()
@@ -2227,7 +2325,7 @@ fn default_font_labels_follow_each_roles_effective_fallback() {
             default.set_font(role, None);
             let font = cx.global::<FontCatalog>().resolve_roles(&default)[role.index()].clone();
             assert_eq!(choices[0].label, format!("Default ({font})"));
-            assert_eq!(choices[0].value.as_str(), "");
+            assert_eq!(choices[0].value, None);
         }
         assert_eq!(
             font_choices(&document, FontRole::Reading, cx)[0]
@@ -2235,6 +2333,48 @@ fn default_font_labels_follow_each_roles_effective_fallback() {
                 .as_str(),
             "Default (Arial)"
         );
+    });
+    let picker = cx
+        .update_window(handle.into(), |_, window, cx| {
+            cx.global_mut::<ThemeLibrary>()
+                .update_font(variant, FontRole::Interface, Some("Arial".into()))
+                .unwrap();
+            let editor = app
+                .read(cx)
+                .tabs
+                .theme_editor_for(family, cx)
+                .unwrap()
+                .clone();
+            editor.update(cx, |editor, cx| {
+                editor.refresh_font_choices(variant, window, cx);
+            });
+            editor.read(cx).variants[&variant].fonts[FontRole::Interface.index()].clone()
+        })
+        .unwrap();
+    cx.update(|cx| picker.update(cx, |_, cx| cx.emit(SelectEvent::Confirm(None))));
+    cx.run_until_parked();
+    cx.update(|cx| {
+        assert_eq!(
+            cx.global::<ThemeLibrary>()
+                .variant_by_id(variant)
+                .unwrap()
+                .document()
+                .font(FontRole::Interface),
+            Some("Arial")
+        );
+    });
+    cx.update(|cx| picker.update(cx, |_, cx| cx.emit(SelectEvent::Confirm(Some(None)))));
+    cx.run_until_parked();
+    cx.update(|cx| {
+        assert_eq!(
+            cx.global::<ThemeLibrary>()
+                .variant_by_id(variant)
+                .unwrap()
+                .document()
+                .font(FontRole::Interface),
+            None
+        );
+        assert_eq!(picker.read(cx).selected_value(), Some(&None));
     });
     cleanup(&cx, family);
 }

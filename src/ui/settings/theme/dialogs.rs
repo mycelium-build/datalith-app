@@ -1,16 +1,18 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gpui_kit::component::{
     ActiveTheme as _, Sizable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
-    input::Input,
+    input::{Input, InputState},
     v_flex,
 };
 use gpui_kit::{App, AppContext as _, Focusable as _, ParentElement, Styled as _, Window, div};
 
-use super::{ImportPolicy, SettingsView, ThemeLibrary, notifications, open_editor, themes};
+use crate::app::themes::{PreparedThemeImport, ThemeSource};
+
+use super::{ImportPolicy, ThemeLibrary, notifications, open_editor, themes};
 
 /// Focused form whose retained input and inline validation outlive dialog renders.
 fn name_form(
@@ -22,8 +24,7 @@ fn name_form(
     cx: &mut App,
     commit: impl Fn(&str, &mut Window, &mut App) -> anyhow::Result<()> + 'static,
 ) {
-    let name =
-        cx.new(|cx| gpui_kit::component::input::InputState::new(window, cx).default_value(default));
+    let name = cx.new(|cx| InputState::new(window, cx).default_value(default));
     let error = Rc::new(RefCell::<Option<String>>::new(None));
     let commit = Rc::new(commit);
     let focus = name.focus_handle(cx);
@@ -125,7 +126,6 @@ pub fn rename_family(id: u64, window: &mut Window, cx: &mut App) {
         move |name, window, cx| {
             cx.global_mut::<ThemeLibrary>().rename_family(id, name)?;
             themes::refresh_current(cx);
-            SettingsView::init_theme_options(cx);
             if let Some(view) = cx
                 .try_global::<crate::app::AppState>()
                 .and_then(|state| state.view.clone())
@@ -157,10 +157,8 @@ pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut Ap
     } else {
         "Variant 1"
     };
-    let first_input =
-        cx.new(|cx| gpui_kit::component::input::InputState::new(window, cx).default_value(first));
-    let second_input =
-        cx.new(|cx| gpui_kit::component::input::InputState::new(window, cx).default_value(second));
+    let first_input = cx.new(|cx| InputState::new(window, cx).default_value(first));
+    let second_input = cx.new(|cx| InputState::new(window, cx).default_value(second));
     let error = Rc::new(RefCell::<Option<String>>::new(None));
     let focus = first_input.focus_handle(cx);
     window.open_dialog(cx, move |dialog, _, _| {
@@ -223,7 +221,6 @@ pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut Ap
                     Ok(added) => {
                         ThemeLibrary::schedule_save(family_id, cx);
                         themes::refresh_current(cx);
-                        SettingsView::init_theme_options(cx);
                         if let Some(view) = cx
                             .try_global::<crate::app::AppState>()
                             .and_then(|s| s.view.clone())
@@ -273,31 +270,33 @@ fn form_actions(label: &'static str) -> impl gpui_kit::IntoElement {
         )
 }
 
-pub fn import_family(path: PathBuf, cx: &mut App) {
-    let name = std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|value| value.get("name")?.as_str().map(str::to_owned));
-    let Some(existing) = name.as_deref().and_then(|name| {
-        cx.global::<ThemeLibrary>()
-            .families()
-            .find(|family| family.name().eq_ignore_ascii_case(name))
-    }) else {
-        apply_import(&path, ImportPolicy::Copy, None, cx);
+pub fn import_family(path: &Path, cx: &mut App) {
+    let prepared = match cx.global::<ThemeLibrary>().prepare_import(path) {
+        Ok(prepared) => Rc::new(prepared),
+        Err(error) => {
+            notifications::push_window_notification(
+                cx,
+                notifications::settings_save_failed("theme import", &error),
+            );
+            return;
+        }
+    };
+    let Some(existing) = prepared
+        .conflict()
+        .and_then(|id| cx.global::<ThemeLibrary>().family(id))
+    else {
+        apply_import(&prepared, ImportPolicy::Copy, None, cx);
         return;
     };
-    let replace = matches!(
-        existing.source(),
-        crate::app::themes::ThemeSource::Custom(_)
-    );
+    let replace = matches!(existing.source(), ThemeSource::Custom(_));
     let title = format!("Import “{}”", existing.name());
     if let Some(window) = cx.active_window() {
         cx.defer(move |cx| {
             let _ = window.update(cx, |_, window, cx| {
-                let copy_path = path.clone();
-                let replacement = path.clone();
+                let copy = prepared.clone();
+                let replacement = prepared.clone();
                 window.open_dialog(cx, move |dialog, _, _| {
-                    let copy_path = copy_path.clone();
+                    let copy = copy.clone();
                     let replacement = replacement.clone();
                     dialog
                         .title(title.clone())
@@ -310,7 +309,7 @@ pub fn import_family(path: PathBuf, cx: &mut App) {
                             )
                         })
                         .on_ok(move |_, window, cx| {
-                            apply_import(&copy_path, ImportPolicy::Copy, Some(window), cx);
+                            apply_import(&copy, ImportPolicy::Copy, Some(window), cx);
                             true
                         })
                         .footer(
@@ -355,15 +354,17 @@ pub fn import_family(path: PathBuf, cx: &mut App) {
 }
 
 fn apply_import(
-    path: &std::path::Path,
+    prepared: &PreparedThemeImport,
     policy: ImportPolicy,
     window: Option<&mut Window>,
     cx: &mut App,
 ) {
-    match cx.global_mut::<ThemeLibrary>().import(path, policy) {
+    match cx
+        .global_mut::<ThemeLibrary>()
+        .import_prepared(prepared, policy)
+    {
         Ok(id) => {
             themes::refresh_current(cx);
-            SettingsView::init_theme_options(cx);
             if matches!(policy, ImportPolicy::Replace)
                 && let Some(window) = window
                 && let Some(view) = cx

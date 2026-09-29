@@ -16,7 +16,7 @@ use gpui_kit::{
 use super::icons::DatalithIcon;
 mod application_menu;
 use crate::app::{
-    actions::{OpenSettings, OpenShortcuts, OpenThemeEditor, ToggleQuickSwitcher, ToggleSearch},
+    actions::{OpenSettings, OpenShortcuts, OpenThemes, ToggleQuickSwitcher, ToggleSearch},
     update::{UpdatePresentation, Updater},
 };
 pub use application_menu::ApplicationMenu;
@@ -85,7 +85,7 @@ fn render_content(
                                 .tooltip("Settings, theme and shortcuts")
                                 .dropdown_menu(|menu, _, _| {
                                     menu.menu("Settings", Box::new(OpenSettings))
-                                        .menu("Theme", Box::new(OpenThemeEditor))
+                                        .menu("Theme", Box::new(OpenThemes))
                                         .menu("Shortcuts", Box::new(OpenShortcuts))
                                 }),
                         ),

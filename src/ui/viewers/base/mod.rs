@@ -6,6 +6,8 @@ mod preview;
 mod snapshot;
 mod table;
 
+use std::rc::Rc;
+
 use cells::centered_message;
 use cells::{format_scalar_text, render_property_cell};
 use snapshot::file_name;
@@ -14,7 +16,7 @@ use snapshot::{BaseItem, BaseRow, BaseSnapshot, BaseStatus};
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::component::{
-    ActiveTheme, Sizable,
+    ActiveTheme, Sizable, Theme,
     button::{Button, ButtonVariants},
     h_flex, v_flex,
 };
@@ -65,7 +67,7 @@ impl BaseViewer {
 }
 
 pub struct BaseViewState {
-    preview_appearance: Option<std::rc::Rc<gpui_kit::component::Theme>>,
+    preview_appearance: Option<Rc<Theme>>,
     input: Entity<EditorState>,
     /// The parsed definition the switcher renders from and queries reuse;
     /// replaced whenever the source parses successfully again.
@@ -90,11 +92,7 @@ pub struct BaseViewState {
 }
 
 impl BaseViewState {
-    pub(crate) fn set_preview_appearance(
-        &mut self,
-        appearance: std::rc::Rc<gpui_kit::component::Theme>,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn set_preview_appearance(&mut self, appearance: Rc<Theme>, cx: &mut Context<Self>) {
         if let Some(graph) = &self.graph {
             graph.update(cx, |graph, cx| {
                 graph.set_preview_appearance(appearance.clone(), cx);
@@ -104,7 +102,7 @@ impl BaseViewState {
         cx.notify();
     }
 
-    fn theme<'a>(&'a self, cx: &'a App) -> &'a gpui_kit::component::Theme {
+    fn theme<'a>(&'a self, cx: &'a App) -> &'a Theme {
         self.preview_appearance
             .as_deref()
             .unwrap_or_else(|| cx.theme())

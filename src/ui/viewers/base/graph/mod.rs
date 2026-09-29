@@ -9,7 +9,7 @@ mod snapshot;
 use std::{path::PathBuf, rc::Rc};
 
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::{ActiveTheme, ElementExt, WindowExt, h_flex};
+use gpui_kit::component::{ActiveTheme, ElementExt, Theme, WindowExt, h_flex};
 use gpui_kit::{
     AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
@@ -30,7 +30,7 @@ use paint::HOVER_DIM_OPACITY;
 
 /// Owns camera, simulation, and pointer state for one embedded graph view.
 pub(super) struct GraphState {
-    preview_appearance: Option<Rc<gpui_kit::component::Theme>>,
+    preview_appearance: Option<Rc<Theme>>,
     handler: WeakEntity<FileHandler>,
     snapshot: Option<GraphSnapshot>,
     focus_handle: FocusHandle,
@@ -75,11 +75,7 @@ impl GraphState {
         }
     }
 
-    pub(super) fn set_preview_appearance(
-        &mut self,
-        appearance: Rc<gpui_kit::component::Theme>,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn set_preview_appearance(&mut self, appearance: Rc<Theme>, cx: &mut Context<Self>) {
         self.preview_appearance = Some(appearance);
         self.pointer_position = None;
         self.hovered_node = None;
@@ -87,7 +83,7 @@ impl GraphState {
         cx.notify();
     }
 
-    fn theme<'a>(&'a self, cx: &'a App) -> &'a gpui_kit::component::Theme {
+    fn theme<'a>(&'a self, cx: &'a App) -> &'a Theme {
         self.preview_appearance
             .as_deref()
             .unwrap_or_else(|| cx.theme())
@@ -421,7 +417,7 @@ impl GraphState {
 fn render_overlay(
     legend: &[LegendEntry],
     summaries: &[String],
-    theme: &gpui_kit::component::Theme,
+    theme: &Theme,
 ) -> Option<AnyElement> {
     if legend.is_empty() && summaries.is_empty() {
         return None;
@@ -440,7 +436,7 @@ fn render_overlay(
 }
 
 /// One "Pages Sum: 350" line per entry, boxed like the legend.
-fn render_summary_box(summaries: &[String], theme: &gpui_kit::component::Theme) -> AnyElement {
+fn render_summary_box(summaries: &[String], theme: &Theme) -> AnyElement {
     let lines = summaries.iter().map(|line| {
         div()
             .text_sm()
@@ -459,7 +455,7 @@ fn render_summary_box(summaries: &[String], theme: &gpui_kit::component::Theme) 
         .into_any_element()
 }
 
-fn render_legend(legend: &[LegendEntry], theme: &gpui_kit::component::Theme) -> AnyElement {
+fn render_legend(legend: &[LegendEntry], theme: &Theme) -> AnyElement {
     let rows = legend.iter().map(|entry| {
         let color = entry.color.map_or(theme.info, paint::graph_color);
         h_flex()

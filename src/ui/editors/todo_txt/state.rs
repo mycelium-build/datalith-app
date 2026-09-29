@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::select::SelectState;
-use gpui_kit::component::{VirtualListScrollHandle, WindowExt};
+use gpui_kit::component::{Theme, VirtualListScrollHandle, WindowExt};
 use gpui_kit::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Size,
     Subscription, Window, px,
@@ -16,7 +16,7 @@ use crate::ui::notifications;
 use super::constants::TODO_ROW_HEIGHT;
 
 pub struct TodoTxtState {
-    pub(super) appearance: Option<Rc<gpui_kit::component::Theme>>,
+    pub(super) appearance: Option<Rc<Theme>>,
     pub(super) workspace: TodoTxtWorkspace,
     pub(super) priority_picker_open: Option<usize>,
     pub(super) pending_focus_desc: Option<usize>,
@@ -44,19 +44,15 @@ impl Focusable for TodoTxtState {
 }
 
 impl TodoTxtState {
-    pub(crate) fn set_preview_appearance(
-        &mut self,
-        appearance: Rc<gpui_kit::component::Theme>,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn set_preview_appearance(&mut self, appearance: Rc<Theme>, cx: &mut Context<Self>) {
         self.appearance = Some(appearance);
         cx.notify();
     }
 
-    pub(super) fn theme<'a>(&'a self, cx: &'a App) -> &'a gpui_kit::component::Theme {
+    pub(super) fn theme<'a>(&'a self, cx: &'a App) -> &'a Theme {
         self.appearance
             .as_deref()
-            .unwrap_or_else(|| gpui_kit::component::Theme::global(cx))
+            .unwrap_or_else(|| Theme::global(cx))
     }
 
     pub(super) fn reload_from_disk(
