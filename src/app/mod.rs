@@ -15,7 +15,6 @@ pub mod update;
 pub mod version;
 pub mod workspace;
 
-#[cfg(not(test))]
 use std::path::PathBuf;
 
 pub use state::AppState;
@@ -26,7 +25,6 @@ pub fn init(cx: &mut gpui_kit::App) {
     update::init(cx);
 }
 
-#[cfg(not(test))]
 pub fn data_dir() -> PathBuf {
     crate::channel::Channel::current().app_data_dir()
 }

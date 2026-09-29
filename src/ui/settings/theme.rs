@@ -1,8 +1,5 @@
 //! Theme management in its own modal. Family and variant identity comes from the library.
 
-use std::collections::HashMap;
-
-use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
     ActiveTheme as _, IconName, Selectable as _, Sizable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -22,7 +19,10 @@ use gpui_kit::{
 use crate::app::{
     fonts::FontCatalog,
     settings::{self, FontRole, ThemeKind, ThemePreference},
-    themes::{self, DeletedTheme, ImportPolicy, ThemeFamily, ThemeLibrary, ThemeSource},
+    themes::{
+        self, DeletedTheme, ImportPolicy, ResolvedAppearance, ThemeFamily, ThemeLibrary,
+        ThemeSource,
+    },
 };
 use crate::ui::{notifications, themes as ui_themes};
 
@@ -40,17 +40,10 @@ enum FamilyRow {
     Family(u64),
 }
 
-struct VariantSummary {
-    colors: Vec<gpui_kit::Hsla>,
-    fonts: [gpui_kit::SharedString; 3],
-}
-
 pub(super) struct ThemePage {
     query: Entity<InputState>,
     mode: Entity<SelectState<Vec<String>>>,
     filter: Filter,
-    summaries: HashMap<u64, VariantSummary>,
-    family_revisions: HashMap<u64, u64>,
     _library_subscription: Subscription,
     rows: Vec<FamilyRow>,
     list: ListState,
@@ -101,25 +94,20 @@ impl ThemePage {
             },
         );
         let library_subscription = cx.observe_global::<ThemeLibrary>(|this, cx| {
-            this.refresh_summaries(cx);
             this.list.remeasure();
             cx.notify();
         });
-        let mut page = Self {
+        Self {
             query,
             mode,
             filter: Filter::All,
-            summaries: HashMap::new(),
-            family_revisions: HashMap::new(),
             _library_subscription: library_subscription,
             rows: Vec::new(),
             list: ListState::new(0, ListAlignment::Top, px(100.)),
             rem_size: window.rem_size(),
             _query_subscription: subscription,
             _mode_subscription: mode_subscription,
-        };
-        page.refresh_summaries(cx);
-        page
+        }
     }
 
     fn matches(&self, family: &ThemeFamily, query: &str) -> bool {
@@ -145,58 +133,30 @@ impl ThemePage {
                     .any(|v| v.name().to_lowercase().contains(query)))
     }
 
-    fn refresh_summaries(&mut self, cx: &App) {
-        let library = cx.global::<ThemeLibrary>();
-        self.family_revisions
-            .retain(|id, _| library.family(*id).is_some());
-        self.summaries
-            .retain(|id, _| library.variant_by_id(*id).is_some());
-        for family in library.families() {
-            if self.family_revisions.get(&family.id()) == Some(&family.revision()) {
-                continue;
-            }
-            for variant in family.variants() {
-                if let Ok(appearance) = library.resolved(variant.id(), cx.global::<FontCatalog>()) {
-                    let theme = appearance.theme();
-                    self.summaries.insert(
-                        variant.id(),
-                        VariantSummary {
-                            colors: vec![
-                                theme.background,
-                                theme.foreground,
-                                theme.primary,
-                                theme.accent,
-                                theme.border,
-                                theme.success,
-                            ],
-                            fonts: [FontRole::Reading, FontRole::Headings, FontRole::Code]
-                                .map(|role| appearance.font(role).clone()),
-                        },
-                    );
-                }
-            }
-            self.family_revisions.insert(family.id(), family.revision());
-        }
-    }
-
-    fn render_swatches(&self, id: u64, cx: &Context<Self>) -> impl IntoElement {
+    fn render_swatches(appearance: &ResolvedAppearance, cx: &Context<Self>) -> gpui_kit::Div {
+        let theme = appearance.theme();
         h_flex().gap_1().children(
-            self.summaries
-                .get(&id)
-                .into_iter()
-                .flat_map(|summary| summary.colors.iter())
-                .map(|color| {
-                    div()
-                        .size_4()
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .bg(*color)
-                }),
+            [
+                theme.background,
+                theme.foreground,
+                theme.primary,
+                theme.accent,
+                theme.border,
+                theme.success,
+            ]
+            .into_iter()
+            .map(|color| {
+                div()
+                    .size_4()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(color)
+            }),
         )
     }
 
-    fn render_current(&self, kind: ThemeKind, cx: &Context<Self>) -> impl IntoElement {
+    fn render_current(kind: ThemeKind, cx: &Context<Self>) -> impl IntoElement {
         let library = cx.global::<ThemeLibrary>();
         let name = library.current(kind);
         let id = library
@@ -223,18 +183,22 @@ impl ThemePage {
                 h_flex()
                     .gap_3()
                     .child(div().flex_1().min_w_0().truncate().child(name.to_owned()))
-                    .children(id.map(|id| self.render_swatches(id, cx))),
+                    .children(
+                        id.and_then(|id| library.resolved(id, cx.global::<FontCatalog>()).ok())
+                            .map(|appearance| Self::render_swatches(&appearance, cx)),
+                    ),
             )
     }
 
     fn render_variant(
-        &self,
         variant: &crate::app::themes::ThemeVariant,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let id = variant.id();
         let kind = ThemeKind::from(variant.mode());
-        let current = cx.global::<ThemeLibrary>().current(kind) == variant.name();
+        let library = cx.global::<ThemeLibrary>();
+        let current = library.current(kind) == variant.name();
+        let appearance = library.resolved(id, cx.global::<FontCatalog>()).ok();
         let light = kind == ThemeKind::Light;
         let action = if current {
             if light {
@@ -270,11 +234,14 @@ impl ThemePage {
                             .child(if light { "Light" } else { "Dark" }),
                     )
                     .child(div().flex_1().min_w_0().child(variant.name().to_owned()))
-                    .child(self.render_swatches(id, cx))
+                    .children(
+                        appearance
+                            .as_ref()
+                            .map(|appearance| Self::render_swatches(appearance, cx)),
+                    )
                     .child(if current {
                         h_flex()
                             .id(("current-theme", id))
-                            .test_support()
                             .role(gpui_kit::Role::Status)
                             .aria_label(format!(
                                 "{} is set as the {} theme",
@@ -303,13 +270,13 @@ impl ThemePage {
                     }),
             )
             .children(
-                self.summaries
-                    .get(&id)
-                    .map(|summary| Self::render_fonts(summary, cx)),
+                appearance
+                    .as_ref()
+                    .map(|appearance| Self::render_fonts(appearance, cx)),
             )
     }
 
-    fn render_fonts(summary: &VariantSummary, cx: &Context<Self>) -> impl IntoElement {
+    fn render_fonts(appearance: &ResolvedAppearance, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
             .gap_4()
             .flex_wrap()
@@ -318,7 +285,10 @@ impl ThemePage {
             .children(
                 ["Reading", "Headings", "Code"]
                     .into_iter()
-                    .zip(summary.fonts.iter())
+                    .zip(
+                        [FontRole::Reading, FontRole::Headings, FontRole::Code]
+                            .map(|role| appearance.font(role)),
+                    )
                     .map(|(role, font)| {
                         h_flex()
                             .gap_1()
@@ -410,7 +380,7 @@ impl ThemePage {
                             Filter::Dark => variant.mode().is_dark(),
                             Filter::All | Filter::Custom => true,
                         })
-                        .map(|variant| self.render_variant(variant, cx)),
+                        .map(|variant| Self::render_variant(variant, cx)),
                 ),
             )
     }
@@ -537,8 +507,8 @@ impl Render for ThemePage {
                 h_flex()
                     .items_stretch()
                     .gap_3()
-                    .child(self.render_current(ThemeKind::Light, cx))
-                    .child(self.render_current(ThemeKind::Dark, cx)),
+                    .child(Self::render_current(ThemeKind::Light, cx))
+                    .child(Self::render_current(ThemeKind::Dark, cx)),
             )
             .child(self.render_search(cx))
             .children((!empty).then(|| {

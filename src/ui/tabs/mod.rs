@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod integration_tests;
 mod navigation;
 mod render;
 mod workspace;

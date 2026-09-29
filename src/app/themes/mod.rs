@@ -6,7 +6,6 @@ mod storage;
 mod tests;
 
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     rc::Rc,
@@ -16,7 +15,7 @@ use std::{
 
 use anyhow::{Context as _, Result, bail, ensure};
 use gpui_kit::component::{
-    ActiveTheme as _, Theme, ThemeConfig, ThemeMode, ThemeRegistry,
+    Theme, ThemeConfig, ThemeMode,
     highlighter::{HighlightTheme, HighlightThemeStyle},
     notification::Notification,
     try_parse_color,
@@ -42,10 +41,6 @@ fn valid_variant_name(family: &str, variant: &str, multi: bool) -> bool {
             .is_some_and(|suffix| !suffix.trim().is_empty())
 }
 
-pub fn load_embedded_themes(cx: &mut App) -> Vec<Notification> {
-    embedded::load(cx)
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ThemeDocument {
     #[serde(flatten)]
@@ -55,6 +50,7 @@ pub struct ThemeDocument {
 }
 
 impl ThemeDocument {
+    #[cfg(test)]
     pub fn from_config(config: ThemeConfig) -> Self {
         Self {
             config,
@@ -248,9 +244,6 @@ impl ThemeFamily {
     pub const fn source(&self) -> &ThemeSource {
         &self.source
     }
-    pub(crate) const fn revision(&self) -> u64 {
-        self.revision
-    }
     pub const fn status(&self) -> &SaveStatus {
         &self.status
     }
@@ -278,8 +271,6 @@ impl ThemeFamily {
 /// A snapshot that may be rendered without modifying any application global.
 #[derive(Clone)]
 pub struct ResolvedAppearance {
-    #[cfg(test)]
-    document: ThemeDocument,
     theme: Theme,
     fonts: [SharedString; 4],
     colors: BTreeMap<String, gpui_kit::Hsla>,
@@ -302,10 +293,6 @@ impl ResolvedAppearance {
     pub const fn font(&self, role: FontRole) -> &SharedString {
         &self.fonts[role.index()]
     }
-    #[cfg(test)]
-    pub fn configured_font(&self, role: FontRole) -> Option<&str> {
-        self.document.font(role)
-    }
 }
 
 /// Owns persisted families and current slots; views retain only IDs and input state.
@@ -317,7 +304,6 @@ pub struct ThemeLibrary {
     // Only explicit selection advances these; Undo must not undo a later choice,
     // even when that choice reselects the automatic fallback by name.
     selection_revisions: [u64; 2],
-    preferences_file: Option<PathBuf>,
     quit_subscription: Option<Subscription>,
 }
 impl Global for ThemeLibrary {}
@@ -331,11 +317,11 @@ impl Global for ThemeLibrary {}
 )]
 impl ThemeLibrary {
     pub fn init(cx: &mut App) -> Vec<Notification> {
-        let mut library = Self::new(directory());
+        let mut library = Self::new(super::data_dir().join("themes"));
         for set in embedded::sets() {
             let _ = library.insert_set(set, ThemeSource::Bundled);
         }
-        let errors: Vec<_> = library
+        let mut pending: Vec<_> = library
             .load()
             .into_iter()
             .map(|failure| match failure {
@@ -353,50 +339,40 @@ impl ThemeLibrary {
             })
             .collect();
         let prefs = settings::snapshot();
-        let mut pending = Vec::new();
-        for (ix, saved) in [prefs.light_theme_name, prefs.dark_theme_name]
+        for (kind, saved) in [ThemeKind::Light, ThemeKind::Dark]
             .into_iter()
-            .enumerate()
+            .zip([prefs.light_theme_name, prefs.dark_theme_name])
         {
             if let Some(name) = saved {
-                if library.variant(&name).is_some_and(|v| {
-                    v.mode()
-                        == if ix == 0 {
-                            ThemeMode::Light
-                        } else {
-                            ThemeMode::Dark
-                        }
-                }) {
-                    if let Some(slot) = library.slots.get_mut(ix) {
-                        *slot = name;
-                    }
-                } else if let Some(fallback) = library.slots.get(ix) {
-                    pending.push(crate::ui::notifications::theme_fallback(&name, fallback));
+                if library
+                    .variant(&name)
+                    .is_some_and(|v| v.mode() == kind.mode())
+                {
+                    library.slots[kind.index()] = name;
+                } else {
+                    pending.push(crate::ui::notifications::theme_fallback(
+                        &name,
+                        library.current(kind),
+                    ));
                 }
             }
         }
-        let preference_error = library.persist_slots(&library.slots).err();
+        let preference_error = settings::replace_theme_slots(&library.slots).err();
         cx.set_global(library);
         let quit_subscription = cx.on_app_quit(|cx| {
-            if cx.try_global::<Self>().is_some() {
-                for (id, error) in cx.global_mut::<Self>().flush_pending() {
-                    eprintln!("Could not save theme {id} on exit: {error}");
-                }
+            for (id, error) in cx.global_mut::<Self>().flush_pending() {
+                eprintln!("Could not save theme {id} on exit: {error}");
             }
             async {}
         });
         cx.global_mut::<Self>().quit_subscription = Some(quit_subscription);
+        refresh_current(cx);
         if let Some(error) = preference_error {
-            // The fallback stays valid in memory; report the preference failure.
-            let mut notifications = errors;
-            notifications.push(crate::ui::notifications::theme_load_failed(
+            pending.push(crate::ui::notifications::theme_load_failed(
                 "Current themes",
                 &error,
             ));
-            notifications.extend(pending);
-            return notifications;
         }
-        pending.extend(errors);
         pending
     }
 
@@ -408,16 +384,9 @@ impl ThemeLibrary {
             directory,
             slots: [DEFAULT_LIGHT.into(), DEFAULT_DARK.into()],
             selection_revisions: [0; 2],
-            preferences_file: None,
             quit_subscription: None,
         }
     }
-    #[cfg(test)]
-    fn with_preferences_file(mut self, file: PathBuf) -> Self {
-        self.preferences_file = Some(file);
-        self
-    }
-
     pub fn families(&self) -> impl Iterator<Item = &ThemeFamily> {
         self.families.iter()
     }
@@ -496,11 +465,8 @@ impl ThemeLibrary {
         }
         Ok(())
     }
-    fn persist_slots(&self, slots: &[String; 2]) -> Result<()> {
-        settings::replace_theme_slots(self.preferences_file.as_deref(), &slots[0], &slots[1])
-    }
     fn replace_slots(&mut self, slots: [String; 2]) -> Result<()> {
-        self.persist_slots(&slots)?;
+        settings::replace_theme_slots(&slots)?;
         self.slots = slots;
         Ok(())
     }
@@ -632,7 +598,9 @@ impl ThemeLibrary {
             }
         }
         if let ThemeSource::Custom(ref path) = old.source {
-            storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
         }
         next.persisted();
         self.slots = slots;
@@ -682,7 +650,9 @@ impl ThemeLibrary {
             .document
             .set_name(&name);
         if let ThemeSource::Custom(ref path) = next.source {
-            storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
         }
         next.persisted();
         self.slots = slots;
@@ -734,7 +704,9 @@ impl ThemeLibrary {
                 }
             }
             if let ThemeSource::Custom(ref path) = next.source {
-                storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+                storage::replace_and_update(path, &next.set(), || {
+                    settings::replace_theme_slots(&slots)
+                })?;
             }
             next.persisted();
             self.slots = slots;
@@ -801,7 +773,9 @@ impl ThemeLibrary {
             .document
             .set_mode(mode);
         if let ThemeSource::Custom(ref path) = next.source {
-            storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
         }
         next.persisted();
         self.slots = slots;
@@ -869,7 +843,9 @@ impl ThemeLibrary {
                 self.fallback_in_family(ix, removed.mode(), &[id]);
         }
         if let ThemeSource::Custom(ref path) = old.source {
-            storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
         }
         next.persisted();
         self.slots = slots;
@@ -894,7 +870,7 @@ impl ThemeLibrary {
             }
         }
         if let ThemeSource::Custom(ref path) = old.source {
-            storage::remove_and_update(path, || self.persist_slots(&slots))?;
+            storage::remove_and_update(path, || settings::replace_theme_slots(&slots))?;
         }
         self.slots = slots;
         self.families.remove(ix);
@@ -942,12 +918,14 @@ impl ThemeLibrary {
         self.validate_restored(&next, &slots, !removed_family)?;
         if removed_family {
             storage::write(&path, &next.set())?;
-            if let Err(error) = self.persist_slots(&slots) {
+            if let Err(error) = settings::replace_theme_slots(&slots) {
                 let _ = std::fs::remove_file(&path);
                 return Err(error);
             }
         } else {
-            storage::replace_and_update(&path, &next.set(), || self.persist_slots(&slots))?;
+            storage::replace_and_update(&path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
         }
         next.persisted();
         self.slots = slots;
@@ -1075,17 +1053,7 @@ impl ThemeLibrary {
                 let ThemeSource::Custom(ref path) = family.source else {
                     bail!("Built-in themes cannot be replaced")
                 };
-                let imported_name = set.name.to_string();
-                if family.name != imported_name {
-                    for document in &mut set.themes {
-                        let suffix = document
-                            .name()
-                            .strip_prefix(&imported_name)
-                            .unwrap_or_else(|| document.name())
-                            .to_owned();
-                        document.set_name(&format!("{}{suffix}", family.name));
-                    }
-                }
+                set.rename(&family.name);
                 self.normalize_replacement_names(&mut set, &family);
                 // Preserve runtime identities for matching names.
                 let mut next = family.clone();
@@ -1112,7 +1080,9 @@ impl ThemeLibrary {
                     "A theme needs at least one variant"
                 );
                 let slots = self.slots_after_import(&family, &next);
-                storage::replace_and_update(path, &next.set(), || self.persist_slots(&slots))?;
+                storage::replace_and_update(path, &next.set(), || {
+                    settings::replace_theme_slots(&slots)
+                })?;
                 next.persisted();
                 self.slots = slots;
                 let ix = self.family_index(family.id)?;
@@ -1120,17 +1090,7 @@ impl ThemeLibrary {
                 Ok(family.id)
             }
             (Some(_), ImportPolicy::Copy) => {
-                let old = set.name.to_string();
-                let name = self.suggested_copy_name(&old);
-                set.name = name.clone().into();
-                for variant in &mut set.themes {
-                    let suffix = variant
-                        .name()
-                        .strip_prefix(&old)
-                        .unwrap_or_else(|| variant.name())
-                        .to_owned();
-                    variant.set_name(&format!("{name}{suffix}"));
-                }
+                set.rename(&self.suggested_copy_name(&set.name));
                 self.unique_variant_names(set.themes.iter().map(ThemeDocument::name), None)?;
                 self.store_import(set)
             }
@@ -1235,9 +1195,6 @@ impl ThemeLibrary {
             }
         }
         errors
-    }
-    pub fn retry(&mut self, id: u64) -> Result<()> {
-        self.flush_family(id)
     }
     /// Schedule after each valid edit; revision checks coalesce edits and prevent stale writes.
     pub fn schedule_save(id: u64, cx: &App) {
@@ -1395,8 +1352,6 @@ fn resolve(
         }
     }
     ResolvedAppearance {
-        #[cfg(test)]
-        document: resolved,
         theme,
         fonts: families,
         colors,
@@ -1450,59 +1405,20 @@ fn gpui_highlight_fallback(mode: ThemeMode) -> HighlightThemeStyle {
     theme.style.clone()
 }
 
-#[cfg(not(test))]
-fn directory() -> PathBuf {
-    super::data_dir().join("themes")
-}
-#[cfg(test)]
-fn directory() -> PathBuf {
-    std::env::temp_dir().join(format!("datalith-test-themes-{}", std::process::id()))
-}
-
-/// Borrow a library document, falling back to the registry before initialization.
-pub fn document<'a>(name: &str, cx: &'a App) -> Option<Cow<'a, ThemeDocument>> {
-    if let Some(document) = cx
-        .try_global::<ThemeLibrary>()
-        .and_then(|library| library.get(name))
-    {
-        return Some(Cow::Borrowed(document));
-    }
-    ThemeRegistry::global(cx)
-        .themes()
-        .get(name)
-        .map(|config| Cow::Owned(ThemeDocument::from_config((**config).clone())))
-}
-
-/// Borrow the active document, constructing a fallback before library initialization.
-pub fn active_document(cx: &App) -> Cow<'_, ThemeDocument> {
-    let config = active_config(cx);
-    document(&config.name, cx)
-        .unwrap_or_else(|| Cow::Owned(ThemeDocument::from_config((**config).clone())))
-}
-fn active_config(cx: &App) -> &Rc<ThemeConfig> {
-    if cx.theme().is_dark() {
-        &cx.theme().dark_theme
-    } else {
-        &cx.theme().light_theme
-    }
-}
-
+/// Applies the library's validated slots and the session's appearance preference.
 pub fn refresh_current(cx: &mut App) {
-    if let Some(library) = cx.try_global::<ThemeLibrary>() {
-        let light = library
-            .resolved_config(library.current(ThemeKind::Light))
-            .map(Rc::new);
-        let dark = library
-            .resolved_config(library.current(ThemeKind::Dark))
-            .map(Rc::new);
-        if let Some(light) = light {
-            Theme::global_mut(cx).light_theme = light;
-        }
-        if let Some(dark) = dark {
-            Theme::global_mut(cx).dark_theme = dark;
-        }
+    let library = cx.global::<ThemeLibrary>();
+    let light = library
+        .resolved_config(library.current(ThemeKind::Light))
+        .map(Rc::new);
+    let dark = library
+        .resolved_config(library.current(ThemeKind::Dark))
+        .map(Rc::new);
+    if let Some(light) = light {
+        Theme::global_mut(cx).light_theme = light;
     }
-    Theme::change(Theme::global(cx).mode, None, cx);
-    super::fonts::apply(cx);
-    cx.refresh_windows();
+    if let Some(dark) = dark {
+        Theme::global_mut(cx).dark_theme = dark;
+    }
+    super::preferences::apply_theme_preference(settings::snapshot().theme_preference, cx);
 }

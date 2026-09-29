@@ -1,83 +1,29 @@
 use super::{ThemeDocument, storage::StoredThemeSet};
-use crate::ui::notifications;
-use gpui_kit::component::{ThemeRegistry, notification::Notification};
 
 // From https://github.com/longbridge/gpui-component/tree/main/themes
-const THEME_SETS: &[(&str, &str)] = &[
-    (
-        "Datalith",
-        include_str!("../../../assets/themes/datalith.json"),
-    ),
-    (
-        "Asciinema",
-        include_str!("../../../assets/themes/asciinema.json"),
-    ),
-    ("Ayu", include_str!("../../../assets/themes/ayu.json")),
-    (
-        "Catppuccin",
-        include_str!("../../../assets/themes/catppuccin.json"),
-    ),
-    (
-        "Everforest",
-        include_str!("../../../assets/themes/everforest.json"),
-    ),
-    (
-        "Flexoki",
-        include_str!("../../../assets/themes/flexoki.json"),
-    ),
-    (
-        "Gruvbox",
-        include_str!("../../../assets/themes/gruvbox.json"),
-    ),
-    ("Hybrid", include_str!("../../../assets/themes/hybrid.json")),
-    (
-        "Jellybeans",
-        include_str!("../../../assets/themes/jellybeans.json"),
-    ),
-    (
-        "macOS Classic",
-        include_str!("../../../assets/themes/macos-classic.json"),
-    ),
-    ("Matrix", include_str!("../../../assets/themes/matrix.json")),
-    (
-        "Mellifluous",
-        include_str!("../../../assets/themes/mellifluous.json"),
-    ),
-    (
-        "Solarized",
-        include_str!("../../../assets/themes/solarized.json"),
-    ),
-    (
-        "Spaceduck",
-        include_str!("../../../assets/themes/spaceduck.json"),
-    ),
-    (
-        "Tokyo Night",
-        include_str!("../../../assets/themes/tokyonight.json"),
-    ),
-    (
-        "Twilight",
-        include_str!("../../../assets/themes/twilight.json"),
-    ),
+const THEME_SETS: &[&str] = &[
+    include_str!("../../../assets/themes/datalith.json"),
+    include_str!("../../../assets/themes/asciinema.json"),
+    include_str!("../../../assets/themes/ayu.json"),
+    include_str!("../../../assets/themes/catppuccin.json"),
+    include_str!("../../../assets/themes/everforest.json"),
+    include_str!("../../../assets/themes/flexoki.json"),
+    include_str!("../../../assets/themes/gruvbox.json"),
+    include_str!("../../../assets/themes/hybrid.json"),
+    include_str!("../../../assets/themes/jellybeans.json"),
+    include_str!("../../../assets/themes/macos-classic.json"),
+    include_str!("../../../assets/themes/matrix.json"),
+    include_str!("../../../assets/themes/mellifluous.json"),
+    include_str!("../../../assets/themes/solarized.json"),
+    include_str!("../../../assets/themes/spaceduck.json"),
+    include_str!("../../../assets/themes/tokyonight.json"),
+    include_str!("../../../assets/themes/twilight.json"),
 ];
-
-pub(super) fn load(cx: &mut gpui_kit::App) -> Vec<Notification> {
-    let registry = ThemeRegistry::global_mut(cx);
-    THEME_SETS
-        .iter()
-        .filter_map(|(name, content)| {
-            registry
-                .load_themes_from_str(content)
-                .err()
-                .map(|error| notifications::theme_load_failed(name, &error))
-        })
-        .collect()
-}
 
 pub(super) fn sets() -> impl Iterator<Item = StoredThemeSet> {
     THEME_SETS
         .iter()
-        .filter_map(|(_, content)| serde_json::from_str(content).ok())
+        .filter_map(|content| serde_json::from_str(content).ok())
 }
 
 #[allow(

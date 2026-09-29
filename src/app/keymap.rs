@@ -130,7 +130,8 @@ impl ShortcutRegistry {
     fn replace(&mut self, next: Vec<Option<String>>, cx: &mut App) -> anyhow::Result<()> {
         let previous = std::mem::replace(&mut self.bindings, next);
         let persistence = super::settings::set_shortcut_overrides(overrides_for(&self.bindings));
-        replace_bindings(&previous, &self.bindings, cx);
+        cx.bind_keys(binding_operations(&previous, &self.bindings));
+        super::menus::install(cx);
         persistence
     }
 }
@@ -331,22 +332,12 @@ pub fn register(cx: &mut App) {
     let bindings = registry
         .bindings
         .into_iter()
-        .enumerate()
-        .filter_map(|(index, binding)| {
-            let keys = binding?;
-            SHORTCUTS
-                .get(index)
-                .map(|definition| (definition.make_binding)(&keys))
-        });
+        .zip(SHORTCUTS)
+        .filter_map(|(binding, definition)| binding.map(|keys| (definition.make_binding)(&keys)));
     cx.bind_keys(bindings);
 }
 
 /// Replaces just Datalith-owned bindings, leaving component and GPUI bindings intact.
-fn replace_bindings(previous: &[Option<String>], next: &[Option<String>], cx: &mut App) {
-    cx.bind_keys(binding_operations(previous, next));
-    super::menus::install(cx);
-}
-
 fn binding_operations(previous: &[Option<String>], next: &[Option<String>]) -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
     for (definition, binding) in SHORTCUTS.iter().zip(previous) {
@@ -382,31 +373,29 @@ fn overrides_for(bindings: &[Option<String>]) -> BTreeMap<String, Option<String>
 }
 
 fn effective_bindings(overrides: &BTreeMap<String, Option<String>>) -> Vec<Option<String>> {
-    let mut bindings = SHORTCUTS
-        .iter()
-        .map(|definition| Some(definition.binding.to_owned()))
-        .collect::<Vec<_>>();
-
+    let mut bindings = default_bindings();
     for (index, definition) in SHORTCUTS.iter().enumerate() {
         if let Some(binding) = overrides.get(definition.id) {
-            if let Some(binding) = binding {
-                let Some(binding) = normalize_binding(binding) else {
-                    continue;
-                };
+            let binding = match binding {
+                Some(binding) => match normalize_binding(binding) {
+                    Some(binding) => Some(binding),
+                    None => continue,
+                },
+                None => None,
+            };
+            if let Some(binding) = &binding {
                 for (other_index, other_binding) in bindings.iter_mut().enumerate() {
                     if other_index != index
                         && other_binding
                             .as_deref()
-                            .is_some_and(|other| same_binding(other, &binding))
+                            .is_some_and(|other| same_binding(other, binding))
                     {
                         *other_binding = None;
                     }
                 }
             }
             if let Some(current) = bindings.get_mut(index) {
-                *current = binding
-                    .clone()
-                    .map(|binding| normalize_binding(&binding).unwrap_or(binding));
+                *current = binding;
             }
         }
     }

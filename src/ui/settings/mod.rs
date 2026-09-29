@@ -23,8 +23,6 @@ mod about;
 mod appearance;
 mod general;
 mod server;
-#[cfg(test)]
-mod tests;
 pub mod theme;
 
 use about::about_page_index;

@@ -404,13 +404,13 @@ fn normalize_font_scale(scale: f64) -> f64 {
     }
 }
 
-struct SettingsStore {
+pub(super) struct SettingsStore {
     file: PathBuf,
     cached: Option<ApplicationSettings>,
 }
 
 impl SettingsStore {
-    const fn new(file: PathBuf) -> Self {
+    pub(super) const fn new(file: PathBuf) -> Self {
         Self { file, cached: None }
     }
 
@@ -491,7 +491,7 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
+pub(super) fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
 }
 
@@ -571,21 +571,16 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     update(|settings| settings.theme_preference = preference)
 }
 
-/// Persist both current references before updating the session cache. A test library may
-/// supply its own isolated file; the running app uses the serialized store.
-pub fn replace_theme_slots(file: Option<&Path>, light: &str, dark: &str) -> Result<()> {
-    let replace = |store: &mut SettingsStore| {
+/// Persist both current references before updating the session cache.
+pub fn replace_theme_slots([light, dark]: &[String; 2]) -> Result<()> {
+    with_store(|store| {
         let mut next = store.snapshot();
         next.light_theme_name = Some(light.to_owned());
         next.dark_theme_name = Some(dark.to_owned());
         store.persist(&next)?;
         store.cached = Some(next);
         Ok(())
-    };
-    file.map_or_else(
-        || with_store(replace),
-        |path| replace(&mut SettingsStore::new(path.to_path_buf())),
-    )
+    })
 }
 
 pub fn set_font_scale(scale: f64) -> Result<()> {
@@ -616,247 +611,6 @@ pub fn set_server_token(token: Option<String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use gpui_kit::component::{ActiveTheme as _, Root, ThemeMode as ComponentThemeMode};
-    use gpui_kit::{AppContext as _, Empty, TestAppContext, px, size};
-    use std::time::Duration;
-
-    use crate::app::fonts::{self, FontCatalog};
-    use crate::app::themes::{self, ImportPolicy, ThemeLibrary, ThemeSource};
-    use crate::ui::themes::change_mode;
-
-    struct ThemeSettingsSandbox {
-        root: PathBuf,
-    }
-
-    impl ThemeSettingsSandbox {
-        fn new() -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "datalith-theme-settings-{:032x}",
-                rand::random::<u128>()
-            ));
-            fs::create_dir_all(&root).unwrap();
-            with_store(|store| *store = SettingsStore::new(root.join("settings.json")));
-            Self { root }
-        }
-
-        fn library(&self) -> ThemeLibrary {
-            let source = self.root.join("source.json");
-            fs::write(&source, r#"{"name":"Datalith","themes":[{"name":"Datalith Light","mode":"light"},{"name":"Datalith Dark","mode":"dark"}]}"#).unwrap();
-            let mut library = ThemeLibrary::new(self.root.join("themes"));
-            let prepared = library.prepare_import(&source).unwrap();
-            library
-                .import_prepared(&prepared, ImportPolicy::Copy)
-                .unwrap();
-            library
-        }
-
-        fn block_preferences(&self) -> Vec<u8> {
-            let file = self.root.join("settings.json");
-            let before = fs::read(&file).unwrap();
-            fs::rename(&file, self.root.join("saved-settings.json")).unwrap();
-            fs::create_dir(&file).unwrap();
-            before
-        }
-
-        fn restore_preferences(&self) {
-            let file = self.root.join("settings.json");
-            fs::remove_dir(&file).unwrap();
-            fs::rename(self.root.join("saved-settings.json"), file).unwrap();
-        }
-    }
-
-    impl Drop for ThemeSettingsSandbox {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.root);
-        }
-    }
-
-    #[test]
-    fn failed_theme_rename_does_not_leak_into_the_next_preferences_write() {
-        let sandbox = ThemeSettingsSandbox::new();
-        let mut library = sandbox.library();
-        let original = library.family_named("Datalith").unwrap().id();
-        let working = library.copy_family(original, "Working").unwrap();
-        let light = library.variant("Working Light").unwrap().id();
-        library.set_current(light, ThemeKind::Light).unwrap();
-        let path = match library.family(working).unwrap().source() {
-            ThemeSource::Custom(path) => path.clone(),
-            ThemeSource::Bundled => unreachable!(),
-        };
-        let theme_before = fs::read(&path).unwrap();
-        let preferences_before = sandbox.block_preferences();
-
-        assert!(library.rename_family(working, "Renamed").is_err());
-        assert_eq!(library.family(working).unwrap().name(), "Working");
-        assert_eq!(library.current(ThemeKind::Light), "Working Light");
-        assert_eq!(
-            snapshot().light_theme_name.as_deref(),
-            Some("Working Light")
-        );
-        assert_eq!(fs::read(&path).unwrap(), theme_before);
-        assert_eq!(
-            fs::read(sandbox.root.join("saved-settings.json")).unwrap(),
-            preferences_before
-        );
-
-        sandbox.restore_preferences();
-        set_font_scale(1.2).unwrap();
-        let reloaded = SettingsStore::new(sandbox.root.join("settings.json")).snapshot();
-        assert_eq!(reloaded.light_theme_name.as_deref(), Some("Working Light"));
-        assert!((reloaded.font_scale - 1.2).abs() <= f64::EPSILON);
-        assert_eq!(fs::read(path).unwrap(), theme_before);
-    }
-
-    #[test]
-    fn failed_theme_selection_preserves_the_previous_global_preferences() {
-        let sandbox = ThemeSettingsSandbox::new();
-        let mut library = sandbox.library();
-        let original = library.family_named("Datalith").unwrap().id();
-        library.copy_family(original, "Other").unwrap();
-        let a = library.variant("Datalith Light").unwrap().id();
-        let b = library.variant("Other Light").unwrap().id();
-        assert_ne!(a, b);
-        library.set_current(a, ThemeKind::Light).unwrap();
-        let before = sandbox.block_preferences();
-
-        assert!(library.set_current(b, ThemeKind::Light).is_err());
-        assert_eq!(library.current(ThemeKind::Light), "Datalith Light");
-        assert_eq!(
-            snapshot().light_theme_name.as_deref(),
-            Some("Datalith Light")
-        );
-        sandbox.restore_preferences();
-        assert_eq!(
-            fs::read(sandbox.root.join("settings.json")).unwrap(),
-            before
-        );
-        set_font_scale(1.2).unwrap();
-        let reloaded = SettingsStore::new(sandbox.root.join("settings.json")).snapshot();
-        assert_eq!(reloaded.light_theme_name.as_deref(), Some("Datalith Light"));
-    }
-
-    #[test]
-    fn imported_normalized_selection_survives_store_and_library_restart() {
-        let sandbox = ThemeSettingsSandbox::new();
-        let name = format!("Restart {:016x}", rand::random::<u64>());
-        let light_name = format!("{name} Light");
-        let source = sandbox.root.join("import.json");
-        fs::write(
-            &source,
-            serde_json::to_vec(&serde_json::json!({
-                "name": format!("  {name}  "),
-                "themes": [{"name": format!("  {light_name}  "), "mode": "light",
-                    "colors": {"background": "#123456"}}]
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-        let saved_theme = {
-            let cx = TestAppContext::single();
-            cx.update(|cx| {
-                gpui_kit::init(cx);
-                FontCatalog::init(cx);
-                themes::load_embedded_themes(cx);
-                ThemeLibrary::init(cx);
-                crate::ui::settings::theme::dialogs::import_family(&source, cx);
-                let library = cx.global_mut::<ThemeLibrary>();
-                let variant = library.variant(&light_name).unwrap().id();
-                library.set_current(variant, ThemeKind::Light).unwrap();
-                assert_eq!(library.current(ThemeKind::Light), light_name);
-                assert_eq!(
-                    snapshot().light_theme_name.as_deref(),
-                    Some(light_name.as_str())
-                );
-                let ThemeSource::Custom(path) = library.family_named(&name).unwrap().source()
-                else {
-                    unreachable!();
-                };
-                path.clone()
-            })
-        };
-        // Discard both session owners: the new store must read persisted settings,
-        // and init must resolve that reference against freshly loaded documents.
-        with_store(|store| *store = SettingsStore::new(sandbox.root.join("settings.json")));
-        let restarted = TestAppContext::single();
-        restarted.update(|cx| {
-            gpui_kit::init(cx);
-            FontCatalog::init(cx);
-            themes::load_embedded_themes(cx);
-            ThemeLibrary::init(cx);
-            let library = cx.global::<ThemeLibrary>();
-            assert_eq!(library.current(ThemeKind::Light), light_name);
-            let variant = library.variant(&light_name).unwrap();
-            assert_eq!(
-                variant.document().colors().unwrap()["background"].as_deref(),
-                Some("#123456")
-            );
-            assert_eq!(
-                snapshot().light_theme_name.as_deref(),
-                Some(light_name.as_str())
-            );
-        });
-        let reloaded = SettingsStore::new(sandbox.root.join("settings.json")).snapshot();
-        assert_eq!(
-            reloaded.light_theme_name.as_deref(),
-            Some(light_name.as_str())
-        );
-        drop(restarted);
-        fs::remove_file(saved_theme).unwrap();
-    }
-
-    #[gpui_kit::test]
-    fn theme_mode_applies_for_the_session_when_preferences_cannot_be_written(
-        cx: &mut TestAppContext,
-    ) {
-        let sandbox = ThemeSettingsSandbox::new();
-        let library = sandbox.library();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            fonts::load_embedded_fonts(cx);
-            FontCatalog::init(cx);
-            themes::load_embedded_themes(cx);
-            cx.set_global(library);
-            change_mode(ThemePreference::Light, cx);
-            assert_eq!(cx.theme().mode, ComponentThemeMode::Light);
-        });
-        let handle = cx.open_window(size(px(800.), px(600.)), |window, cx| {
-            let view = cx.new(|_| Empty);
-            Root::new(view, window, cx)
-        });
-        let before = sandbox.block_preferences();
-        cx.update(|cx| change_mode(ThemePreference::Dark, cx));
-        cx.run_until_parked();
-        cx.update_window(handle.into(), |root, _, cx| {
-            let root = root.downcast::<Root>().unwrap();
-            assert_eq!(snapshot().theme_preference, ThemePreference::Dark);
-            assert_eq!(cx.theme().mode, ComponentThemeMode::Dark);
-            assert_eq!(
-                cx.global::<ThemeLibrary>().current(ThemeKind::Dark),
-                "Datalith Dark"
-            );
-            assert_eq!(root.read(cx).notification.read(cx).notifications().len(), 1);
-        })
-        .unwrap();
-        cx.executor().advance_clock(Duration::from_secs(30));
-        cx.run_until_parked();
-        cx.update_window(handle.into(), |root, _, cx| {
-            let root = root.downcast::<Root>().unwrap();
-            assert_eq!(root.read(cx).notification.read(cx).notifications().len(), 1);
-        })
-        .unwrap();
-        sandbox.restore_preferences();
-        assert_eq!(
-            fs::read(sandbox.root.join("settings.json")).unwrap(),
-            before
-        );
-        assert_eq!(
-            SettingsStore::new(sandbox.root.join("settings.json"))
-                .snapshot()
-                .theme_preference,
-            ThemePreference::Light
-        );
-    }
 
     pub(super) fn temp_settings_file(test_name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

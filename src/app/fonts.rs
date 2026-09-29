@@ -8,8 +8,8 @@ use gpui_kit::{App, Global, SharedString};
 
 use crate::ui::notifications;
 
-use super::settings::{self, FontRole};
-use super::themes::{ThemeDocument, active_document};
+use super::settings::{self, FontRole, ThemeKind};
+use super::themes::{ThemeDocument, ThemeLibrary};
 
 pub const PIXELOID_FONT: &str = "Pixeloid Sans";
 
@@ -74,9 +74,6 @@ impl FontCatalog {
 /// Reapply typography after a theme change. Resolve defaults from the selected
 /// theme rather than its previously overridden runtime values.
 pub fn apply(cx: &mut App) {
-    if cx.try_global::<FontCatalog>().is_none() {
-        return;
-    }
     let [interface, _, _, code] = families(cx);
     let theme = Theme::global_mut(cx);
     // Keep the independent interface scale stable across theme selection.
@@ -89,18 +86,17 @@ pub fn apply(cx: &mut App) {
 }
 
 /// Resolve the active slot's interface, reading, headings, and code fonts once.
-/// Before catalog initialization, use the runtime theme's font families.
+#[allow(
+    clippy::expect_used,
+    reason = "ThemeLibrary validates current slots before rendering"
+)]
 pub fn families(cx: &App) -> [SharedString; 4] {
-    if let Some(catalog) = cx.try_global::<FontCatalog>() {
-        return catalog.resolve_roles(&active_document(cx));
-    }
-    let theme = cx.theme();
-    [
-        theme.font_family.clone(),
-        theme.font_family.clone(),
-        theme.font_family.clone(),
-        theme.mono_font_family.clone(),
-    ]
+    let library = cx.global::<ThemeLibrary>();
+    let kind = ThemeKind::from(cx.theme().mode);
+    let document = library
+        .get(library.current(kind))
+        .expect("Current theme slot is validated by ThemeLibrary");
+    cx.global::<FontCatalog>().resolve_roles(document)
 }
 
 pub fn load_embedded_fonts(cx: &App) -> Vec<Notification> {

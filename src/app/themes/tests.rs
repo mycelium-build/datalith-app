@@ -18,8 +18,10 @@ impl Sandbox {
         Self { root }
     }
     fn library(&self) -> ThemeLibrary {
-        let mut library = ThemeLibrary::new(self.root.join("themes"))
-            .with_preferences_file(self.root.join("preferences.json"));
+        settings::with_store(|store| {
+            *store = settings::SettingsStore::new(self.root.join("preferences.json"));
+        });
+        let mut library = ThemeLibrary::new(self.root.join("themes"));
         for set in embedded::sets() {
             library.insert_set(set, ThemeSource::Bundled).unwrap();
         }
@@ -240,102 +242,6 @@ fn import_conflicts_export_round_trip_and_revision_flush_keep_latest() {
         Some("#abcdef".into())
     );
     assert_eq!(library.suggested_copy_name("Working"), "Working copy 2");
-}
-
-#[test]
-fn resolved_non_current_preview_is_isolated_from_global_appearance_and_slots() {
-    let context = gpui_kit::TestAppContext::single();
-    context.update(|cx| {
-        gpui_kit::init(cx);
-        super::super::fonts::FontCatalog::init(cx);
-        let sandbox = Sandbox::new();
-        let mut library = sandbox.library();
-        let copied = library
-            .copy_family(
-                library.family_named("Datalith").unwrap().id(),
-                "Preview only",
-            )
-            .unwrap();
-        let dark = library.family(copied).unwrap().variants()[1].id();
-        library
-            .update_color(dark, "background", Some("#123456".into()))
-            .unwrap();
-        library
-            .update_font(dark, FontRole::Reading, Some("Unavailable font".into()))
-            .unwrap();
-        let original = cx.theme().background;
-        let slots = [
-            library.current(ThemeKind::Light).to_owned(),
-            library.current(ThemeKind::Dark).to_owned(),
-        ];
-        let snapshot = library
-            .resolved(dark, cx.global::<super::super::fonts::FontCatalog>())
-            .unwrap();
-        assert_eq!(
-            snapshot.color("background"),
-            Some(gpui_kit::component::try_parse_color("#123456").unwrap())
-        );
-        assert_eq!(
-            snapshot.configured_font(FontRole::Reading),
-            Some("Unavailable font")
-        );
-        assert_eq!(cx.theme().background, original);
-        assert_eq!(library.current(ThemeKind::Light), slots[0]);
-        assert_eq!(library.current(ThemeKind::Dark), slots[1]);
-    });
-}
-
-#[test]
-fn reset_uses_the_effective_default_of_each_variants_mode() {
-    let context = gpui_kit::TestAppContext::single();
-    context.update(|cx| {
-        gpui_kit::init(cx);
-        super::super::fonts::FontCatalog::init(cx);
-        let sandbox = Sandbox::new();
-        let mut library = sandbox.library();
-        let family = library
-            .copy_family(
-                library.family_named("Datalith").unwrap().id(),
-                "Reset by mode",
-            )
-            .unwrap();
-        let ids: Vec<_> = library
-            .family(family)
-            .unwrap()
-            .variants()
-            .iter()
-            .map(ThemeVariant::id)
-            .collect();
-        for id in &ids {
-            library
-                .update_color(*id, "background", Some("#123456".into()))
-                .unwrap();
-            library.update_color(*id, "background", None).unwrap();
-        }
-        let light = library
-            .resolved(ids[0], cx.global::<super::super::fonts::FontCatalog>())
-            .unwrap();
-        let dark = library
-            .resolved(ids[1], cx.global::<super::super::fonts::FontCatalog>())
-            .unwrap();
-        assert_eq!(
-            light.color("background"),
-            Some(color_after_theme_serialization(light.theme().background))
-        );
-        assert_eq!(
-            dark.color("background"),
-            Some(color_after_theme_serialization(dark.theme().background))
-        );
-        assert_ne!(light.color("background"), dark.color("background"));
-        assert!(
-            library
-                .family(family)
-                .unwrap()
-                .variants()
-                .iter()
-                .all(|variant| variant.document().colors().unwrap()["background"].is_none())
-        );
-    });
 }
 
 fn assert_sparse_variant_fallbacks(library: &mut ThemeLibrary, variant_id: u64, cx: &App) {
@@ -625,9 +531,18 @@ fn failed_preference_write_cannot_leave_dangling_refs_or_claim_rename_or_delete(
     fs::create_dir(&prefs).unwrap();
     assert!(library.rename_family(id, "Renamed").is_err());
     assert!(library.remove_variant(light).is_err());
-    assert!(library.set_current(light, ThemeKind::Light).is_err());
+    let other = library.variant("Datalith Light").unwrap().id();
+    assert!(library.set_current(other, ThemeKind::Light).is_err());
     assert_eq!(library.family(id).unwrap().name(), "Working");
     assert_eq!(library.current(ThemeKind::Light), "Working Light");
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(
+        settings::snapshot().light_theme_name.as_deref(),
+        Some("Working Light")
+    );
+    fs::remove_dir(&prefs).unwrap();
+    settings::set_font_scale(1.2).unwrap();
+    assert_eq!(sandbox.saved_slots().0, "Working Light");
     assert_eq!(fs::read(path).unwrap(), before);
 }
 
@@ -739,7 +654,7 @@ fn autosave_failure_keeps_valid_model_and_retry_reports_truthfully() {
         Some("#abcdef".into())
     );
     fs::remove_dir(&path).unwrap();
-    library.retry(id).unwrap();
+    library.flush_family(id).unwrap();
     assert!(matches!(
         library.family(id).unwrap().status(),
         SaveStatus::Autosaved

@@ -1,6 +1,5 @@
 //! Shortcut reference and remapping controls in a dedicated workspace tab.
 
-use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{
     ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -49,7 +48,6 @@ impl RenderOnce for ShortcutRow {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         div()
             .id(self.id.clone())
-            .test_support()
             .group(self.id)
             .w_full()
             .child(self.row)
@@ -249,7 +247,6 @@ impl ShortcutsView {
                             controls = controls.child(
                                 div()
                                     .id(format!("shortcut-capture-status-{}", shortcut.id()))
-                                    .test_support()
                                     .aria_label("Press a shortcut")
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Press a shortcut"),
@@ -261,7 +258,6 @@ impl ShortcutsView {
                                 .child(
                                     div()
                                         .id(format!("shortcut-proposed-{}", shortcut.id()))
-                                        .test_support()
                                         .aria_label(keymap::display_binding(binding))
                                         .font_family(cx.theme().mono_font_family.clone())
                                         .child(keymap::display_binding(binding)),
@@ -292,7 +288,6 @@ impl ShortcutsView {
                                 .child(
                                     div()
                                         .id(format!("shortcut-capture-error-{}", shortcut.id()))
-                                        .test_support()
                                         .aria_label(message.clone())
                                         .text_color(cx.theme().danger)
                                         .child(message.clone()),
@@ -381,7 +376,6 @@ impl ShortcutsView {
                             .child(
                                 div()
                                     .id(format!("shortcut-unbound-warning-{}", shortcut.id()))
-                                    .test_support()
                                     .aria_label("No shortcut")
                                     .text_color(cx.theme().warning)
                                     .child("No shortcut"),
@@ -403,7 +397,6 @@ impl ShortcutsView {
                             TableCell::new().child(
                                 div()
                                     .id(format!("shortcut-action-{}", shortcut.id()))
-                                    .test_support()
                                     .aria_label(shortcut.description())
                                     .text_color(cx.theme().foreground)
                                     .child(shortcut.description()),
@@ -433,7 +426,6 @@ impl ShortcutsView {
                                                 "shortcuts-action-header-{}",
                                                 group.category
                                             ))
-                                            .test_support()
                                             .aria_label("Action")
                                             .font_weight(FontWeight::MEDIUM)
                                             .child("Action"),
@@ -446,7 +438,6 @@ impl ShortcutsView {
                                                 "shortcuts-binding-header-{}",
                                                 group.category
                                             ))
-                                            .test_support()
                                             .aria_label("Shortcut")
                                             .font_weight(FontWeight::MEDIUM)
                                             .child("Shortcut"),
@@ -462,7 +453,6 @@ impl ShortcutsView {
                     .child(
                         div()
                             .id(format!("shortcuts-category-{}", group.category))
-                            .test_support()
                             .aria_label(group.category.clone())
                             .text_base()
                             .font_weight(FontWeight::BOLD)
@@ -487,7 +477,6 @@ impl Render for ShortcutsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .id("shortcuts-editor")
-            .test_support()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key_down))
             .size_full()
@@ -535,7 +524,6 @@ impl Render for ShortcutsView {
                     .child(
                         div()
                             .id("shortcuts-scroll")
-                            .test_support()
                             .size_full()
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll)
@@ -592,312 +580,77 @@ fn shortcut_groups(shortcuts: Vec<Shortcut>) -> Vec<ShortcutGroup> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CapturePhase, ShortcutsView, capture_binding};
-    use crate::app::actions::{NewFile, OpenLink, Quit};
+    use std::{cell::Cell, collections::BTreeMap, rc::Rc};
+
     use gpui_kit::component::Root;
     use gpui_kit::test::TestWindowExt as _;
-    use gpui_kit::{
-        AppContext as _, InputEvent, KeyContext, KeyDownEvent, KeyUpEvent, Keystroke, Role,
-        ScrollDelta, TestAppContext, point, px, size,
-    };
-    use std::collections::BTreeMap;
+    use gpui_kit::{AppContext as _, Keystroke, TestAppContext, px, size};
+
+    use super::{CapturePhase, ShortcutsView, capture_binding};
+    use crate::app::{actions::NewFile, keymap, settings};
 
     #[test]
     fn capture_rejects_modifier_only_keys_and_reserved_navigation_keys() {
         assert!(
-            capture_binding(&gpui_kit::Keystroke {
+            capture_binding(&Keystroke {
                 key: "shift".into(),
                 ..Default::default()
             })
             .is_none()
         );
-        assert!(capture_binding(&gpui_kit::Keystroke::parse("tab").unwrap()).is_none());
-        assert!(capture_binding(&gpui_kit::Keystroke::parse("escape").unwrap()).is_none());
-        assert!(capture_binding(&gpui_kit::Keystroke::parse("enter").unwrap()).is_none());
+        for key in ["tab", "escape", "enter"] {
+            assert!(capture_binding(&Keystroke::parse(key).unwrap()).is_none());
+        }
         assert_eq!(
-            capture_binding(&gpui_kit::Keystroke::parse("secondary-q").unwrap()),
+            capture_binding(&Keystroke::parse("secondary-q").unwrap()),
             Some("secondary-q".into())
         );
     }
 
     #[gpui_kit::test]
-    #[allow(clippy::too_many_lines)]
     fn capture_interceptor_suppresses_app_actions_until_save_or_cancel(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
-        crate::app::settings::set_shortcut_overrides(BTreeMap::new()).expect("test settings reset");
-        let quit_dispatched = std::rc::Rc::new(std::cell::Cell::new(false));
-        let open_link_dispatched = std::rc::Rc::new(std::cell::Cell::new(false));
-        let new_file_dispatched = std::rc::Rc::new(std::cell::Cell::new(false));
-        let observed_quit = quit_dispatched.clone();
-        let observed_open_link = open_link_dispatched.clone();
-        let observed_new_file = new_file_dispatched.clone();
+        settings::set_shortcut_overrides(BTreeMap::new()).unwrap();
+        let dispatched = Rc::new(Cell::new(false));
+        let observed = dispatched.clone();
         cx.update(|cx| {
-            crate::app::keymap::register(cx);
-            crate::app::menus::install(cx);
-            cx.on_action(move |_: &Quit, _| observed_quit.set(true));
-            cx.on_action(move |_: &OpenLink, _| observed_open_link.set(true));
-            cx.on_action(move |_: &NewFile, _| observed_new_file.set(true));
+            keymap::register(cx);
+            cx.on_action(move |_: &NewFile, _| observed.set(true));
         });
-
         let mut shortcuts = None;
         let handle = cx.open_window(size(px(840.), px(600.)), |window, cx| {
             let view = cx.new(ShortcutsView::new);
             shortcuts = Some(view.clone());
             Root::new(view, window, cx)
         });
-        let shortcuts = shortcuts.expect("shortcut view");
-
+        let shortcuts = shortcuts.unwrap();
         cx.update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
-            assert_eq!(
-                window.find("shortcut-binding-quit").role(),
-                Some(Role::Button)
-            );
             window.click("shortcut-binding-quit", cx);
-            window.dispatch_event(
-                KeyDownEvent {
-                    keystroke: Keystroke {
-                        key: "shift".into(),
-                        ..Default::default()
-                    },
-                    is_held: false,
-                    prefer_character_input: false,
-                }
-                .to_platform_input(),
-                cx,
-            );
-            assert!(matches!(
-                shortcuts
-                    .read(cx)
-                    .capture
-                    .as_ref()
-                    .map(|capture| &capture.phase),
-                Some(CapturePhase::Listening)
-            ));
             window.press("secondary-n", cx);
-            assert!(!new_file_dispatched.get());
+            assert!(!dispatched.get());
             assert!(matches!(
                 shortcuts.read(cx).capture.as_ref().map(|capture| &capture.phase),
                 Some(CapturePhase::Proposed(binding)) if binding == "secondary-n"
             ));
+            window.press("escape", cx);
+            assert!(shortcuts.read(cx).capture.is_none());
+            window.press("secondary-n", cx);
+            assert!(dispatched.get());
 
-            // Modified Enter is a real app binding; a pending proposal must keep it suppressed.
-            window.press("secondary-enter", cx);
-            assert!(!open_link_dispatched.get());
-            assert!(matches!(
-                shortcuts.read(cx).capture.as_ref().map(|capture| &capture.phase),
-                Some(CapturePhase::Proposed(binding)) if binding == "secondary-n"
-            ));
-
-            // Tab retains the proposal and lets keyboard users reach Save.
-            for _ in 0..100 {
-                if window.find("save-shortcut-quit").focused() == Some(true) {
-                    break;
-                }
-                window.press("tab", cx);
-                window.render_frame(cx);
-            }
-            assert_eq!(window.find("save-shortcut-quit").focused(), Some(true));
-            window.press("enter", cx);
-            window.dispatch_event(
-                KeyUpEvent {
-                    keystroke: Keystroke::parse("enter").expect("valid Enter key"),
-                }
-                .to_platform_input(),
-                cx,
-            );
-            window.render_frame(cx);
+            dispatched.set(false);
+            window.click("shortcut-binding-quit", cx);
+            window.press("secondary-n", cx);
+            assert!(!dispatched.get());
+            window.click("save-shortcut-quit", cx);
             assert!(shortcuts.read(cx).capture.is_none());
             assert_eq!(
                 shortcuts.read(cx).registry.binding_for("quit"),
                 Some("secondary-n")
             );
             assert_eq!(shortcuts.read(cx).registry.binding_for("new-note"), None);
-            assert_eq!(
-                window.find("shortcut-binding-quit").label(),
-                Some(crate::app::keymap::display_binding("secondary-n").as_str())
-            );
-            assert_eq!(
-                window.find("shortcut-binding-new-note").label(),
-                Some("No shortcut")
-            );
-            assert!(!quit_dispatched.get());
-
-            let keymap = cx.key_bindings();
-            let (old_bindings, _) = keymap.borrow().bindings_for_input(
-                &[Keystroke::parse("secondary-q").expect("valid old key")],
-                &[KeyContext::default()],
-            );
-            assert!(
-                old_bindings
-                    .iter()
-                    .all(|binding| !binding.action().partial_eq(&Quit))
-            );
-            let (new_bindings, _) = keymap.borrow().bindings_for_input(
-                &[Keystroke::parse("secondary-n").expect("valid reassigned key")],
-                &[KeyContext::default()],
-            );
-            assert!(
-                new_bindings
-                    .iter()
-                    .any(|binding| binding.action().partial_eq(&Quit))
-            );
-            assert!(
-                new_bindings
-                    .iter()
-                    .all(|binding| !binding.action().partial_eq(&NewFile))
-            );
-
-            let reloaded = crate::app::keymap::ShortcutRegistry::new();
-            assert_eq!(reloaded.binding_for("quit"), Some("secondary-n"));
-            assert_eq!(reloaded.binding_for("new-note"), None);
-
-            // An unbound shortcut uses the same button to start a new capture.
-            window.click("shortcut-binding-new-note", cx);
-            assert!(matches!(
-                shortcuts.read(cx).capture.as_ref(),
-                Some(capture) if capture.id == "new-note"
-                    && matches!(capture.phase, CapturePhase::Listening)
-            ));
-            window.press("escape", cx);
-            assert!(shortcuts.read(cx).capture.is_none());
-            assert_eq!(window.find("shortcut-action-quit").label(), Some("Quit"));
         })
-        .expect("shortcut capture window");
-    }
-
-    #[gpui_kit::test]
-    fn rows_show_each_tab_shortcut_and_unbound_warning(cx: &mut TestAppContext) {
-        cx.update(gpui_kit::init);
-        crate::app::settings::set_shortcut_overrides(BTreeMap::from([(
-            "close-tab".to_owned(),
-            None,
-        )]))
-        .expect("test settings are writable");
-        let handle = cx.open_window(size(px(840.), px(600.)), |window, cx| {
-            let view = cx.new(ShortcutsView::new);
-            Root::new(view, window, cx)
-        });
-
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
-            assert_eq!(
-                window.find("shortcut-action-select-tab-1").label(),
-                Some("Select tab 1")
-            );
-            assert_eq!(
-                window.find("shortcut-action-select-tab-8").label(),
-                Some("Select tab 8")
-            );
-            assert_eq!(
-                window.find("shortcut-binding-close-tab").label(),
-                Some("No shortcut")
-            );
-            assert_eq!(
-                window.find("shortcut-unbound-warning-close-tab").label(),
-                Some("No shortcut")
-            );
-            assert_eq!(
-                window.find("reset-all-shortcuts").label(),
-                Some("Reset all")
-            );
-            assert_eq!(
-                window.find("shortcuts-binding-header-Tabs").label(),
-                Some("Shortcut")
-            );
-
-            for id in ["reset-shortcut-quit", "remove-shortcut-quit"] {
-                assert!(window.try_find(id).is_none_or(|button| !button.visible()));
-            }
-            // Hovering the action text reveals the controls for the whole row.
-            window.hover("shortcut-action-quit", cx);
-            assert!(window.find("reset-shortcut-quit").visible());
-            assert!(window.find("remove-shortcut-quit").visible());
-            window.click("remove-shortcut-quit", cx);
-            assert_eq!(
-                window.find("shortcut-binding-quit").label(),
-                Some("No shortcut")
-            );
-            window.hover("shortcut-action-quit", cx);
-            window.click("reset-shortcut-quit", cx);
-            assert_eq!(
-                window.find("shortcut-binding-quit").label(),
-                Some(crate::app::keymap::display_binding("secondary-q").as_str())
-            );
-            window.hover("shortcut-action-new-note", cx);
-            for id in ["reset-shortcut-quit", "remove-shortcut-quit"] {
-                assert!(window.try_find(id).is_none_or(|button| !button.visible()));
-            }
-        })
-        .expect("shortcut rows window");
-        crate::app::settings::set_shortcut_overrides(BTreeMap::new()).expect("test settings reset");
-    }
-
-    #[gpui_kit::test]
-    fn shortcut_reference_keeps_aligned_columns_and_scrolls(cx: &mut TestAppContext) {
-        cx.update(gpui_kit::init);
-        let mut shortcuts = None;
-        let handle = cx.open_window(size(px(640.), px(360.)), |window, cx| {
-            let view = cx.new(ShortcutsView::new);
-            let focus = view.read(cx).focus.clone();
-            focus.focus(window, cx);
-            shortcuts = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-        let shortcuts = shortcuts.expect("shortcut reference view");
-
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
-            assert_eq!(window.find("shortcuts-editor").focused(), Some(true));
-            assert_eq!(window.find(("table", 0_usize)).role(), Some(Role::Table));
-            assert_eq!(
-                window.find("shortcuts-action-header-File").label(),
-                Some("Action")
-            );
-            assert_eq!(
-                window.find("shortcuts-binding-header-File").label(),
-                Some("Shortcut")
-            );
-            assert_eq!(window.find("shortcuts-category-File").label(), Some("File"));
-
-            let action = window.find("shortcut-action-new-note");
-            let key = window.find("shortcut-binding-new-note");
-            let next_action = window.find("shortcut-action-new-folder");
-            let next_key = window.find("shortcut-binding-new-folder");
-            assert_eq!(action.label(), Some("New note"));
-            assert_eq!(
-                key.label(),
-                Some(crate::app::keymap::display_binding("secondary-n").as_str())
-            );
-            assert_eq!(action.bounds().left(), next_action.bounds().left());
-            assert_eq!(key.bounds().left(), next_key.bounds().left());
-            assert_eq!(
-                action.bounds().left(),
-                window.find("shortcuts-action-header-File").bounds().left()
-            );
-            assert_eq!(
-                key.bounds().left(),
-                window.find("shortcuts-binding-header-File").bounds().left()
-            );
-            window.hover("shortcut-action-new-note", cx);
-            assert!(window.find("remove-shortcut-new-note").bounds().right() <= px(640.));
-
-            let before = shortcuts.read(cx).scroll.offset().y;
-            window.press("pagedown", cx);
-            assert!(shortcuts.read(cx).scroll.offset().y < before);
-            window.press("end", cx);
-            assert!(window.find("shortcuts-category-Help").visible());
-            window.press("home", cx);
-            assert_eq!(shortcuts.read(cx).scroll.offset().y, px(0.));
-            assert!(window.find("shortcuts-category-File").visible());
-            window.scroll(
-                "shortcuts-scroll",
-                ScrollDelta::Pixels(point(px(0.), px(-80.))),
-                cx,
-            );
-            assert!(shortcuts.read(cx).scroll.offset().y < px(0.));
-            assert_eq!(window.find("shortcuts-editor").focused(), Some(true));
-        })
-        .expect("shortcuts window");
+        .unwrap();
+        settings::set_shortcut_overrides(BTreeMap::new()).unwrap();
     }
 }

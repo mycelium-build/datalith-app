@@ -3,7 +3,6 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 use gpui_kit::component::{
     ActiveTheme as _, Sizable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
-    dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
     v_flex,
@@ -37,13 +36,29 @@ fn name_form(
         let error_commit = error.clone();
         dialog
             .title(title.clone())
-            .button_props(
-                DialogButtonProps::default()
-                    .ok_text(action)
-                    .cancel_text("Cancel")
-                    .show_cancel(true),
+            .footer(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("cancel")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| {
+                                window
+                                    .dispatch_action(Box::new(gpui_kit::base::actions::Cancel), cx);
+                            }),
+                    )
+                    .child(
+                        Button::new("ok")
+                            .primary()
+                            .label(action)
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(
+                                    Box::new(gpui_kit::base::actions::Confirm { secondary: false }),
+                                    cx,
+                                );
+                            }),
+                    ),
             )
-            .footer(form_actions(action))
             .content(move |content, _, cx| {
                 content.child(
                     v_flex()
@@ -137,137 +152,6 @@ pub fn rename_family(id: u64, window: &mut Window, cx: &mut App) {
             Ok(())
         },
     );
-}
-
-#[allow(
-    clippy::too_many_lines,
-    reason = "The two retained form fields and validation share a single dialog lifecycle"
-)]
-pub fn name_variants(family_id: u64, from: u64, window: &mut Window, cx: &mut App) {
-    let Some(family) = cx.global::<ThemeLibrary>().family(family_id) else {
-        return;
-    };
-    let first = family
-        .suffix(from)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("Variant 1")
-        .to_owned();
-    let second = if first.eq_ignore_ascii_case("Variant 1") {
-        "Variant 2"
-    } else {
-        "Variant 1"
-    };
-    let first_input = cx.new(|cx| InputState::new(window, cx).default_value(first));
-    let second_input = cx.new(|cx| InputState::new(window, cx).default_value(second));
-    let error = Rc::new(RefCell::<Option<String>>::new(None));
-    let focus = first_input.focus_handle(cx);
-    window.open_dialog(cx, move |dialog, _, _| {
-        let first_content = first_input.clone();
-        let second_content = second_input.clone();
-        let first_commit = first_input.clone();
-        let second_commit = second_input.clone();
-        let error_content = error.clone();
-        let error_commit = error.clone();
-        dialog
-            .title("Name the variants")
-            .button_props(
-                DialogButtonProps::default()
-                    .ok_text("Add variant")
-                    .cancel_text("Cancel")
-                    .show_cancel(true),
-            )
-            .footer(form_actions("Add variant"))
-            .content(move |content, _, cx| {
-                content.child(
-                    v_flex()
-                        .gap_3()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Give each variant a distinct name"),
-                        )
-                        .child(div().child("Existing variant"))
-                        .child(
-                            Input::new(&first_content)
-                                .id("existing-variant-suffix")
-                                .small()
-                                .aria_label("Existing variant name"),
-                        )
-                        .child(div().child("New variant"))
-                        .child(
-                            Input::new(&second_content)
-                                .id("new-variant-suffix")
-                                .small()
-                                .aria_label("New variant name"),
-                        )
-                        .children(error_content.borrow().as_ref().map(|error| {
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().danger)
-                                .child(error.clone())
-                        })),
-                )
-            })
-            .on_ok(move |_, window, cx| {
-                let first = first_commit.read(cx).value().to_string();
-                let second = second_commit.read(cx).value().to_string();
-                match cx.global_mut::<ThemeLibrary>().add_variant(
-                    family_id,
-                    from,
-                    &second,
-                    Some(&first),
-                ) {
-                    Ok(added) => {
-                        ThemeLibrary::schedule_save(family_id, cx);
-                        themes::refresh_current(cx);
-                        if let Some(view) = cx
-                            .try_global::<crate::app::AppState>()
-                            .and_then(|s| s.view.clone())
-                        {
-                            let editor =
-                                view.read(cx).tabs.theme_editor_for(family_id, cx).cloned();
-                            if let Some(editor) = editor {
-                                editor.update(cx, |editor, cx| {
-                                    editor.refresh_variants(window, cx);
-                                    editor.select(added, window, cx);
-                                });
-                            }
-                        }
-                        true
-                    }
-                    Err(failure) => {
-                        *error_commit.borrow_mut() = Some(failure.to_string());
-                        cx.refresh_windows();
-                        false
-                    }
-                }
-            })
-    });
-    window.defer(cx, move |window, cx| focus.focus(window, cx));
-}
-
-fn form_actions(label: &'static str) -> impl gpui_kit::IntoElement {
-    h_flex()
-        .gap_2()
-        .child(
-            Button::new("cancel")
-                .label("Cancel")
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(Box::new(gpui_kit::base::actions::Cancel), cx);
-                }),
-        )
-        .child(
-            Button::new("ok")
-                .primary()
-                .label(label)
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(
-                        Box::new(gpui_kit::base::actions::Confirm { secondary: false }),
-                        cx,
-                    );
-                }),
-        )
 }
 
 pub fn import_family(path: &Path, cx: &mut App) {

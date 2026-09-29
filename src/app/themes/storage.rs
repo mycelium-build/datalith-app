@@ -28,6 +28,20 @@ pub(super) struct StoredThemeSet {
     pub themes: Vec<ThemeDocument>,
 }
 
+impl StoredThemeSet {
+    /// Rename the family and its variant prefixes together when copying or replacing.
+    pub(super) fn rename(&mut self, name: &str) {
+        for document in &mut self.themes {
+            let suffix = document
+                .name()
+                .strip_prefix(self.name.as_str())
+                .unwrap_or_else(|| document.name());
+            document.set_name(&format!("{name}{suffix}"));
+        }
+        self.name = name.to_owned().into();
+    }
+}
+
 pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
     let text = fs::read_to_string(path)?;
     parse(serde_json::from_str(&text)?)
@@ -244,17 +258,7 @@ impl ThemeLibrary {
                     .iter()
                     .any(|f| f.name.eq_ignore_ascii_case(&set.name))
                 {
-                    let old = set.name.to_string();
-                    let name = self.suggested_copy_name(&old);
-                    set.name = name.clone().into();
-                    for variant in &mut set.themes {
-                        let suffix = variant
-                            .name()
-                            .strip_prefix(&old)
-                            .unwrap_or_else(|| variant.name())
-                            .to_owned();
-                        variant.set_name(&format!("{name}{suffix}"));
-                    }
+                    set.rename(&self.suggested_copy_name(&set.name));
                 }
                 let id = self.insert_set(set, ThemeSource::Custom(path.clone()))?;
                 let normalized = self
@@ -282,14 +286,7 @@ impl ThemeLibrary {
     }
 
     pub(super) fn insert_set(&mut self, set: StoredThemeSet, source: ThemeSource) -> Result<u64> {
-        anyhow::ensure!(!set.name.trim().is_empty(), "Enter a theme name");
-        anyhow::ensure!(
-            !self
-                .families
-                .iter()
-                .any(|family| family.name.eq_ignore_ascii_case(&set.name)),
-            "A theme with this name already exists"
-        );
+        self.unique_name(&set.name, None)?;
         let mut variants = Vec::<ThemeVariant>::new();
         let multi = set.themes.len() > 1;
         for mut document in set.themes {

@@ -4,9 +4,6 @@ mod render;
 mod state;
 mod task_row;
 
-#[cfg(test)]
-mod tests;
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;

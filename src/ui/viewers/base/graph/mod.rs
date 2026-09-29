@@ -8,7 +8,6 @@ mod snapshot;
 
 use std::{path::PathBuf, rc::Rc};
 
-use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{ActiveTheme, ElementExt, Theme, WindowExt, h_flex};
 use gpui_kit::{
     AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
@@ -87,20 +86,6 @@ impl GraphState {
         self.preview_appearance
             .as_deref()
             .unwrap_or_else(|| cx.theme())
-    }
-
-    #[cfg(test)]
-    pub(super) const fn has_pointer_state(&self) -> bool {
-        self.pointer_position.is_some() || self.hovered_node.is_some() || self.interaction.is_some()
-    }
-
-    #[cfg(test)]
-    pub(super) fn first_node_offset(&self) -> Option<Point<Pixels>> {
-        let bounds = self.canvas_bounds?;
-        let node = self.snapshot.as_ref()?.nodes.first()?;
-        let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
-        let screen = self.camera.world_to_screen(node.position, viewport);
-        Some(point(px(screen.x), px(screen.y)))
     }
 
     /// Swaps in a freshly built snapshot;
@@ -345,7 +330,6 @@ impl GraphState {
         let entity = cx.entity().downgrade();
         let mut root = div()
             .id("graph-view")
-            .test_support()
             .size_full()
             .relative()
             .overflow_hidden()

@@ -123,7 +123,6 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::app::fonts::FontCatalog::init(cx);
-            crate::app::themes::load_embedded_themes(cx);
             crate::app::themes::ThemeLibrary::init(cx);
             cx.set_global(AppState::default());
             actions::register(cx);
