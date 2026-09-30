@@ -532,10 +532,6 @@ impl ThemeEditor {
             )
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "The color header, filters, and virtualized token list form one retained panel"
-    )]
     fn render_properties(&self, cx: &Context<Self>) -> AnyElement {
         let id = self.edited;
         if self.category == "Fonts" {
@@ -555,10 +551,28 @@ impl ThemeEditor {
                 .vertical_scrollbar(&self.scroll)
                 .into_any_element();
         }
-        let editor = cx.entity();
-        let color_list = self.color_list.clone();
-        let measured_width = color_list.viewport_bounds().size.width;
-        let row_height = COLOR_ROW_HEIGHT.to_pixels(self.rem_size);
+        let visible_color_count = self
+            .property_rows
+            .iter()
+            .filter(|row| matches!(row, PropertyRow::Color(_)))
+            .count();
+        v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(self.render_color_header(visible_color_count, cx))
+            .child(self.render_color_list(cx))
+            .when(visible_color_count == 0, |view| {
+                view.child(div().p_4().text_sm().child("No colors match these filters"))
+            })
+            .into_any_element()
+    }
+
+    fn render_color_header(
+        &self,
+        visible_color_count: usize,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let advanced = self.category == "Advanced";
         let total = self.controls.colors.len();
         let all_groups = if advanced {
@@ -566,11 +580,6 @@ impl ThemeEditor {
         } else {
             "All colors"
         };
-        let visible_color_count = self
-            .property_rows
-            .iter()
-            .filter(|row| matches!(row, PropertyRow::Color(_)))
-            .count();
         let filtered = advanced
             && (!self.color_query.read(cx).value().is_empty()
                 || self
@@ -579,174 +588,146 @@ impl ThemeEditor {
                     .selected_value()
                     .is_some_and(|group| group.as_str() != all_groups)
                 || !self.color_origins.all_selected());
-        let has_visible_color = visible_color_count > 0;
         v_flex()
             .w_full()
-            .flex_1()
-            .min_h_0()
+            .flex_none()
+            .p_4()
+            .gap_2()
             .child(
-                v_flex()
-                    .w_full()
-                    .flex_none()
-                    .p_4()
+                h_flex()
                     .gap_2()
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(div().flex_1().text_sm().child(if advanced {
-                                format!("All theme colors · {visible_color_count} / {total}")
-                            } else {
-                                "Core colors".into()
-                            }))
-                            .when(filtered, |row| {
-                                row.child(
-                                    Button::new("clear-color-filters")
-                                        .small()
-                                        .ghost()
-                                        .label("Clear filters")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.color_query.update(cx, |query, cx| {
-                                                query.set_value("", window, cx);
-                                            });
-                                            this.color_group.update(cx, |group, cx| {
-                                                group.set_selected_value(
-                                                    &all_groups.into(),
-                                                    window,
-                                                    cx,
-                                                );
-                                            });
-                                            this.color_origins = ColorOriginFilters::default();
-                                            this.refresh_color_list(cx);
-                                            cx.notify();
-                                        })),
-                                )
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(if advanced {
-                                "All color tokens in the theme schema"
-                            } else {
-                                "Base colors and common overrides. Reset restores each color's fallback; component-specific overrides in Advanced take priority."
-                            }),
-                    )
-                    .when(advanced, |header| {
-                        header.child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    h_flex()
-                                        .w_full()
-                                        .gap_2()
-                                        .child(
-                                            div().w(rems(12.)).flex_none().child(
-                                                Select::new(&self.color_group)
-                                                    .small()
-                                                    .w_full()
-                                                    .accessibility_label("Component family"),
-                                            ),
-                                        )
-                                        .child(
-                                            div().flex_1().min_w_0().child(
-                                                Input::new(&self.color_query)
-                                                    .id("theme-color-search")
-                                                    .small()
-                                                    .w_full()
-                                                    .aria_label("Search all colors"),
-                                            ),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Color origin"),
-                                )
-                                .child(h_flex().w_full().gap_4().flex_wrap().children(
-                                    colors::ColorOrigin::ALL.into_iter().map(|origin| {
-                                        Self::render_color_origin_filter(
-                                            origin,
-                                            self.color_origins.includes(origin),
+                    .child(div().flex_1().text_sm().child(if advanced {
+                        format!("All theme colors · {visible_color_count} / {total}")
+                    } else {
+                        "Core colors".into()
+                    }))
+                    .when(filtered, |row| {
+                        row.child(
+                            Button::new("clear-color-filters")
+                                .small()
+                                .ghost()
+                                .label("Clear filters")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.color_query.update(cx, |query, cx| {
+                                        query.set_value("", window, cx);
+                                    });
+                                    this.color_group.update(cx, |group, cx| {
+                                        group.set_selected_value(
+                                            &all_groups.into(),
+                                            window,
                                             cx,
-                                        )
-                                    }),
-                                )),
+                                        );
+                                    });
+                                    this.color_origins = ColorOriginFilters::default();
+                                    this.refresh_color_list(cx);
+                                    cx.notify();
+                                })),
                         )
                     }),
             )
             .child(
                 div()
-                    .id("theme-controls-scroll")
-
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        list(self.color_list.clone(), move |ix, _, cx| {
-                            editor.update(cx, |editor, cx| {
-                                editor.property_rows.get(ix).map_or_else(
-                                    || div().into_any_element(),
-                                    |row| match row {
-                                        PropertyRow::VariantMode => Self::render_variant_mode_row(id, cx),
-                                        PropertyRow::GroupHeading(group) => Self::render_color_group_heading(id, group, cx),
-                                        PropertyRow::Color(token) => editor.render_color_row(id, token, cx),
-                                    },
-                                )
-                            })
-                        })
-                        .size_full(),
-                    )
-                    .child(
-                        canvas(
-                            move |_, _, _| {
-                                // GPUI clears all height hints on the first layout
-                                // and width changes. Restore off-screen estimates
-                                // after it measures the viewport, without resetting
-                                // the scroll anchor or rendering the entire list.
-                                if color_list.viewport_bounds().size.width != measured_width {
-                                    color_list.with_uniform_item_height(row_height);
-                                }
-                            },
-                            |_, (), _, _| {},
-                        )
-                        .absolute()
-                        .size_full(),
-                    )
-                    .vertical_scrollbar(&self.color_list),
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(if advanced {
+                        "All color tokens in the theme schema"
+                    } else {
+                        "Base colors and common overrides. Reset restores each color's fallback; component-specific overrides in Advanced take priority."
+                    }),
             )
-            .when(!has_visible_color, |view| {
-                view.child(div().p_4().text_sm().child("No colors match these filters"))
-            })
-            .into_any_element()
+            .when(advanced, |header| header.child(self.render_color_filters(cx)))
     }
-}
 
-impl Render for ThemeEditor {
-    #[allow(
-        clippy::too_many_lines,
-        reason = "Composes the editor regions and the responsive preview"
-    )]
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.rem_size != window.rem_size() {
-            self.rem_size = window.rem_size();
-            let scroll_top = self.color_list.logical_scroll_top();
-            self.reset_color_list_layout();
-            self.color_list.scroll_to(scroll_top);
-        }
-        let Some(family) = cx.global::<ThemeLibrary>().family(self.family_id) else {
-            return div()
-                .p_4()
-                .child("This theme was deleted")
-                .into_any_element();
-        };
-        let status = match family.status() {
-            SaveStatus::Saving => "Saving…".to_owned(),
-            SaveStatus::Autosaved => "All changes saved".to_owned(),
-            SaveStatus::Failed(error) => format!("Couldn’t save: {error}"),
-        };
-        let narrow = window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 80.;
+    fn render_color_filters(&self, cx: &Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_1()
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(
+                        div().w(rems(12.)).flex_none().child(
+                            Select::new(&self.color_group)
+                                .small()
+                                .w_full()
+                                .accessibility_label("Component family"),
+                        ),
+                    )
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            Input::new(&self.color_query)
+                                .id("theme-color-search")
+                                .small()
+                                .w_full()
+                                .aria_label("Search all colors"),
+                        ),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Color origin"),
+            )
+            .child(h_flex().w_full().gap_4().flex_wrap().children(
+                colors::ColorOrigin::ALL.into_iter().map(|origin| {
+                    Self::render_color_origin_filter(
+                        origin,
+                        self.color_origins.includes(origin),
+                        cx,
+                    )
+                }),
+            ))
+    }
+
+    fn render_color_list(&self, cx: &Context<Self>) -> impl IntoElement {
+        let id = self.edited;
+        let editor = cx.entity();
+        let color_list = self.color_list.clone();
+        let measured_width = color_list.viewport_bounds().size.width;
+        let row_height = COLOR_ROW_HEIGHT.to_pixels(self.rem_size);
+        div()
+            .id("theme-controls-scroll")
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(
+                list(self.color_list.clone(), move |ix, _, cx| {
+                    editor.update(cx, |editor, cx| {
+                        editor.property_rows.get(ix).map_or_else(
+                            || div().into_any_element(),
+                            |row| match row {
+                                PropertyRow::VariantMode => Self::render_variant_mode_row(id, cx),
+                                PropertyRow::GroupHeading(group) => {
+                                    Self::render_color_group_heading(id, group, cx)
+                                }
+                                PropertyRow::Color(token) => editor.render_color_row(id, token, cx),
+                            },
+                        )
+                    })
+                })
+                .size_full(),
+            )
+            .child(
+                canvas(
+                    move |_, _, _| {
+                        // GPUI clears all height hints on the first layout
+                        // and width changes. Restore off-screen estimates
+                        // after it measures the viewport, without resetting
+                        // the scroll anchor or rendering the entire list.
+                        if color_list.viewport_bounds().size.width != measured_width {
+                            color_list.with_uniform_item_height(row_height);
+                        }
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .vertical_scrollbar(&self.color_list)
+    }
+
+    fn render_editor_body(&self, narrow: bool, window: &Window, cx: &Context<Self>) -> AnyElement {
         let controls = v_flex()
             .flex_1()
             .min_w_0()
@@ -762,7 +743,7 @@ impl Render for ThemeEditor {
                 pane.border_l_1().border_color(cx.theme().border)
             })
             .child(self.preview_pane.clone());
-        let body = if narrow {
+        if narrow {
             if self.show_preview {
                 preview.into_any_element()
             } else {
@@ -788,9 +769,11 @@ impl Render for ThemeEditor {
                         ),
                 )
                 .into_any_element()
-        };
-        let family_title = self
-            .rename
+        }
+    }
+
+    fn render_family_title(&self, family: &ThemeFamily, cx: &Context<Self>) -> AnyElement {
+        self.rename
             .as_ref()
             .filter(|session| session.target == RenameTarget::Family)
             .map_or_else(
@@ -821,7 +804,77 @@ impl Render for ThemeEditor {
                         .aria_label("Theme name")
                         .into_any_element()
                 },
-            );
+            )
+    }
+
+    fn render_editor_header(
+        &self,
+        family: &ThemeFamily,
+        narrow: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let status = match family.status() {
+            SaveStatus::Saving => "Saving…".to_owned(),
+            SaveStatus::Autosaved => "All changes saved".to_owned(),
+            SaveStatus::Failed(error) => format!("Couldn’t save: {error}"),
+        };
+        h_flex()
+            .gap_2()
+            .p_3()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .flex_wrap()
+            .child(self.render_family_title(family, cx))
+            .child(div().flex_1())
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(status),
+            )
+            .children(matches!(family.status(), SaveStatus::Failed(_)).then(|| {
+                Button::new("retry-theme-save")
+                    .small()
+                    .label("Retry")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        match cx.global_mut::<ThemeLibrary>().flush_family(this.family_id) {
+                            Ok(()) => this.error = None,
+                            Err(error) => this.error = Some(error.to_string()),
+                        }
+                        cx.notify();
+                    }))
+            }))
+            .children(narrow.then(|| {
+                Button::new("toggle-theme-preview")
+                    .small()
+                    .label(if self.show_preview {
+                        "Back to editing"
+                    } else {
+                        "Preview"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_preview = !this.show_preview;
+                        cx.notify();
+                    }))
+            }))
+    }
+}
+
+impl Render for ThemeEditor {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.rem_size != window.rem_size() {
+            self.rem_size = window.rem_size();
+            let scroll_top = self.color_list.logical_scroll_top();
+            self.reset_color_list_layout();
+            self.color_list.scroll_to(scroll_top);
+        }
+        let Some(family) = cx.global::<ThemeLibrary>().family(self.family_id) else {
+            return div()
+                .p_4()
+                .child("This theme was deleted")
+                .into_any_element();
+        };
+        let narrow = window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 80.;
         v_flex()
             .id("theme-editor")
             .size_full()
@@ -829,47 +882,7 @@ impl Render for ThemeEditor {
             .min_w_0()
             .bg(cx.theme().background)
             .track_focus(&self.focus)
-            .child(
-                h_flex()
-                    .gap_2()
-                    .p_3()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .flex_wrap()
-                    .child(family_title)
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(status),
-                    )
-                    .children(matches!(family.status(), SaveStatus::Failed(_)).then(|| {
-                        Button::new("retry-theme-save")
-                            .small()
-                            .label("Retry")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                match cx.global_mut::<ThemeLibrary>().flush_family(this.family_id) {
-                                    Ok(()) => this.error = None,
-                                    Err(error) => this.error = Some(error.to_string()),
-                                }
-                                cx.notify();
-                            }))
-                    }))
-                    .children(narrow.then(|| {
-                        Button::new("toggle-theme-preview")
-                            .small()
-                            .label(if self.show_preview {
-                                "Back to editing"
-                            } else {
-                                "Preview"
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_preview = !this.show_preview;
-                                cx.notify();
-                            }))
-                    })),
-            )
+            .child(self.render_editor_header(family, narrow, cx))
             .children(self.error.as_ref().map(|error| {
                 div()
                     .px_4()
@@ -884,7 +897,7 @@ impl Render for ThemeEditor {
                     .min_h_0()
                     .min_w_0()
                     .child(self.render_navigation(family, cx))
-                    .child(body),
+                    .child(self.render_editor_body(narrow, window, cx)),
             )
             .into_any_element()
     }

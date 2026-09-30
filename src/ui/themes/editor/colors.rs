@@ -179,28 +179,9 @@ pub(super) fn label(token: &str) -> String {
         .join(" · ")
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "The descriptions map the complete color schema to its visible uses"
-)]
 pub(super) fn description(token: &str) -> &'static str {
     if let Some(syntax) = token.strip_prefix("highlight:syntax.") {
-        return match syntax {
-            "keyword" => "Source syntax: keywords such as let, if and return",
-            "comment" | "comment_doc" => "Source syntax: comments and documentation",
-            "string" | "text.literal" | "text.code.span" => {
-                "Source syntax: quoted text and literal values"
-            }
-            "number" | "boolean" | "constant" => {
-                "Source syntax: numbers, true / false and constants"
-            }
-            "function" | "constructor" => "Source syntax: function names and constructors",
-            "link_text" => "Markdown source: the visible text of a link",
-            "link_uri" => "Markdown source: the destination of a link",
-            "title" => "Markdown source: heading text",
-            "emphasis" | "emphasis.strong" => "Markdown source: emphasized text",
-            _ => "Source syntax: used when the language grammar recognizes this token",
-        };
+        return syntax_description(syntax);
     }
     if let Some(description) = general_role_description(token) {
         return description;
@@ -290,6 +271,23 @@ pub(super) fn description(token: &str) -> &'static str {
             "Component-library setting; this component is not currently shown in Datalith"
         }
         _ => "Shared workspace color; specific component colors can override it",
+    }
+}
+
+fn syntax_description(syntax: &str) -> &'static str {
+    match syntax {
+        "keyword" => "Source syntax: keywords such as let, if and return",
+        "comment" | "comment_doc" => "Source syntax: comments and documentation",
+        "string" | "text.literal" | "text.code.span" => {
+            "Source syntax: quoted text and literal values"
+        }
+        "number" | "boolean" | "constant" => "Source syntax: numbers, true / false and constants",
+        "function" | "constructor" => "Source syntax: function names and constructors",
+        "link_text" => "Markdown source: the visible text of a link",
+        "link_uri" => "Markdown source: the destination of a link",
+        "title" => "Markdown source: heading text",
+        "emphasis" | "emphasis.strong" => "Markdown source: emphasized text",
+        _ => "Source syntax: used when the language grammar recognizes this token",
     }
 }
 
