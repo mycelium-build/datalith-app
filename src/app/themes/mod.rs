@@ -262,6 +262,17 @@ impl ThemeFamily {
             themes: self.variants.iter().map(|v| v.document.clone()).collect(),
         }
     }
+    fn ensure_editable(&self) -> Result<()> {
+        ensure!(
+            matches!(self.source, ThemeSource::Custom(_)),
+            "Built-in themes cannot be edited"
+        );
+        Ok(())
+    }
+    fn changed(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+        self.status = SaveStatus::Saving;
+    }
     fn persisted(&mut self) {
         self.revision = self.revision.saturating_add(1);
         self.status = SaveStatus::Autosaved;
@@ -286,12 +297,14 @@ impl ResolvedAppearance {
     pub fn color_is_defined(&self, token: &str) -> bool {
         self.defined_colors.contains(token)
     }
-    #[allow(
-        clippy::indexing_slicing,
-        reason = "FontRole indices are exhaustive over the fixed four-entry role array"
-    )]
     pub const fn font(&self, role: FontRole) -> &SharedString {
-        &self.fonts[role.index()]
+        let [interface, reading, headings, code] = &self.fonts;
+        match role {
+            FontRole::Interface => interface,
+            FontRole::Reading => reading,
+            FontRole::Headings => headings,
+            FontRole::Code => code,
+        }
     }
 }
 
@@ -308,13 +321,6 @@ pub struct ThemeLibrary {
 }
 impl Global for ThemeLibrary {}
 
-// Family offsets originate in checked position/find operations; slot indices
-// are the exhaustive two-case ThemeKind mapping. Keep identity/name validation
-// at this boundary rather than spreading unchecked indices into views.
-#[allow(
-    clippy::indexing_slicing,
-    reason = "indices come from validated family lookups or exhaustive ThemeKind/FontRole mappings"
-)]
 impl ThemeLibrary {
     pub fn init(cx: &mut App) -> Vec<Notification> {
         let mut library = Self::new(super::data_dir().join("themes"));
@@ -348,7 +354,7 @@ impl ThemeLibrary {
                     .variant(&name)
                     .is_some_and(|v| v.mode() == kind.mode())
                 {
-                    library.slots[kind.index()] = name;
+                    *kind.select_mut(&mut library.slots) = name;
                 } else {
                     pending.push(crate::ui::notifications::theme_fallback(
                         &name,
@@ -410,7 +416,7 @@ impl ThemeLibrary {
             .find(|variant| variant.id == id)
     }
     pub fn current(&self, kind: ThemeKind) -> &str {
-        &self.slots[kind.index()]
+        kind.select(&self.slots)
     }
     /// Resolve the current selection, falling back to the built-in document
     /// for its mode if the selected variant is unavailable.
@@ -426,19 +432,19 @@ impl ThemeLibrary {
     pub fn get(&self, name: &str) -> Option<&ThemeDocument> {
         self.variant(name).map(ThemeVariant::document)
     }
-    fn family_index(&self, id: u64) -> Result<usize> {
-        self.families
-            .iter()
-            .position(|f| f.id == id)
-            .context("Theme is unavailable")
+    fn editable_family(&self, id: u64) -> Result<&ThemeFamily> {
+        let family = self.family(id).context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        Ok(family)
     }
-    fn editable_index(&self, id: u64) -> Result<usize> {
-        let ix = self.family_index(id)?;
-        ensure!(
-            matches!(self.families[ix].source, ThemeSource::Custom(_)),
-            "Built-in themes cannot be edited"
-        );
-        Ok(ix)
+    fn editable_family_mut(&mut self, id: u64) -> Result<&mut ThemeFamily> {
+        let family = self
+            .families
+            .iter_mut()
+            .find(|family| family.id == id)
+            .context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        Ok(family)
     }
     fn unique_name(&self, name: &str, except: Option<u64>) -> Result<()> {
         ensure!(!name.trim().is_empty(), "Enter a theme name");
@@ -490,10 +496,10 @@ impl ThemeLibrary {
             "Theme variant has the wrong mode"
         );
         let mut slots = self.slots.clone();
-        slots[kind.index()] = variant.name().into();
+        *kind.select_mut(&mut slots) = variant.name().into();
         self.replace_slots(slots)?;
-        self.selection_revisions[kind.index()] =
-            self.selection_revisions[kind.index()].saturating_add(1);
+        let revision = kind.select_mut(&mut self.selection_revisions);
+        *revision = revision.saturating_add(1);
         Ok(())
     }
     fn fallback(&self, mode: ThemeMode, excluding: &[u64]) -> String {
@@ -513,17 +519,17 @@ impl ThemeLibrary {
                 |v| v.name().to_owned(),
             )
     }
-    fn fallback_in_family(&self, ix: usize, mode: ThemeMode, excluding: &[u64]) -> String {
-        self.families[ix]
+    fn fallback_in_family(
+        &self,
+        family: &ThemeFamily,
+        mode: ThemeMode,
+        excluding: &[u64],
+    ) -> String {
+        family
             .variants
             .iter()
             .find(|v| v.mode() == mode && !excluding.contains(&v.id))
             .map_or_else(|| self.fallback(mode, excluding), |v| v.name().to_owned())
-    }
-    fn changed(&mut self, ix: usize) {
-        let family = &mut self.families[ix];
-        family.revision = family.revision.saturating_add(1);
-        family.status = SaveStatus::Saving;
     }
     pub fn update_color(&mut self, id: u64, token: &str, value: Option<String>) -> Result<u64> {
         self.update_document(id, |document| document.set_color(token, value))
@@ -538,42 +544,49 @@ impl ThemeLibrary {
         })
     }
     pub fn apply_fonts_to_all(&mut self, id: u64) -> Result<u64> {
-        let ix = self
+        let family = self
             .families
-            .iter()
-            .position(|family| family.variants.iter().any(|variant| variant.id == id))
+            .iter_mut()
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
             .context("Theme variant is unavailable")?;
-        self.editable_index(self.families[ix].id)?;
-        let source = self
-            .variant_by_id(id)
+        family.ensure_editable()?;
+        let source = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
             .context("Theme variant is unavailable")?
             .document
             .clone();
-        for variant in &mut self.families[ix].variants {
+        for variant in &mut family.variants {
             for role in FontRole::ALL {
                 variant
                     .document
                     .set_font(role, source.font(role).map(str::to_owned));
             }
         }
-        self.changed(ix);
-        Ok(self.families[ix].id)
+        family.changed();
+        Ok(family.id)
     }
     pub fn update_document(
         &mut self,
         variant_id: u64,
         change: impl FnOnce(&mut ThemeDocument) -> Result<()>,
     ) -> Result<u64> {
-        let ix = self
+        let family = self
             .families
-            .iter()
-            .position(|f| f.variants.iter().any(|v| v.id == variant_id))
+            .iter_mut()
+            .find(|family| {
+                family
+                    .variants
+                    .iter()
+                    .any(|variant| variant.id == variant_id)
+            })
             .context("Theme variant is unavailable")?;
-        self.editable_index(self.families[ix].id)?;
-        let variant = self.families[ix]
+        family.ensure_editable()?;
+        let variant = family
             .variants
             .iter_mut()
-            .find(|v| v.id == variant_id)
+            .find(|variant| variant.id == variant_id)
             .context("Theme variant is unavailable")?;
         let mut next = variant.document.clone();
         change(&mut next)?;
@@ -582,14 +595,13 @@ impl ThemeLibrary {
             "Use rename or change mode for identity changes"
         );
         variant.document = next;
-        self.changed(ix);
-        Ok(self.families[ix].id)
+        family.changed();
+        Ok(family.id)
     }
     pub fn rename_family(&mut self, id: u64, name: &str) -> Result<()> {
-        let ix = self.editable_index(id)?;
+        let old = self.editable_family(id)?.clone();
         let name = name.trim();
         self.unique_name(name, Some(id))?;
-        let old = self.families[ix].clone();
         let mut next = old.clone();
         next.name = name.into();
         for variant in &mut next.variants {
@@ -608,42 +620,46 @@ impl ThemeLibrary {
                 }
             }
         }
+        let family = self.editable_family_mut(id)?;
         if let ThemeSource::Custom(ref path) = old.source {
             storage::replace_and_update(path, &next.set(), || {
                 settings::replace_theme_slots(&slots)
             })?;
         }
         next.persisted();
+        *family = next;
         self.slots = slots;
-        self.families[ix] = next;
         Ok(())
     }
     pub fn rename_variant(&mut self, id: u64, suffix: &str) -> Result<()> {
-        let ix = self
+        let family = self
             .families
             .iter()
-            .position(|f| f.variants.iter().any(|v| v.id == id))
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
             .context("Theme variant is unavailable")?;
-        self.editable_index(self.families[ix].id)?;
+        family.ensure_editable()?;
+        let family_id = family.id;
         let suffix = suffix.trim();
         ensure!(
-            !suffix.is_empty() || self.families[ix].variants.len() == 1,
+            !suffix.is_empty() || family.variants.len() == 1,
             "Enter a variant name"
         );
         ensure!(
-            !self.families[ix].variants.iter().any(|v| v.id != id
+            !family.variants.iter().any(|v| v.id != id
                 && v.name()
-                    .eq_ignore_ascii_case(&format!("{} {suffix}", self.families[ix].name))),
+                    .eq_ignore_ascii_case(&format!("{} {suffix}", family.name))),
             "This variant name already exists"
         );
         let name = if suffix.is_empty() {
-            self.families[ix].name.clone()
+            family.name.clone()
         } else {
-            format!("{} {suffix}", self.families[ix].name)
+            format!("{} {suffix}", family.name)
         };
-        self.unique_variant_names(std::iter::once(name.as_str()), Some(self.families[ix].id))?;
-        let old = self
-            .variant_by_id(id)
+        self.unique_variant_names(std::iter::once(name.as_str()), Some(family.id))?;
+        let old = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
             .context("Theme variant is unavailable")?
             .name()
             .to_owned();
@@ -653,21 +669,22 @@ impl ThemeLibrary {
                 slot.clone_from(&name);
             }
         }
-        let mut next = self.families[ix].clone();
+        let mut next = family.clone();
         next.variants
             .iter_mut()
             .find(|v| v.id == id)
             .context("Theme variant is unavailable")?
             .document
             .set_name(&name);
+        let family = self.editable_family_mut(family_id)?;
         if let ThemeSource::Custom(ref path) = next.source {
             storage::replace_and_update(path, &next.set(), || {
                 settings::replace_theme_slots(&slots)
             })?;
         }
         next.persisted();
+        *family = next;
         self.slots = slots;
-        self.families[ix] = next;
         Ok(())
     }
     /// The first addition supplies both suffixes atomically. For later additions `existing_suffix` is None.
@@ -678,8 +695,8 @@ impl ThemeLibrary {
         suffix: &str,
         existing_suffix: Option<&str>,
     ) -> Result<u64> {
-        let ix = self.editable_index(family_id)?;
-        let source = self.families[ix]
+        let family = self.editable_family(family_id)?;
+        let source = family
             .variants
             .iter()
             .find(|v| v.id == from)
@@ -687,7 +704,7 @@ impl ThemeLibrary {
             .clone();
         let suffix = suffix.trim();
         ensure!(!suffix.is_empty(), "Enter a variant name");
-        if self.families[ix].variants.len() == 1 {
+        if family.variants.len() == 1 {
             let existing = existing_suffix
                 .context("Name both variants before adding")?
                 .trim();
@@ -695,14 +712,18 @@ impl ThemeLibrary {
                 !existing.is_empty() && !existing.eq_ignore_ascii_case(suffix),
                 "Variant suffixes must be non-empty and unique"
             );
-            let first_name = format!("{} {existing}", self.families[ix].name);
-            let second_name = format!("{} {suffix}", self.families[ix].name);
+            let first_name = format!("{} {existing}", family.name);
+            let second_name = format!("{} {suffix}", family.name);
             self.unique_variant_names(
                 [first_name.as_str(), second_name.as_str()],
                 Some(family_id),
             )?;
-            let mut next = self.families[ix].clone();
-            next.variants[0].document.set_name(&first_name);
+            let mut next = family.clone();
+            next.variants
+                .first_mut()
+                .context("Source variant is unavailable")?
+                .document
+                .set_name(&first_name);
             let id = next_id();
             let original_name = source.name().to_owned();
             let mut document = source.document;
@@ -714,33 +735,30 @@ impl ThemeLibrary {
                     slot.clone_from(&first_name);
                 }
             }
+            let family = self.editable_family_mut(family_id)?;
             if let ThemeSource::Custom(ref path) = next.source {
                 storage::replace_and_update(path, &next.set(), || {
                     settings::replace_theme_slots(&slots)
                 })?;
             }
             next.persisted();
+            *family = next;
             self.slots = slots;
-            self.families[ix] = next;
             return Ok(id);
         }
-        {
-            let family = &self.families[ix];
-            ensure!(
-                !family.variants.iter().any(|v| family
-                    .suffix(v.id)
-                    .is_some_and(|s| s.eq_ignore_ascii_case(suffix))),
-                "This variant name already exists"
-            );
-        }
+        ensure!(
+            !family.variants.iter().any(|v| family
+                .suffix(v.id)
+                .is_some_and(|s| s.eq_ignore_ascii_case(suffix))),
+            "This variant name already exists"
+        );
         let mut document = source.document;
-        document.set_name(&format!("{} {suffix}", self.families[ix].name));
+        document.set_name(&format!("{} {suffix}", family.name));
         self.unique_variant_names(std::iter::once(document.name()), Some(family_id))?;
         let id = next_id();
-        self.families[ix]
-            .variants
-            .push(ThemeVariant { id, document });
-        self.changed(ix);
+        let family = self.editable_family_mut(family_id)?;
+        family.variants.push(ThemeVariant { id, document });
+        family.changed();
         Ok(id)
     }
     pub fn next_suffix(&self, family_id: u64) -> Result<String> {
@@ -758,14 +776,17 @@ impl ThemeLibrary {
         bail!("No variant name available")
     }
     pub fn change_mode(&mut self, id: u64, mode: ThemeMode) -> Result<()> {
-        let ix = self
+        let family = self
             .families
             .iter()
-            .position(|f| f.variants.iter().any(|v| v.id == id))
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
             .context("Theme variant is unavailable")?;
-        self.editable_index(self.families[ix].id)?;
-        let old = self
-            .variant_by_id(id)
+        family.ensure_editable()?;
+        let family_id = family.id;
+        let old = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
             .context("Theme variant is unavailable")?;
         if old.mode() == mode {
             return Ok(());
@@ -773,24 +794,26 @@ impl ThemeLibrary {
         let old_name = old.name().to_owned();
         let old_mode = old.mode();
         let mut slots = self.slots.clone();
-        if slots[ThemeKind::from(old_mode).index()] == old_name {
-            slots[ThemeKind::from(old_mode).index()] = self.fallback_in_family(ix, old_mode, &[id]);
+        let slot = ThemeKind::from(old_mode).select_mut(&mut slots);
+        if *slot == old_name {
+            *slot = self.fallback_in_family(family, old_mode, &[id]);
         }
-        let mut next = self.families[ix].clone();
+        let mut next = family.clone();
         next.variants
             .iter_mut()
             .find(|v| v.id == id)
             .context("Theme variant is unavailable")?
             .document
             .set_mode(mode);
+        let family = self.editable_family_mut(family_id)?;
         if let ThemeSource::Custom(ref path) = next.source {
             storage::replace_and_update(path, &next.set(), || {
                 settings::replace_theme_slots(&slots)
             })?;
         }
         next.persisted();
+        *family = next;
         self.slots = slots;
-        self.families[ix] = next;
         Ok(())
     }
     pub fn copy_family(&mut self, id: u64, name: &str) -> Result<u64> {
@@ -830,16 +853,17 @@ impl ThemeLibrary {
             .join(format!("theme-{:032x}.json", rand::random::<u128>()))
     }
     pub fn remove_variant(&mut self, id: u64) -> Result<DeletedTheme> {
-        let ix = self
+        let (ix, family) = self
             .families
             .iter()
-            .position(|f| f.variants.iter().any(|v| v.id == id))
+            .enumerate()
+            .find(|(_, family)| family.variants.iter().any(|variant| variant.id == id))
             .context("Theme variant is unavailable")?;
-        self.editable_index(self.families[ix].id)?;
-        if self.families[ix].variants.len() == 1 {
-            return self.delete_family(self.families[ix].id);
+        family.ensure_editable()?;
+        if family.variants.len() == 1 {
+            return self.delete_family(family.id);
         }
-        let old = self.families[ix].clone();
+        let old = family.clone();
         let before = self.slots.clone();
         let mut next = old.clone();
         let position = next
@@ -849,18 +873,19 @@ impl ThemeLibrary {
             .context("Theme variant is unavailable")?;
         let removed = next.variants.remove(position);
         let mut slots = self.slots.clone();
-        if slots[ThemeKind::from(removed.mode()).index()] == removed.name() {
-            slots[ThemeKind::from(removed.mode()).index()] =
-                self.fallback_in_family(ix, removed.mode(), &[id]);
+        let slot = ThemeKind::from(removed.mode()).select_mut(&mut slots);
+        if *slot == removed.name() {
+            *slot = self.fallback_in_family(family, removed.mode(), &[id]);
         }
+        let family = self.editable_family_mut(old.id)?;
         if let ThemeSource::Custom(ref path) = old.source {
             storage::replace_and_update(path, &next.set(), || {
                 settings::replace_theme_slots(&slots)
             })?;
         }
         next.persisted();
+        *family = next;
         self.slots = slots;
-        self.families[ix] = next;
         Ok(DeletedTheme {
             old,
             position: ix,
@@ -870,14 +895,21 @@ impl ThemeLibrary {
         })
     }
     pub fn delete_family(&mut self, id: u64) -> Result<DeletedTheme> {
-        let ix = self.editable_index(id)?;
-        let old = self.families[ix].clone();
+        let (ix, family) = self
+            .families
+            .iter()
+            .enumerate()
+            .find(|(_, family)| family.id == id)
+            .context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        let old = family.clone();
         let before = self.slots.clone();
         let mut slots = before.clone();
         let ids: Vec<_> = old.variants.iter().map(|v| v.id).collect();
         for kind in [ThemeKind::Light, ThemeKind::Dark] {
-            if old.variants.iter().any(|v| v.name() == slots[kind.index()]) {
-                slots[kind.index()] = self.fallback(kind.mode(), &ids);
+            let slot = kind.select_mut(&mut slots);
+            if old.variants.iter().any(|v| v.name() == *slot) {
+                *slot = self.fallback(kind.mode(), &ids);
             }
         }
         if let ThemeSource::Custom(ref path) = old.source {
@@ -904,10 +936,9 @@ impl ThemeLibrary {
             ThemeSource::Bundled => bail!("Built-in themes cannot be restored"),
         };
         let restore_slots = [ThemeKind::Light, ThemeKind::Dark].map(|kind| {
-            let index = kind.index();
-            self.selection_revisions[index] == deleted.selection_revisions[index]
+            kind.select(&self.selection_revisions) == kind.select(&deleted.selection_revisions)
                 && deleted.old.variants.iter().any(|variant| {
-                    variant.name() == deleted.slots_before[index]
+                    variant.name() == kind.select(&deleted.slots_before).as_str()
                         && variant.mode() == kind.mode()
                         && deleted.removed_variant_id.is_none_or(|id| variant.id == id)
                 })
@@ -922,11 +953,17 @@ impl ThemeLibrary {
         };
         let mut slots = self.slots.clone();
         for kind in [ThemeKind::Light, ThemeKind::Dark] {
-            if restore_slots[kind.index()] {
-                slots[kind.index()].clone_from(&deleted.slots_before[kind.index()]);
+            if *kind.select(&restore_slots) {
+                kind.select_mut(&mut slots)
+                    .clone_from(kind.select(&deleted.slots_before));
             }
         }
         self.validate_restored(&next, &slots, !removed_family)?;
+        let family = if removed_family {
+            None
+        } else {
+            Some(self.editable_family_mut(next.id)?)
+        };
         if removed_family {
             storage::write(&path, &next.set())?;
             if let Err(error) = settings::replace_theme_slots(&slots) {
@@ -939,14 +976,13 @@ impl ThemeLibrary {
             })?;
         }
         next.persisted();
-        self.slots = slots;
-        if removed_family {
+        if let Some(family) = family {
+            *family = next;
+        } else {
             self.families
                 .insert(deleted.position.min(self.families.len()), next);
-        } else {
-            let ix = self.family_index(next.id)?;
-            self.families[ix] = next;
         }
+        self.slots = slots;
         Ok(())
     }
     fn restore_variant(current: &ThemeFamily, old: &ThemeFamily, id: u64) -> Result<ThemeFamily> {
@@ -1011,7 +1047,7 @@ impl ThemeLibrary {
             replacing.then_some(family.id),
         )?;
         for kind in [ThemeKind::Light, ThemeKind::Dark] {
-            let name = &slots[kind.index()];
+            let name = kind.select(slots);
             let valid_in_restored = family
                 .variants
                 .iter()
@@ -1091,13 +1127,13 @@ impl ThemeLibrary {
                     "A theme needs at least one variant"
                 );
                 let slots = self.slots_after_import(&family, &next);
+                let target = self.editable_family_mut(family.id)?;
                 storage::replace_and_update(path, &next.set(), || {
                     settings::replace_theme_slots(&slots)
                 })?;
                 next.persisted();
+                *target = next;
                 self.slots = slots;
-                let ix = self.family_index(family.id)?;
-                self.families[ix] = next;
                 Ok(family.id)
             }
             (Some(_), ImportPolicy::Copy) => {
@@ -1113,32 +1149,35 @@ impl ThemeLibrary {
     }
     fn normalize_replacement_names(&self, set: &mut StoredThemeSet, family: &ThemeFamily) {
         let multi = set.themes.len() > 1;
-        for ix in 0..set.themes.len() {
-            let name = set.themes[ix].name();
-            if valid_variant_name(&family.name, name, multi) {
-                continue;
-            }
-            for n in 1.. {
-                let candidate = if multi || n > 1 {
-                    format!("{} Variant {n}", family.name)
-                } else {
-                    family.name.clone()
-                };
-                let taken_in_import = set
-                    .themes
-                    .iter()
-                    .any(|document| document.name().eq_ignore_ascii_case(&candidate));
-                let taken_elsewhere = self
-                    .families
-                    .iter()
-                    .filter(|other| other.id != family.id)
-                    .flat_map(|other| &other.variants)
-                    .any(|variant| variant.name().eq_ignore_ascii_case(&candidate));
-                if !taken_in_import && !taken_elsewhere {
-                    set.themes[ix].set_name(&candidate);
-                    break;
+        let mut processed_names = BTreeSet::new();
+        let mut remaining = set.themes.as_mut_slice();
+        while let Some((document, rest)) = remaining.split_first_mut() {
+            if !valid_variant_name(&family.name, document.name(), multi) {
+                for n in 1.. {
+                    let candidate = if multi || n > 1 {
+                        format!("{} Variant {n}", family.name)
+                    } else {
+                        family.name.clone()
+                    };
+                    let taken_in_import = processed_names.contains(&candidate.to_ascii_lowercase())
+                        || document.name().eq_ignore_ascii_case(&candidate)
+                        || rest
+                            .iter()
+                            .any(|document| document.name().eq_ignore_ascii_case(&candidate));
+                    let taken_elsewhere = self
+                        .families
+                        .iter()
+                        .filter(|other| other.id != family.id)
+                        .flat_map(|other| &other.variants)
+                        .any(|variant| variant.name().eq_ignore_ascii_case(&candidate));
+                    if !taken_in_import && !taken_elsewhere {
+                        document.set_name(&candidate);
+                        break;
+                    }
                 }
             }
+            processed_names.insert(document.name().to_ascii_lowercase());
+            remaining = rest;
         }
     }
     fn store_import(&mut self, set: StoredThemeSet) -> Result<u64> {
@@ -1158,17 +1197,14 @@ impl ThemeLibrary {
         let mut slots = self.slots.clone();
         let old_ids: Vec<_> = old.variants.iter().map(|variant| variant.id).collect();
         for kind in [ThemeKind::Light, ThemeKind::Dark] {
-            let index = kind.index();
-            if old
-                .variants
-                .iter()
-                .any(|variant| variant.name() == slots[index])
+            let slot = kind.select_mut(&mut slots);
+            if old.variants.iter().any(|variant| variant.name() == *slot)
                 && !next
                     .variants
                     .iter()
-                    .any(|variant| variant.name() == slots[index] && variant.mode() == kind.mode())
+                    .any(|variant| variant.name() == *slot && variant.mode() == kind.mode())
             {
-                slots[index] = next
+                *slot = next
                     .variants
                     .iter()
                     .find(|variant| variant.mode() == kind.mode())
@@ -1182,12 +1218,12 @@ impl ThemeLibrary {
     }
     /// Flush the latest revision for one family. A failed write retains the model and exposes Retry.
     pub fn flush_family(&mut self, id: u64) -> Result<()> {
-        let ix = self.editable_index(id)?;
-        let ThemeSource::Custom(ref path) = self.families[ix].source else {
+        let family = self.editable_family_mut(id)?;
+        let ThemeSource::Custom(ref path) = family.source else {
             bail!("Built-in themes cannot be saved")
         };
-        let result = storage::write(path, &self.families[ix].set());
-        self.families[ix].status = match &result {
+        let result = storage::write(path, &family.set());
+        family.status = match &result {
             Ok(()) => SaveStatus::Autosaved,
             Err(error) => SaveStatus::Failed(error.to_string()),
         };

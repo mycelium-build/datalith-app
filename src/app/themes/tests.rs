@@ -1001,6 +1001,48 @@ fn overlapping_family_prefixes_cannot_make_ambiguous_current_variant_names() {
 }
 
 #[test]
+fn replacement_name_correction_respects_pending_names_and_releases_renamed_names() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let source = library.family_named("Datalith").unwrap().id();
+    let id = library.copy_family(source, "Replacing").unwrap();
+    let family = library.family(id).unwrap();
+    let mut set = StoredThemeSet {
+        name: "Replacing".into(),
+        author: None,
+        url: None,
+        themes: [
+            "Wrong",
+            "Replacing Variant 1",
+            "replacing Variant 2",
+            "Wrong",
+            "Replacing Variant 3",
+        ]
+        .into_iter()
+        .map(|name| {
+            let mut document = ThemeDocument::from_config(ThemeConfig::default());
+            document.set_name(name);
+            document
+        })
+        .collect(),
+    };
+    library.normalize_replacement_names(&mut set, family);
+    assert_eq!(
+        set.themes
+            .iter()
+            .map(ThemeDocument::name)
+            .collect::<Vec<_>>(),
+        [
+            "Replacing Variant 4",
+            "Replacing Variant 1",
+            "Replacing Variant 5",
+            "Replacing Variant 2",
+            "Replacing Variant 3",
+        ]
+    );
+}
+
+#[test]
 fn replacing_a_current_family_uses_another_imported_variant_of_the_same_mode() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();

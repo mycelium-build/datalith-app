@@ -148,10 +148,18 @@ impl FontRole {
     }
 }
 impl ThemeKind {
-    pub const fn index(self) -> usize {
+    pub const fn select<T>(self, values: &[T; 2]) -> &T {
+        let [light, dark] = values;
         match self {
-            Self::Light => 0,
-            Self::Dark => 1,
+            Self::Light => light,
+            Self::Dark => dark,
+        }
+    }
+    pub const fn select_mut<T>(self, values: &mut [T; 2]) -> &mut T {
+        let [light, dark] = values;
+        match self {
+            Self::Light => light,
+            Self::Dark => dark,
         }
     }
     pub const fn mode(self) -> gpui_kit::component::ThemeMode {
