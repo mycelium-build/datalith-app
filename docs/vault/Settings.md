@@ -2,11 +2,9 @@
 category: reference
 ---
 
-# Settings
-
 Open **Settings** from the gear button or the Datalith menu, or press **Cmd/Ctrl+,**. **Appearance** contains the display zoom slider. Use **Manage themes** there to open the separate **Theme** panel without the Settings navigation sidebar.
 
-## Theme
+# Theme
 
 Choose **Light**, **Dark**, or **System** for the application appearance. The light and dark current variants are saved independently. Choosing **Set as Light theme** or **Set as Dark theme** updates only that slot; it does not change the appearance mode. With **System**, the operating system determines which slot is shown.
 
@@ -14,7 +12,7 @@ Search or filter the theme list by **All**, **Light**, **Dark**, or **Custom**. 
 
 **Cmd/Ctrl+Shift+D** toggles between light and dark appearance while retaining the current variants.
 
-## Theme editor and fonts
+# Theme editor and fonts
 
 Each custom theme opens in its own workspace tab. Reopening that theme focuses its existing tab. Built-in themes must first be copied with **Copy & edit**. Select a variant and use its pencil button to rename it in a dialog. The × beside its name deletes it; **Add variant** sits below the list. The header pencil renames the whole theme. Each variant has light/dark defaults, colors, and four font roles: **Interface**, **Reading**, **Headings**, and **Code and editing**. The resizable preview uses Datalith's actual Note, Base, Graph, and Todo.txt renderers with the selected variant's resolved colors and fonts. Todo.txt samples are read-only; search, sorting, and navigation remain available. Editing a non-current variant affects only that preview; editing a current variant updates its application slot live.
 
@@ -28,15 +26,13 @@ Font choices belong to each theme variant. There are no personal font overrides 
 
 Custom themes are individual files in the `themes` folder beside the channel's user `config.json`. Each file holds one theme with all its variants.
 
-## Understanding theme colors
+# Understanding theme colors
 
 **Colors** keeps six base colors without search: **Background**, **Text**, **Muted surface**, **Borders**, **Primary**, and **Secondary**. Below them, common overrides are grouped by their role:
 
 - **Primary & selection**: text on Primary, its hover and pressed states, links, text selection, selected rows and their border.
 - **Secondary & accent**: text on Secondary, its custom title-bar hover and selected/open states, Accent and its text, hovered rows, and scrollbar thumbs.
 - **Text & surfaces**: muted text, input borders and focus rings, list background, and the list-header color inherited by table headers and summary footers.
-
-These 19 overrides cover meaningful Catppuccin settings in the selected families, plus common Link and text-selection customizations. All 25 controls remain available when unset or after Reset. Each row shows its exact theme key, as in Advanced, above its descriptive label. Each description explains the fallback that Reset restores. The focus-ring key is `ring`; its GPUI fallback is `blue`. Explicit values take precedence over their base colors; button- and table-specific overrides in Advanced can take precedence in turn.
 
 **Advanced** lists all **203** colors recognized by the current schema, including all Colors controls and unset entries, under category headings. Only visible rows are rendered; scrolling reaches the entire list from the first opening and after resizing. Use **Component family** to isolate Sidebar, Buttons, Tables, or another family. Search narrows the result further. The two origin checkboxes are independent and both are checked initially. Its counter counts matching colors, excluding category headings. **Clear filters** restores all families, all origins, and an empty search.
 
@@ -49,10 +45,10 @@ Rendered links use **Link**, which follows **Primary** when unset in both light 
 
 For the supported JSON fields and current limitations, see [Theme format](formats/Themes.md).
 
-## Display
+# Display
 
 The zoom slider scales the interface from `0.5×` to `3.0×` independently of the selected theme and its fonts.
 
-## Shortcuts
+# Shortcuts
 
 Open **Shortcuts** from the gear or Datalith menu, or press **Cmd/Ctrl+/**. It opens a read-only reference tab with actions grouped by category and their current platform shortcuts.

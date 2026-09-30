@@ -2,13 +2,11 @@
 category: reference
 ---
 
-# Shortcuts
-
 Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens in a workspace tab; opening it again returns to the same tab. It is read-only. Use the arrow keys, Page Up / Page Down, Home / End, or the scroll wheel to move through it. Workspace shortcuts still work while the tab is focused.
 
 `Cmd/Ctrl` means **Command** on macOS and **Ctrl** on Linux and Windows. The application shows the platform's notation in the Shortcuts tab. These entries come from the application's registered keybindings.
 
-## File
+# File
 
 | Action | Shortcut |
 | --- | --- |
@@ -21,7 +19,7 @@ Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens
 | Open in Explorer | `Cmd/Ctrl+Shift+E` |
 | Copy path | `Cmd/Ctrl+L` |
 
-## Navigation
+# Navigation
 
 | Action | Shortcut |
 | --- | --- |
@@ -31,7 +29,7 @@ Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens
 | Navigate forward | `Cmd/Ctrl+]` |
 | Open link | `Cmd/Ctrl+Enter` |
 
-## Tabs
+# Tabs
 
 | Action | Shortcut |
 | --- | --- |
@@ -40,7 +38,7 @@ Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens
 | Select tab | `Cmd/Ctrl+1` … `Cmd/Ctrl+8` |
 | Select last tab | `Cmd/Ctrl+9` |
 
-## View
+# View
 
 | Action | Shortcut |
 | --- | --- |
@@ -49,7 +47,7 @@ Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens
 | Toggle theme | `Cmd/Ctrl+Shift+D` |
 | Open settings | `Cmd/Ctrl+,` |
 
-## Help
+# Help
 
 | Action | Shortcut |
 | --- | --- |
