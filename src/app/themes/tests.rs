@@ -47,6 +47,34 @@ fn color_after_theme_serialization(color: gpui_kit::Hsla) -> gpui_kit::Hsla {
 }
 
 #[test]
+fn current_document_resolves_selection_and_falls_back_by_mode() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let variant = library.variant("Catppuccin Latte").unwrap();
+    let id = variant.id();
+    library.set_current(id, ThemeKind::Light).unwrap();
+    assert_eq!(
+        library.current_document(ThemeKind::Light).name(),
+        "Catppuccin Latte"
+    );
+
+    library.slots = ["Missing light".into(), "Missing dark".into()];
+    for kind in [ThemeKind::Light, ThemeKind::Dark] {
+        let document = library.current_document(kind);
+        assert_eq!(document.mode(), kind.mode());
+        assert_eq!(
+            document.name(),
+            match kind {
+                ThemeKind::Light => DEFAULT_LIGHT,
+                ThemeKind::Dark => DEFAULT_DARK,
+            }
+        );
+    }
+    assert_eq!(library.current(ThemeKind::Light), "Missing light");
+    assert_eq!(library.current(ThemeKind::Dark), "Missing dark");
+}
+
+#[test]
 fn bundled_families_include_every_variant_and_sanitize_ayu() {
     let sandbox = Sandbox::new();
     let library = sandbox.library();

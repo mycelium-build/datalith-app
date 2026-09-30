@@ -412,6 +412,17 @@ impl ThemeLibrary {
     pub fn current(&self, kind: ThemeKind) -> &str {
         &self.slots[kind.index()]
     }
+    /// Resolve the current selection, falling back to the built-in document
+    /// for its mode if the selected variant is unavailable.
+    pub fn current_document(&self, kind: ThemeKind) -> &ThemeDocument {
+        self.get(self.current(kind)).unwrap_or_else(|| {
+            let [light, dark] = &self.defaults;
+            match kind {
+                ThemeKind::Light => light,
+                ThemeKind::Dark => dark,
+            }
+        })
+    }
     pub fn get(&self, name: &str) -> Option<&ThemeDocument> {
         self.variant(name).map(ThemeVariant::document)
     }

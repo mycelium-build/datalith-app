@@ -86,16 +86,10 @@ pub fn apply(cx: &mut App) {
 }
 
 /// Resolve the active slot's interface, reading, headings, and code fonts once.
-#[allow(
-    clippy::expect_used,
-    reason = "ThemeLibrary validates current slots before rendering"
-)]
 pub fn families(cx: &App) -> [SharedString; 4] {
     let library = cx.global::<ThemeLibrary>();
     let kind = ThemeKind::from(cx.theme().mode);
-    let document = library
-        .get(library.current(kind))
-        .expect("Current theme slot is validated by ThemeLibrary");
+    let document = library.current_document(kind);
     cx.global::<FontCatalog>().resolve_roles(document)
 }
 
