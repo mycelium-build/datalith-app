@@ -1,4 +1,3 @@
-use gpui_kit::component::ActiveTheme;
 use gpui_kit::{
     BorderStyle, Bounds, Corners, Edges, Hsla, PathBuilder, Pixels, Point, Rgba, Window, point, px,
     quad, size,
@@ -44,7 +43,7 @@ struct PaintContext<'a> {
     incoming_hover_color: Hsla,
     both_hover_color: Hsla,
     window: &'a mut Window,
-    cx: &'a gpui_kit::App,
+    theme: &'a gpui_kit::component::Theme,
 }
 
 pub(super) fn paint_graph(
@@ -52,26 +51,26 @@ pub(super) fn paint_graph(
     snapshot: &GraphSnapshot,
     camera: Camera,
     hovered_node: Option<usize>,
+    theme: &gpui_kit::component::Theme,
     window: &mut Window,
-    cx: &gpui_kit::App,
 ) {
     let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
     let focus = hovered_node.map(|source| GraphFocus::new(snapshot, source));
     let edge_color = snapshot
         .edge_color
-        .map_or_else(|| cx.theme().border.opacity(0.65), graph_color);
+        .map_or_else(|| theme.border.opacity(0.65), graph_color);
     let outgoing_hover_color = snapshot
         .edge_hover_outgoing
         .color
-        .map_or(cx.theme().info, graph_color);
+        .map_or(theme.info, graph_color);
     let incoming_hover_color = snapshot
         .edge_hover_incoming
         .color
-        .map_or(cx.theme().info, graph_color);
+        .map_or(theme.info, graph_color);
     let both_hover_color = snapshot
         .edge_hover_both
         .color
-        .map_or(cx.theme().info, graph_color);
+        .map_or(theme.info, graph_color);
     let mut context = PaintContext {
         bounds,
         viewport,
@@ -82,7 +81,7 @@ pub(super) fn paint_graph(
         incoming_hover_color,
         both_hover_color,
         window,
-        cx,
+        theme,
     };
     paint_edges(&mut context, snapshot);
     if snapshot.arrow {
@@ -271,16 +270,15 @@ fn paint_nodes(context: &mut PaintContext, snapshot: &GraphSnapshot, hovered_nod
         let base_color = node.color.map_or_else(
             || {
                 if node.orphan {
-                    context.cx.theme().muted_foreground
+                    context.theme.muted_foreground
                 } else {
-                    context.cx.theme().primary
+                    context.theme.primary
                 }
             },
             graph_color,
         );
         let color = if hovered {
-            node.hover_color
-                .map_or(context.cx.theme().info, graph_color)
+            node.hover_color.map_or(context.theme.info, graph_color)
         } else {
             base_color
         };

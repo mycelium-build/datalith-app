@@ -1,0 +1,1471 @@
+//! Theme families, stable variant identity, selection, and isolated appearances.
+
+mod embedded;
+mod storage;
+#[cfg(test)]
+mod tests;
+
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
+
+use anyhow::{Context as _, Result, bail, ensure};
+use gpui_kit::component::{
+    Theme, ThemeConfig, ThemeMode,
+    highlighter::{HighlightTheme, HighlightThemeStyle},
+    notification::Notification,
+    try_parse_color,
+};
+use gpui_kit::{App, Global, SharedString, Subscription};
+use serde::{Deserialize, Serialize};
+
+use super::settings::{self, FontRole, FontSettings, ThemeKind};
+use storage::{LoadFailure, StoredThemeSet};
+
+const DEFAULT_LIGHT: &str = "Datalith Light";
+const DEFAULT_DARK: &str = "Datalith Dark";
+static ID: AtomicU64 = AtomicU64::new(1);
+fn next_id() -> u64 {
+    ID.fetch_add(1, Ordering::Relaxed)
+}
+
+fn valid_variant_name(family: &str, variant: &str, multi: bool) -> bool {
+    (!multi && variant == family)
+        || variant
+            .strip_prefix(family)
+            .and_then(|tail| tail.strip_prefix(' '))
+            .is_some_and(|suffix| !suffix.trim().is_empty())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ThemeDocument {
+    #[serde(flatten)]
+    config: ThemeConfig,
+    #[serde(default, skip_serializing_if = "FontSettings::is_empty")]
+    fonts: FontSettings,
+}
+
+impl ThemeDocument {
+    #[cfg(test)]
+    pub fn from_config(config: ThemeConfig) -> Self {
+        Self {
+            config,
+            fonts: FontSettings::default(),
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.config.name
+    }
+    pub const fn mode(&self) -> ThemeMode {
+        self.config.mode
+    }
+    pub const fn config(&self) -> &ThemeConfig {
+        &self.config
+    }
+    pub fn set_name(&mut self, name: &str) {
+        self.config.name = name.trim().to_owned().into();
+    }
+    pub fn font(&self, role: FontRole) -> Option<&str> {
+        self.fonts.family(role).or(match role {
+            FontRole::Interface => self.config.font_family.as_deref(),
+            FontRole::Code => self.config.mono_font_family.as_deref(),
+            FontRole::Reading | FontRole::Headings => None,
+        })
+    }
+    pub fn set_font(&mut self, role: FontRole, family: Option<String>) {
+        self.fonts.set_family(role, family);
+        let family = self
+            .fonts
+            .family(role)
+            .map(|family| SharedString::from(family.to_owned()));
+        match role {
+            FontRole::Interface => self.config.font_family = family,
+            FontRole::Code => self.config.mono_font_family = family,
+            FontRole::Reading | FontRole::Headings => {}
+        }
+    }
+    fn normalize_fonts(&mut self) {
+        for role in FontRole::ALL {
+            self.fonts
+                .set_family(role, self.fonts.family(role).map(str::to_owned));
+            let family = self.font(role).map(str::to_owned);
+            self.set_font(role, family);
+        }
+    }
+    pub fn colors(&self) -> Result<BTreeMap<String, Option<String>>> {
+        Ok(serde_json::from_value(serde_json::to_value(
+            &self.config.colors,
+        )?)?)
+    }
+    pub fn set_color(&mut self, token: &str, value: Option<String>) -> Result<()> {
+        let mut colors = self.colors()?;
+        let color = colors.get_mut(token).context("Unknown theme color")?;
+        if let Some(value) = &value {
+            try_parse_color(value)?;
+        }
+        *color = value;
+        self.config.colors = serde_json::from_value(serde_json::to_value(colors)?)?;
+        Ok(())
+    }
+    pub fn set_highlight(&mut self, token: &str, value: Option<String>) -> Result<()> {
+        if let Some(ref value) = value {
+            try_parse_color(value)?;
+        }
+        // Use the dependency's schema as the complete list of supported keys,
+        // including optional styles that have never been set in this variant.
+        let schema = serde_json::to_value(HighlightThemeStyle::default())?;
+        let mut highlight =
+            serde_json::to_value(self.config.highlight.clone().unwrap_or_default())?
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+        if let Some(syntax) = token.strip_prefix("syntax.") {
+            ensure!(
+                schema
+                    .get("syntax")
+                    .and_then(|styles| styles.get(syntax))
+                    .is_some(),
+                "Unknown syntax color"
+            );
+            let node = highlight
+                .entry("syntax")
+                .or_insert_with(|| serde_json::json!({}));
+            let node = node.as_object_mut().context("Invalid syntax overrides")?;
+            if let Some(value) = value {
+                let style = node.entry(syntax).or_insert(serde_json::Value::Null);
+                if style.is_null() {
+                    *style = serde_json::json!({});
+                }
+                style
+                    .as_object_mut()
+                    .context("Invalid syntax style")?
+                    .insert("color".into(), value.into());
+            } else if let Some(style) = node
+                .get_mut(syntax)
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                style.remove("color");
+            }
+        } else {
+            ensure!(
+                schema.get(token).is_some() && token != "syntax",
+                "Unknown highlight color"
+            );
+            match value {
+                Some(value) => {
+                    highlight.insert(token.into(), value.into());
+                }
+                None => {
+                    highlight.remove(token);
+                }
+            }
+        }
+        self.config.highlight = Some(serde_json::from_value(serde_json::Value::Object(
+            highlight,
+        ))?);
+        Ok(())
+    }
+    pub const fn set_mode(&mut self, mode: ThemeMode) {
+        self.config.mode = mode;
+    }
+}
+
+/// A normalized import retained while the user chooses how to handle a conflict.
+#[derive(Clone)]
+pub struct PreparedThemeImport {
+    set: StoredThemeSet,
+    conflict: Option<u64>,
+}
+impl PreparedThemeImport {
+    /// The existing family with the same normalized, case-insensitive name.
+    pub const fn conflict(&self) -> Option<u64> {
+        self.conflict
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ThemeSource {
+    Bundled,
+    Custom(PathBuf),
+}
+
+#[derive(Clone, Debug)]
+pub struct ThemeVariant {
+    id: u64,
+    document: ThemeDocument,
+}
+impl ThemeVariant {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+    pub fn name(&self) -> &str {
+        self.document.name()
+    }
+    pub const fn mode(&self) -> ThemeMode {
+        self.document.mode()
+    }
+    pub const fn document(&self) -> &ThemeDocument {
+        &self.document
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum SaveStatus {
+    Saving,
+    Autosaved,
+    Failed(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct ThemeFamily {
+    id: u64,
+    name: String,
+    author: Option<String>,
+    url: Option<String>,
+    variants: Vec<ThemeVariant>,
+    source: ThemeSource,
+    revision: u64,
+    status: SaveStatus,
+}
+impl ThemeFamily {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn variants(&self) -> &[ThemeVariant] {
+        &self.variants
+    }
+    pub const fn source(&self) -> &ThemeSource {
+        &self.source
+    }
+    pub const fn status(&self) -> &SaveStatus {
+        &self.status
+    }
+    pub fn suffix(&self, variant: u64) -> Option<&str> {
+        self.variants.iter().find(|v| v.id == variant).map(|v| {
+            v.name()
+                .strip_prefix(&format!("{} ", self.name))
+                .unwrap_or_default()
+        })
+    }
+    fn set(&self) -> StoredThemeSet {
+        StoredThemeSet {
+            name: self.name.clone().into(),
+            author: self.author.clone().map(Into::into),
+            url: self.url.clone().map(Into::into),
+            themes: self.variants.iter().map(|v| v.document.clone()).collect(),
+        }
+    }
+    fn ensure_editable(&self) -> Result<()> {
+        ensure!(
+            matches!(self.source, ThemeSource::Custom(_)),
+            "Built-in themes cannot be edited"
+        );
+        Ok(())
+    }
+    fn changed(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+        self.status = SaveStatus::Saving;
+    }
+    fn persisted(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+        self.status = SaveStatus::Autosaved;
+    }
+}
+
+/// A snapshot that may be rendered without modifying any application global.
+#[derive(Clone)]
+pub struct ResolvedAppearance {
+    theme: Theme,
+    fonts: [SharedString; 4],
+    colors: BTreeMap<String, gpui_kit::Hsla>,
+    defined_colors: BTreeSet<String>,
+}
+impl ResolvedAppearance {
+    pub const fn theme(&self) -> &Theme {
+        &self.theme
+    }
+    pub fn color(&self, token: &str) -> Option<gpui_kit::Hsla> {
+        self.colors.get(token).copied()
+    }
+    pub fn color_is_defined(&self, token: &str) -> bool {
+        self.defined_colors.contains(token)
+    }
+    pub const fn font(&self, role: FontRole) -> &SharedString {
+        let [interface, reading, headings, code] = &self.fonts;
+        match role {
+            FontRole::Interface => interface,
+            FontRole::Reading => reading,
+            FontRole::Headings => headings,
+            FontRole::Code => code,
+        }
+    }
+}
+
+/// Owns persisted families and current slots; views retain only IDs and input state.
+pub struct ThemeLibrary {
+    families: Vec<ThemeFamily>,
+    defaults: [ThemeDocument; 2],
+    directory: PathBuf,
+    slots: [String; 2],
+    // Only explicit selection advances these; Undo must not undo a later choice,
+    // even when that choice reselects the automatic fallback by name.
+    selection_revisions: [u64; 2],
+    quit_subscription: Option<Subscription>,
+}
+impl Global for ThemeLibrary {}
+
+impl ThemeLibrary {
+    pub fn init(cx: &mut App) -> Vec<Notification> {
+        let mut library = Self::new(super::data_dir().join("themes"));
+        for set in embedded::sets() {
+            let _ = library.insert_set(set, ThemeSource::Bundled);
+        }
+        let mut pending: Vec<_> = library
+            .load()
+            .into_iter()
+            .map(|failure| match failure {
+                LoadFailure::Read { theme, error } => {
+                    crate::ui::notifications::theme_load_failed(&theme, &error)
+                }
+                LoadFailure::Normalization { theme, error } => {
+                    crate::ui::notifications::settings_save_failed(
+                        &format!(
+                            "normalized changes to the {theme} theme (loaded for this session)"
+                        ),
+                        &error,
+                    )
+                }
+            })
+            .collect();
+        let prefs = settings::snapshot();
+        for (kind, saved) in [ThemeKind::Light, ThemeKind::Dark]
+            .into_iter()
+            .zip([prefs.light_theme_name, prefs.dark_theme_name])
+        {
+            if let Some(name) = saved {
+                if library
+                    .variant(&name)
+                    .is_some_and(|v| v.mode() == kind.mode())
+                {
+                    *kind.select_mut(&mut library.slots) = name;
+                } else {
+                    pending.push(crate::ui::notifications::theme_fallback(
+                        &name,
+                        library.current(kind),
+                    ));
+                }
+            }
+        }
+        let preference_error = settings::replace_theme_slots(&library.slots).err();
+        cx.set_global(library);
+        let quit_subscription = cx.on_app_quit(|cx| {
+            for (id, error) in cx.global_mut::<Self>().flush_pending() {
+                eprintln!("Could not save theme {id} on exit: {error}");
+            }
+            async {}
+        });
+        cx.global_mut::<Self>().quit_subscription = Some(quit_subscription);
+        refresh_current(cx);
+        if let Some(error) = preference_error {
+            pending.push(crate::ui::notifications::theme_load_failed(
+                "Current themes",
+                &error,
+            ));
+        }
+        pending
+    }
+
+    pub fn new(directory: PathBuf) -> Self {
+        let defaults = embedded::defaults();
+        Self {
+            families: vec![],
+            defaults,
+            directory,
+            slots: [DEFAULT_LIGHT.into(), DEFAULT_DARK.into()],
+            selection_revisions: [0; 2],
+            quit_subscription: None,
+        }
+    }
+    pub fn families(&self) -> impl Iterator<Item = &ThemeFamily> {
+        self.families.iter()
+    }
+    pub fn family(&self, id: u64) -> Option<&ThemeFamily> {
+        self.families.iter().find(|family| family.id == id)
+    }
+    #[cfg(test)]
+    pub fn family_named(&self, name: &str) -> Option<&ThemeFamily> {
+        self.families.iter().find(|family| family.name == name)
+    }
+    pub fn variant(&self, name: &str) -> Option<&ThemeVariant> {
+        self.families
+            .iter()
+            .flat_map(|family| &family.variants)
+            .find(|variant| variant.name() == name)
+    }
+    pub fn variant_by_id(&self, id: u64) -> Option<&ThemeVariant> {
+        self.families
+            .iter()
+            .flat_map(|family| &family.variants)
+            .find(|variant| variant.id == id)
+    }
+    pub fn current(&self, kind: ThemeKind) -> &str {
+        kind.select(&self.slots)
+    }
+    /// Resolve the current selection, falling back to the built-in document
+    /// for its mode if the selected variant is unavailable.
+    pub fn current_document(&self, kind: ThemeKind) -> &ThemeDocument {
+        self.get(self.current(kind)).unwrap_or_else(|| {
+            let [light, dark] = &self.defaults;
+            match kind {
+                ThemeKind::Light => light,
+                ThemeKind::Dark => dark,
+            }
+        })
+    }
+    pub fn get(&self, name: &str) -> Option<&ThemeDocument> {
+        self.variant(name).map(ThemeVariant::document)
+    }
+    fn editable_family(&self, id: u64) -> Result<&ThemeFamily> {
+        let family = self.family(id).context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        Ok(family)
+    }
+    fn editable_family_mut(&mut self, id: u64) -> Result<&mut ThemeFamily> {
+        let family = self
+            .families
+            .iter_mut()
+            .find(|family| family.id == id)
+            .context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        Ok(family)
+    }
+    fn unique_name(&self, name: &str, except: Option<u64>) -> Result<()> {
+        ensure!(!name.trim().is_empty(), "Enter a theme name");
+        ensure!(
+            !self
+                .families
+                .iter()
+                .any(|f| Some(f.id) != except && f.name.eq_ignore_ascii_case(name)),
+            "A theme with this name already exists"
+        );
+        Ok(())
+    }
+    fn unique_variant_names<'a>(
+        &self,
+        names: impl IntoIterator<Item = &'a str>,
+        except_family: Option<u64>,
+    ) -> Result<()> {
+        let mut seen: Vec<&str> = Vec::new();
+        for name in names {
+            ensure!(!name.trim().is_empty(), "Enter a variant name");
+            ensure!(
+                !seen.iter().any(|other| other.eq_ignore_ascii_case(name)),
+                "Variant names must be unique"
+            );
+            ensure!(
+                !self
+                    .families
+                    .iter()
+                    .filter(|family| Some(family.id) != except_family)
+                    .flat_map(|family| &family.variants)
+                    .any(|variant| variant.name().eq_ignore_ascii_case(name)),
+                "A variant with this name already exists"
+            );
+            seen.push(name);
+        }
+        Ok(())
+    }
+    fn replace_slots(&mut self, slots: [String; 2]) -> Result<()> {
+        settings::replace_theme_slots(&slots)?;
+        self.slots = slots;
+        Ok(())
+    }
+    pub fn set_current(&mut self, id: u64, kind: ThemeKind) -> Result<()> {
+        let variant = self
+            .variant_by_id(id)
+            .context("Theme variant is unavailable")?;
+        ensure!(
+            variant.mode() == kind.mode(),
+            "Theme variant has the wrong mode"
+        );
+        let mut slots = self.slots.clone();
+        *kind.select_mut(&mut slots) = variant.name().into();
+        self.replace_slots(slots)?;
+        let revision = kind.select_mut(&mut self.selection_revisions);
+        *revision = revision.saturating_add(1);
+        Ok(())
+    }
+    fn fallback(&self, mode: ThemeMode, excluding: &[u64]) -> String {
+        self.families
+            .iter()
+            .flat_map(|f| &f.variants)
+            .find(|v| v.mode() == mode && !excluding.contains(&v.id))
+            .map_or_else(
+                || {
+                    if mode == ThemeMode::Dark {
+                        DEFAULT_DARK
+                    } else {
+                        DEFAULT_LIGHT
+                    }
+                    .to_owned()
+                },
+                |v| v.name().to_owned(),
+            )
+    }
+    fn fallback_in_family(
+        &self,
+        family: &ThemeFamily,
+        mode: ThemeMode,
+        excluding: &[u64],
+    ) -> String {
+        family
+            .variants
+            .iter()
+            .find(|v| v.mode() == mode && !excluding.contains(&v.id))
+            .map_or_else(|| self.fallback(mode, excluding), |v| v.name().to_owned())
+    }
+    pub fn update_color(&mut self, id: u64, token: &str, value: Option<String>) -> Result<u64> {
+        self.update_document(id, |document| document.set_color(token, value))
+    }
+    pub fn update_highlight(&mut self, id: u64, token: &str, value: Option<String>) -> Result<u64> {
+        self.update_document(id, |document| document.set_highlight(token, value))
+    }
+    pub fn update_font(&mut self, id: u64, role: FontRole, family: Option<String>) -> Result<u64> {
+        self.update_document(id, |document| {
+            document.set_font(role, family);
+            Ok(())
+        })
+    }
+    pub fn apply_fonts_to_all(&mut self, id: u64) -> Result<u64> {
+        let family = self
+            .families
+            .iter_mut()
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
+            .context("Theme variant is unavailable")?;
+        family.ensure_editable()?;
+        let source = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
+            .context("Theme variant is unavailable")?
+            .document
+            .clone();
+        for variant in &mut family.variants {
+            for role in FontRole::ALL {
+                variant
+                    .document
+                    .set_font(role, source.font(role).map(str::to_owned));
+            }
+        }
+        family.changed();
+        Ok(family.id)
+    }
+    pub fn update_document(
+        &mut self,
+        variant_id: u64,
+        change: impl FnOnce(&mut ThemeDocument) -> Result<()>,
+    ) -> Result<u64> {
+        let family = self
+            .families
+            .iter_mut()
+            .find(|family| {
+                family
+                    .variants
+                    .iter()
+                    .any(|variant| variant.id == variant_id)
+            })
+            .context("Theme variant is unavailable")?;
+        family.ensure_editable()?;
+        let variant = family
+            .variants
+            .iter_mut()
+            .find(|variant| variant.id == variant_id)
+            .context("Theme variant is unavailable")?;
+        let mut next = variant.document.clone();
+        change(&mut next)?;
+        ensure!(
+            next.name() == variant.name() && next.mode() == variant.mode(),
+            "Use rename or change mode for identity changes"
+        );
+        variant.document = next;
+        family.changed();
+        Ok(family.id)
+    }
+    pub fn rename_family(&mut self, id: u64, name: &str) -> Result<()> {
+        let old = self.editable_family(id)?.clone();
+        let name = name.trim();
+        self.unique_name(name, Some(id))?;
+        let mut next = old.clone();
+        next.name = name.into();
+        for variant in &mut next.variants {
+            let suffix = variant
+                .name()
+                .strip_prefix(&old.name)
+                .unwrap_or_else(|| variant.name());
+            variant.document.set_name(&format!("{name}{suffix}"));
+        }
+        self.unique_variant_names(next.variants.iter().map(ThemeVariant::name), Some(id))?;
+        let mut slots = self.slots.clone();
+        for (before, after) in old.variants.iter().zip(&next.variants) {
+            for slot in &mut slots {
+                if slot == before.name() {
+                    *slot = after.name().into();
+                }
+            }
+        }
+        let family = self.editable_family_mut(id)?;
+        if let ThemeSource::Custom(ref path) = old.source {
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
+        }
+        next.persisted();
+        *family = next;
+        self.slots = slots;
+        Ok(())
+    }
+    pub fn rename_variant(&mut self, id: u64, suffix: &str) -> Result<()> {
+        let family = self
+            .families
+            .iter()
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
+            .context("Theme variant is unavailable")?;
+        family.ensure_editable()?;
+        let family_id = family.id;
+        let suffix = suffix.trim();
+        ensure!(
+            !suffix.is_empty() || family.variants.len() == 1,
+            "Enter a variant name"
+        );
+        ensure!(
+            !family.variants.iter().any(|v| v.id != id
+                && v.name()
+                    .eq_ignore_ascii_case(&format!("{} {suffix}", family.name))),
+            "This variant name already exists"
+        );
+        let name = if suffix.is_empty() {
+            family.name.clone()
+        } else {
+            format!("{} {suffix}", family.name)
+        };
+        self.unique_variant_names(std::iter::once(name.as_str()), Some(family.id))?;
+        let old = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
+            .context("Theme variant is unavailable")?
+            .name()
+            .to_owned();
+        let mut slots = self.slots.clone();
+        for slot in &mut slots {
+            if slot == &old {
+                slot.clone_from(&name);
+            }
+        }
+        let mut next = family.clone();
+        next.variants
+            .iter_mut()
+            .find(|v| v.id == id)
+            .context("Theme variant is unavailable")?
+            .document
+            .set_name(&name);
+        let family = self.editable_family_mut(family_id)?;
+        if let ThemeSource::Custom(ref path) = next.source {
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
+        }
+        next.persisted();
+        *family = next;
+        self.slots = slots;
+        Ok(())
+    }
+    /// The first addition supplies both suffixes atomically. For later additions `existing_suffix` is None.
+    pub fn add_variant(
+        &mut self,
+        family_id: u64,
+        from: u64,
+        suffix: &str,
+        existing_suffix: Option<&str>,
+    ) -> Result<u64> {
+        let family = self.editable_family(family_id)?;
+        let source = family
+            .variants
+            .iter()
+            .find(|v| v.id == from)
+            .context("Source variant is unavailable")?
+            .clone();
+        let suffix = suffix.trim();
+        ensure!(!suffix.is_empty(), "Enter a variant name");
+        if family.variants.len() == 1 {
+            let existing = existing_suffix
+                .context("Name both variants before adding")?
+                .trim();
+            ensure!(
+                !existing.is_empty() && !existing.eq_ignore_ascii_case(suffix),
+                "Variant suffixes must be non-empty and unique"
+            );
+            let first_name = format!("{} {existing}", family.name);
+            let second_name = format!("{} {suffix}", family.name);
+            self.unique_variant_names(
+                [first_name.as_str(), second_name.as_str()],
+                Some(family_id),
+            )?;
+            let mut next = family.clone();
+            next.variants
+                .first_mut()
+                .context("Source variant is unavailable")?
+                .document
+                .set_name(&first_name);
+            let id = next_id();
+            let original_name = source.name().to_owned();
+            let mut document = source.document;
+            document.set_name(&second_name);
+            next.variants.push(ThemeVariant { id, document });
+            let mut slots = self.slots.clone();
+            for slot in &mut slots {
+                if slot == &original_name {
+                    slot.clone_from(&first_name);
+                }
+            }
+            let family = self.editable_family_mut(family_id)?;
+            if let ThemeSource::Custom(ref path) = next.source {
+                storage::replace_and_update(path, &next.set(), || {
+                    settings::replace_theme_slots(&slots)
+                })?;
+            }
+            next.persisted();
+            *family = next;
+            self.slots = slots;
+            return Ok(id);
+        }
+        ensure!(
+            !family.variants.iter().any(|v| family
+                .suffix(v.id)
+                .is_some_and(|s| s.eq_ignore_ascii_case(suffix))),
+            "This variant name already exists"
+        );
+        let mut document = source.document;
+        document.set_name(&format!("{} {suffix}", family.name));
+        self.unique_variant_names(std::iter::once(document.name()), Some(family_id))?;
+        let id = next_id();
+        let family = self.editable_family_mut(family_id)?;
+        family.variants.push(ThemeVariant { id, document });
+        family.changed();
+        Ok(id)
+    }
+    pub fn next_suffix(&self, family_id: u64) -> Result<String> {
+        let family = self.family(family_id).context("Theme is unavailable")?;
+        for n in 1.. {
+            let suffix = format!("Variant {n}");
+            if !family.variants.iter().any(|v| {
+                family
+                    .suffix(v.id)
+                    .is_some_and(|s| s.eq_ignore_ascii_case(&suffix))
+            }) {
+                return Ok(suffix);
+            }
+        }
+        bail!("No variant name available")
+    }
+    pub fn change_mode(&mut self, id: u64, mode: ThemeMode) -> Result<()> {
+        let family = self
+            .families
+            .iter()
+            .find(|family| family.variants.iter().any(|variant| variant.id == id))
+            .context("Theme variant is unavailable")?;
+        family.ensure_editable()?;
+        let family_id = family.id;
+        let old = family
+            .variants
+            .iter()
+            .find(|variant| variant.id == id)
+            .context("Theme variant is unavailable")?;
+        if old.mode() == mode {
+            return Ok(());
+        }
+        let old_name = old.name().to_owned();
+        let old_mode = old.mode();
+        let mut slots = self.slots.clone();
+        let slot = ThemeKind::from(old_mode).select_mut(&mut slots);
+        if *slot == old_name {
+            *slot = self.fallback_in_family(family, old_mode, &[id]);
+        }
+        let mut next = family.clone();
+        next.variants
+            .iter_mut()
+            .find(|v| v.id == id)
+            .context("Theme variant is unavailable")?
+            .document
+            .set_mode(mode);
+        let family = self.editable_family_mut(family_id)?;
+        if let ThemeSource::Custom(ref path) = next.source {
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
+        }
+        next.persisted();
+        *family = next;
+        self.slots = slots;
+        Ok(())
+    }
+    pub fn copy_family(&mut self, id: u64, name: &str) -> Result<u64> {
+        self.unique_name(name, None)?;
+        let original = self.family(id).context("Theme is unavailable")?.clone();
+        let mut set = original.set();
+        set.name = name.trim().into();
+        for variant in &mut set.themes {
+            let tail = variant
+                .name()
+                .strip_prefix(&original.name)
+                .unwrap_or_else(|| variant.name())
+                .to_owned();
+            variant.set_name(&format!("{}{tail}", name.trim()));
+            variant.config.is_default = false;
+        }
+        self.unique_variant_names(set.themes.iter().map(ThemeDocument::name), None)?;
+        let path = self.new_path();
+        storage::write(&path, &set)?;
+        self.insert_set(set, ThemeSource::Custom(path))
+    }
+    pub fn suggested_copy_name(&self, name: &str) -> String {
+        let mut candidate = format!("{name} copy");
+        let mut n = 2u64;
+        while self
+            .families
+            .iter()
+            .any(|family| family.name.eq_ignore_ascii_case(&candidate))
+        {
+            candidate = format!("{name} copy {n}");
+            n = n.saturating_add(1);
+        }
+        candidate
+    }
+    fn new_path(&self) -> PathBuf {
+        self.directory
+            .join(format!("theme-{:032x}.json", rand::random::<u128>()))
+    }
+    pub fn remove_variant(&mut self, id: u64) -> Result<DeletedTheme> {
+        let (ix, family) = self
+            .families
+            .iter()
+            .enumerate()
+            .find(|(_, family)| family.variants.iter().any(|variant| variant.id == id))
+            .context("Theme variant is unavailable")?;
+        family.ensure_editable()?;
+        if family.variants.len() == 1 {
+            return self.delete_family(family.id);
+        }
+        let old = family.clone();
+        let before = self.slots.clone();
+        let mut next = old.clone();
+        let position = next
+            .variants
+            .iter()
+            .position(|v| v.id == id)
+            .context("Theme variant is unavailable")?;
+        let removed = next.variants.remove(position);
+        let mut slots = self.slots.clone();
+        let slot = ThemeKind::from(removed.mode()).select_mut(&mut slots);
+        if *slot == removed.name() {
+            *slot = self.fallback_in_family(family, removed.mode(), &[id]);
+        }
+        let family = self.editable_family_mut(old.id)?;
+        if let ThemeSource::Custom(ref path) = old.source {
+            storage::replace_and_update(path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
+        }
+        next.persisted();
+        *family = next;
+        self.slots = slots;
+        Ok(DeletedTheme {
+            old,
+            position: ix,
+            slots_before: before,
+            selection_revisions: self.selection_revisions,
+            removed_variant_id: Some(removed.id),
+        })
+    }
+    pub fn delete_family(&mut self, id: u64) -> Result<DeletedTheme> {
+        let (ix, family) = self
+            .families
+            .iter()
+            .enumerate()
+            .find(|(_, family)| family.id == id)
+            .context("Theme is unavailable")?;
+        family.ensure_editable()?;
+        let old = family.clone();
+        let before = self.slots.clone();
+        let mut slots = before.clone();
+        let ids: Vec<_> = old.variants.iter().map(|v| v.id).collect();
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            let slot = kind.select_mut(&mut slots);
+            if old.variants.iter().any(|v| v.name() == *slot) {
+                *slot = self.fallback(kind.mode(), &ids);
+            }
+        }
+        if let ThemeSource::Custom(ref path) = old.source {
+            storage::remove_and_update(path, || settings::replace_theme_slots(&slots))?;
+        }
+        self.slots = slots;
+        self.families.remove(ix);
+        Ok(DeletedTheme {
+            old,
+            position: ix,
+            slots_before: before,
+            selection_revisions: self.selection_revisions,
+            removed_variant_id: None,
+        })
+    }
+    pub fn undo_delete(&mut self, deleted: DeletedTheme) -> Result<()> {
+        let removed_family = deleted.removed_variant_id.is_none();
+        self.unique_name(
+            &deleted.old.name,
+            (!removed_family).then_some(deleted.old.id),
+        )?;
+        let path = match &deleted.old.source {
+            ThemeSource::Custom(path) => path.clone(),
+            ThemeSource::Bundled => bail!("Built-in themes cannot be restored"),
+        };
+        let restore_slots = [ThemeKind::Light, ThemeKind::Dark].map(|kind| {
+            kind.select(&self.selection_revisions) == kind.select(&deleted.selection_revisions)
+                && deleted.old.variants.iter().any(|variant| {
+                    variant.name() == kind.select(&deleted.slots_before).as_str()
+                        && variant.mode() == kind.mode()
+                        && deleted.removed_variant_id.is_none_or(|id| variant.id == id)
+                })
+        });
+        let mut next = if let Some(removed_id) = deleted.removed_variant_id {
+            let current = self
+                .family(deleted.old.id)
+                .context("Theme was renamed or deleted after removing the variant")?;
+            Self::restore_variant(current, &deleted.old, removed_id)?
+        } else {
+            deleted.old
+        };
+        let mut slots = self.slots.clone();
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            if *kind.select(&restore_slots) {
+                kind.select_mut(&mut slots)
+                    .clone_from(kind.select(&deleted.slots_before));
+            }
+        }
+        self.validate_restored(&next, &slots, !removed_family)?;
+        let family = if removed_family {
+            None
+        } else {
+            Some(self.editable_family_mut(next.id)?)
+        };
+        if removed_family {
+            storage::write(&path, &next.set())?;
+            if let Err(error) = settings::replace_theme_slots(&slots) {
+                let _ = std::fs::remove_file(&path);
+                return Err(error);
+            }
+        } else {
+            storage::replace_and_update(&path, &next.set(), || {
+                settings::replace_theme_slots(&slots)
+            })?;
+        }
+        next.persisted();
+        if let Some(family) = family {
+            *family = next;
+        } else {
+            self.families
+                .insert(deleted.position.min(self.families.len()), next);
+        }
+        self.slots = slots;
+        Ok(())
+    }
+    fn restore_variant(current: &ThemeFamily, old: &ThemeFamily, id: u64) -> Result<ThemeFamily> {
+        ensure!(
+            current.name == old.name,
+            "Theme was renamed after removing the variant"
+        );
+        let (position, removed) = old
+            .variants
+            .iter()
+            .enumerate()
+            .find(|(_, variant)| variant.id == id)
+            .context("Removed variant is unavailable")?;
+        ensure!(
+            !current.variants.iter().any(|variant| variant.id == id),
+            "Variant has already been restored"
+        );
+        let mut next = current.clone();
+        let successor = old
+            .variants
+            .iter()
+            .skip(position.saturating_add(1))
+            .find_map(|variant| next.variants.iter().position(|v| v.id == variant.id));
+        let predecessor = || {
+            old.variants
+                .iter()
+                .take(position)
+                .rev()
+                .find_map(|variant| {
+                    next.variants
+                        .iter()
+                        .position(|v| v.id == variant.id)
+                        .map(|ix| ix.saturating_add(1))
+                })
+        };
+        let index = successor
+            .or_else(predecessor)
+            .unwrap_or_else(|| position.min(next.variants.len()));
+        next.variants.insert(index, removed.clone());
+        Ok(next)
+    }
+    fn validate_restored(
+        &self,
+        family: &ThemeFamily,
+        slots: &[String; 2],
+        replacing: bool,
+    ) -> Result<()> {
+        ensure!(
+            !family.variants.is_empty(),
+            "A theme needs at least one variant"
+        );
+        ensure!(
+            family.variants.iter().all(|variant| valid_variant_name(
+                &family.name,
+                variant.name(),
+                family.variants.len() > 1
+            )),
+            "Restored theme has invalid variant names"
+        );
+        self.unique_variant_names(
+            family.variants.iter().map(ThemeVariant::name),
+            replacing.then_some(family.id),
+        )?;
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            let name = kind.select(slots);
+            let valid_in_restored = family
+                .variants
+                .iter()
+                .any(|variant| variant.name() == name && variant.mode() == kind.mode());
+            let valid_elsewhere = self
+                .families
+                .iter()
+                .filter(|other| other.id != family.id)
+                .flat_map(|other| &other.variants)
+                .any(|variant| variant.name() == name && variant.mode() == kind.mode());
+            ensure!(
+                valid_in_restored || valid_elsewhere,
+                "Current {kind:?} theme is unavailable or has the wrong mode"
+            );
+        }
+        Ok(())
+    }
+    pub fn export(&self, id: u64, to: &Path) -> Result<()> {
+        let family = self.family(id).context("Theme is unavailable")?;
+        ensure!(
+            matches!(family.source, ThemeSource::Custom(_)),
+            "Only custom themes can be exported"
+        );
+        storage::write(to, &family.set())
+    }
+    /// Read and normalize once, so conflict detection and import share the same document.
+    pub fn prepare_import(&self, from: &Path) -> Result<PreparedThemeImport> {
+        let set = storage::read(from)?;
+        let conflict = self
+            .families
+            .iter()
+            .find(|family| family.name.eq_ignore_ascii_case(&set.name))
+            .map(ThemeFamily::id);
+        Ok(PreparedThemeImport { set, conflict })
+    }
+    /// Commit the prepared document using the chosen conflict policy.
+    pub fn import_prepared(
+        &mut self,
+        prepared: &PreparedThemeImport,
+        policy: ImportPolicy,
+    ) -> Result<u64> {
+        let mut set = prepared.set.clone();
+        let existing = self
+            .families
+            .iter()
+            .find(|family| family.name.eq_ignore_ascii_case(&set.name))
+            .cloned();
+        match (existing, policy) {
+            (Some(family), ImportPolicy::Replace) => {
+                let ThemeSource::Custom(ref path) = family.source else {
+                    bail!("Built-in themes cannot be replaced")
+                };
+                set.rename(&family.name);
+                self.normalize_replacement_names(&mut set, &family);
+                // Preserve runtime identities for matching names.
+                let mut next = family.clone();
+                next.author = set.author.map(|author| author.to_string());
+                next.url = set.url.map(|url| url.to_string());
+                next.variants = set
+                    .themes
+                    .drain(..)
+                    .map(|document| {
+                        let id = family
+                            .variants
+                            .iter()
+                            .find(|v| v.name() == document.name())
+                            .map_or_else(next_id, |v| v.id);
+                        ThemeVariant { id, document }
+                    })
+                    .collect();
+                self.unique_variant_names(
+                    next.variants.iter().map(ThemeVariant::name),
+                    Some(family.id),
+                )?;
+                ensure!(
+                    !next.variants.is_empty(),
+                    "A theme needs at least one variant"
+                );
+                let slots = self.slots_after_import(&family, &next);
+                let target = self.editable_family_mut(family.id)?;
+                storage::replace_and_update(path, &next.set(), || {
+                    settings::replace_theme_slots(&slots)
+                })?;
+                next.persisted();
+                *target = next;
+                self.slots = slots;
+                Ok(family.id)
+            }
+            (Some(_), ImportPolicy::Copy) => {
+                set.rename(&self.suggested_copy_name(&set.name));
+                self.unique_variant_names(set.themes.iter().map(ThemeDocument::name), None)?;
+                self.store_import(set)
+            }
+            (None, _) => {
+                self.unique_variant_names(set.themes.iter().map(ThemeDocument::name), None)?;
+                self.store_import(set)
+            }
+        }
+    }
+    fn normalize_replacement_names(&self, set: &mut StoredThemeSet, family: &ThemeFamily) {
+        let multi = set.themes.len() > 1;
+        let mut processed_names = BTreeSet::new();
+        let mut remaining = set.themes.as_mut_slice();
+        while let Some((document, rest)) = remaining.split_first_mut() {
+            if !valid_variant_name(&family.name, document.name(), multi) {
+                for n in 1.. {
+                    let candidate = if multi || n > 1 {
+                        format!("{} Variant {n}", family.name)
+                    } else {
+                        family.name.clone()
+                    };
+                    let taken_in_import = processed_names.contains(&candidate.to_ascii_lowercase())
+                        || document.name().eq_ignore_ascii_case(&candidate)
+                        || rest
+                            .iter()
+                            .any(|document| document.name().eq_ignore_ascii_case(&candidate));
+                    let taken_elsewhere = self
+                        .families
+                        .iter()
+                        .filter(|other| other.id != family.id)
+                        .flat_map(|other| &other.variants)
+                        .any(|variant| variant.name().eq_ignore_ascii_case(&candidate));
+                    if !taken_in_import && !taken_elsewhere {
+                        document.set_name(&candidate);
+                        break;
+                    }
+                }
+            }
+            processed_names.insert(document.name().to_ascii_lowercase());
+            remaining = rest;
+        }
+    }
+    fn store_import(&mut self, set: StoredThemeSet) -> Result<u64> {
+        let path = self.new_path();
+        let id = self.insert_set(set, ThemeSource::Custom(path.clone()))?;
+        let normalized = self
+            .family(id)
+            .context("Imported theme is unavailable")?
+            .set();
+        if let Err(error) = storage::write(&path, &normalized) {
+            self.families.retain(|family| family.id != id);
+            return Err(error);
+        }
+        Ok(id)
+    }
+    fn slots_after_import(&self, old: &ThemeFamily, next: &ThemeFamily) -> [String; 2] {
+        let mut slots = self.slots.clone();
+        let old_ids: Vec<_> = old.variants.iter().map(|variant| variant.id).collect();
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            let slot = kind.select_mut(&mut slots);
+            if old.variants.iter().any(|variant| variant.name() == *slot)
+                && !next
+                    .variants
+                    .iter()
+                    .any(|variant| variant.name() == *slot && variant.mode() == kind.mode())
+            {
+                *slot = next
+                    .variants
+                    .iter()
+                    .find(|variant| variant.mode() == kind.mode())
+                    .map_or_else(
+                        || self.fallback(kind.mode(), &old_ids),
+                        |variant| variant.name().to_owned(),
+                    );
+            }
+        }
+        slots
+    }
+    /// Flush the latest revision for one family. A failed write retains the model and exposes Retry.
+    pub fn flush_family(&mut self, id: u64) -> Result<()> {
+        let family = self.editable_family_mut(id)?;
+        let ThemeSource::Custom(ref path) = family.source else {
+            bail!("Built-in themes cannot be saved")
+        };
+        let result = storage::write(path, &family.set());
+        family.status = match &result {
+            Ok(()) => SaveStatus::Autosaved,
+            Err(error) => SaveStatus::Failed(error.to_string()),
+        };
+        result
+    }
+    pub fn flush_pending(&mut self) -> Vec<(u64, anyhow::Error)> {
+        let mut errors = Vec::new();
+        for ix in 0..self.families.len() {
+            if let Some(family) = self.families.get(ix)
+                && matches!(family.status, SaveStatus::Saving | SaveStatus::Failed(_))
+            {
+                let id = family.id;
+                if let Err(error) = self.flush_family(id) {
+                    errors.push((id, error));
+                }
+            }
+        }
+        errors
+    }
+    /// Schedule after each valid edit; revision checks coalesce edits and prevent stale writes.
+    pub fn schedule_save(id: u64, cx: &App) {
+        let revision = cx.global::<Self>().family(id).map(|f| f.revision);
+        cx.spawn(async move |cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(400))
+                .await;
+            cx.update(|cx| {
+                if cx.try_global::<Self>().is_some() {
+                    let library = cx.global_mut::<Self>();
+                    if library.family(id).is_some_and(|f| {
+                        Some(f.revision) == revision && matches!(f.status, SaveStatus::Saving)
+                    }) {
+                        let _ = library.flush_family(id);
+                        cx.refresh_windows();
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+    pub fn resolved(
+        &self,
+        id: u64,
+        fonts: &super::fonts::FontCatalog,
+    ) -> Result<ResolvedAppearance> {
+        let document = &self
+            .variant_by_id(id)
+            .context("Theme variant is unavailable")?
+            .document;
+        Ok(resolve(document, &self.defaults, fonts))
+    }
+    pub fn resolved_config(&self, name: &str) -> Option<ThemeConfig> {
+        let document = self.get(name)?;
+        Some(merged_document(document, &self.defaults).config)
+    }
+}
+
+#[derive(Clone)]
+pub struct DeletedTheme {
+    old: ThemeFamily,
+    position: usize,
+    slots_before: [String; 2],
+    selection_revisions: [u64; 2],
+    removed_variant_id: Option<u64>,
+}
+impl DeletedTheme {
+    pub fn message(&self) -> String {
+        self.removed_variant_id
+            .and_then(|id| self.old.suffix(id))
+            .map_or_else(
+                || format!("Theme “{}” deleted", self.old.name()),
+                |name| format!("Variant “{name}” deleted"),
+            )
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub enum ImportPolicy {
+    Replace,
+    Copy,
+}
+
+fn resolve(
+    document: &ThemeDocument,
+    defaults: &[ThemeDocument; 2],
+    fonts: &super::fonts::FontCatalog,
+) -> ResolvedAppearance {
+    let resolved = merged_document(document, defaults);
+    let families = fonts.resolve_roles(&resolved);
+    let mut theme = Theme::default();
+    theme.apply_config(&Rc::new(resolved.config.clone()));
+    let [interface, _, _, code] = &families;
+    theme.font_family = interface.clone();
+    theme.mono_font_family = code.clone();
+    // Prepare token lookup once with the snapshot, never serialize the full
+    // configuration again for each editor row or swatch.
+    let mut colors: BTreeMap<_, _> = resolved
+        .colors()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, value)| Some((key, try_parse_color(value.as_deref()?).ok()?)))
+        .collect();
+    let mut defined_colors: BTreeSet<_> = colors.keys().cloned().collect();
+    // Resolve every editor row to the effective GPUI value, while keeping
+    // `defined_colors` limited to colors that the variant actually sets.
+    if let Ok(serde_json::Value::Object(effective)) = serde_json::to_value(theme.colors)
+        && let Ok(configured) = resolved.colors()
+    {
+        for token in configured.keys() {
+            if colors.contains_key(token) {
+                continue;
+            }
+            let normalized = token.strip_prefix("base.").unwrap_or(token);
+            let field = match token.as_str() {
+                // GPUI 0.6.1 accepts this legacy config key without storing
+                // a distinct resolved color; the group label uses its normal foreground.
+                "group_box.title.foreground" => "group_box_foreground".to_owned(),
+                "input.border" => "input".to_owned(),
+                "slider.background" => "slider_bar".to_owned(),
+                _ => normalized
+                    .strip_suffix(".background")
+                    .unwrap_or(normalized)
+                    .replace('.', "_"),
+            };
+            if let Some(value) = effective.get(&field)
+                && let Ok(color) = serde_json::from_value::<gpui_kit::Hsla>(value.clone())
+            {
+                colors.insert(token.clone(), color);
+            }
+        }
+    }
+    let explicit_highlight = document
+        .config
+        .highlight
+        .as_ref()
+        .and_then(|highlight| serde_json::to_value(highlight).ok());
+    if let Some(highlight) = &resolved.config.highlight
+        && let Ok(serde_json::Value::Object(values)) = serde_json::to_value(highlight)
+    {
+        for (key, value) in values {
+            if key == "syntax" {
+                if let Some(styles) = value.as_object() {
+                    for (name, style) in styles {
+                        if let Some(value) = style.get("color").and_then(serde_json::Value::as_str)
+                            && let Ok(color) = try_parse_color(value)
+                        {
+                            if explicit_highlight
+                                .as_ref()
+                                .and_then(|highlight| highlight.get("syntax"))
+                                .and_then(|styles| styles.get(name))
+                                .and_then(|style| style.get("color"))
+                                .and_then(serde_json::Value::as_str)
+                                .is_some()
+                            {
+                                defined_colors.insert(format!("highlight:syntax.{name}"));
+                            }
+                            colors.insert(format!("highlight:syntax.{name}"), color);
+                        }
+                    }
+                }
+            } else if let Some(value) = value.as_str()
+                && let Ok(color) = try_parse_color(value)
+            {
+                if explicit_highlight
+                    .as_ref()
+                    .and_then(|highlight| highlight.get(&key))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+                {
+                    defined_colors.insert(format!("highlight:{key}"));
+                }
+                colors.insert(format!("highlight:{key}"), color);
+            }
+        }
+    }
+    ResolvedAppearance {
+        theme,
+        fonts: families,
+        colors,
+        defined_colors,
+    }
+}
+
+fn merged_document(document: &ThemeDocument, defaults: &[ThemeDocument; 2]) -> ThemeDocument {
+    let [light, dark] = defaults;
+    let default = match document.mode() {
+        ThemeMode::Light => light,
+        ThemeMode::Dark => dark,
+    };
+    let explicit_colors = document.config.colors.clone();
+    let explicit_highlight = document.config.highlight.clone();
+    let mut merged = serde_json::to_value(default).unwrap_or_default();
+    if let Ok(value) = serde_json::to_value(document) {
+        let mut value = value;
+        storage::merge_missing(&mut value, &merged);
+        merged = value;
+    }
+    let mut merged: ThemeDocument =
+        serde_json::from_value(merged).unwrap_or_else(|_| default.clone());
+
+    // Datalith supplies inherited presentation settings and font roles, but
+    // colors are sparse overrides: GPUI owns their mode-aware fallback graph.
+    merged.config.colors = explicit_colors;
+
+    // Keep explicit syntax colors and styles, filling the rest from GPUI's
+    // built-in mode-specific highlight theme instead of Datalith's palette.
+    let default_highlight = gpui_highlight_fallback(document.mode());
+    let mut highlight = explicit_highlight
+        .as_ref()
+        .and_then(|highlight| serde_json::to_value(highlight).ok())
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    if let Ok(default_highlight) = serde_json::to_value(&default_highlight) {
+        storage::merge_missing(&mut highlight, &default_highlight);
+    }
+    merged.config.highlight = serde_json::from_value(highlight)
+        .ok()
+        .or(Some(default_highlight));
+    merged
+}
+
+fn gpui_highlight_fallback(mode: ThemeMode) -> HighlightThemeStyle {
+    let theme = if mode == ThemeMode::Dark {
+        HighlightTheme::default_dark()
+    } else {
+        HighlightTheme::default_light()
+    };
+    theme.style.clone()
+}
+
+/// Applies the library's validated slots and the session's appearance preference.
+pub fn refresh_current(cx: &mut App) {
+    let library = cx.global::<ThemeLibrary>();
+    let light = library
+        .resolved_config(library.current(ThemeKind::Light))
+        .map(Rc::new);
+    let dark = library
+        .resolved_config(library.current(ThemeKind::Dark))
+        .map(Rc::new);
+    if let Some(light) = light {
+        Theme::global_mut(cx).light_theme = light;
+    }
+    if let Some(dark) = dark {
+        Theme::global_mut(cx).dark_theme = dark;
+    }
+    super::preferences::apply_theme_preference(settings::snapshot().theme_preference, cx);
+}

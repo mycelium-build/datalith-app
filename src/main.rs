@@ -35,10 +35,9 @@ fn main() {
         cx.set_app_identity(channel.identifier(), channel.product_name());
         app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
-        pending_notifications.extend(ui::themes::load_embedded_themes(cx));
-        ui::settings::SettingsView::init_theme_options(cx);
+        app::fonts::FontCatalog::init(cx);
+        pending_notifications.extend(app::themes::ThemeLibrary::init(cx));
 
-        pending_notifications.extend(app::preferences::apply(cx));
         cx.set_global(app::AppState::default());
         app::actions::register(cx);
         app::keymap::register(cx);

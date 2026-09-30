@@ -4,7 +4,7 @@ use gpui_kit::component::{WindowExt, input::InputEvent};
 use gpui_kit::{AppContext, Context, Window};
 use percent_encoding::percent_decode_str;
 
-use super::Tab;
+use super::{DocumentTab, Tab};
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
 use crate::document::registry::ViewerDependencies;
@@ -128,7 +128,7 @@ impl DatalithView {
         let tab_id = match mode {
             OpenMode::Replace | OpenMode::History { .. } => self
                 .tabs
-                .active()
+                .active_document()
                 .map_or_else(TabId::new, |tab| tab.id().clone()),
             OpenMode::NewTab | OpenMode::Created => TabId::new(),
             OpenMode::Restore { id, .. } => id.clone(),
@@ -138,14 +138,14 @@ impl DatalithView {
             OpenMode::NewTab | OpenMode::Created | OpenMode::Restore { .. } => {
                 (vec![path.clone()], 0)
             }
-            OpenMode::Replace => self.tabs.active().map_or_else(
+            OpenMode::Replace => self.tabs.active_document().map_or_else(
                 || (vec![path.clone()], 0),
                 |tab| next_history(&tab.history, tab.history_position, &path),
             ),
             OpenMode::History { position } => {
                 let history = self
                     .tabs
-                    .active()
+                    .active_document()
                     .map_or_else(|| vec![path.clone()], |tab| tab.history.clone());
                 (history, *position)
             }
@@ -191,7 +191,7 @@ impl DatalithView {
                 }
             },
         );
-        let tab = Tab {
+        let tab = Tab::Document(DocumentTab {
             id: tab_id,
             path: Some(path),
             handler,
@@ -199,7 +199,7 @@ impl DatalithView {
             _event_subscription: Some(event_subscription),
             history,
             history_position,
-        };
+        });
         self.tabs.insert(
             tab,
             matches!(
@@ -232,7 +232,7 @@ impl DatalithView {
         let mode = if read_only { ViewMode::View } else { mode };
         let handler = cx.new(|_cx| FileHandler::new(mode, None, None).with_read_only(read_only));
         self.tabs.insert(
-            Tab {
+            Tab::Document(DocumentTab {
                 id,
                 path: None,
                 handler,
@@ -240,7 +240,7 @@ impl DatalithView {
                 _event_subscription: None,
                 history: Vec::new(),
                 history_position: 0,
-            },
+            }),
             true,
         );
         cx.notify();
@@ -264,25 +264,17 @@ impl DatalithView {
         cx.notify();
     }
 
-    pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
-        if let Some(index) = self.tabs.active_index() {
-            self.close_tab(index, cx);
-        }
-    }
-
-    pub(crate) fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.tabs.remove(index) {
-            cx.notify();
-        }
-    }
-
     pub(crate) fn close_tabs_under(&mut self, root: &Path, cx: &mut Context<Self>) {
         let indices: Vec<_> = self
             .tabs
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, tab)| tab.path.as_ref().is_some_and(|path| path.starts_with(root)))
+            .filter(|(_, tab)| {
+                tab.document()
+                    .and_then(|tab| tab.path.as_ref())
+                    .is_some_and(|path| path.starts_with(root))
+            })
             .map(|(index, _)| index)
             .collect();
         for index in indices.into_iter().rev() {
@@ -292,7 +284,7 @@ impl DatalithView {
     }
 
     pub(crate) fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.active() else {
+        let Some(tab) = self.tabs.active_document() else {
             return;
         };
         let Some(position) = tab.history_position.checked_sub(1) else {
@@ -305,7 +297,7 @@ impl DatalithView {
     }
 
     pub(crate) fn go_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.active() else {
+        let Some(tab) = self.tabs.active_document() else {
             return;
         };
         let position = tab.history_position.saturating_add(1);
@@ -317,20 +309,14 @@ impl DatalithView {
 
     pub(crate) fn can_go_back(&self) -> bool {
         self.tabs
-            .active()
+            .active_document()
             .is_some_and(|tab| tab.history_position > 0)
     }
 
     pub(crate) fn can_go_forward(&self) -> bool {
         self.tabs
-            .active()
+            .active_document()
             .is_some_and(|tab| tab.history_position.saturating_add(1) < tab.history.len())
-    }
-
-    pub(crate) fn focus_active_tab(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(handler) = self.tabs.active_handler() {
-            handler.read(cx).focus_handle(cx).focus(window, cx);
-        }
     }
 }
 
@@ -356,7 +342,6 @@ mod tests {
     use super::{DatalithView, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
-    use crate::ui::settings::SettingsView;
 
     #[test]
     fn navigation_preserves_tab_identity_modes_and_only_history_creates_duplicates() {
@@ -375,7 +360,8 @@ mod tests {
         let mut cx = TestAppContext::single();
         cx.update(|cx| {
             gpui_kit::init(cx);
-            SettingsView::init_theme_options(cx);
+            crate::app::fonts::FontCatalog::init(cx);
+            crate::app::themes::ThemeLibrary::init(cx);
         });
         crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let window_handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {
@@ -392,36 +378,36 @@ mod tests {
                 .unwrap();
             view.update(cx, |view, cx| {
                 view.open_file(a.clone(), true, window, cx);
-                let first = view.tabs.active_tab_id().unwrap().clone();
+                let first = view.tabs.active_document_id().unwrap().clone();
                 view.open_file(b.clone(), false, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View
                 );
                 crate::app::settings::set_open_new_tab_mode(ViewMode::Edit).unwrap();
                 view.open_file(a.clone(), true, window, cx);
-                let second = view.tabs.active_tab_id().unwrap().clone();
+                let second = view.tabs.active_document_id().unwrap().clone();
                 assert_ne!(first, second);
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::Edit
                 );
                 view.open_file(b.clone(), true, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_back(window, cx);
                 assert_eq!(view.tabs.open_paths(), vec![a.clone(), a.clone()]);
                 assert_eq!(view.tabs.handlers_for_path(&a).count(), 2);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View
                 );
                 view.open_file(a.clone(), true, window, cx);
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_forward(window, cx);
                 assert_eq!(view.tabs.active_path(), Some(b.as_path()));
-                assert_eq!(view.tabs.active_tab_id(), Some(&first));
+                assert_eq!(view.tabs.active_document_id(), Some(&first));
                 view.go_back(window, cx);
                 let saved = view.tabs.snapshot(cx);
                 assert_eq!(
@@ -433,14 +419,14 @@ mod tests {
                 assert!(!view.can_go_back());
                 crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
                 view.open_created_file(created.clone(), window, cx);
-                let created_id = view.tabs.active_tab_id().unwrap().clone();
+                let created_id = view.tabs.active_document_id().unwrap().clone();
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::Edit
                 );
-                view.close_active_tab(cx);
+                view.close_active_tab(window, cx);
                 view.open_file(created.clone(), true, window, cx);
-                assert_ne!(view.tabs.active_tab_id(), Some(&created_id));
+                assert_ne!(view.tabs.active_document_id(), Some(&created_id));
                 assert_eq!(
                     view.tabs.active_handler().unwrap().read(cx).mode(),
                     ViewMode::View

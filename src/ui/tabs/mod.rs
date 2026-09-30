@@ -1,17 +1,29 @@
 mod navigation;
 mod render;
+mod workspace;
 
 pub use navigation::NavigationAction;
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{Entity, Subscription};
+use gpui_kit::{Entity, EntityId, Subscription};
 
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::FileHandler;
 use crate::vault::file_ops;
 
-pub struct Tab {
+use super::{shortcuts::ShortcutsView, themes::ThemeEditor};
+
+pub enum Tab {
+    Document(DocumentTab),
+    Theme {
+        editor: Entity<ThemeEditor>,
+        _change_subscription: Subscription,
+    },
+    Shortcuts(Entity<ShortcutsView>),
+}
+
+pub struct DocumentTab {
     id: TabId,
     path: Option<PathBuf>,
     handler: Entity<FileHandler>,
@@ -48,15 +60,16 @@ impl Tabs {
     }
 
     pub(crate) fn active_path(&self) -> Option<&Path> {
-        self.active().and_then(|tab| tab.path.as_deref())
+        self.active_document().and_then(|tab| tab.path.as_deref())
     }
 
     pub(crate) fn active_handler(&self) -> Option<&Entity<FileHandler>> {
-        self.active().map(|tab| &tab.handler)
+        self.active_document().map(|tab| &tab.handler)
     }
 
-    pub(crate) fn active_tab_id(&self) -> Option<&TabId> {
-        self.active().map(|tab| &tab.id)
+    /// ID of the active document, or `None` when a tool tab is active or no tab is active.
+    pub(crate) fn active_document_id(&self) -> Option<&TabId> {
+        self.active_document().map(|tab| &tab.id)
     }
 
     pub(crate) fn handlers_for_path(
@@ -65,6 +78,7 @@ impl Tabs {
     ) -> impl Iterator<Item = &Entity<FileHandler>> {
         self.entries
             .iter()
+            .filter_map(Tab::document)
             .filter(move |tab| same_document(tab.path.as_deref(), Some(path)))
             .map(|tab| &tab.handler)
     }
@@ -73,32 +87,43 @@ impl Tabs {
     pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
         self.entries
             .iter()
+            .filter_map(Tab::document)
             .filter_map(|tab| tab.path.clone())
             .collect()
     }
 
-    pub(crate) fn iter(
+    /// Iterate over document tabs with their indices in the full tab collection.
+    /// Indices can have gaps where theme or shortcuts tabs are omitted.
+    pub(crate) fn iter_documents(
         &self,
     ) -> impl Iterator<Item = (usize, Option<&Path>, &Entity<FileHandler>)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .map(|(index, tab)| (index, tab.path.as_deref(), &tab.handler))
+        self.entries.iter().enumerate().filter_map(|(index, tab)| {
+            tab.document()
+                .map(|tab| (index, tab.path.as_deref(), &tab.handler))
+        })
     }
 
-    pub(crate) fn iter_with_id(
+    fn active_document(&self) -> Option<&DocumentTab> {
+        self.active().and_then(Tab::document)
+    }
+
+    pub(crate) fn theme_editor_for(
         &self,
-    ) -> impl Iterator<Item = (usize, &TabId, Option<&Path>, &Entity<FileHandler>)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .map(|(index, tab)| (index, &tab.id, tab.path.as_deref(), &tab.handler))
+        family_id: u64,
+        cx: &gpui_kit::App,
+    ) -> Option<&Entity<ThemeEditor>> {
+        self.entries.iter().find_map(|tab| match tab {
+            Tab::Theme { editor, .. } if editor.read(cx).family_id() == family_id => Some(editor),
+            _ => None,
+        })
     }
 
+    /// Persist documents only; theme editors and shortcuts are session-only tabs.
     pub(crate) fn snapshot(&self, cx: &gpui_kit::App) -> (Vec<WorkspaceTab>, Option<TabId>) {
         let tabs = self
             .entries
             .iter()
+            .filter_map(Tab::document)
             .map(|tab| {
                 WorkspaceTab::new(
                     tab.id.clone(),
@@ -107,7 +132,7 @@ impl Tabs {
                 )
             })
             .collect();
-        let active_id = self.active_tab_id().cloned();
+        let active_id = self.active_document_id().cloned();
         (tabs, active_id)
     }
 
@@ -133,17 +158,23 @@ impl Tabs {
             && self
                 .entries
                 .get(index)
+                .and_then(Tab::document)
                 .is_some_and(|tab| same_document(tab.path.as_deref(), Some(path)))
         {
             return Some(index);
         }
-        self.entries
-            .iter()
-            .position(|tab| same_document(tab.path.as_deref(), Some(path)))
+        self.entries.iter().position(|tab| {
+            tab.document()
+                .is_some_and(|tab| same_document(tab.path.as_deref(), Some(path)))
+        })
     }
 
     pub(crate) fn select_by_id(&mut self, id: &TabId) -> bool {
-        let Some(index) = self.entries.iter().position(|tab| &tab.id == id) else {
+        let Some(index) = self
+            .entries
+            .iter()
+            .position(|tab| tab.document().is_some_and(|tab| &tab.id == id))
+        else {
             return false;
         };
         self.active = Some(index);
@@ -156,7 +187,8 @@ impl Tabs {
     }
 
     fn insert(&mut self, tab: Tab, new_tab: bool) {
-        if new_tab || self.entries.is_empty() {
+        // Opening a document must never replace a long-lived workspace tab.
+        if new_tab || self.active_document().is_none() {
             let index = self.entries.len();
             self.entries.push(tab);
             self.active = Some(index);
@@ -179,6 +211,9 @@ impl Tabs {
 
     pub(crate) fn rename_path(&mut self, old_path: &Path, new_path: &Path) {
         for tab in &mut self.entries {
+            let Tab::Document(tab) = tab else {
+                continue;
+            };
             if let Some(path) = &mut tab.path
                 && let Ok(suffix) = path.strip_prefix(old_path)
             {
@@ -205,6 +240,23 @@ fn active_after_removal(active: Option<usize>, removed: usize, remaining: usize)
 }
 
 impl Tab {
+    const fn document(&self) -> Option<&DocumentTab> {
+        match self {
+            Self::Document(tab) => Some(tab),
+            _ => None,
+        }
+    }
+
+    fn entity_id(&self) -> EntityId {
+        match self {
+            Self::Document(tab) => tab.handler.entity_id(),
+            Self::Theme { editor, .. } => editor.entity_id(),
+            Self::Shortcuts(view) => view.entity_id(),
+        }
+    }
+}
+
+impl DocumentTab {
     pub(crate) const fn id(&self) -> &TabId {
         &self.id
     }

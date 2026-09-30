@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 
-use gpui_kit::component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
+use gpui_kit::component::{Theme, VirtualListScrollHandle, h_flex, v_flex, v_virtual_list};
 use gpui_kit::component::{scroll::Scrollbar, scroll::ScrollbarMode};
 use gpui_kit::{
-    AnyElement, App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
-    ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
+    AnyElement, Context, ElementId, Font, Hsla, InteractiveElement, IntoElement, ParentElement,
+    Pixels, ScrollHandle, Size, StatefulInteractiveElement, Styled, TextRun, Window, div, px, size,
 };
 
 use crate::document::base::{BaseView, TableRowHeight};
@@ -24,7 +24,7 @@ const TABLE_EXTRA_TALL_HEIGHT: f32 = 72.0;
 
 #[derive(Default)]
 struct ColumnWidths {
-    key: Option<(u64, f32)>,
+    key: Option<(u64, f32, Font)>,
     widths: Vec<Pixels>,
 }
 
@@ -51,15 +51,15 @@ fn build_table_header(
     view: &BaseView,
     column_widths: &[Pixels],
     table_min_width: Pixels,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     h_flex()
         .w_full()
         .min_w(table_min_width)
         .h(px(TABLE_HEADER_HEIGHT))
-        .bg(cx.theme().tab_bar)
+        .bg(theme.table_head)
         .border_b_1()
-        .border_color(cx.theme().border)
+        .border_color(theme.border)
         .children(
             view.order
                 .iter()
@@ -72,7 +72,7 @@ fn build_table_header(
                         .flex_shrink_0()
                         .px_2()
                         .items_center()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(theme.table_head_foreground)
                         .child(snapshot.definition.display_label(property).to_string())
                 }),
         )
@@ -82,7 +82,8 @@ fn build_table_header(
 fn render_summary_column(
     display: Option<&super::snapshot::SummaryDisplay>,
     width: Pixels,
-    cx: &App,
+    title_color: Hsla,
+    text_color: Hsla,
 ) -> AnyElement {
     let title = display.map_or(String::new(), |display| display.title.clone());
     let text = display.map_or(String::new(), |display| display.text.clone());
@@ -93,18 +94,8 @@ fn render_summary_column(
         .flex_shrink_0()
         .px_2()
         .justify_center()
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(title),
-        )
-        .child(
-            div()
-                .text_sm()
-                .text_color(cx.theme().foreground)
-                .child(text),
-        )
+        .child(div().text_xs().text_color(title_color).child(title))
+        .child(div().text_sm().text_color(text_color).child(text))
         .into_any_element()
 }
 
@@ -113,7 +104,7 @@ fn build_table_footer(
     view: &BaseView,
     column_widths: &[Pixels],
     table_min_width: Pixels,
-    cx: &App,
+    theme: &Theme,
 ) -> Option<AnyElement> {
     if snapshot.summaries.is_empty() {
         return None;
@@ -123,15 +114,20 @@ fn build_table_footer(
             .w_full()
             .min_w(table_min_width)
             .h(px(TABLE_FOOTER_HEIGHT))
-            .bg(cx.theme().tab_bar)
+            .bg(theme.table_foot)
             .border_t_1()
-            .border_color(cx.theme().border)
+            .border_color(theme.border)
             .children(
                 view.order
                     .iter()
                     .zip(column_widths.iter())
                     .map(|(property, width)| {
-                        render_summary_column(snapshot.summary_for(&property.source), *width, cx)
+                        render_summary_column(
+                            snapshot.summary_for(&property.source),
+                            *width,
+                            theme.table_foot_foreground,
+                            theme.table_foot_foreground,
+                        )
                     }),
             )
             .into_any_element(),
@@ -153,10 +149,10 @@ impl BaseViewState {
         let item_sizes = table_state.item_sizes.clone();
         let handler = self.handler.clone();
         let font_size = f32::from(window.text_style().font_size.to_pixels(window.rem_size()));
-        let width_key = (snapshot.id, font_size);
+        let width_key = (snapshot.id, font_size, window.text_style().font());
         {
             let mut cache = table_state.column_widths.borrow_mut();
-            if cache.key != Some(width_key) {
+            if cache.key.as_ref() != Some(&width_key) {
                 cache.widths = column_widths(snapshot, view, window);
                 cache.key = Some(width_key);
             }
@@ -164,8 +160,20 @@ impl BaseViewState {
         let column_widths = table_state.column_widths.borrow().widths.clone();
         let table_min_width = table_width(&column_widths);
         let row_column_widths = column_widths.clone();
-        let footer = build_table_footer(snapshot, view, &column_widths, table_min_width, cx);
-        let header = build_table_header(snapshot, view, &column_widths, table_min_width, cx);
+        let footer = build_table_footer(
+            snapshot,
+            view,
+            &column_widths,
+            table_min_width,
+            self.theme(cx),
+        );
+        let header = build_table_header(
+            snapshot,
+            view,
+            &column_widths,
+            table_min_width,
+            self.theme(cx),
+        );
         let list = v_virtual_list(
             entity,
             "base-table",
@@ -187,7 +195,7 @@ impl BaseViewState {
                             table_min_width,
                             &row_column_widths,
                             &handler,
-                            cx,
+                            state.theme(cx),
                         )
                     })
                     .collect()
@@ -266,7 +274,7 @@ fn render_table_item(
     min_width: Pixels,
     column_widths: &[Pixels],
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     let Some(item) = snapshot.items.get(index) else {
         return div().into_any_element();
@@ -280,7 +288,7 @@ fn render_table_item(
             column_widths,
             view,
             snapshot.group_summaries_for(label),
-            cx,
+            theme,
         ),
         BaseItem::Row {
             index: row_index, ..
@@ -296,7 +304,7 @@ fn render_table_item(
                 min_width,
                 column_widths,
                 handler,
-                cx,
+                theme,
             )
         }
     }
@@ -320,7 +328,7 @@ fn render_group_header(
     column_widths: &[Pixels],
     view: &BaseView,
     summaries: &[super::snapshot::SummaryDisplay],
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     let mut header = div()
         .id(ElementId::Name(id.into()))
@@ -333,14 +341,14 @@ fn render_group_header(
         })
         .flex()
         .flex_col()
-        .bg(cx.theme().secondary)
+        .bg(theme.secondary)
         .child(
             h_flex()
                 .h(px(TABLE_HEADER_HEIGHT))
                 .items_center()
                 .px_2()
                 .gap_2()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(theme.muted_foreground)
                 .child(format!("{label} ({count})")),
         );
     if !summaries.is_empty() {
@@ -349,13 +357,18 @@ fn render_group_header(
                 h_flex()
                     .h(px(TABLE_FOOTER_HEIGHT))
                     .border_t_1()
-                    .border_color(cx.theme().border)
+                    .border_color(theme.border)
                     .children(view.order.iter().zip(column_widths.iter()).map(
                         |(property, width)| {
                             let display = summaries
                                 .iter()
                                 .find(|display| display.source == property.source);
-                            render_summary_column(display, *width, cx)
+                            render_summary_column(
+                                display,
+                                *width,
+                                theme.muted_foreground,
+                                theme.foreground,
+                            )
                         },
                     )),
             );
@@ -372,7 +385,7 @@ fn render_table_row(
     table_min_width: Pixels,
     column_widths: &[Pixels],
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     let table = view.as_table().copied().unwrap_or_default();
     div()
@@ -383,7 +396,7 @@ fn render_table_row(
         .flex()
         .items_center()
         .border_b_1()
-        .border_color(cx.theme().border)
+        .border_color(theme.border)
         .children(
             view.order
                 .iter()
@@ -397,14 +410,14 @@ fn render_table_row(
                             .max_w(px(TABLE_COLUMN_MAX_WIDTH))
                             .flex_shrink_0()
                             .px_2()
-                            .child(super::render_property_cell(
+                            .child(super::cells::render_property_cell_with_theme(
                                 snapshot,
                                 row,
                                 property,
                                 handler,
                                 ElementId::Name(format!("base-cell-{index}-{column}").into()),
                                 true,
-                                cx,
+                                theme,
                             )),
                     )
                 }),

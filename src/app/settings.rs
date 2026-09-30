@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 #[cfg(not(test))]
 use std::sync::{LazyLock, Mutex};
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::handler::ViewMode;
 
-const CURRENT_SCHEMA_VERSION: u32 = 3;
+const CURRENT_SCHEMA_VERSION: u32 = 4;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -39,15 +40,6 @@ impl ThemePreference {
             Self::System => "system",
             Self::Light => "light",
             Self::Dark => "dark",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "system" => Some(Self::System),
-            "light" => Some(Self::Light),
-            "dark" => Some(Self::Dark),
-            _ => None,
         }
     }
 
@@ -136,6 +128,94 @@ impl Default for ServerSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FontRole {
+    Interface,
+    Reading,
+    Headings,
+    Code,
+}
+
+impl FontRole {
+    pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Interface => 0,
+            Self::Reading => 1,
+            Self::Headings => 2,
+            Self::Code => 3,
+        }
+    }
+}
+impl ThemeKind {
+    pub const fn select<T>(self, values: &[T; 2]) -> &T {
+        let [light, dark] = values;
+        match self {
+            Self::Light => light,
+            Self::Dark => dark,
+        }
+    }
+    pub const fn select_mut<T>(self, values: &mut [T; 2]) -> &mut T {
+        let [light, dark] = values;
+        match self {
+            Self::Light => light,
+            Self::Dark => dark,
+        }
+    }
+    pub const fn mode(self) -> gpui_kit::component::ThemeMode {
+        match self {
+            Self::Light => gpui_kit::component::ThemeMode::Light,
+            Self::Dark => gpui_kit::component::ThemeMode::Dark,
+        }
+    }
+}
+impl From<gpui_kit::component::ThemeMode> for ThemeKind {
+    fn from(value: gpui_kit::component::ThemeMode) -> Self {
+        match value {
+            gpui_kit::component::ThemeMode::Light => Self::Light,
+            gpui_kit::component::ThemeMode::Dark => Self::Dark,
+        }
+    }
+}
+
+/// Optional families stored on an individual theme variant.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(default)]
+pub struct FontSettings {
+    interface: Option<String>,
+    reading: Option<String>,
+    headings: Option<String>,
+    code: Option<String>,
+}
+
+impl FontSettings {
+    pub fn is_empty(&self) -> bool {
+        FontRole::ALL
+            .into_iter()
+            .all(|role| self.family(role).is_none())
+    }
+    pub fn family(&self, role: FontRole) -> Option<&str> {
+        match role {
+            FontRole::Interface => self.interface.as_deref(),
+            FontRole::Reading => self.reading.as_deref(),
+            FontRole::Headings => self.headings.as_deref(),
+            FontRole::Code => self.code.as_deref(),
+        }
+    }
+
+    pub fn set_family(&mut self, role: FontRole, family: Option<String>) {
+        let value = match role {
+            FontRole::Interface => &mut self.interface,
+            FontRole::Reading => &mut self.reading,
+            FontRole::Headings => &mut self.headings,
+            FontRole::Code => &mut self.code,
+        };
+        *value = family
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ApplicationSettings {
@@ -149,6 +229,7 @@ pub struct ApplicationSettings {
     pub server: ServerSettings,
     pub automatic_updates: bool,
     pub(crate) open_new_tab_mode: ViewMode,
+    pub(crate) shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
 }
 
 impl Default for ApplicationSettings {
@@ -164,6 +245,7 @@ impl Default for ApplicationSettings {
             server: ServerSettings::default(),
             automatic_updates: true,
             open_new_tab_mode: ViewMode::Edit,
+            shortcut_overrides: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -209,6 +291,8 @@ struct StoredSettings {
     automatic_updates: Option<bool>,
     #[serde(default)]
     open_new_tab_mode: Option<String>,
+    #[serde(default)]
+    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
 }
 
 const fn schema_version() -> u32 {
@@ -258,6 +342,25 @@ impl StoredSettings {
                 Some("view") => ViewMode::View,
                 _ => ViewMode::Edit,
             },
+            shortcut_overrides: self
+                .shortcut_overrides
+                .into_iter()
+                .filter_map(|(id, binding)| {
+                    if id.is_empty() {
+                        return None;
+                    }
+                    match binding {
+                        Some(binding)
+                            if !binding.contains(char::is_whitespace)
+                                && gpui_kit::Keystroke::parse(&binding).is_ok() =>
+                        {
+                            Some((id, Some(binding)))
+                        }
+                        Some(_) => None,
+                        None => Some((id, None)),
+                    }
+                })
+                .collect(),
         }
     }
 
@@ -291,6 +394,7 @@ impl StoredSettings {
                 }
                 .to_owned(),
             ),
+            shortcut_overrides: settings.shortcut_overrides.clone(),
         }
     }
 }
@@ -308,13 +412,13 @@ fn normalize_font_scale(scale: f64) -> f64 {
     }
 }
 
-struct SettingsStore {
+pub(super) struct SettingsStore {
     file: PathBuf,
     cached: Option<ApplicationSettings>,
 }
 
 impl SettingsStore {
-    const fn new(file: PathBuf) -> Self {
+    pub(super) const fn new(file: PathBuf) -> Self {
         Self { file, cached: None }
     }
 
@@ -346,9 +450,24 @@ impl SettingsStore {
         fs::create_dir_all(parent).with_context(|| {
             format!("Failed to create settings directory: {}", parent.display())
         })?;
-        let json = serde_json::to_string(&StoredSettings::from_settings(settings))?;
-        fs::write(&self.file, json)
-            .with_context(|| format!("Failed to write settings: {}", self.file.display()))
+        let json = serde_json::to_vec(&StoredSettings::from_settings(settings))?;
+        let temporary = parent.join(format!(".settings-{:032x}.tmp", rand::random::<u128>()));
+        let result = (|| -> Result<()> {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(&json)?;
+            file.sync_all()?;
+            fs::rename(&temporary, &self.file)?;
+            #[cfg(unix)]
+            fs::File::open(parent)?.sync_all()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.with_context(|| format!("Failed to write settings: {}", self.file.display()))
     }
 }
 
@@ -380,7 +499,7 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
+pub(super) fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
 }
 
@@ -391,6 +510,12 @@ pub fn snapshot() -> ApplicationSettings {
 
 fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
     with_store(|store| store.update(update))
+}
+
+pub fn set_shortcut_overrides(
+    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
+) -> Result<()> {
+    update(|settings| settings.shortcut_overrides = shortcut_overrides)
 }
 
 /// Set the mode for existing documents opened in a new tab.
@@ -454,14 +579,15 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     update(|settings| settings.theme_preference = preference)
 }
 
-pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
-    let name = name.trim();
-    if name.is_empty() {
-        bail!("Theme name cannot be empty");
-    }
-    update(|settings| match kind {
-        ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
-        ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
+/// Persist both current references before updating the session cache.
+pub fn replace_theme_slots([light, dark]: &[String; 2]) -> Result<()> {
+    with_store(|store| {
+        let mut next = store.snapshot();
+        next.light_theme_name = Some(light.to_owned());
+        next.dark_theme_name = Some(dark.to_owned());
+        store.persist(&next)?;
+        store.cached = Some(next);
+        Ok(())
     })
 }
 
@@ -503,6 +629,39 @@ mod tests {
                 .unwrap_or("test")
                 .replace("::", "-")
         ))
+    }
+
+    #[test]
+    fn older_configs_preserve_typography_scale() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"schema_version":2,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+        let settings = stored.normalized();
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
+        assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn variant_fonts_normalize_names() {
+        let mut fonts = FontSettings::default();
+        fonts.set_family(FontRole::Interface, Some("  Helvetica  ".into()));
+        assert_eq!(fonts.family(FontRole::Interface), Some("Helvetica"));
+        assert!(!fonts.is_empty());
+        fonts.set_family(FontRole::Interface, None);
+        assert!(fonts.is_empty());
+    }
+
+    #[test]
+    fn legacy_personal_fonts_are_ignored_on_read_and_write() {
+        let file = temp_settings_file("legacy-fonts");
+        fs::write(&file, r#"{"fonts":{"interface":"Legacy"}}"#).unwrap();
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| settings.theme_preference = ThemePreference::Dark)
+            .unwrap();
+        assert!(!fs::read_to_string(&file).unwrap().contains("fonts"));
+        let _ = fs::remove_file(file);
     }
 
     #[test]
@@ -605,6 +764,24 @@ mod tests {
             SettingsStore::new(file.clone()).snapshot().theme_preference,
             ThemePreference::System
         );
+        let _ = fs::remove_file(file);
+    }
+
+    #[test]
+    fn shortcut_reassignments_and_explicit_unbound_state_round_trip() {
+        let file = temp_settings_file("shortcut-overrides");
+        let mut store = SettingsStore::new(file.clone());
+        let overrides = std::collections::BTreeMap::from([
+            ("new-note".to_owned(), Some("secondary-x".to_owned())),
+            ("close-tab".to_owned(), None),
+        ]);
+
+        store
+            .update(|settings| settings.shortcut_overrides = overrides.clone())
+            .unwrap();
+
+        let reloaded = SettingsStore::new(file.clone()).snapshot();
+        assert_eq!(reloaded.shortcut_overrides, overrides);
         let _ = fs::remove_file(file);
     }
 
@@ -795,8 +972,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
 
         let stored: StoredSettings =
-            serde_json::from_str(&format!(r#"{{"last_vault":"{}"}}"#, directory.display()))
-                .unwrap();
+            serde_json::from_value(serde_json::json!({"last_vault": directory})).unwrap();
         let normalized = stored.normalized();
         assert!(normalized.onboarding_complete);
         assert_eq!(normalized.last_vault, Some(directory.clone()));

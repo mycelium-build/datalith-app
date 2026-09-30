@@ -6,15 +6,14 @@ use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, AppContext, PathPromptOptions, SharedString, actions};
 use std::path::PathBuf;
 
-use crate::app::{
-    AppState, preferences,
-    settings::{self, ThemePreference},
-    system,
-};
+use crate::app::{AppState, settings::ThemePreference, system};
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::ui::{PendingOpen, notifications, settings::DOCS_URL};
+use crate::ui::{
+    DatalithView, PendingOpen, notifications,
+    settings::{DOCS_URL, SettingsView},
+};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -37,6 +36,7 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
+        OpenThemes,
         CheckForUpdates,
         OpenShortcuts,
         OpenDocumentation,
@@ -113,6 +113,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_8);
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
+    cx.on_action(open_themes);
     cx.on_action(open_shortcuts);
     cx.on_action(open_documentation);
     cx.on_action(open_about);
@@ -350,10 +351,7 @@ pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
 }
 
 pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.close_active_tab(cx);
-        cx.notify();
-    });
+    with_workspace_window(DatalithView::close_active_tab, cx);
 }
 
 pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
@@ -387,27 +385,48 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemePreference::Light,
         ThemeMode::Dark => ThemePreference::Dark,
     };
-    if let Err(error) = settings::set_theme_preference(preference) {
-        notifications::push_window_notification(
-            cx,
-            notifications::settings_save_failed("theme mode", &error),
-        );
+    crate::ui::themes::change_mode(preference, cx);
+}
+
+pub fn open_themes(_: &OpenThemes, cx: &mut App) {
+    with_workspace_window(DatalithView::open_themes, cx);
+}
+
+fn with_workspace_window(
+    update: fn(&mut DatalithView, &mut gpui_kit::Window, &mut gpui_kit::Context<DatalithView>),
+    cx: &mut App,
+) {
+    if let Some(window) = cx.active_window() {
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, cx| {
+                with_view!(cx, |view, cx| {
+                    update(view, window, cx);
+                });
+            });
+        });
     }
-    preferences::apply_theme_preference(preference, cx);
+}
+
+fn open_preferences(open: fn(&mut SettingsView), cx: &mut App) {
+    if let Some(window) = cx.active_window() {
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, cx| {
+                with_view!(cx, |view, cx| {
+                    open(&mut view.settings);
+                    view.settings.focus(window, cx);
+                    cx.notify();
+                });
+            });
+        });
+    }
 }
 
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open();
-        cx.notify();
-    });
+    open_preferences(SettingsView::open, cx);
 }
 
 pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open_shortcuts();
-        cx.notify();
-    });
+    with_workspace_window(DatalithView::open_shortcuts, cx);
 }
 
 pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
@@ -420,10 +439,7 @@ pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
 }
 
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open_about();
-        cx.notify();
-    });
+    open_preferences(SettingsView::open_about, cx);
 }
 
 pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
