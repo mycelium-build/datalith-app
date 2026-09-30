@@ -5,6 +5,8 @@ mod render;
 
 use std::collections::BTreeMap;
 
+use conv::ConvUtil as _;
+
 use gpui_kit::component::{
     Colorize as _, IndexPath,
     color_picker::{ColorPickerEvent, ColorPickerState},
@@ -59,15 +61,14 @@ struct ColorControls {
     _subscriptions: Vec<Subscription>,
 }
 
-#[allow(
-    clippy::as_conversions,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "channels are clamped to 0..=1 and rounded before the bounded u8 conversion"
-)]
 fn color_hex(color: Hsla) -> String {
     let rgba = Rgba::from(color);
-    let channel = |value: f32| (value.clamp(0., 1.) * 255.).round() as u8;
+    let channel = |value: f32| {
+        (value.clamp(0., 1.) * 255.)
+            .round()
+            .approx_as::<u8>()
+            .unwrap_or(0)
+    };
     let rgb = format!(
         "#{:02x}{:02x}{:02x}",
         channel(rgba.r),

@@ -98,7 +98,10 @@ impl ShortcutsView {
         }
     }
 
-    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "floating-point pixel arithmetic; scroll offsets are clamped to bounds"
+    )]
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if event.keystroke.modifiers != gpui_kit::Modifiers::none() {
             return;
