@@ -226,247 +226,247 @@ impl ShortcutsView {
         cx.notify();
     }
 
-    #[allow(clippy::too_many_lines)]
     fn render_tables(&self, cx: &Context<Self>) -> impl IntoElement {
-        let mut groups = v_flex().gap_5();
+        v_flex()
+            .gap_5()
+            .children(self.groups.iter().map(|group| self.render_group(group, cx)))
+    }
 
-        for group in &self.groups {
-            let mut body = TableBody::new();
-            for shortcut in &group.rows {
-                let id = shortcut.id();
-                let row_id: SharedString = format!("shortcut-row-{id}").into();
-                let current_binding = shortcut
-                    .binding()
-                    .map_or_else(|| "No shortcut".to_owned(), keymap::display_binding);
-                let capture = self
-                    .capture
-                    .as_ref()
-                    .filter(|capture| capture.id == shortcut.id());
-
-                let mut controls = h_flex().items_center().gap_2();
-                if let Some(capture) = capture {
-                    match &capture.phase {
-                        CapturePhase::Listening => {
-                            controls = controls.child(
-                                div()
-                                    .id(format!("shortcut-capture-status-{}", shortcut.id()))
-                                    .aria_label("Press a shortcut")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Press a shortcut"),
-                            );
-                        }
-                        CapturePhase::Proposed(binding) => {
-                            let id = capture.id;
-                            controls = controls
-                                .child(
-                                    div()
-                                        .id(format!("shortcut-proposed-{}", shortcut.id()))
-                                        .aria_label(keymap::display_binding(binding))
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .child(keymap::display_binding(binding)),
-                                )
-                                .child(
-                                    Button::new(format!("save-shortcut-{id}"))
-                                        .small()
-                                        .label("Save")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.save_capture(window, cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new(format!("cancel-shortcut-{id}"))
-                                        .ghost()
-                                        .small()
-                                        .label("Cancel")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.capture = None;
-                                            this.focus.focus(window, cx);
-                                            cx.notify();
-                                        })),
-                                );
-                        }
-                        CapturePhase::Invalid(message) => {
-                            let id = capture.id;
-                            controls = controls
-                                .child(
-                                    div()
-                                        .id(format!("shortcut-capture-error-{}", shortcut.id()))
-                                        .aria_label(message.clone())
-                                        .text_color(cx.theme().danger)
-                                        .child(message.clone()),
-                                )
-                                .child(
-                                    Button::new(format!("capture-again-{id}"))
-                                        .ghost()
-                                        .small()
-                                        .label("Try again")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.start_capture(id, window, cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new(format!("cancel-shortcut-{id}"))
-                                        .ghost()
-                                        .small()
-                                        .label("Cancel")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.capture = None;
-                                            this.focus.focus(window, cx);
-                                            cx.notify();
-                                        })),
-                                );
-                        }
-                    }
-                } else {
-                    controls = controls
-                        .invisible()
-                        .group_hover(row_id.clone(), Styled::visible)
-                        .child(
-                            Button::new(format!("reset-shortcut-{id}"))
-                                .ghost()
-                                .small()
-                                .icon(IconName::Undo)
-                                .tooltip("Reset shortcut")
-                                .accessibility_label(format!(
-                                    "Reset shortcut for {}",
-                                    shortcut.description()
-                                ))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.reset_binding(id, window, cx);
-                                })),
-                        )
-                        .child(
-                            Button::new(format!("remove-shortcut-{id}"))
-                                .ghost()
-                                .small()
-                                .icon(IconName::Close)
-                                .tooltip("Remove shortcut")
-                                .accessibility_label(format!(
-                                    "Remove shortcut for {}",
-                                    shortcut.description()
-                                ))
-                                .disabled(shortcut.binding().is_none())
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.remove_binding(id, window, cx);
-                                })),
-                        );
-                }
-
-                let mut binding_label = Button::new(format!("shortcut-binding-{id}"))
-                    .small()
-                    .rounded_sm()
+    fn render_group(&self, group: &ShortcutGroup, cx: &Context<Self>) -> impl IntoElement {
+        let body = TableBody::new().children(
+            group
+                .rows
+                .iter()
+                .map(|shortcut| self.render_shortcut_row(shortcut, cx)),
+        );
+        let table = Table::new()
+            .accessibility_label(format!("{} shortcuts", group.category))
+            .rounded_lg()
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(
+                TableHeader::new()
                     .bg(cx.theme().muted)
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .accessibility_label(current_binding.clone())
-                    .tooltip(format!("Change shortcut for {}", shortcut.description()))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.start_capture(id, window, cx);
-                    }));
-                if let Some(binding) = shortcut.binding() {
-                    binding_label = binding_label
-                        .text_color(cx.theme().foreground)
-                        .label(keymap::display_binding(binding));
-                } else {
-                    binding_label = binding_label.child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        TableRow::new()
                             .child(
-                                Icon::new(IconName::TriangleAlert)
-                                    .size_4()
-                                    .text_color(cx.theme().warning),
+                                TableHead::new().child(
+                                    div()
+                                        .id(format!("shortcuts-action-header-{}", group.category))
+                                        .aria_label("Action")
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child("Action"),
+                                ),
                             )
                             .child(
-                                div()
-                                    .id(format!("shortcut-unbound-warning-{}", shortcut.id()))
-                                    .aria_label("No shortcut")
-                                    .text_color(cx.theme().warning)
-                                    .child("No shortcut"),
-                            ),
-                    );
-                }
-
-                let binding_cell = h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .child(binding_label)
-                    .child(controls);
-
-                body = body.child(ShortcutRow {
-                    id: row_id,
-                    row: TableRow::new()
-                        .child(
-                            TableCell::new().child(
-                                div()
-                                    .id(format!("shortcut-action-{}", shortcut.id()))
-                                    .aria_label(shortcut.description())
-                                    .text_color(cx.theme().foreground)
-                                    .child(shortcut.description()),
-                            ),
-                        )
-                        .child(TableCell::new().child(binding_cell)),
-                });
-            }
-
-            let table = Table::new()
-                .accessibility_label(format!("{} shortcuts", group.category))
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().background)
-                .text_color(cx.theme().foreground)
-                .child(
-                    TableHeader::new()
-                        .bg(cx.theme().muted)
-                        .text_color(cx.theme().muted_foreground)
-                        .child(
-                            TableRow::new()
-                                .child(
-                                    TableHead::new().child(
-                                        div()
-                                            .id(format!(
-                                                "shortcuts-action-header-{}",
-                                                group.category
-                                            ))
-                                            .aria_label("Action")
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .child("Action"),
-                                    ),
-                                )
-                                .child(
-                                    TableHead::new().child(
-                                        div()
-                                            .id(format!(
-                                                "shortcuts-binding-header-{}",
-                                                group.category
-                                            ))
-                                            .aria_label("Shortcut")
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .child("Shortcut"),
-                                    ),
+                                TableHead::new().child(
+                                    div()
+                                        .id(format!("shortcuts-binding-header-{}", group.category))
+                                        .aria_label("Shortcut")
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child("Shortcut"),
                                 ),
-                        ),
-                )
-                .child(body);
+                            ),
+                    ),
+            )
+            .child(body);
+        v_flex()
+            .gap_2()
+            .child(
+                div()
+                    .id(format!("shortcuts-category-{}", group.category))
+                    .aria_label(group.category.clone())
+                    .text_base()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(cx.theme().foreground)
+                    .child(group.category.clone()),
+            )
+            .child(div().w_full().child(table))
+    }
 
-            groups = groups.child(
-                v_flex()
+    fn render_shortcut_row(&self, shortcut: &Shortcut, cx: &Context<Self>) -> ShortcutRow {
+        let id = shortcut.id();
+        let row_id: SharedString = format!("shortcut-row-{id}").into();
+        let binding_cell = h_flex()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .child(Self::render_binding_button(shortcut, cx))
+            .child(self.render_shortcut_controls(shortcut, &row_id, cx));
+        ShortcutRow {
+            id: row_id,
+            row: TableRow::new()
+                .child(
+                    TableCell::new().child(
+                        div()
+                            .id(format!("shortcut-action-{id}"))
+                            .aria_label(shortcut.description())
+                            .text_color(cx.theme().foreground)
+                            .child(shortcut.description()),
+                    ),
+                )
+                .child(TableCell::new().child(binding_cell)),
+        }
+    }
+
+    fn render_binding_button(shortcut: &Shortcut, cx: &Context<Self>) -> Button {
+        let id = shortcut.id();
+        let current_binding = shortcut
+            .binding()
+            .map_or_else(|| "No shortcut".to_owned(), keymap::display_binding);
+        let mut binding_label = Button::new(format!("shortcut-binding-{id}"))
+            .small()
+            .rounded_sm()
+            .bg(cx.theme().muted)
+            .font_family(cx.theme().mono_font_family.clone())
+            .accessibility_label(current_binding)
+            .tooltip(format!("Change shortcut for {}", shortcut.description()))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.start_capture(id, window, cx);
+            }));
+        if let Some(binding) = shortcut.binding() {
+            binding_label = binding_label
+                .text_color(cx.theme().foreground)
+                .label(keymap::display_binding(binding));
+        } else {
+            binding_label = binding_label.child(
+                h_flex()
+                    .items_center()
                     .gap_2()
                     .child(
-                        div()
-                            .id(format!("shortcuts-category-{}", group.category))
-                            .aria_label(group.category.clone())
-                            .text_base()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(cx.theme().foreground)
-                            .child(group.category.clone()),
+                        Icon::new(IconName::TriangleAlert)
+                            .size_4()
+                            .text_color(cx.theme().warning),
                     )
-                    .child(div().w_full().child(table)),
+                    .child(
+                        div()
+                            .id(format!("shortcut-unbound-warning-{}", shortcut.id()))
+                            .aria_label("No shortcut")
+                            .text_color(cx.theme().warning)
+                            .child("No shortcut"),
+                    ),
             );
         }
+        binding_label
+    }
 
-        groups
+    fn render_shortcut_controls(
+        &self,
+        shortcut: &Shortcut,
+        row_id: &SharedString,
+        cx: &Context<Self>,
+    ) -> gpui_kit::Div {
+        let id = shortcut.id();
+        if let Some(capture) = self.capture.as_ref().filter(|capture| capture.id == id) {
+            return Self::render_capture_controls(capture, cx);
+        }
+        h_flex()
+            .items_center()
+            .gap_2()
+            .invisible()
+            .group_hover(row_id.clone(), Styled::visible)
+            .child(
+                Button::new(format!("reset-shortcut-{id}"))
+                    .ghost()
+                    .small()
+                    .icon(IconName::Undo)
+                    .tooltip("Reset shortcut")
+                    .accessibility_label(format!("Reset shortcut for {}", shortcut.description()))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.reset_binding(id, window, cx);
+                    })),
+            )
+            .child(
+                Button::new(format!("remove-shortcut-{id}"))
+                    .ghost()
+                    .small()
+                    .icon(IconName::Close)
+                    .tooltip("Remove shortcut")
+                    .accessibility_label(format!("Remove shortcut for {}", shortcut.description()))
+                    .disabled(shortcut.binding().is_none())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.remove_binding(id, window, cx);
+                    })),
+            )
+    }
+
+    fn render_capture_controls(capture: &ShortcutCapture, cx: &Context<Self>) -> gpui_kit::Div {
+        let id = capture.id;
+        let mut controls = h_flex().items_center().gap_2();
+        match &capture.phase {
+            CapturePhase::Listening => {
+                controls = controls.child(
+                    div()
+                        .id(format!("shortcut-capture-status-{id}"))
+                        .aria_label("Press a shortcut")
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Press a shortcut"),
+                );
+            }
+            CapturePhase::Proposed(binding) => {
+                controls = controls
+                    .child(
+                        div()
+                            .id(format!("shortcut-proposed-{id}"))
+                            .aria_label(keymap::display_binding(binding))
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .child(keymap::display_binding(binding)),
+                    )
+                    .child(
+                        Button::new(format!("save-shortcut-{id}"))
+                            .small()
+                            .label("Save")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.save_capture(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new(format!("cancel-shortcut-{id}"))
+                            .ghost()
+                            .small()
+                            .label("Cancel")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.capture = None;
+                                this.focus.focus(window, cx);
+                                cx.notify();
+                            })),
+                    );
+            }
+            CapturePhase::Invalid(message) => {
+                controls = controls
+                    .child(
+                        div()
+                            .id(format!("shortcut-capture-error-{id}"))
+                            .aria_label(message.clone())
+                            .text_color(cx.theme().danger)
+                            .child(message.clone()),
+                    )
+                    .child(
+                        Button::new(format!("capture-again-{id}"))
+                            .ghost()
+                            .small()
+                            .label("Try again")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.start_capture(id, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new(format!("cancel-shortcut-{id}"))
+                            .ghost()
+                            .small()
+                            .label("Cancel")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.capture = None;
+                                this.focus.focus(window, cx);
+                                cx.notify();
+                            })),
+                    );
+            }
+        }
+        controls
     }
 }
 
