@@ -1,82 +1,174 @@
-# Theme JSON support
+A theme is a JSON file containing one or more light or dark variants, each with its own colors, syntax styles, and fonts. Use this reference to create a theme file or adapt one from another editor. For choosing themes, using the theme editor, and importing or exporting files, see [Settings](Settings.md#theme).
 
-Audited against Datalith's source and GPUI Kit 0.6.1. A key appearing in an upstream theme JSON does not guarantee that Datalith consumes it. Unknown keys are ignored during deserialization and are not preserved when the theme is exported.
+# File structure
 
-## File structure
+Create a `.json` file with a top-level object containing the theme metadata and a `themes` array:
 
-A file contains `name`, optional `author` and `url`, and a `themes` array. Each entry is a variant with its full `name`, `mode` (`light` or `dark`), `colors`, optional `highlight`, and optional `fonts`.
+```json
+{
+  "name": "My Theme",
+  "author": "Your name",
+  "themes": [
+    {
+      "name": "My Theme Light",
+      "mode": "light",
+      "colors": {
+        "background": "#FAFAFA",
+        "foreground": "#202020",
+        "primary.background": "#2864DC",
+        "link": null
+      },
+      "highlight": {
+        "editor.background": "#FAFAFA",
+        "editor.active_line.background": "#2864DC15",
+        "syntax": {
+          "keyword": { "color": "#2864DC" },
+          "comment_doc": {
+            "color": "#607060",
+            "font_style": "italic",
+            "font_weight": 400
+          }
+        }
+      },
+      "fonts": {
+        "interface": "Inter",
+        "reading": "Georgia",
+        "headings": "Inter",
+        "code": "JetBrains Mono"
+      }
+    },
+    {
+      "name": "My Theme Dark",
+      "mode": "dark",
+      "colors": {
+        "background": "#202020",
+        "foreground": "#FAFAFA",
+        "primary.background": "#80AAFF"
+      }
+    }
+  ]
+}
+```
 
-| Variant fields | Application behavior |
+The example defines two independent variants. The dark variant uses defaults for its omitted colors, syntax styles, and fonts; it does not inherit the light variant's settings.
+
+| Top-level field | Value |
 | --- | --- |
-| `name`, `mode` | Variant identity and the Light/Dark fallback palette. |
-| `colors` | 140 recognized component and palette entries. Their effect depends on which components the application renders. |
-| `highlight` | 7 editor entries, 15 diagnostic entries, and 41 optional syntax styles. The editor lists all of them, even when unset. |
-| `fonts.interface`, `fonts.reading`, `fonts.headings`, `fonts.code` | Four independent font roles; unavailable fonts remain saved and fall back at render time. |
-| `font.family`, `mono_font.family` | Also accepted for interface and code. The role-specific `fonts` value takes precedence; the editor keeps these fields synchronized. |
-| `font.size` | Parsed, but the app's interface size is controlled by the Display scale setting. |
-| `mono_font.size` | Passed to GPUI Kit for editor typography; rendered Markdown has its own layout sizes. |
-| `radius`, `radius.lg`, `shadow` | Applied to library components that use these theme settings. Not exposed as controls in the theme editor. |
-| `is_default` | Parsed; it does not choose Datalith's active theme. Active Light/Dark slots are stored in app preferences. |
+| `name` | Theme name. |
+| `author` | Optional author name. |
+| `url` | Optional project or author URL. |
+| `themes` | Array of variant objects. |
 
-Syntax styles also accept `font_style` and `font_weight`. Editing a syntax color preserves these attributes. `comment_doc` is the JSON key for documentation comments in the current library; `comment.doc` is the capture name, not a supported JSON key.
+For a single variant, use the theme name as its name. For multiple variants, prefix each name with the theme name followed by a space, such as `My Theme Light` and `My Theme Dark`.
 
-## Where a color comes from
+## Variant fields
 
-Color resolution is **variant JSON → GPUI component default**. Missing or null colors are passed through to GPUI, which computes a fallback from its mode-specific palette or related colors. Other themes no longer inherit colors or syntax styles from Datalith Light/Dark. Non-color defaults, including fonts, keep their existing behavior. Some optional editor colors remain unset.
-
-The editor labels explicit colors **Theme defined** and component fallbacks **Component Default**. Reset removes only the variant override, restoring the component fallback. Copying a preset preserves its explicit values.
-
-The **Colors** tab contains six base roles: `background`, `foreground`, `muted.background`, `border`, `primary.background`, and `secondary.background`, with no search. It also exposes 19 common overrides: `muted.foreground`, `primary.foreground`, `primary.hover.background`, `primary.active.background`, `secondary.foreground`, `secondary.hover.background`, `secondary.active.background`, `accent.background`, `accent.foreground`, `link`, `selection.background`, `list.active.background`, `list.active.border`, `list.hover.background`, `list.background`, `list.head.background`, `input.border`, `ring`, and `scrollbar.thumb.background`. Rows show the exact JSON key in Colors and Advanced. These settings remain visible even when unset; Reset restores their normal GPUI fallback. The focus-ring key is `ring` and falls back to `blue`. Other component-specific overrides remain in **Advanced**. Advanced includes all 203 recognized color entries, even those also shown in Colors, in a virtualized list with category headings, component-family filtering, search, and independent origin checkboxes.
-
-GPUI Kit's fallbacks apply only when a color is absent: Link and caret use Primary; text/list selection use Primary with their component's opacity treatment; Accent uses Secondary; muted text blends Muted with Foreground; list hover uses Accent; table colors reuse list roles. Explicit component colors always take precedence.
-
-Datalith Dark and macOS Classic Dark explicitly define `link = #419CFF`; other bundled variants do not. All 30 bundled variants explicitly define `list.active.background`. Reset these fields in a custom copy to restore their relationship to Primary. Reset does not rewrite any other explicit colors.
-
-## Effects in current Datalith views
-
-| What to change | Relevant keys |
+| Field | Value and usage |
 | --- | --- |
-| Main workspace and note text | `background`, `foreground` |
-| General action colors and text | `primary.*`, `secondary.*`, `accent.*`; Primary can back links/text selection, Secondary backs Accent, and Accent can back list hover/scrollbar/sidebar accent when their specific colors are unset |
+| `name` | Full variant name. |
+| `mode` | `"light"` or `"dark"`; selects the fallback palette. |
+| `colors` | Object containing component and palette colors. There are 140 recognized entries. |
+| `highlight` | Optional object containing 7 source-editor colors, 15 diagnostic colors, and a `syntax` object with 41 optional styles. |
+| `fonts` | Optional object with `interface`, `reading`, `headings`, and `code` font-family strings. |
+| `font.family`, `mono_font.family` | Alternative interface and code font-family strings. The corresponding `fonts` value takes precedence; the theme editor keeps these fields synchronized. |
+| `font.size` | Accepted, but interface size is controlled by the display zoom setting. |
+| `mono_font.size` | Source-editor typography size. Rendered Markdown uses its own layout sizes. |
+| `radius`, `radius.lg`, `shadow` | Corner radii and shadow settings for library components that use them. These settings have no controls in the theme editor. |
+| `is_default` | Accepted, but does not activate a variant. Choose active light/dark variants in the theme panel. |
+
+Keys containing dots are literal JSON keys. For example, put `"primary.background"` inside `colors`, not a nested `primary` object. Likewise, `"font.family"` belongs directly in the variant object. `fonts` and `highlight.syntax`, however, are nested objects as shown above.
+
+## Define colors
+
+Put component colors inside `colors`. Use hexadecimal strings such as `"#2864DC"`; an eight-digit value such as `"#2864DC15"` includes an alpha channel.
+
+Start with the six base roles: `background`, `foreground`, `muted.background`, `border`, `primary.background`, and `secondary.background`. Add component overrides only where you want a different color.
+
+Omit a color, or set it to `null`, to use its component default. Defaults come from the variant's mode-specific palette or related colors. Some optional editor colors remain unset. Variants do not inherit colors or syntax styles from Datalith Light/Dark or other variants.
+
+Specific component colors take precedence over base colors. When unset:
+
+- `link` and `caret` follow Primary.
+- Text and list selection follow Primary with their component's opacity treatment.
+- Accent follows Secondary, and list hover follows Accent.
+- Muted text blends the muted surface with the foreground.
+- Table colors reuse list roles.
+- `ring`, the focus-ring color, falls back to `blue`.
+
+If a copied theme's links or selected rows do not follow Primary, remove their explicit overrides or set them to `null`. Datalith Dark and macOS Classic Dark define `link = #419CFF`, and all bundled variants define `list.active.background`. Removing one override does not change other explicit colors.
+
+### Find the right key
+
+| To customize | Keys to adjust |
+| --- | --- |
+| Workspace background and note text | `background`, `foreground` |
+| Action colors | `primary.*`, `secondary.*`, `accent.*` |
 | Muted text, code-block and note-property surfaces, separators | `muted.foreground`, `muted.background`, `border` |
-| Links in rendered notes, note properties and Base | `link`, `link.hover`, `link.active` |
-| File sidebar | `sidebar.background`, `sidebar.foreground`, `sidebar.border`; file row hover/selection use `list.hover.background` and `list.active.background` through the standard GPUI tree |
+| Links in notes, note properties, and Base | `link`, `link.hover`, `link.active` |
+| File sidebar | `sidebar.background`, `sidebar.foreground`, `sidebar.border` |
+| Hovered and selected file rows | `list.hover.background`, `list.active.background`, `list.active.border` |
 | Workspace tabs | `tab.foreground`, `tab.active.background`, `tab.active.foreground`, `tab_bar.background` |
-| Window title bar | `title_bar.background` and the library title-bar border |
-| Buttons | Default and Primary `button.*` colors for those variants; ghost buttons use `secondary.background`, `secondary.foreground`, and `secondary.active.background` |
-| Text fields and selection | `input.border`, `caret`, `ring`, `selection.background` |
-| Menus, dialogs, popovers | `popover.*`, `overlay`, `accent.*`, and button colors |
-| Tables in notes | `table.background`, `table.head.background`, `table.head.foreground`, `table.row.border`; outer border uses `border` |
-| Shortcuts table | General background/text, muted header, and `table.row.border` |
-| Base table headers and footers | `table.head.background`, `table.head.foreground`, `table.foot.background`, `table.foot.foreground`; table body uses its existing roles |
-| Todo.txt | Shared workspace colors plus success, warning and danger roles; selected tasks use `list.active.background`, while project and context pills are neutral |
-| Markdown/YAML source syntax | `highlight.syntax.*`, where the language grammar emits a matching token |
-| Source editor surface and current line | `highlight.editor.background`, `highlight.editor.active_line.background` |
+| Window title bar | `title_bar.background` |
+| Default and Primary buttons | The corresponding `button.*` colors |
+| Ghost buttons | `secondary.background`, `secondary.foreground`, `secondary.active.background` |
+| Text fields, caret, focus rings, and text selection | `input.border`, `caret`, `ring`, `selection.background` |
+| Menus, dialogs, and popovers | `popover.*`, `overlay`, `accent.*`, and button colors |
+| Tables in notes | `table.background`, `table.head.background`, `table.head.foreground`, `table.row.border`; `border` for the outer border |
+| Base table headers and footers | `table.head.background`, `table.head.foreground`, `table.foot.background`, `table.foot.foreground` |
+| Todo.txt | Workspace colors, success/warning/danger roles, and `list.active.background` for selected tasks |
+| Markdown and YAML source syntax | `highlight.syntax.*` |
+| Source-editor background and current line | `highlight.editor.background`, `highlight.editor.active_line.background` |
 
-The Note/Base/Graph/Todo previews are read-only. Their content and controls, including focus rings and menus, follow the theme being edited. Searching, filtering, and exploring the samples do not modify their documents. The surrounding editor keeps the application's active theme. Syntax colors affect source editing, not code fences in the rendered note.
+## Define source highlighting
 
-## Recognized fields with limited or no current effect
+Put source-editor and diagnostic colors directly inside `highlight`, using literal keys such as `"editor.background"` and `"editor.active_line.background"`. Put token styles inside its nested `syntax` object.
 
-- `highlight.editor.foreground` is stored but the current GPUI editor uses `colors.foreground` instead.
-- Editor line-number fields are stored; Datalith hides line numbers. Whitespace and gutter settings only matter when those features are visible.
-- Diagnostic colors are stored, but Datalith currently supplies no diagnostic provider. GPUI's source editor consumes the error/warning/info/hint foregrounds when diagnostics are present; this does not mean all imported diagnostic backgrounds are painted.
-- `group_box.title.foreground` is recognized by the schema but is not applied by GPUI Kit 0.6.1.
-- Chart, accordion, group-box, description-list, skeleton, status-bar and tiles colors target components not currently used by Datalith screens.
-- `window.border` is Linux-only. `sidebar.primary.*` and `sidebar.accent.*` are not used by Datalith's file rows; their hover and selection use `list.*`.
-- `tab.background` is stored, but the current tab component uses the tab-bar surface for inactive tabs. The active tab has its own colors.
-- `table.active.*`, `table.even.background`, and `table.hover.background` are not painted by Datalith's current simple/custom tables.
-- Not every syntax token is emitted by every language. A stored token can therefore have no visible occurrence in the current document.
+Each syntax style is an object with an optional `color`, `font_style`, and `font_weight`. For example:
 
-These entries remain accessible in Advanced; they are not presented as essential customization controls.
+```json
+"syntax": {
+  "comment": { "color": "#607060", "font_style": "italic" },
+  "keyword": { "color": "#2864DC", "font_weight": 700 }
+}
+```
 
-## Unsupported keys found in bundled upstream JSON
+Use `comment_doc` for documentation comments. `comment.doc` is a syntax capture name, not a supported JSON key. Changing a syntax color in the theme editor preserves its font style and weight.
 
-The bundled files still contain upstream data that the current schema ignores. Examples include:
+Syntax colors apply to source editing, not code fences in rendered notes. A syntax style appears only when the document's language grammar emits the matching token.
 
-- `colors.panel.background`, `colors.action_bar.background`, `colors.chart.grid`;
-- `colors.link.foreground`, `colors.link.hover.foreground`, `colors.link.active.foreground` (the supported keys are `link`, `link.hover`, `link.active`);
-- `colors.window_border` (supported: `window.border`);
-- `colors.created`, `colors.renamed`, `colors.info`, `colors.editor.active_line_number`;
-- Zed diff/status keys under `highlight`: `conflict`, `created`, `deleted`, `hidden`, `ignored`, `modified`, `predictive`, `renamed`, `unreachable`, and their background/border variants.
+## Define fonts
 
-Advanced is complete for the current typed schema, not for arbitrary keys accepted by other editors. The schema's 140 component colors and 63 highlight color entries come directly from the dependency's serialized types rather than from the subset already defined by a preset.
+Put font-family names inside `fonts`, using the four roles shown in the file example. Each role is independent and belongs to its variant. Omit a role or set it to `null` to use its default:
+
+| Role | Default |
+| --- | --- |
+| `interface` | Platform interface font. |
+| `reading` | The variant's interface font. |
+| `headings` | Pixeloid Sans. |
+| `code` | Platform code font. |
+
+If a font is unavailable, its name remains saved and rendering uses that role's fallback until it becomes available. Use the display zoom setting to resize the interface; `font.size` does not control it.
+
+## Compatibility and limitations
+
+The **Advanced** tab lists all 203 recognized color entries: 140 component colors and 63 highlight colors, including unset fields. Use it to find supported keys, then place component keys in `colors` and highlight keys in `highlight` (or `highlight.syntax` for token styles). Some fields can be saved without producing a visible change:
+
+- `highlight.editor.foreground`: the source editor uses `colors.foreground`.
+- Line-number, whitespace, and gutter colors: these require the corresponding features to be visible; Datalith hides line numbers.
+- Diagnostic colors: Datalith does not supply a diagnostic provider.
+- Chart, accordion, group-box, description-list, skeleton, status-bar, and tiles colors: Datalith's screens do not use these components. `group_box.title.foreground` is recognized but not applied by the component library.
+- `window.border`: applies only on Linux.
+- `sidebar.primary.*` and `sidebar.accent.*`: file-row hover and selection use `list.*` instead.
+- `tab.background`: inactive tabs use the tab-bar surface.
+- `table.active.*`, `table.even.background`, and `table.hover.background`: Datalith's tables do not use these colors.
+
+When importing a theme from another editor, use Datalith's supported key names:
+
+| Use | Instead of |
+| --- | --- |
+| `colors.link` | `colors.link.foreground` |
+| `colors.link.hover` | `colors.link.hover.foreground` |
+| `colors.link.active` | `colors.link.active.foreground` |
+| `colors.window.border` | `colors.window_border` |
+
+Unknown keys are ignored on import and omitted on export. This includes `colors.panel.background`, `colors.action_bar.background`, `colors.chart.grid`, `colors.created`, `colors.renamed`, `colors.info`, and `colors.editor.active_line_number`, as well as Zed diff/status fields under `highlight` such as `conflict`, `created`, `deleted`, `hidden`, `ignored`, `modified`, `predictive`, `renamed`, and `unreachable`, including their background and border variants.
