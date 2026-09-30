@@ -455,14 +455,19 @@ pub fn captured_binding(keystroke: &Keystroke) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::derive_partial_eq_without_eq)]
 mod tests {
     use super::{default_bindings, display_binding, effective_bindings, overrides_for};
     use crate::app::actions::Quit;
     use gpui_kit::{KeyBinding, KeyContext, Keymap, Keystroke, actions};
     use std::collections::BTreeMap;
 
-    actions!(shortcut_tests, [ComponentAction]);
+    actions!(
+        shortcut_tests,
+        [
+            #[derive(Eq)]
+            ComponentAction
+        ]
+    );
 
     #[test]
     fn displays_secondary_with_platform_conventions() {
