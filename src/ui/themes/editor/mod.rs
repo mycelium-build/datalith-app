@@ -20,7 +20,7 @@ use gpui_kit::{
 use crate::app::{
     fonts::FontCatalog,
     settings::FontRole,
-    themes::{self, ThemeLibrary},
+    themes::{self, ThemeDocument, ThemeLibrary},
 };
 
 #[derive(Clone)]
@@ -179,88 +179,106 @@ impl ThemeEditor {
             .family(self.family_id)
             .map_or_else(|| "Theme".into(), |family| family.name().into())
     }
-    #[allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        reason = "The workspace opens only existing, nonempty theme families"
-    )]
-    pub(crate) fn new(
+    pub(crate) fn try_new(
         family_id: u64,
         requested: Option<u64>,
         window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+        cx: &mut App,
+    ) -> anyhow::Result<Entity<Self>> {
         let family = cx
             .global::<ThemeLibrary>()
             .family(family_id)
-            .expect("editor opens an existing family");
-        let edited = requested
-            .filter(|id| family.variants().iter().any(|variant| variant.id() == *id))
-            .unwrap_or_else(|| family.variants()[0].id());
-        let color_query = cx.new(|cx| InputState::new(window, cx).placeholder("Search colors…"));
-        let query_subscription = cx.subscribe(&color_query, |this, _, event, cx| {
-            if matches!(event, InputEvent::Change) {
-                this.refresh_color_list(cx);
-                cx.notify();
-            }
-        });
-        let color_group: Entity<Choices> = make_choices(
-            colors::ESSENTIAL_GROUPS
-                .iter()
-                .map(|group| Choice::new(*group, *group))
-                .collect(),
-            &"All colors".into(),
-            window,
-            cx,
-        );
-        let group_subscription = cx.subscribe(&color_group, |this, _, event, cx| {
-            if matches!(event, SelectEvent::Confirm(_)) {
-                this.refresh_color_list(cx);
-                cx.notify();
-            }
-        });
-        let mut this = Self {
-            family_id,
-            edited,
-            controls: Self::variant_controls(edited, window, cx),
-            category: "Colors",
-            show_preview: false,
-            active_color: None,
-            preview: None,
-            preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
-            scroll: ScrollHandle::default(),
-            color_list: ListState::new(0, ListAlignment::Top, gpui_kit::px(0.)),
-            property_rows: Vec::new(),
-            color_query,
-            color_group,
-            color_origins: ColorOriginFilters::default(),
-            _group_subscription: group_subscription,
-            rem_size: window.rem_size(),
-            _query_subscription: query_subscription,
-            error: None,
-            rename: None,
-            focus: cx.focus_handle(),
-        };
-        this.refresh_preview(cx);
-        this.refresh_color_list(cx);
-        this
+            .ok_or_else(|| anyhow::anyhow!("Theme family no longer exists"))?;
+        let variant = requested
+            .and_then(|id| family.variants().iter().find(|variant| variant.id() == id))
+            .or_else(|| family.variants().first())
+            .ok_or_else(|| anyhow::anyhow!("Theme family has no variants"))?;
+        let edited = variant.id();
+        let document = variant.document().clone();
+        Ok(cx.new(|cx: &mut Context<Self>| {
+            let color_query =
+                cx.new(|cx| InputState::new(window, cx).placeholder("Search colors…"));
+            let query_subscription = cx.subscribe(&color_query, |this, _, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.refresh_color_list(cx);
+                    cx.notify();
+                }
+            });
+            let color_group: Entity<Choices> = make_choices(
+                colors::ESSENTIAL_GROUPS
+                    .iter()
+                    .map(|group| Choice::new(*group, *group))
+                    .collect(),
+                &"All colors".into(),
+                window,
+                cx,
+            );
+            let group_subscription = cx.subscribe(&color_group, |this, _, event, cx| {
+                if matches!(event, SelectEvent::Confirm(_)) {
+                    this.refresh_color_list(cx);
+                    cx.notify();
+                }
+            });
+            let mut this = Self {
+                family_id,
+                edited,
+                controls: Self::variant_controls(edited, &document, window, cx),
+                category: "Colors",
+                show_preview: false,
+                active_color: None,
+                preview: None,
+                preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
+                scroll: ScrollHandle::default(),
+                color_list: ListState::new(0, ListAlignment::Top, gpui_kit::px(0.)),
+                property_rows: Vec::new(),
+                color_query,
+                color_group,
+                color_origins: ColorOriginFilters::default(),
+                _group_subscription: group_subscription,
+                rem_size: window.rem_size(),
+                _query_subscription: query_subscription,
+                error: None,
+                rename: None,
+                focus: cx.focus_handle(),
+            };
+            this.refresh_preview(cx);
+            this.refresh_color_list(cx);
+            this
+        }))
     }
 
     pub(crate) fn select(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        if self.edited == id
-            || !cx
-                .global::<ThemeLibrary>()
-                .family(self.family_id)
-                .is_some_and(|family| family.variants().iter().any(|variant| variant.id() == id))
-        {
+        if self.edited == id {
             return;
         }
+        let Some(variant) = cx
+            .global::<ThemeLibrary>()
+            .family(self.family_id)
+            .and_then(|family| family.variants().iter().find(|variant| variant.id() == id))
+        else {
+            return;
+        };
+        let document = variant.document().clone();
+        self.apply_variant(id, &document, window, cx);
+    }
+
+    fn apply_variant(
+        &mut self,
+        id: u64,
+        document: &ThemeDocument,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let controls = Self::variant_controls(id, document, window, cx);
+        let changed = self.edited != id;
         self.active_color = None;
-        self.controls = Self::variant_controls(id, window, cx);
+        self.controls = controls;
         self.edited = id;
         self.refresh_preview(cx);
         self.refresh_color_list(cx);
-        self.reset_property_scroll();
+        if changed {
+            self.reset_property_scroll();
+        }
         cx.notify();
     }
 
@@ -304,17 +322,13 @@ impl ThemeEditor {
             .update(cx, |pane, cx| pane.set_appearance(self.preview.clone(), cx));
     }
 
-    #[allow(
-        clippy::expect_used,
-        reason = "Only validated family variants receive controls"
-    )]
-    fn variant_controls(id: u64, window: &mut Window, cx: &mut Context<Self>) -> VariantControls {
+    fn variant_controls(
+        id: u64,
+        document: &ThemeDocument,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> VariantControls {
         let library = cx.global::<ThemeLibrary>();
-        let document = library
-            .variant_by_id(id)
-            .expect("edited variant exists")
-            .document()
-            .clone();
         let resolved = library.resolved(id, cx.global::<FontCatalog>()).ok();
         let mut colors = document.colors().unwrap_or_default();
         let highlight =
@@ -344,7 +358,7 @@ impl ThemeEditor {
         }
         let fonts = FontRole::ALL.map(|role| {
             let value = document.font(role).map(SharedString::from);
-            make_choices(font_choices(&document, role, cx), &value, window, cx)
+            make_choices(font_choices(document, role, cx), &value, window, cx)
         });
         let mut rows = BTreeMap::new();
         for (token, valid) in colors {
@@ -677,15 +691,12 @@ impl ThemeEditor {
         cx.notify();
     }
 
-    #[allow(
-        clippy::expect_used,
-        reason = "Variant actions belong to the edited family"
-    )]
     fn add_variant(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let library = cx.global_mut::<ThemeLibrary>();
-        let family = library
-            .family(self.family_id)
-            .expect("edited family exists");
+        let Some(family) = library.family(self.family_id) else {
+            super::super::settings::theme::close_deleted_editor(self.family_id, window, cx);
+            return;
+        };
         let first = (family.variants().len() == 1).then_some("Variant 1");
         let suffix = if first.is_some() {
             Ok("Variant 2".to_owned())
@@ -745,24 +756,31 @@ impl ThemeEditor {
         }
     }
 
-    #[allow(
-        clippy::indexing_slicing,
-        reason = "ThemeLibrary keeps families nonempty"
-    )]
     pub(crate) fn refresh_variants(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_variants(false, window, cx);
+    }
+
+    fn sync_variants(&mut self, reload: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(family) = cx.global::<ThemeLibrary>().family(self.family_id) else {
             return;
         };
-        let selected = family
+        let Some(variant) = family
             .variants()
             .iter()
             .find(|variant| variant.id() == self.edited)
-            .unwrap_or_else(|| &family.variants()[0])
-            .id();
-        self.select(selected, window, cx);
-        self.refresh_preview(cx);
-        self.refresh_color_list(cx);
-        cx.notify();
+            .or_else(|| family.variants().first())
+        else {
+            return;
+        };
+        if reload || variant.id() != self.edited {
+            let id = variant.id();
+            let document = variant.document().clone();
+            self.apply_variant(id, &document, window, cx);
+        } else {
+            self.refresh_preview(cx);
+            self.refresh_color_list(cx);
+            cx.notify();
+        }
     }
 
     fn refresh_color_list(&mut self, cx: &App) {
@@ -874,11 +892,7 @@ impl ThemeEditor {
     }
 
     pub(crate) fn reload_variants(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.active_color = None;
-        self.refresh_variants(window, cx);
-        self.controls = Self::variant_controls(self.edited, window, cx);
-        self.refresh_color_list(cx);
-        cx.notify();
+        self.sync_variants(true, window, cx);
     }
 }
 

@@ -28,7 +28,7 @@ pub(super) fn sets() -> impl Iterator<Item = StoredThemeSet> {
 
 #[allow(
     clippy::expect_used,
-    reason = "the bundled Datalith asset and its two variants are release-time invariants, verified by domain tests"
+    reason = "bundled JSON and Light/Dark theme variants are invariants covered by domain tests"
 )]
 pub(super) fn defaults() -> [ThemeDocument; 2] {
     let set: StoredThemeSet =

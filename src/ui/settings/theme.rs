@@ -565,8 +565,26 @@ fn delete_family(id: u64, window: &mut Window, cx: &mut App) {
     }
 }
 
+pub fn close_deleted_editor(family_id: u64, window: &Window, cx: &mut App) {
+    if cx.global::<ThemeLibrary>().family(family_id).is_some() {
+        return;
+    }
+    // Defer until the editor's current update has released its entity.
+    window.defer(cx, move |window, cx| {
+        if let Some(view) = cx
+            .try_global::<crate::app::AppState>()
+            .and_then(|state| state.view.clone())
+        {
+            view.update(cx, |view, cx| {
+                view.close_theme_editor(family_id, window, cx);
+            });
+        }
+    });
+}
+
 pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx: &mut App) {
     struct ThemeDeletion;
+    close_deleted_editor(family_id, window, cx);
     let notification_id = rand::random::<u64>();
     let message = deleted.message();
     let deleted = std::rc::Rc::new(std::cell::RefCell::new(Some(deleted)));
