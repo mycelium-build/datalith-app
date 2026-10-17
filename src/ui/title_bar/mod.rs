@@ -53,10 +53,16 @@ fn render_content(
             if let Some(menu_bar) = menu_bar {
                 bar.child(branding(window, cx)).child(menu_bar)
             } else {
+                // macOS insets the controls past the traffic lights, which fullscreen hides.
+                let inset = if window.is_fullscreen() {
+                    px(0.)
+                } else {
+                    px(80.)
+                };
                 bar.child(h_flex().flex_1().min_w_0().child(
                     // Keep the platform inset inside the equal-width column.
                     // GPUI Component 0.6.1 keeps its 80px macOS inset private.
-                    div().pl(px(80.)).child(search_controls()),
+                    div().pl(inset).child(search_controls()),
                 ))
                 .child(branding(window, cx))
             }
