@@ -9,7 +9,7 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::document::handler::ViewMode;
-use crate::vault::file_ops::{path_from_vault_relative, path_to_vault_relative};
+use crate::vault::path::{path_from_vault_relative, path_to_vault_relative};
 
 const CURRENT_WORKSPACE_SCHEMA_VERSION: u32 = 1;
 

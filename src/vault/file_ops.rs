@@ -1,107 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result};
 
-use crate::vault::VaultCatalog;
-use crate::vault::{links, source};
-
-#[must_use]
-pub fn parent_dir(target: &Path) -> PathBuf {
-    if source::is_dir(target) {
-        target.to_path_buf()
-    } else {
-        target
-            .parent()
-            .map_or_else(|| PathBuf::from("/"), Path::to_path_buf)
-    }
-}
-
-#[must_use]
-pub fn normalized_path(path: &Path) -> PathBuf {
-    let source_path = source::is_read_only(path);
-    let absolute = if path.is_absolute() || source_path {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-    };
-    let absolute = if source_path {
-        absolute
-    } else {
-        fs::canonicalize(&absolute).unwrap_or(absolute)
-    };
-    let mut normalized = PathBuf::new();
-    for component in absolute.components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                if !normalized.pop() {
-                    normalized.push(component.as_os_str());
-                }
-            }
-            _ => normalized.push(component.as_os_str()),
-        }
-    }
-    normalized
-}
-
-/// Portable vault-relative form of `path`, such as `notes/today.md`.
-///
-/// Returns `None` for the vault root itself: the format never represents it
-/// with an empty string, so callers drop such entries.
-pub fn path_to_vault_relative(path: &Path, vault_root: &Path) -> Result<Option<String>> {
-    let relative = path
-        .strip_prefix(vault_root)
-        .with_context(|| format!("Workspace path is outside its vault: {}", path.display()))?;
-    let parts = relative
-        .components()
-        .map(|component| match component {
-            Component::Normal(part) => Ok(part.to_string_lossy().into_owned()),
-            _ => bail!("Workspace path must be relative to its vault"),
-        })
-        .collect::<Result<Vec<_>>>()?;
-    if parts.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(parts.join("/")))
-}
-
-/// Absolute path inside `vault_root` for a portable vault-relative `path`.
-///
-/// Returns `None` for the empty string: the format never represents the vault
-/// root, so callers drop such entries.
-pub fn path_from_vault_relative(path: &str, vault_root: &Path) -> Result<Option<PathBuf>> {
-    if path.is_empty() {
-        return Ok(None);
-    }
-    let relative = Path::new(path);
-    ensure!(
-        relative
-            .components()
-            .all(|component| matches!(component, Component::Normal(_))),
-        "Workspace path must be relative to its vault"
-    );
-    Ok(Some(vault_root.join(relative)))
-}
-
-#[must_use]
-pub fn unique_name(base_dir: &Path, name: &str) -> PathBuf {
-    let (stem, ext) = name.rfind('.').map_or((name, ""), |dot| {
-        (
-            name.get(..dot).unwrap_or(name),
-            name.get(dot..).unwrap_or(""),
-        )
-    });
-    let mut candidate = base_dir.join(name);
-    for counter in 1usize.. {
-        if !source::exists(&candidate) {
-            break;
-        }
-        candidate = base_dir.join(format!("{stem} {counter}{ext}"));
-    }
-    candidate
-}
+use crate::vault::path::{parent_dir, unique_path};
+use crate::vault::{VaultCatalog, links, source};
 
 pub fn create(target: &Path) -> Result<PathBuf> {
     create_with_name(target, "New Note.md")
@@ -111,7 +15,7 @@ pub fn create_with_name(target: &Path, base_name: &str) -> Result<PathBuf> {
     source::ensure_writable(target)?;
 
     let directory = parent_dir(target);
-    let path = unique_name(&directory, base_name);
+    let path = unique_path(&directory, base_name);
     source::ensure_writable(&path)?;
     fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
@@ -121,7 +25,7 @@ pub fn create_folder(target: &Path) -> Result<PathBuf> {
     source::ensure_writable(target)?;
 
     let directory = parent_dir(target);
-    let path = unique_name(&directory, "New Folder");
+    let path = unique_path(&directory, "New Folder");
     fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
     Ok(path)
 }
@@ -149,7 +53,8 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
             .strip_prefix(old_path)
             .unwrap_or_else(|_| Path::new(""));
         let renamed_target = new_path.join(suffix);
-        let replacement = replacement_target(&backlink.authored_target, &renamed_target, &root);
+        let replacement =
+            links::replacement_target(&backlink.authored_target, &renamed_target, &root);
         by_source
             .entry(backlink.source)
             .or_default()
@@ -201,44 +106,20 @@ pub fn delete(target: &Path) -> Result<()> {
 pub fn duplicate(target: &Path) -> Result<PathBuf> {
     source::ensure_writable(target)?;
 
+    let parent = target.parent().unwrap_or_else(|| Path::new("/"));
+    let name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("copy");
+    let new_path = unique_path(parent, name);
     if source::is_dir(target) {
-        let parent = target.parent().unwrap_or_else(|| Path::new("/"));
-        let name = target
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("copy");
-        let new_path = unique_name(parent, name);
         copy_dir(target, &new_path)
             .with_context(|| format!("Failed to duplicate dir {}", target.display()))?;
-        Ok(new_path)
     } else {
-        let parent = target.parent().unwrap_or_else(|| Path::new("/"));
-        let name = target
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("copy");
-        let new_path = unique_name(parent, name);
         fs::copy(target, &new_path)
             .with_context(|| format!("Failed to duplicate file {}", target.display()))?;
-        Ok(new_path)
     }
-}
-
-fn replacement_target(authored: &str, path: &Path, root: &Path) -> String {
-    let qualified = authored.contains(['/', '\\']);
-    let include_extension = Path::new(authored).extension().is_some();
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    let selected = if qualified {
-        relative.to_path_buf()
-    } else {
-        PathBuf::from(relative.file_name().unwrap_or(relative.as_os_str()))
-    };
-    let selected = if include_extension {
-        selected
-    } else {
-        selected.with_extension("")
-    };
-    selected.to_string_lossy().replace('\\', "/")
+    Ok(new_path)
 }
 
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -397,9 +278,28 @@ mod tests {
     }
 
     #[test]
-    fn create_with_name_creates_the_requested_file() {
+    fn create_with_name_avoids_existing_names() {
         let root = std::env::temp_dir().join(format!(
             "datalith-file-ops-create-name-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Note.md"), "").unwrap();
+        fs::write(root.join("Note 1.md"), "").unwrap();
+
+        let path = create_with_name(&root, "Note.md").unwrap();
+
+        assert_eq!(path, root.join("Note 2.md"));
+        assert!(path.exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn create_with_name_creates_the_requested_file() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-file-ops-create-requested-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
@@ -426,25 +326,6 @@ mod tests {
 
         assert_eq!(path, root.join("New Note.md"));
         assert!(path.exists());
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn unique_name_numbering_skips_existing_names() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-file-ops-unique-name-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("Note.md"), "").unwrap();
-        fs::write(root.join("Note 1.md"), "").unwrap();
-
-        assert_eq!(unique_name(&root, "Note.md"), root.join("Note 2.md"));
-
-        let created = create_with_name(&root, "Note.md").unwrap();
-        assert_eq!(created, root.join("Note 2.md"));
-        assert!(created.exists());
         let _ = fs::remove_dir_all(root);
     }
 }

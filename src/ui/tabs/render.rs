@@ -120,7 +120,7 @@ impl DatalithView {
         cx: &Context<Self>,
     ) -> Tab {
         let display_name = path.map_or("Untitled", display_name);
-        let close_label = format!("Close");
+        let close_label = "Close".to_owned();
         let close_button = Button::new(format!("close-tab-{identity}"))
             .icon(IconName::Close)
             .ghost()

@@ -22,7 +22,7 @@ use crate::app::actions::{
 use crate::app::settings as app_settings;
 use crate::ui::notifications;
 use crate::vault::file_ops;
-use crate::vault::path::display_name;
+use crate::vault::path::{display_name, unique_path};
 
 use super::DatalithView;
 
@@ -251,7 +251,7 @@ impl DatalithView {
                 if let Some(parent) = target.parent() {
                     let candidate = parent.join(&name);
                     if candidate != *target {
-                        let final_path = file_ops::unique_name(parent, &name);
+                        let final_path = unique_path(parent, &name);
                         self.rename_file(target, &final_path, cx);
                     }
                 }

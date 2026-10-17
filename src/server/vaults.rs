@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use super::error::ApiError;
 use crate::document::markdown::build_note_document;
 use crate::vault::file_ops;
-use crate::vault::path::resolve_vault_id;
+use crate::vault::path::{resolve_vault_id, unique_path};
 
 /// A vault advertised to clients: its display name and absolute path.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub fn write_note(
     } else {
         format!("{name}.md")
     };
-    let target = file_ops::unique_name(&directory, &file_name);
+    let target = unique_path(&directory, &file_name);
     file_ops::update(&target, &document)
         .map_err(|error| ApiError::internal(format!("Failed to write note: {error}")))?;
 

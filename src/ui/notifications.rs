@@ -85,6 +85,18 @@ pub fn open_url_failed(url: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to open {url}: {error}")).autohide(false)
 }
 
+pub fn link_target_not_found(target: &str) -> Notification {
+    Notification::error(format!("Link target not found: {target}")).autohide(false)
+}
+
+pub fn link_target_while_loading() -> Notification {
+    Notification::warning("Vault DB still loading, link unavailable")
+}
+
+pub fn link_target_catalog_failed() -> Notification {
+    Notification::error("Vault DB failed to load, link unavailable").autohide(false)
+}
+
 pub fn save_file_failed(path: &Path, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to save {}: {error}", path.display())).autohide(false)
 }
