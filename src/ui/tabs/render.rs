@@ -10,7 +10,7 @@ use gpui_kit::component::{
 use gpui_kit::{Context, IntoElement, ParentElement, SharedString, Styled};
 
 use super::NavigationAction;
-use crate::app::actions::ToggleEditorMode;
+use crate::app::actions::{CloseTab, GoBack, GoForward, NewTab, ToggleEditorMode};
 use crate::ui::DatalithView;
 use crate::ui::icons::DatalithIcon;
 use crate::vault::path::display_name;
@@ -31,6 +31,8 @@ impl DatalithView {
                             .ghost()
                             .xsmall()
                             .icon(IconName::ArrowLeft)
+                            .accessibility_label("Navigate back")
+                            .tooltip_with_action("Navigate back", &GoBack, None)
                             .disabled(!can_go_back)
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.pending_navigation = Some(NavigationAction::GoBack);
@@ -42,6 +44,8 @@ impl DatalithView {
                             .ghost()
                             .xsmall()
                             .icon(IconName::ArrowRight)
+                            .accessibility_label("Navigate forward")
+                            .tooltip_with_action("Navigate forward", &GoForward, None)
                             .disabled(!can_go_forward)
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.pending_navigation = Some(NavigationAction::GoForward);
@@ -64,9 +68,9 @@ impl DatalithView {
                 let mut suffix = h_flex().gap_0().px_1();
                 if can_toggle_mode {
                     let (icon, label) = if is_editing {
-                        (Icon::new(IconName::Eye), "Switch tab to reading mode")
+                        (Icon::new(IconName::Eye), "Switch to reading mode")
                     } else {
-                        (Icon::new(DatalithIcon::Pen), "Switch tab to editing mode")
+                        (Icon::new(DatalithIcon::Pen), "Switch to editing mode")
                     };
                     suffix = suffix.child(
                         Button::new("toggle-mode")
@@ -74,7 +78,7 @@ impl DatalithView {
                             .xsmall()
                             .icon(icon)
                             .accessibility_label(label)
-                            .tooltip(label)
+                            .tooltip_with_action(label, &ToggleEditorMode, None)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(ToggleEditorMode), cx);
                             }),
@@ -87,6 +91,8 @@ impl DatalithView {
                         .ghost()
                         .xsmall()
                         .icon(IconName::Plus)
+                        .accessibility_label("New tab")
+                        .tooltip_with_action("New tab", &NewTab, None)
                         .on_click(cx.listener(|view, _, _, cx| view.new_empty_tab(cx))),
                 )
             })
@@ -114,7 +120,18 @@ impl DatalithView {
         cx: &Context<Self>,
     ) -> Tab {
         let display_name = path.map_or("Untitled", display_name);
-        let close_label = format!("Close {display_name}");
+        let close_label = format!("Close");
+        let close_button = Button::new(format!("close-tab-{identity}"))
+            .icon(IconName::Close)
+            .ghost()
+            .xsmall()
+            .mr_1()
+            .accessibility_label(close_label.clone());
+        let close_button = if Some(index) == self.tabs.active_index() {
+            close_button.tooltip_with_action(close_label, &CloseTab, None)
+        } else {
+            close_button.tooltip(close_label)
+        };
         Tab::new()
             .label(SharedString::from(display_name))
             .prefix(
@@ -122,17 +139,9 @@ impl DatalithView {
                     .size_3()
                     .ml_2(),
             )
-            .suffix(
-                Button::new(format!("close-tab-{identity}"))
-                    .icon(IconName::Close)
-                    .ghost()
-                    .xsmall()
-                    .mr_1()
-                    .accessibility_label(close_label)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        cx.stop_propagation();
-                        view.close_tab(index, cx);
-                    })),
-            )
+            .suffix(close_button.on_click(cx.listener(move |view, _, _, cx| {
+                cx.stop_propagation();
+                view.close_tab(index, cx);
+            })))
     }
 }
