@@ -277,7 +277,17 @@ impl DatalithView {
                 .min_w_0()
                 .truncate()
                 .child(label);
-            if !is_last {
+            if is_last {
+                let file = cumulative.clone();
+                crumb = crumb
+                    .cursor_pointer()
+                    .hover(move |style| style.text_color(foreground).underline())
+                    .on_click(
+                        cx.listener(move |this, _: &gpui_kit::ClickEvent, window, cx| {
+                            this.start_inline_rename(&file, window, cx);
+                        }),
+                    );
+            } else {
                 let folder = cumulative.clone();
                 crumb = crumb
                     .cursor_pointer()

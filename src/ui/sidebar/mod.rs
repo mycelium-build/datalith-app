@@ -174,6 +174,20 @@ impl Render for DragFile {
 }
 
 impl DatalithView {
+    pub(crate) fn start_inline_rename(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.reveal_in_sidebar(path, window, cx);
+        if crate::vault::source::is_read_only(path) {
+            return;
+        }
+        self.context_menu_target = Some(path.to_path_buf());
+        window.dispatch_action(Box::new(Rename), cx);
+    }
+
     pub fn rename_file(
         &mut self,
         old_path: &std::path::Path,
