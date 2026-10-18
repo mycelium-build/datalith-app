@@ -17,7 +17,7 @@ use super::constants::{
 pub(super) fn render_frontmatter(
     frontmatter: &Frontmatter,
     base_font_size: f32,
-    margin_bottom: f32,
+    margin_top: f32,
     handler: &Entity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
@@ -105,7 +105,7 @@ pub(super) fn render_frontmatter(
         .bg(cx.theme().tab_bar)
         .rounded(px(MD_FRONTMATTER_RADIUS))
         .p(px(MD_FRONTMATTER_PADDING))
-        .mb(px(margin_bottom))
+        .mt(px(margin_top))
         .children(rows)
         .into_any_element()
 }

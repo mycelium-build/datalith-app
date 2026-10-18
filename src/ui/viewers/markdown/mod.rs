@@ -19,14 +19,11 @@ use percent_encoding::percent_decode_str;
 
 use crate::app::fonts::PIXELOID_FONT;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
-use crate::document::markdown::{MarkdownBlock, MarkdownInline, parse_markdown};
+use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
 use crate::vault::path::display_name;
 
-use constants::{
-    MD_FRONTMATTER_MARGIN, MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT,
-    MD_PARAGRAPH_MARGIN, MD_TITLE_SIZE,
-};
+use constants::{MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_TITLE_MARGIN, MD_TITLE_SIZE};
 use frontmatter::render_frontmatter;
 
 pub struct MarkdownViewer {
@@ -114,7 +111,7 @@ impl MarkdownViewer {
             elements.push(render_frontmatter(
                 frontmatter,
                 BASE_FONT_SIZE,
-                Self::frontmatter_bottom_margin(document.blocks.first()),
+                MD_TITLE_MARGIN,
                 &handler,
                 cx,
             ));
@@ -124,7 +121,7 @@ impl MarkdownViewer {
             handler,
             cx,
         };
-        elements.extend(self.render_blocks(&document.blocks, 0, &mut ctx));
+        elements.extend(self.render_blocks(&document.blocks, 0, false, &mut ctx));
 
         div()
             .id("markdown-preview")
@@ -154,40 +151,30 @@ impl MarkdownViewer {
             .font_weight(FontWeight::BOLD)
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
-            .mb(px(MD_HEADING_MARGIN * MD_TITLE_SIZE))
             .child(name)
             .into_any_element()
     }
 
-    /// Headings and rules already bring their own top margin,
-    /// so the frontmatter only needs a small gap before them.
-    /// Every other block starts flush and needs the regular paragraph gap instead.
-    const fn frontmatter_bottom_margin(next: Option<&MarkdownBlock>) -> f32 {
-        if matches!(
-            next,
-            None | Some(MarkdownBlock::Heading { .. } | MarkdownBlock::Rule)
-        ) {
-            MD_FRONTMATTER_MARGIN
-        } else {
-            MD_PARAGRAPH_MARGIN
-        }
+    fn heading_size(level: u32) -> f32 {
+        MD_HEADING_SIZES
+            .get(
+                usize::try_from(level)
+                    .unwrap_or_default()
+                    .saturating_sub(1)
+                    .min(MD_HEADING_SIZES.len().saturating_sub(1)),
+            )
+            .copied()
+            .unwrap_or(1.0)
     }
 
     fn render_heading(
         &self,
         level: u32,
         content: &[MarkdownInline],
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
-        let size = MD_HEADING_SIZES
-            .get(
-                usize::try_from(level)
-                    .unwrap_or_default()
-                    .saturating_sub(1)
-                    .min(5),
-            )
-            .copied()
-            .unwrap_or_else(|| MD_HEADING_SIZES.last().copied().unwrap_or(1.0));
+        let size = Self::heading_size(level);
         div()
             .w_full()
             .min_w_0()
@@ -196,8 +183,7 @@ impl MarkdownViewer {
             .font_family(PIXELOID_FONT)
             .text_size(px(BASE_FONT_SIZE * size))
             //.font_weight(FontWeight::BOLD)
-            .mt(px(MD_HEADING_MARGIN * size))
-            .mb(px(MD_HEADING_MARGIN * size))
+            .mt(px(margin_top))
             .line_height(px(BASE_FONT_SIZE * size * MD_LINE_HEIGHT))
             .children(self.render_inlines(content, InlineStyle::default(), ctx))
             .into_any_element()
@@ -206,9 +192,7 @@ impl MarkdownViewer {
     fn render_paragraph(
         &self,
         content: &[MarkdownInline],
-        list_depth: usize,
-        is_last: bool,
-        next_is_paragraph: bool,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         div()
@@ -216,11 +200,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .mb(px(if is_last || (list_depth > 0 && !next_is_paragraph) {
-                0.0
-            } else {
-                MD_PARAGRAPH_MARGIN
-            }))
+            .mt(px(margin_top))
             .children(self.render_inlines(content, InlineStyle::default(), ctx))
             .into_any_element()
     }
@@ -404,8 +384,7 @@ impl MarkdownViewer {
 #[cfg(test)]
 mod tests {
     use super::MarkdownViewer;
-    use super::constants::{MD_FRONTMATTER_MARGIN, MD_PARAGRAPH_MARGIN};
-    use crate::document::markdown::{MarkdownBlock, MarkdownInline};
+    use crate::document::markdown::MarkdownInline;
 
     #[test]
     fn strong_or_emphasis_wrapping_a_link_is_not_flattened_into_text() {
@@ -423,37 +402,5 @@ mod tests {
             vec![MarkdownInline::Code("c".into())]
         )));
         assert!(!MarkdownViewer::is_textable(&MarkdownInline::Break));
-    }
-
-    fn assert_same_margin(actual: f32, expected: f32) {
-        assert_eq!(actual.to_bits(), expected.to_bits());
-    }
-
-    #[test]
-    fn frontmatter_uses_paragraph_gap_before_flush_blocks() {
-        assert_same_margin(
-            MarkdownViewer::frontmatter_bottom_margin(Some(&MarkdownBlock::Paragraph(vec![]))),
-            MD_PARAGRAPH_MARGIN,
-        );
-    }
-
-    #[test]
-    fn frontmatter_keeps_small_gap_before_blocks_with_top_margin() {
-        let heading = MarkdownBlock::Heading {
-            level: 1,
-            content: vec![],
-        };
-        assert_same_margin(
-            MarkdownViewer::frontmatter_bottom_margin(Some(&heading)),
-            MD_FRONTMATTER_MARGIN,
-        );
-        assert_same_margin(
-            MarkdownViewer::frontmatter_bottom_margin(Some(&MarkdownBlock::Rule)),
-            MD_FRONTMATTER_MARGIN,
-        );
-        assert_same_margin(
-            MarkdownViewer::frontmatter_bottom_margin(None),
-            MD_FRONTMATTER_MARGIN,
-        );
     }
 }
