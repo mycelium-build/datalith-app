@@ -25,9 +25,6 @@ pub fn build_query(
 
     for word in query_str.split_whitespace() {
         let word = word.to_lowercase();
-        if word.is_empty() {
-            continue;
-        }
 
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
         for term in expand_prefix_terms(searcher, name_field, &word) {
@@ -63,7 +60,7 @@ pub fn build_query(
 /// tolerating up to [`MAX_EDIT_DISTANCE`] edits in that prefix.
 ///
 /// `TermQuery` scores each expanded term with BM25,
-/// so term frequency and document length still contribute
+/// so term frequency and document length still contribute.
 fn expand_prefix_terms(searcher: &Searcher, field: Field, prefix: &str) -> Vec<Term> {
     let dfa = levenshtein_builder().build_prefix_dfa(prefix);
     let mut terms = BTreeSet::new();

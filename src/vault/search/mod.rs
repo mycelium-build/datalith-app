@@ -100,7 +100,9 @@ fn snippet_from_doc(
         return fallback_snippet(content);
     }
 
-    let fragment_start = content.find(fragment).unwrap_or(0);
+    let Some(fragment_start) = content.find(fragment) else {
+        return fallback_snippet(content);
+    };
     let fragment_end = fragment_start.saturating_add(fragment.len());
     let prefix = if fragment_start > 0 { "…" } else { "" };
     let suffix = if fragment_end < content.len() {
