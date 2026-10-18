@@ -58,6 +58,7 @@ harness = false
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
+excessive_nesting = "deny"
 # DENY PANICS:
 unwrap_used = "deny"
 expect_used = "deny"
