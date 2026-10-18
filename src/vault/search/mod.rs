@@ -135,7 +135,7 @@ fn fallback_snippet(content: &str) -> (String, Vec<Range<usize>>) {
         .map(flatten_whitespace)
         .collect();
     if text.chars().count() < content.chars().count() {
-        text.push_str("…");
+        text.push('…');
     }
     (text, Vec::new())
 }
