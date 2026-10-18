@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use gpui_kit::{Context, KeyDownEvent, SharedString, Window};
+use gpui_kit::component::tree::TreeItem;
+use gpui_kit::{Context, KeyDownEvent, ScrollStrategy, SharedString, Window};
 
 use crate::vault::path::display_name;
 
@@ -57,6 +58,49 @@ impl DatalithView {
             let new_tab = event.keystroke.modifiers.platform;
             self.open_file(path, new_tab, window, cx);
         }
+    }
+
+    /// Expands the ancestors of `path`,
+    /// selects it in the tree,
+    /// and gives the sidebar keyboard focus
+    /// so navigation can continue from there.
+    pub(crate) fn reveal_in_sidebar(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(root) = self.root_path.clone() else {
+            return;
+        };
+        if !path.starts_with(&root) {
+            return;
+        }
+
+        let mut ancestor = path.parent();
+        while let Some(folder) = ancestor {
+            if folder == root.as_path() || !folder.starts_with(&root) {
+                break;
+            }
+            self.mark_tree_item_expanded(&folder.to_string_lossy().into_owned().into(), true);
+            ancestor = folder.parent();
+        }
+        if crate::vault::source::is_dir(path) {
+            self.mark_tree_item_expanded(&path.to_string_lossy().into_owned().into(), true);
+        }
+        self.refresh_tree(cx);
+
+        let id: SharedString = path.to_string_lossy().into_owned().into();
+        let item = TreeItem::new(id, display_name(path).to_string());
+        self.tree_state.update(cx, |state, cx| {
+            state.set_selected_item(Some(&item), cx);
+            if let Some(ix) = state.selected_index() {
+                state.scroll_to_item(ix, ScrollStrategy::Center);
+            }
+        });
+        self.last_sidebar_selection = Some(path.to_path_buf());
+        self.sidebar_focus_handle.focus(window, cx);
+        cx.notify();
     }
 
     pub(crate) fn focus_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -7,8 +7,8 @@ use gpui_kit::component::{
     v_flex,
 };
 use gpui_kit::{
-    Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render, Styled,
-    Window, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::app::keymap::display_binding;
@@ -242,6 +242,69 @@ impl DatalithView {
             }))
     }
 
+    fn render_path_breadcrumb(&self, cx: &Context<Self>) -> AnyElement {
+        let (Some(path), Some(root)) = (self.tabs.active_path(), self.root_path.as_deref()) else {
+            return div().into_any_element();
+        };
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        let components = relative.components().collect::<Vec<_>>();
+        if components.is_empty() {
+            return div().into_any_element();
+        }
+
+        let muted = cx.theme().muted_foreground;
+        let foreground = cx.theme().foreground;
+        let last_index = components.len().saturating_sub(1);
+        let mut crumbs = Vec::with_capacity(components.len().saturating_mul(2));
+        let mut cumulative = root.to_path_buf();
+
+        for (index, component) in components.iter().enumerate() {
+            cumulative.push(component.as_os_str());
+            if index > 0 {
+                crumbs.push(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(muted.opacity(0.6))
+                        .child("›")
+                        .into_any_element(),
+                );
+            }
+
+            let is_last = index == last_index;
+            let label = component.as_os_str().to_string_lossy().to_string();
+            let mut crumb = div()
+                .id(("path-crumb", index))
+                .min_w_0()
+                .truncate()
+                .child(label);
+            if !is_last {
+                let folder = cumulative.clone();
+                crumb = crumb
+                    .cursor_pointer()
+                    .hover(move |style| style.text_color(foreground).underline())
+                    .on_click(
+                        cx.listener(move |this, _: &gpui_kit::ClickEvent, window, cx| {
+                            this.reveal_in_sidebar(&folder, window, cx);
+                        }),
+                    );
+            }
+            crumbs.push(crumb.into_any_element());
+        }
+
+        h_flex()
+            .w_full()
+            .min_w_0()
+            .items_center()
+            .justify_center()
+            .gap_1()
+            .px_4()
+            .py_1()
+            .text_xs()
+            .text_color(muted)
+            .children(crumbs)
+            .into_any_element()
+    }
+
     fn render_editor(&self, cx: &Context<Self>) -> impl IntoElement {
         let read_only = self
             .root_path
@@ -269,6 +332,7 @@ impl DatalithView {
             .min_h_0()
             .overflow_hidden()
             .child(self.render_tab_bar(cx))
+            .child(self.render_path_breadcrumb(cx))
             .child(if is_empty {
                 if read_only {
                     Self::render_empty_hint(cx, "Open a personal vault to create notes")
