@@ -220,21 +220,7 @@ impl MarkdownViewer {
             if let Some(end) = adjacent_image_run_end(inlines, index) {
                 flush_inline_text(&mut elements, &mut text, &mut highlights);
                 if let Some(run) = inlines.get(index..end) {
-                    let images = run.iter().filter_map(|inline| {
-                        let MarkdownInline::Image { url, alt } = inline else {
-                            return None;
-                        };
-                        Some(self.render_image(url, alt, true, ctx.cx))
-                    });
-                    elements.push(
-                        div()
-                            .w_full()
-                            .min_w_0()
-                            .flex()
-                            .gap_2()
-                            .children(images)
-                            .into_any_element(),
-                    );
+                    elements.push(self.render_image_run(run, ctx));
                 }
                 index = end;
                 continue;
@@ -308,6 +294,22 @@ impl MarkdownViewer {
         }
         flush_inline_text(&mut elements, &mut text, &mut highlights);
         elements
+    }
+
+    fn render_image_run(&self, run: &[MarkdownInline], ctx: &mut BlockContext) -> AnyElement {
+        let images = run.iter().filter_map(|inline| {
+            let MarkdownInline::Image { url, alt } = inline else {
+                return None;
+            };
+            Some(self.render_image(url, alt, true, ctx.cx))
+        });
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .gap_2()
+            .children(images)
+            .into_any_element()
     }
 
     fn strong_or_emphasis_children(inline: &MarkdownInline) -> Option<&[MarkdownInline]> {

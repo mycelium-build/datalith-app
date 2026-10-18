@@ -238,15 +238,14 @@ impl DatalithView {
             handler.read(cx).input().cloned().map(|state| {
                 let path = path.clone();
                 cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
-                    if matches!(event, InputEvent::Change) {
-                        let content = state.read(cx).value();
-                        if let Err(error) = file_ops::update(&path, &content) {
-                            window.push_notification(
-                                notifications::save_file_failed(&path, &error),
-                                cx,
-                            );
-                        }
+                    if !matches!(event, InputEvent::Change) {
+                        return;
                     }
+                    let content = state.read(cx).value();
+                    let Err(error) = file_ops::update(&path, &content) else {
+                        return;
+                    };
+                    window.push_notification(notifications::save_file_failed(&path, &error), cx);
                 })
             })
         };

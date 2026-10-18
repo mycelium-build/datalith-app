@@ -34,6 +34,14 @@ pub struct VaultCatalog {
     inner: Arc<CatalogInner>,
 }
 
+fn rebase_event_paths(event: &mut notify::Event, observed_root: &Path, logical_root: &Path) {
+    for path in &mut event.paths {
+        if let Ok(relative) = path.strip_prefix(observed_root) {
+            *path = logical_root.join(relative);
+        }
+    }
+}
+
 impl VaultCatalog {
     pub(crate) fn open(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
         let source = VaultSource::for_root(root)?;
@@ -91,11 +99,7 @@ impl VaultCatalog {
                 let mut watcher = notify::recommended_watcher(
                     move |mut event: notify::Result<notify::Event>| {
                         if let Ok(event) = &mut event {
-                            for path in &mut event.paths {
-                                if let Ok(relative) = path.strip_prefix(&observed_root) {
-                                    *path = logical_root.join(relative);
-                                }
-                            }
+                            rebase_event_paths(event, &observed_root, &logical_root);
                         }
                         if let Err(error) = notify_tx.send(event) {
                             // Background task there can be no UI
