@@ -9,7 +9,7 @@ mod database;
 use database::{Backlink, CatalogDatabase};
 
 use crate::document::file_types::RegisteredFileTypes;
-use crate::vault::search::SearchEngine;
+use crate::vault::search::{SearchEngine, SearchHit};
 use crate::vault::{DATALITH_DIR_NAME, source::VaultSource};
 
 mod types;
@@ -177,7 +177,7 @@ impl VaultCatalog {
     }
 
     #[must_use]
-    pub(crate) fn search(&self, query: &str) -> Vec<PathBuf> {
+    pub(crate) fn search(&self, query: &str) -> Vec<SearchHit> {
         self.inner
             .search
             .lock()
@@ -384,6 +384,10 @@ mod tests {
     use super::*;
     use crate::document::file_types::FileTypeCapabilities;
 
+    fn searched_paths(hits: Vec<SearchHit>) -> Vec<PathBuf> {
+        hits.into_iter().map(|hit| hit.path).collect()
+    }
+
     #[test]
     fn changed_paths_reconcile_catalog_and_search_index() {
         let root =
@@ -420,7 +424,11 @@ mod tests {
         assert!(event.structure_changed);
         assert!(catalog.paths().contains(&path));
         assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
-        assert_eq!(catalog.search("distinctive watcher"), vec![path]);
+        let hits = catalog.search("distinctive watcher");
+        assert!(hits.iter().any(|hit| {
+            hit.snippet.contains("distinctive watcher") && !hit.highlights.is_empty()
+        }));
+        assert_eq!(searched_paths(hits), vec![path]);
         drop(catalog);
         let _ = std::fs::remove_dir_all(root);
     }
@@ -451,7 +459,10 @@ mod tests {
         let events = catalog.events();
         catalog.wait_until_ready(std::time::Duration::from_secs(5));
         while events.try_recv().is_ok() {}
-        assert_eq!(catalog.search("hidden"), vec![hidden_tracked]);
+        assert_eq!(
+            searched_paths(catalog.search("hidden")),
+            vec![hidden_tracked]
+        );
 
         let added = folder.join("New.md");
         std::fs::write(&added, "new tracked content").unwrap();
@@ -483,7 +494,7 @@ mod tests {
         let welcome = root.join("Welcome.md");
         assert_eq!(catalog.state(), CatalogState::Ready);
         assert!(catalog.paths().contains(&welcome));
-        assert!(catalog.search("Datalith").contains(&welcome));
+        assert!(searched_paths(catalog.search("Datalith")).contains(&welcome));
         assert_eq!(catalog.resolve("Basics"), Some(root.join("Basics.md")));
         let base = pollster::block_on(catalog.query_base(BaseQuery {
             filters: crate::document::filter::Filter::MatchAll,
