@@ -52,13 +52,8 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let decoded_url = percent_decode_str(url).decode_utf8_lossy();
-        // Drop anchors and queries before resolving the linked document.
-        let target = decoded_url
-            .split(['#', '?'])
-            .next()
-            .unwrap_or(&decoded_url)
-            .trim();
+        let target = link_target(url);
+        let target = target.as_str();
         // A fragment-only link points inside the current document.
         if target.is_empty() {
             return;
@@ -105,7 +100,8 @@ impl DatalithView {
             let notification = match self.vault_catalog.as_ref().map(VaultCatalog::state) {
                 Some(CatalogState::Ready) => notifications::link_target_not_found(url),
                 Some(CatalogState::Failed) => notifications::link_target_catalog_failed(),
-                None | Some(CatalogState::Syncing) => notifications::link_target_while_loading(),
+                Some(CatalogState::Syncing) => notifications::link_target_while_loading(),
+                None => notifications::link_target_no_vault(),
             };
             window.push_notification(notification, cx);
         }
@@ -402,6 +398,19 @@ impl DatalithView {
     }
 }
 
+/// Strips the fragment/query from `url` and percent-decodes the remaining path.
+///
+/// The delimiters are structural in the raw URL,
+/// so they are split off before decoding;
+/// a percent-encoded `#` or `?` is part of the file name.
+fn link_target(url: &str) -> String {
+    let raw_target = url.split_once(['#', '?']).map_or(url, |(target, _)| target);
+    percent_decode_str(raw_target)
+        .decode_utf8_lossy()
+        .trim()
+        .to_owned()
+}
+
 /// Whether `target` uses a URL scheme (`https:`, `mailto:`, ...), as opposed to a vault path.
 /// A single-letter scheme is treated as a Windows drive path.
 fn is_external_url(target: &str) -> bool {
@@ -433,7 +442,7 @@ mod tests {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{AppContext, TestAppContext, px, size};
 
-    use super::{DatalithView, is_external_url, next_history};
+    use super::{DatalithView, is_external_url, link_target, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
     use crate::ui::settings::SettingsView;
@@ -490,8 +499,14 @@ mod tests {
                 view.open_link_target("Missing", false, &source, window, cx);
                 assert_eq!(window.notifications(cx).len(), notifications_before + 1);
 
-                // Without a loaded catalog, the failure is reported as loading
-                // rather than as a missing target.
+                // A percent-encoded `#` is part of the file name, not a fragment delimiter.
+                let hashed = notes.join("Note#1.md");
+                std::fs::write(&hashed, "# Hashed").unwrap();
+                view.open_link_target("Note%231.md", false, &source, window, cx);
+                assert_eq!(view.tabs.active_path(), Some(hashed.as_path()));
+
+                // Without a vault, the failure is reported as unavailable
+                // rather than as loading.
                 view.vault_catalog = None;
                 let notifications_before = window.notifications(cx).len();
                 view.open_link_target("Missing", false, &source, window, cx);
@@ -502,6 +517,16 @@ mod tests {
         finish_startup(&mut cx, window_handle);
         drop(cx);
         std::fs::remove_dir_all(root_path).unwrap();
+    }
+
+    #[test]
+    fn link_targets_only_strip_raw_fragments_and_queries() {
+        assert_eq!(link_target("Note%231.md"), "Note#1.md");
+        assert_eq!(link_target("Note%231.md#heading"), "Note#1.md");
+        assert_eq!(link_target("Note%3F1.md?query"), "Note?1.md");
+        assert_eq!(link_target("Note.md#heading"), "Note.md");
+        assert_eq!(link_target("Note.md?query=1"), "Note.md");
+        assert_eq!(link_target("#heading"), "");
     }
 
     #[test]

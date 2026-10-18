@@ -93,6 +93,10 @@ pub fn link_target_while_loading() -> Notification {
     Notification::warning("Vault DB still loading, link unavailable")
 }
 
+pub fn link_target_no_vault() -> Notification {
+    Notification::error("No vault open, link unavailable").autohide(false)
+}
+
 pub fn link_target_catalog_failed() -> Notification {
     Notification::error("Vault DB failed to load, link unavailable").autohide(false)
 }
