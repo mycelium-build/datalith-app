@@ -302,19 +302,18 @@ impl DatalithView {
         structure_changed: &mut bool,
         cx: &mut Context<Self>,
     ) {
-        if let (Some(catalog), Some(root)) = (self.vault_catalog.clone(), self.root_path.clone()) {
-            // Recheck restored documents once when the catalog is ready.
-            if !self.vault_db_ready_notified {
+        if !self.vault_db_ready_notified {
+            if let (Some(catalog), Some(root)) =
+                (self.vault_catalog.clone(), self.root_path.clone())
+            {
                 changed_paths.extend(
                     self.tabs
                         .iter()
                         .filter(|(_, path, _)| path.is_some_and(|path| path.starts_with(&root)))
                         .filter_map(|(_, path, _)| path.map(Path::to_path_buf)),
                 );
+                self.set_catalog_on_tabs(&catalog, &root, cx);
             }
-            self.set_catalog_on_tabs(&catalog, &root, cx);
-        }
-        if !self.vault_db_ready_notified {
             self.vault_db_ready_notified = true;
             self.pending_notifications
                 .push(notifications::vault_db_ready());
