@@ -6,6 +6,8 @@ pub mod todo_txt;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AnyElement, App, Entity, FocusHandle};
 
+use crate::vault::VaultCatalog;
+
 use self::base::BaseEditor;
 use self::markdown::MarkdownEditor;
 use self::plain_text::PlainTextEditor;
@@ -50,6 +52,12 @@ impl EditorKind {
         match self {
             Self::Markdown(editor) => Some(editor),
             _ => None,
+        }
+    }
+
+    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut App) {
+        if let Self::Markdown(editor) = self {
+            editor.set_vault_catalog(catalog, cx);
         }
     }
 }

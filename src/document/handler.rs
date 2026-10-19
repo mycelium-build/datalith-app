@@ -132,7 +132,10 @@ impl FileHandler {
         cx.notify();
     }
 
-    pub(crate) fn set_vault_catalog(&self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+    pub(crate) fn set_vault_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
+        if let Some(editor) = &mut self.editor {
+            editor.set_vault_catalog(catalog.clone(), cx);
+        }
         if let Some(viewer) = &self.viewer {
             viewer.set_vault_catalog(catalog, cx);
         }
