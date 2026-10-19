@@ -12,7 +12,7 @@ use gpui_kit::{
     px, size,
 };
 
-use crate::ui::DatalithView;
+use crate::ui::{DatalithView, modal};
 use crate::vault::VaultCatalog;
 use crate::vault::path::display_name;
 use crate::vault::search::{SearchHit, picker};
@@ -316,74 +316,54 @@ impl Palette {
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
         let input = self.input.clone();
 
-        div()
-            .absolute()
-            .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("palette-backdrop")
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.palette.close();
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .w(px(PALETTE_WIDTH))
-                    .bg(cx.theme().background)
-                    .border(px(BORDER_WIDTH))
-                    .border_color(cx.theme().border)
-                    .rounded_md()
-                    .shadow_lg()
-                    .id("palette-panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .child(
-                        v_flex()
-                            .overflow_hidden()
-                            .on_key_down(cx.listener(
-                                |view: &mut DatalithView,
-                                 event: &KeyDownEvent,
-                                 _: &mut Window,
-                                 cx: &mut Context<DatalithView>| {
-                                    let key = event.keystroke.key.as_str();
-                                    if key == "escape" {
-                                        view.palette.close();
-                                        cx.notify();
-                                        return;
-                                    }
-                                    if key == "up" || key == "down" {
-                                        let count = match view.palette.kind {
-                                            PaletteKind::Search => {
-                                                view.palette.search_results.len()
-                                            }
-                                            PaletteKind::QuickSwitcher => {
-                                                view.palette.quick_switcher_entries.len()
-                                            }
-                                        };
-                                        if count > 0
-                                            && let Some(next) = picker::nav_idx(
-                                                key == "down",
-                                                view.palette.selected,
-                                                count,
-                                            )
-                                        {
-                                            view.palette.selected = Some(next);
-                                            view.palette.scroll_to(next);
+        modal::backdrop("palette-backdrop", cx, |view| view.palette.close()).child(
+            modal::panel("palette-panel", cx)
+                .w(px(PALETTE_WIDTH))
+                .border(px(BORDER_WIDTH))
+                .child(
+                    v_flex()
+                        .overflow_hidden()
+                        .on_key_down(cx.listener(
+                            |view: &mut DatalithView,
+                             event: &KeyDownEvent,
+                             _: &mut Window,
+                             cx: &mut Context<DatalithView>| {
+                                let key = event.keystroke.key.as_str();
+                                if key == "escape" {
+                                    view.palette.close();
+                                    cx.notify();
+                                    return;
+                                }
+                                if key == "up" || key == "down" {
+                                    let count = match view.palette.kind {
+                                        PaletteKind::Search => view.palette.search_results.len(),
+                                        PaletteKind::QuickSwitcher => {
+                                            view.palette.quick_switcher_entries.len()
                                         }
-                                        cx.notify();
+                                    };
+                                    if count > 0
+                                        && let Some(next) = picker::nav_idx(
+                                            key == "down",
+                                            view.palette.selected,
+                                            count,
+                                        )
+                                    {
+                                        view.palette.selected = Some(next);
+                                        view.palette.scroll_to(next);
                                     }
-                                },
-                            ))
-                            .child(
-                                div()
-                                    .border_b(px(BORDER_WIDTH))
-                                    .border_color(cx.theme().border)
-                                    .child(Input::new(&input).appearance(false)),
-                            )
-                            .child(self.render_palette_body(cx)),
-                    ),
-            )
+                                    cx.notify();
+                                }
+                            },
+                        ))
+                        .child(
+                            div()
+                                .border_b(px(BORDER_WIDTH))
+                                .border_color(cx.theme().border)
+                                .child(Input::new(&input).appearance(false)),
+                        )
+                        .child(self.render_palette_body(cx)),
+                ),
+        )
     }
 
     fn render_palette_body(&self, cx: &Context<DatalithView>) -> AnyElement {

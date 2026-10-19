@@ -1,6 +1,7 @@
 pub mod editors;
 pub mod icons;
 pub mod licenses;
+mod modal;
 pub mod monolith;
 pub mod notifications;
 pub mod palette;

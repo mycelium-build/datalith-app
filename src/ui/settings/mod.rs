@@ -8,12 +8,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
+    KeyDownEvent, ParentElement, SharedString, Styled, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use super::DatalithView;
+use super::{DatalithView, modal};
 use crate::app::settings;
 
 pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
@@ -117,72 +117,53 @@ impl SettingsView {
     }
 
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
-        div()
-            .absolute()
-            .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("settings-backdrop")
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.settings.close();
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .w(px(700.))
-                    .h(px(600.))
-                    .bg(cx.theme().background)
-                    .border(px(1.))
-                    .border_color(cx.theme().border)
-                    .rounded_md()
-                    .shadow_lg()
-                    .id("settings-panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .track_focus(&self.focus_handle)
-                    .on_key_down(cx.listener(
-                        |view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
-                            if event.keystroke.key == "escape" {
-                                view.settings.close();
-                                cx.notify();
-                            }
-                        },
-                    ))
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .overflow_hidden()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .px_2()
-                                    .py_1()
-                                    .justify_end()
-                                    .border_b(px(1.))
-                                    .border_color(cx.theme().border)
-                                    .child(
-                                        Button::new("close-settings")
-                                            .ghost()
-                                            .small()
-                                            .icon(IconName::Close)
-                                            .on_click(cx.listener(|view, _, _, cx| {
-                                                view.settings.close();
-                                                cx.notify();
-                                            })),
-                                    ),
-                            )
-                            .child(
-                                Settings::new("app-settings")
-                                    .with_size(Size::Small)
-                                    .default_selected_index(SelectIndex {
-                                        page_ix: self.page_index,
-                                        group_ix: None,
-                                    })
-                                    .pages(self.settings_pages(cx)),
-                            ),
-                    ),
-            )
+        modal::backdrop("settings-backdrop", cx, |view| view.settings.close()).child(
+            modal::panel("settings-panel", cx)
+                .w(px(700.))
+                .h(px(600.))
+                .track_focus(&self.focus_handle)
+                .on_key_down(
+                    cx.listener(|view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
+                        if event.keystroke.key == "escape" {
+                            view.settings.close();
+                            cx.notify();
+                        }
+                    }),
+                )
+                .child(
+                    v_flex()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .px_2()
+                                .py_1()
+                                .justify_end()
+                                .border_b(px(1.))
+                                .border_color(cx.theme().border)
+                                .child(
+                                    Button::new("close-settings")
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::Close)
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.settings.close();
+                                            cx.notify();
+                                        })),
+                                ),
+                        )
+                        .child(
+                            Settings::new("app-settings")
+                                .with_size(Size::Small)
+                                .default_selected_index(SelectIndex {
+                                    page_ix: self.page_index,
+                                    group_ix: None,
+                                })
+                                .pages(self.settings_pages(cx)),
+                        ),
+                ),
+        )
     }
 
     fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
