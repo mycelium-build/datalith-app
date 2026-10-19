@@ -6,7 +6,7 @@ use super::{CatalogDatabase, FILE_BASENAME_SQL, FILE_NAME_SQL};
 use crate::vault::catalog::WikiLinkMatch;
 
 impl CatalogDatabase {
-    /// Returns up to `limit` catalog documents whose path can be inserted as a `[[wiki link]]` target.
+    /// Returns up to `limit` catalog documents whose target can be inserted as a `[[wiki link]]`.
     ///
     /// Matching, ranking, and limiting all happen in `SQLite`
     /// so the editor never keeps the full vault file list in memory.
@@ -51,8 +51,9 @@ impl CatalogDatabase {
         // so those rows are filtered.
         //
         // `name_counts` counts labels across the whole vault, not just the current matches.
-        // If `Note` exists in several folders, every match is marked ambiguous even
-        // when the query only matched one of them; the UI then inserts `folder/Note` instead of `Note`.
+        // If `Note` exists in several folders,
+        // every match gets the qualified `folder/Note` target even
+        // when the query only matched one of them.
         // A full relative path is the `documents` primary key, so it has no further ambiguity.
         //
         // Parameters: ?1 lowercased query, ?2 excluded current path, ?3 limit.
@@ -64,7 +65,7 @@ impl CatalogDatabase {
                              ELSE path END AS qualified \
                  FROM documents\
              ), matched AS (\
-                 SELECT path, label, qualified, \
+                 SELECT path, folder, label, qualified, \
                         CASE \
                             WHEN instr(lower(label), ?1) = 1 THEN 0 \
                             WHEN instr(lower(qualified), ?1) = 1 THEN 1 \
@@ -91,7 +92,12 @@ impl CatalogDatabase {
                  FROM computed \
                  GROUP BY lower(label)\
              ) \
-             SELECT matched.path, name_counts.name_count \
+             SELECT matched.label, \
+                    NULLIF(matched.folder, '') AS detail, \
+                    CASE WHEN COALESCE(name_counts.name_count, 1) > 1 \
+                         THEN matched.qualified \
+                         ELSE matched.label \
+                    END AS target \
              FROM matched \
              LEFT JOIN name_counts ON name_counts.name_key = lower(matched.label) \
              ORDER BY matched.rank, matched.match_length, \
@@ -107,8 +113,9 @@ impl CatalogDatabase {
         let mut matches = Vec::new();
         while let Some(row) = rows.next().await? {
             matches.push(WikiLinkMatch {
-                path: self.root.join(row.get::<String>(0)?),
-                ambiguous: row.get::<i64>(1)? > 1,
+                label: row.get::<String>(0)?,
+                detail: row.get::<Option<String>>(1)?,
+                target: row.get::<String>(2)?,
             });
         }
         Ok(matches)
