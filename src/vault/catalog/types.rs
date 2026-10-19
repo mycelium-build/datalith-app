@@ -19,6 +19,14 @@ pub struct CatalogEvent {
     pub(crate) structure_changed: bool,
 }
 
+/// One catalog match for wiki-link autocomplete.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WikiLinkMatch {
+    pub(crate) path: PathBuf,
+    /// More than one document shares this file name, so links should be qualified.
+    pub(crate) ambiguous: bool,
+}
+
 /// A Base query plan: everything the catalog needs to filter, project, sort, group, and summarize rows for one view.
 #[derive(Clone, Debug)]
 pub struct BaseQuery {

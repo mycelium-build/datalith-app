@@ -172,6 +172,26 @@ impl VaultCatalog {
     }
 
     #[must_use]
+    pub(crate) fn suggest_wiki_links(
+        &self,
+        query: &str,
+        excluded: Option<&Path>,
+        limit: usize,
+    ) -> Vec<WikiLinkMatch> {
+        let database = self.inner.database.clone();
+        let root = self.root();
+        let excluded = excluded
+            .and_then(|path| path.strip_prefix(&root).ok())
+            .map(database::path_text);
+        let query = query.to_lowercase();
+        run_blocking("wiki_links", move || {
+            pollster::block_on(database.suggest_wiki_links(&query, excluded.as_deref(), limit))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
+    #[must_use]
     pub(crate) fn events(&self) -> mpsc::Receiver<CatalogEvent> {
         let (sender, receiver) = mpsc::channel();
         if let Ok(mut subscribers) = self.inner.subscribers.lock() {

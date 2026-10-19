@@ -11,6 +11,7 @@ mod document;
 mod link_resolution;
 mod query;
 mod schema;
+mod suggest;
 
 pub(super) const FILE_NAME_SQL: &str = "substr(path, \
     CASE WHEN folder = '' THEN 1 ELSE length(folder) + 2 END, \
