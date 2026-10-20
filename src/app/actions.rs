@@ -14,7 +14,10 @@ use crate::app::{
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
-use crate::ui::{PendingOpen, notifications, settings::DOCS_URL};
+use crate::ui::{
+    PendingOpen, notifications,
+    settings::{DOCS_URL, SettingsView},
+};
 use crate::vault::CatalogState;
 use crate::vault::file_ops;
 
@@ -396,18 +399,26 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
     preferences::apply_theme_preference(preference, cx);
 }
 
+fn open_preferences(open: fn(&mut SettingsView), cx: &mut App) {
+    if let Some(window) = cx.active_window() {
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, cx| {
+                with_view!(cx, |view, cx| {
+                    open(&mut view.settings);
+                    view.settings.focus(window, cx);
+                    cx.notify();
+                });
+            });
+        });
+    }
+}
+
 pub fn open_settings(_: &OpenSettings, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open();
-        cx.notify();
-    });
+    open_preferences(SettingsView::open, cx);
 }
 
 pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open_shortcuts();
-        cx.notify();
-    });
+    open_preferences(SettingsView::open_shortcuts, cx);
 }
 
 pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
@@ -420,10 +431,7 @@ pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
 }
 
 pub fn open_about(_: &OpenAbout, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.settings.open_about();
-        cx.notify();
-    });
+    open_preferences(SettingsView::open_about, cx);
 }
 
 pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
