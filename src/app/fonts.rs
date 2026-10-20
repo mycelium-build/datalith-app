@@ -35,6 +35,14 @@ impl FontCatalog {
         });
     }
 
+    pub fn families(&self) -> &[SharedString] {
+        &self.families
+    }
+
+    pub fn contains(&self, family: &str) -> bool {
+        self.families.iter().any(|name| name.as_str() == family)
+    }
+
     fn installed(&self, family: Option<&str>) -> Option<SharedString> {
         family.and_then(|family| {
             self.families
@@ -115,11 +123,11 @@ mod tests {
         document.set_font(FontRole::Reading, Some("Missing font".into()));
         document.set_font(FontRole::Headings, Some("Missing font".into()));
         document.set_font(FontRole::Code, Some("Code".into()));
-        let [interface, reading, headings, code] = catalog.resolve_roles(&document);
-        assert_eq!(interface.as_str(), "Interface");
-        assert_eq!(reading.as_str(), "Interface");
-        assert_eq!(headings.as_str(), PIXELOID_FONT);
-        assert_eq!(code.as_str(), "Code");
+        let resolved = catalog.resolve_roles(&document);
+        assert_eq!(resolved[FontRole::Interface.index()].as_str(), "Interface");
+        assert_eq!(resolved[FontRole::Reading.index()].as_str(), "Interface");
+        assert_eq!(resolved[FontRole::Headings.index()].as_str(), PIXELOID_FONT);
+        assert_eq!(resolved[FontRole::Code.index()].as_str(), "Code");
         assert_eq!(document.font(FontRole::Reading), Some("Missing font"));
     }
 }

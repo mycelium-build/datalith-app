@@ -113,6 +113,10 @@ impl DatalithView {
                 tab.path.as_deref().map_or("Untitled", display_name).into(),
                 Icon::new(self.registry.config_for(tab.path.as_deref()).icon),
             ),
+            super::Tab::Theme { editor, .. } => (
+                editor.read(cx).family_name(cx).into(),
+                Icon::new(DatalithIcon::Palette),
+            ),
             super::Tab::Shortcuts(_) => ("Shortcuts".into(), Icon::new(DatalithIcon::Shortcuts)),
         };
         Tab::new()
@@ -123,7 +127,7 @@ impl DatalithView {
                     super::Tab::Document(tab) => {
                         ElementId::from(format!("close-tab-{}", tab.id.as_str()))
                     }
-                    super::Tab::Shortcuts(_) => ("close-tab", tab.entity_id()).into(),
+                    _ => ("close-tab", tab.entity_id()).into(),
                 })
                 .icon(IconName::Close)
                 .ghost()

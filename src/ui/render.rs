@@ -130,6 +130,7 @@ impl Render for DatalithView {
 
         v_flex()
             .size_full()
+            .relative()
             .child(super::title_bar::render(
                 (!cfg!(target_os = "macos")).then(|| self.app_menu_bar.clone()),
                 self.update_control.clone(),
@@ -141,6 +142,7 @@ impl Render for DatalithView {
                     .children(Root::render_notification_layer(window, cx))
                     .children(self.startup.clone()),
             )
+            .children(Root::render_dialog_layer(window, cx))
     }
 }
 
@@ -274,6 +276,7 @@ impl DatalithView {
                 }
             }
             super::tabs::Tab::Document(tab) => tab.handler().clone().into_any_element(),
+            super::tabs::Tab::Theme { editor, .. } => editor.clone().into_any_element(),
             super::tabs::Tab::Shortcuts(view) => view.clone().into_any_element(),
         };
 

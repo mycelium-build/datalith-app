@@ -3,10 +3,12 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Theme,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Theme, WindowExt as _,
     button::{Button, ButtonVariants as _, Toggle, ToggleGroup, ToggleVariants as _},
     h_flex,
     input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenuItem},
+    notification::Notification,
     scroll::ScrollableElement as _,
     v_flex,
 };
@@ -18,11 +20,12 @@ use gpui_kit::{
 };
 
 use crate::app::{
+    AppState,
     fonts::FontCatalog,
     settings::{self, FontRole, ThemeKind, ThemePreference},
-    themes::{ResolvedAppearance, ThemeFamily, ThemeLibrary, ThemeVariant},
+    themes::{self, DeletedTheme, ResolvedAppearance, ThemeFamily, ThemeLibrary, ThemeVariant},
 };
-use crate::ui::{icons::DatalithIcon, themes as ui_themes};
+use crate::ui::{icons::DatalithIcon, notifications, themes as ui_themes};
 
 /// Appearance modes in display order; each also filters the variants on offer.
 const PREFERENCES: [ThemePreference; 3] = [
@@ -307,7 +310,7 @@ impl ThemePage {
                                 .truncate()
                                 .text_sm()
                                 .font_weight(FontWeight::MEDIUM)
-                                .child(name),
+                                .child(name.clone()),
                         )
                         .child(
                             div()
@@ -318,8 +321,10 @@ impl ThemePage {
                         ),
                 )
                 .child(
-                    h_flex().items_start().gap_1().child(
-                        h_flex().flex_1().min_w_0().flex_wrap().gap_1().children(
+                    h_flex()
+                        .items_start()
+                        .gap_1()
+                        .child(h_flex().flex_1().min_w_0().flex_wrap().gap_1().children(
                             variants.iter().map(|variant| {
                                 let variant_id = variant.id();
                                 let label = variant_label(family, variant);
@@ -336,8 +341,8 @@ impl ThemePage {
                                         cx.notify();
                                     }))
                             }),
-                        ),
-                    ),
+                        ))
+                        .child(Self::render_family_action(family, &name)),
                 )
                 .into_any_element(),
         )
@@ -428,6 +433,62 @@ impl ThemePage {
                         .into_any_element()
                 }),
         )
+    }
+
+    fn render_family_action(family: &ThemeFamily, name: &str) -> AnyElement {
+        let id = family.id();
+        if !family.is_custom() {
+            return Button::new(("customize-theme", id))
+                .xsmall()
+                .ghost()
+                .icon(Icon::new(DatalithIcon::Pen))
+                .tooltip("Customize")
+                .accessibility_label(format!("Customize {name}"))
+                .on_click(move |_, window, cx| customize_bundled(id, window, cx))
+                .into_any_element();
+        }
+        Button::new(("theme-actions", id))
+            .xsmall()
+            .ghost()
+            .icon(IconName::Ellipsis)
+            .tooltip("Actions")
+            .accessibility_label(format!("Actions for {name}"))
+            .dropdown_menu(move |menu, _, _| {
+                menu.item(
+                    PopupMenuItem::new("Customize")
+                        .on_click(move |_, window, cx| open_editor(id, window, cx)),
+                )
+                .separator()
+                .item(
+                    PopupMenuItem::element(|_, cx| {
+                        div().text_color(cx.theme().danger).child("Delete")
+                    })
+                    .on_click(move |_, window, cx| delete_family(id, window, cx)),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn render_empty_custom(cx: &Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w(rems(CARD_WIDTH))
+            .h(rems(PREVIEW_HEIGHT + 4.))
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .px_4()
+            .rounded_lg()
+            .border_1()
+            .border_dashed()
+            .border_color(cx.theme().border)
+            .text_color(cx.theme().muted_foreground)
+            .child(Icon::new(IconName::Plus))
+            .child(
+                div()
+                    .text_sm()
+                    .text_center()
+                    .child("Customize a built-in theme to add a custom theme"),
+            )
     }
 
     fn render_cards(
@@ -577,9 +638,11 @@ impl Render for ThemePage {
             .any(ThemeFamily::is_custom);
         let custom = self.render_cards(true, preference, &query, cx);
         let bundled = self.render_cards(false, preference, &query, cx);
-        let custom_section = has_custom.then(|| {
+        let custom_section = if has_custom {
             Self::render_cards_section(custom, Self::render_no_match("No custom themes match", cx))
-        });
+        } else {
+            Self::render_empty_custom(cx).into_any_element()
+        };
         v_flex()
             .id("theme-settings-page")
             .size_full()
@@ -608,10 +671,8 @@ impl Render for ThemePage {
                             // Keep focus rings inside the scroll clip.
                             .px_1()
                             .pb_4()
-                            .children(
-                                has_custom.then(|| Self::render_section_heading("Custom", cx)),
-                            )
-                            .children(custom_section)
+                            .child(Self::render_section_heading("Custom", cx))
+                            .child(custom_section)
                             .child(Self::render_section_heading("Built-in", cx))
                             .child(Self::render_cards_section(
                                 bundled,
@@ -621,4 +682,111 @@ impl Render for ThemePage {
                     .vertical_scrollbar(&self.scroll),
             )
     }
+}
+
+/// Copy a built-in family into a custom "<name> - Copy" family and edit it.
+fn customize_bundled(id: u64, window: &mut Window, cx: &mut App) {
+    let library = cx.global_mut::<ThemeLibrary>();
+    let Some(name) = library.family(id).map(|family| family.name().to_owned()) else {
+        return;
+    };
+    let copy_name = library.suggested_copy_name(&name);
+    match library.copy_family(id, &copy_name) {
+        Ok(copy) => open_editor(copy, window, cx),
+        Err(error) => {
+            window.push_notification(notifications::settings_save_failed("theme", &error), cx);
+        }
+    }
+}
+
+fn open_editor(id: u64, window: &mut Window, cx: &mut App) {
+    if let Some(view) = AppState::view(cx) {
+        view.update(cx, |view, cx| view.open_theme_editor_for(id, window, cx));
+    }
+}
+
+/// Refresh the open editor for a family after the library changed it elsewhere.
+pub fn refresh_theme_editor(family_id: u64, reload: bool, window: &mut Window, cx: &mut App) {
+    let Some(editor) = AppState::view(cx)
+        .and_then(|view| view.read(cx).tabs.theme_editor_for(family_id, cx).cloned())
+    else {
+        return;
+    };
+    editor.update(cx, |editor, cx| {
+        if reload {
+            editor.reload_variants(window, cx);
+        } else {
+            editor.refresh_variants(window, cx);
+        }
+    });
+}
+
+fn delete_family(id: u64, window: &mut Window, cx: &mut App) {
+    match cx.global_mut::<ThemeLibrary>().delete_family(id) {
+        Ok(deleted) => {
+            themes::refresh_current(cx);
+            show_undo(id, deleted, window, cx);
+        }
+        Err(error) => {
+            window.push_notification(notifications::settings_save_failed("theme", &error), cx);
+        }
+    }
+}
+
+pub fn close_deleted_editor(family_id: u64, window: &Window, cx: &mut App) {
+    if cx.global::<ThemeLibrary>().family(family_id).is_some() {
+        return;
+    }
+    // Defer until the editor's current update has released its entity.
+    window.defer(cx, move |window, cx| {
+        if let Some(view) = AppState::view(cx) {
+            view.update(cx, |view, cx| {
+                view.close_theme_editor(family_id, window, cx);
+            });
+        }
+    });
+}
+
+pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx: &mut App) {
+    struct ThemeDeletion;
+    close_deleted_editor(family_id, window, cx);
+    let notification_id = rand::random::<u64>();
+    let message = deleted.message();
+    let deleted = std::rc::Rc::new(std::cell::RefCell::new(Some(deleted)));
+    window.push_notification(
+        Notification::new()
+            .id1::<ThemeDeletion>(("theme-deletion", notification_id))
+            .title(message)
+            .message("You can restore it with Undo")
+            .action(move |_, _, _| {
+                let deleted = deleted.clone();
+                Button::new("undo-theme-delete")
+                    .small()
+                    .label("Undo")
+                    .on_click(move |_, window, cx| {
+                        let pending = deleted.borrow_mut().take();
+                        if let Some(undo) = pending {
+                            if let Err(error) =
+                                cx.global_mut::<ThemeLibrary>().undo_delete(undo.clone())
+                            {
+                                *deleted.borrow_mut() = Some(undo);
+                                window.push_notification(
+                                    notifications::settings_save_failed("theme", &error),
+                                    cx,
+                                );
+                            } else {
+                                themes::refresh_current(cx);
+                                refresh_theme_editor(family_id, false, window, cx);
+                                window.remove_notification1::<ThemeDeletion>(
+                                    ("theme-deletion", notification_id),
+                                    cx,
+                                );
+                                cx.refresh_windows();
+                            }
+                        }
+                    })
+            })
+            .autohide(true),
+        cx,
+    );
 }

@@ -137,6 +137,22 @@ pub enum FontRole {
 
 impl FontRole {
     pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Interface => 0,
+            Self::Reading => 1,
+            Self::Headings => 2,
+            Self::Code => 3,
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Interface => "Interface",
+            Self::Reading => "Reading",
+            Self::Headings => "Headings",
+            Self::Code => "Code and editing",
+        }
+    }
 }
 impl ThemeKind {
     pub const ALL: [Self; 2] = [Self::Light, Self::Dark];

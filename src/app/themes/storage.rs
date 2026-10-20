@@ -299,6 +299,7 @@ impl ThemeLibrary {
             url: set.url.map(|s| s.to_string()),
             variants,
             source,
+            revision: 0,
             status: super::SaveStatus::Autosaved,
         });
         Ok(id)
@@ -307,4 +308,40 @@ impl ThemeLibrary {
 
 pub(super) fn write(path: &Path, set: &StoredThemeSet) -> Result<()> {
     crate::app::atomic_file::write(path, &serde_json::to_vec_pretty(set)?)
+}
+
+/// Keep a same-filesystem copy of the old bytes until both the new theme and
+/// preference references have committed. Rollback needs only a rename, even if
+/// serialization or a subsequent disk allocation becomes unavailable.
+pub(super) fn replace_and_update(
+    path: &Path,
+    set: &StoredThemeSet,
+    update: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let parent = path.parent().context("Theme path has no parent")?;
+    let backup = parent.join(format!(".theme-{:032x}.backup", rand::random::<u128>()));
+    fs::hard_link(path, &backup)?;
+    let result = write(path, set).and_then(|()| update());
+    if let Err(error) = result {
+        fs::rename(&backup, path)
+            .with_context(|| format!("Could not restore theme after {error}"))?;
+        return Err(error);
+    }
+    let _ = fs::remove_file(backup);
+    Ok(())
+}
+
+/// A reversible filesystem rename prevents a preference write failure from
+/// losing the theme file or leaving its saved current references dangling.
+pub(super) fn remove_and_update(path: &Path, update: impl FnOnce() -> Result<()>) -> Result<()> {
+    let parent = path.parent().context("Theme path has no parent")?;
+    let tombstone = parent.join(format!(".theme-{:032x}.removed", rand::random::<u128>()));
+    fs::rename(path, &tombstone)?;
+    if let Err(error) = update() {
+        fs::rename(&tombstone, path)
+            .with_context(|| format!("Could not restore theme after {error}"))?;
+        return Err(error);
+    }
+    let _ = fs::remove_file(tombstone);
+    Ok(())
 }

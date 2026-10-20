@@ -12,10 +12,14 @@ use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::FileHandler;
 use crate::vault::file_ops;
 
-use super::shortcuts::ShortcutsView;
+use super::{shortcuts::ShortcutsView, themes::ThemeEditor};
 
 pub enum Tab {
     Document(DocumentTab),
+    Theme {
+        editor: Entity<ThemeEditor>,
+        _change_subscription: Subscription,
+    },
     Shortcuts(Entity<ShortcutsView>),
 }
 
@@ -89,7 +93,7 @@ impl Tabs {
     }
 
     /// Iterate over document tabs with their indices in the full tab collection.
-    /// Indices can have gaps where the shortcuts tab is omitted.
+    /// Indices can have gaps where theme or shortcuts tabs are omitted.
     pub(crate) fn iter_documents(
         &self,
     ) -> impl Iterator<Item = (usize, Option<&Path>, &Entity<FileHandler>)> {
@@ -103,7 +107,24 @@ impl Tabs {
         self.active().and_then(Tab::document)
     }
 
-    /// Persist documents only; the shortcuts tab is session-only.
+    pub(crate) fn theme_editor_index(&self, family_id: u64, cx: &gpui_kit::App) -> Option<usize> {
+        self.entries.iter().position(
+            |tab| matches!(tab, Tab::Theme { editor, .. } if editor.read(cx).family_id() == family_id),
+        )
+    }
+
+    pub(crate) fn theme_editor_for(
+        &self,
+        family_id: u64,
+        cx: &gpui_kit::App,
+    ) -> Option<&Entity<ThemeEditor>> {
+        match self.entries.get(self.theme_editor_index(family_id, cx)?)? {
+            Tab::Theme { editor, .. } => Some(editor),
+            _ => None,
+        }
+    }
+
+    /// Persist documents only; theme editors and shortcuts are session-only tabs.
     pub(crate) fn snapshot(&self, cx: &gpui_kit::App) -> (Vec<WorkspaceTab>, Option<TabId>) {
         let tabs = self
             .entries
@@ -228,13 +249,14 @@ impl Tab {
     const fn document(&self) -> Option<&DocumentTab> {
         match self {
             Self::Document(tab) => Some(tab),
-            Self::Shortcuts(_) => None,
+            _ => None,
         }
     }
 
     fn entity_id(&self) -> EntityId {
         match self {
             Self::Document(tab) => tab.handler.entity_id(),
+            Self::Theme { editor, .. } => editor.entity_id(),
             Self::Shortcuts(view) => view.entity_id(),
         }
     }

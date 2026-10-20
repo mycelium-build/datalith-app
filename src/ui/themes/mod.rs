@@ -1,3 +1,6 @@
+mod editor;
+pub use editor::ThemeEditor;
+
 use gpui_kit::App;
 
 use crate::app::{
