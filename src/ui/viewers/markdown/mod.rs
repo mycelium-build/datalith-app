@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::{ActiveTheme, Theme};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, Focusable, FontWeight, HighlightStyle,
     InteractiveElement, IntoElement, ParentElement, SharedString, SharedUri,
@@ -42,7 +43,7 @@ struct InlineStyle {
 
 struct BlockContext<'a> {
     element_id: &'a mut usize,
-    handler: Entity<FileHandler>,
+    handler: Option<Entity<FileHandler>>,
     appearance: &'a Theme,
     code_font: &'a SharedString,
     headings_font: &'a SharedString,
@@ -100,18 +101,19 @@ impl MarkdownViewer {
         let [_, reading, headings, code] = fonts::families(cx);
         self.render_document(
             &content,
-            handler,
+            Some(handler),
             appearance,
             &[reading, headings, code],
             cx,
         )
     }
 
-    /// Render a Markdown document with an explicit palette and content fonts.
+    /// The same Markdown document renderer used by the workspace, with a
+    /// caller-supplied resolved palette and fonts for isolated theme previews.
     pub fn render_document(
         &self,
         content: &str,
-        handler: Entity<FileHandler>,
+        handler: Option<Entity<FileHandler>>,
         appearance: &Theme,
         fonts: &[SharedString; 3],
         cx: &App,
@@ -131,13 +133,8 @@ impl MarkdownViewer {
         let mut elements = Vec::new();
         let mut element_id = 0usize;
         elements.push(self.render_title(&fonts[1]));
-        if let Some(frontmatter) = &document.frontmatter {
-            elements.push(render_frontmatter(
-                frontmatter,
-                BASE_FONT_SIZE,
-                &handler,
-                cx,
-            ));
+        if let (Some(frontmatter), Some(handler)) = (&document.frontmatter, &handler) {
+            elements.push(render_frontmatter(frontmatter, BASE_FONT_SIZE, handler, cx));
         }
         let mut ctx = BlockContext {
             element_id: &mut element_id,
@@ -296,14 +293,16 @@ impl MarkdownViewer {
                             .hover(|style| style.text_color(ctx.appearance.link_hover))
                             .active(|style| style.text_color(ctx.appearance.link_active))
                             .underline()
-                            .cursor_pointer()
-                            .on_click(move |event: &ClickEvent, _window, cx| {
-                                handler_clone.update(cx, |_, cx| {
-                                    cx.emit(FileHandlerEvent::LinkClicked(
-                                        link_url.clone(),
-                                        event.modifiers().secondary(),
-                                    ));
-                                });
+                            .when(ctx.handler.is_some(), gpui_kit::Styled::cursor_pointer)
+                            .when_some(handler_clone, |link, handler| {
+                                link.on_click(move |event: &ClickEvent, _window, cx| {
+                                    handler.update(cx, |_, cx| {
+                                        cx.emit(FileHandlerEvent::LinkClicked(
+                                            link_url.clone(),
+                                            event.modifiers().secondary(),
+                                        ));
+                                    });
+                                })
                             })
                             .children(self.render_inlines(content, style, ctx))
                             .into_any_element(),

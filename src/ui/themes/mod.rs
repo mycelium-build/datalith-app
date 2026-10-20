@@ -1,4 +1,5 @@
 mod editor;
+pub mod preview;
 pub use editor::ThemeEditor;
 
 use gpui_kit::App;

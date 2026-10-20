@@ -34,9 +34,10 @@ impl Selectable for PriorityTrigger {
 
 impl RenderOnce for PriorityTrigger {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (muted_foreground, ring) = (cx.theme().muted_foreground, cx.theme().ring);
         let color = self.current.map(|p| {
             if self.completed {
-                cx.theme().muted_foreground
+                muted_foreground
             } else {
                 super::priority_color(p.as_char())
             }
@@ -96,17 +97,13 @@ impl RenderOnce for PriorityTrigger {
         if let Some(color) = color {
             pill.bg(color.opacity(0.15))
                 .hover(|style| style.bg(color.opacity(0.25)))
-                .focus_visible(|style| {
-                    style
-                        .border(px(1.5))
-                        .border_color(cx.theme().ring.alpha(0.2))
-                })
+                .focus_visible(|style| style.border(px(1.5)).border_color(ring.alpha(0.2)))
                 .text_color(color)
                 .font_weight(FontWeight::BOLD)
                 .child(label)
         } else {
             pill.border_1()
-                .border_color(cx.theme().muted_foreground.opacity(0.2))
+                .border_color(muted_foreground.opacity(0.2))
                 .opacity(0.0)
                 .group("todo-row")
                 .when(true, |el| {
@@ -116,12 +113,12 @@ impl RenderOnce for PriorityTrigger {
                     style
                         .opacity(1.0)
                         .border(px(1.5))
-                        .border_color(cx.theme().ring.alpha(0.2))
+                        .border_color(ring.alpha(0.2))
                 })
                 .child(
                     Icon::new(IconName::Plus)
                         .size_3()
-                        .text_color(cx.theme().muted_foreground),
+                        .text_color(muted_foreground),
                 )
         }
     }

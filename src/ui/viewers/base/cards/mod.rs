@@ -411,7 +411,7 @@ fn render_card(
                 context.handler,
                 ElementId::Name(format!("base-card-cell-{index}-{column}").into()),
                 false,
-                context.cx,
+                context.cx.theme(),
             );
             if property.source == "file.name" {
                 div().w_full().text_lg().child(cell).into_any_element()

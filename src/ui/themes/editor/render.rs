@@ -9,6 +9,7 @@ use gpui_kit::component::{
     color_picker::ColorPicker,
     h_flex,
     input::Input,
+    resizable::{h_resizable, resizable_panel},
     scroll::ScrollableElement as _,
     select::Select,
     tab::{Tab, TabBar},
@@ -594,16 +595,60 @@ impl ThemeEditor {
             .vertical_scrollbar(&self.roles_list)
     }
 
-    fn render_editor_body(regions: &EditorRegions) -> AnyElement {
-        AnyView::from(regions.controls.clone())
-            .cached(
-                StyleRefinement::default()
-                    .flex_1()
-                    .w_full()
-                    .min_w_0()
-                    .min_h_0(),
-            )
-            .into_any_element()
+    fn render_editor_body(
+        &self,
+        regions: &EditorRegions,
+        narrow: bool,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let controls = AnyView::from(regions.controls.clone());
+        let preview = v_flex()
+            .id("theme-preview-pane")
+            .size_full()
+            .min_w_0()
+            .min_h_0()
+            .when(!narrow, |pane| {
+                pane.border_l_1().border_color(cx.theme().border)
+            })
+            // Reuse the preview's last frame unless it changed itself, so
+            // hovering or editing controls does not re-render its documents.
+            .child(
+                AnyView::from(self.preview_pane.clone())
+                    .cached(StyleRefinement::default().size_full()),
+            );
+        if narrow {
+            if self.show_preview {
+                preview.into_any_element()
+            } else {
+                controls
+                    .cached(StyleRefinement::default().w_full().flex_1().min_h_0())
+                    .into_any_element()
+            }
+        } else {
+            div()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .child(
+                    h_resizable("theme-editor-layout")
+                        .child(
+                            resizable_panel()
+                                .child(controls.cached(StyleRefinement::default().size_full())),
+                        )
+                        .child(
+                            resizable_panel()
+                                .size(rems(28.).to_pixels(window.rem_size()))
+                                .size_range(
+                                    rems(20.).to_pixels(window.rem_size())
+                                        ..rems(55.).to_pixels(window.rem_size()),
+                                )
+                                .flex_none()
+                                .child(preview),
+                        ),
+                )
+                .into_any_element()
+        }
     }
 
     fn render_family_title(&self, family: &ThemeFamily, cx: &Context<Self>) -> AnyElement {
@@ -641,7 +686,12 @@ impl ThemeEditor {
             )
     }
 
-    fn render_editor_header(&self, family: &ThemeFamily, cx: &Context<Self>) -> impl IntoElement {
+    fn render_editor_header(
+        &self,
+        family: &ThemeFamily,
+        narrow: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let status = match family.status() {
             SaveStatus::Saving => "Saving…".to_owned(),
             SaveStatus::Autosaved => "All changes saved".to_owned(),
@@ -670,6 +720,19 @@ impl ThemeEditor {
                             Ok(()) => this.error = None,
                             Err(error) => this.error = Some(error.to_string()),
                         }
+                        cx.notify();
+                    }))
+            }))
+            .children(narrow.then(|| {
+                Button::new("toggle-theme-preview")
+                    .small()
+                    .label(if self.show_preview {
+                        "Back to editing"
+                    } else {
+                        "Preview"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_preview = !this.show_preview;
                         cx.notify();
                     }))
             }))
@@ -702,7 +765,7 @@ impl Render for ThemeEditor {
             .min_w_0()
             .bg(cx.theme().background)
             .track_focus(&self.focus)
-            .child(self.render_editor_header(family, cx))
+            .child(self.render_editor_header(family, narrow, cx))
             .children(self.error.as_ref().map(|error| {
                 div()
                     .px_4()
@@ -714,7 +777,7 @@ impl Render for ThemeEditor {
                 if narrow {
                     editor
                         .child(regions.variants.clone())
-                        .child(Self::render_editor_body(regions))
+                        .child(self.render_editor_body(regions, narrow, window, cx))
                 } else {
                     editor.child(
                         h_flex()
@@ -730,7 +793,7 @@ impl Render for ThemeEditor {
                                         .flex_none(),
                                 ),
                             )
-                            .child(Self::render_editor_body(regions)),
+                            .child(self.render_editor_body(regions, narrow, window, cx)),
                     )
                 }
             })

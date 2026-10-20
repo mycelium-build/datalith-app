@@ -181,11 +181,13 @@ pub struct ThemeEditor {
     edited: u64,
     controls: VariantControls,
     category: Category,
+    show_preview: bool,
     /// The color token being edited in the `edited` variant.
     active_color: Option<String>,
     preview: Option<Rc<ResolvedAppearance>>,
     /// Every variant's resolved colors and fonts, shared by the miniatures.
     variant_miniatures: BTreeMap<u64, Entity<variants::VariantMiniature>>,
+    preview_pane: Entity<super::preview::ThemePreview>,
     /// Created right after the editor, since they observe it.
     regions: Option<regions::EditorRegions>,
     scroll: ScrollHandle,
@@ -260,9 +262,11 @@ impl ThemeEditor {
                 edited,
                 controls: Self::variant_controls(edited, &document, window, cx),
                 category: Category::Colors,
+                show_preview: false,
                 active_color: None,
                 preview: None,
                 variant_miniatures: BTreeMap::new(),
+                preview_pane: cx.new(|cx| super::preview::ThemePreview::new(window, cx)),
                 regions: None,
                 scroll: ScrollHandle::default(),
                 color_list: ListState::new(0, ListAlignment::Top, gpui_kit::px(0.)),
@@ -289,7 +293,8 @@ impl ThemeEditor {
         Ok(editor)
     }
 
-    /// Below this width the variants move above the controls.
+    /// Below this width the variants move above the controls and the
+    /// preview moves behind a toggle.
     fn is_narrow(window: &Window) -> bool {
         window.viewport_size().width.as_f32() < window.rem_size().as_f32() * 80.
     }
@@ -383,6 +388,8 @@ impl ThemeEditor {
         if let Some(appearance) = self.preview.clone() {
             self.set_miniature(self.edited, appearance, cx);
         }
+        self.preview_pane
+            .update(cx, |pane, cx| pane.set_appearance(self.preview.clone(), cx));
     }
 
     /// Resolve every variant of the family, dropping removed ones.
