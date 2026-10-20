@@ -1,7 +1,7 @@
 use gpui_kit::component::GlobalState;
 use gpui_kit::{App, Menu, MenuItem};
 
-use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts};
+use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts, OpenThemes};
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -44,6 +44,7 @@ fn application_menu(cx: &App) -> Menu {
     items.extend([
         MenuItem::separator(),
         MenuItem::action("Settings", OpenSettings),
+        MenuItem::action("Theme", OpenThemes),
         MenuItem::action("Shortcuts", OpenShortcuts),
         MenuItem::separator(),
         MenuItem::action(

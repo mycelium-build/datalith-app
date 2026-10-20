@@ -8,9 +8,8 @@ use gpui_kit::component::{
     v_flex,
 };
 use gpui_kit::{
-    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
-    rems,
+    App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, StatefulInteractiveElement, Styled, Window, div, px, rems,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -24,29 +23,20 @@ mod about;
 mod appearance;
 mod general;
 mod server;
+pub mod theme;
 
 use about::about_page_index;
 
-#[derive(Clone)]
-pub struct ThemeOptions {
-    pub(crate) light_theme_name: SharedString,
-    pub(crate) dark_theme_name: SharedString,
-    pub(crate) light_options: Vec<(SharedString, SharedString)>,
-    pub(crate) dark_options: Vec<(SharedString, SharedString)>,
-    pub(crate) font_size_multiplier: f64,
-    pub(crate) theme_preference: SharedString,
-}
-
-impl Global for ThemeOptions {}
-
 pub struct SettingsView {
     pub(crate) open: bool,
+    theme_open: bool,
     focus_handle: FocusHandle,
     return_focus: Option<FocusHandle>,
     page_index: usize,
     navigation_revision: u64,
     has_updater: bool,
     pub(crate) font_size_slider_state: Entity<SliderState>,
+    theme_page: Entity<theme::ThemePage>,
 }
 
 /// The settings pages, in render order; shortcuts have their own surface.
@@ -77,7 +67,7 @@ impl SettingsPage {
 }
 
 impl SettingsView {
-    pub(crate) fn new(cx: &mut App) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut App) -> Self {
         let font_size_multiplier = settings::snapshot().font_scale;
         let font_size_slider_state = cx.new(|_| {
             SliderState::new()
@@ -88,23 +78,33 @@ impl SettingsView {
         });
         Self {
             open: false,
+            theme_open: false,
             focus_handle: cx.focus_handle(),
             return_focus: None,
             page_index: 0,
             navigation_revision: 0,
             has_updater: crate::app::update::Updater::get(cx).is_some(),
             font_size_slider_state,
+            theme_page: cx.new(|cx| theme::ThemePage::new(window, cx)),
         }
     }
 
     pub(crate) const fn open(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = 0;
+        self.navigation_revision = self.navigation_revision.saturating_add(1);
+    }
+
+    pub(crate) const fn open_theme(&mut self) {
+        self.open = true;
+        self.theme_open = true;
         self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
     pub(crate) fn open_about(&mut self) {
         self.open = true;
+        self.theme_open = false;
         self.page_index = about_page_index();
         self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
@@ -175,13 +175,21 @@ impl SettingsView {
                                     .justify_between()
                                     .border_b(px(1.))
                                     .border_color(cx.theme().border)
-                                    .child(div().text_sm().child("Settings"))
+                                    .child(div().text_sm().child(if self.theme_open {
+                                        "Theme"
+                                    } else {
+                                        "Settings"
+                                    }))
                                     .child(
                                         Button::new("close-settings")
                                             .ghost()
                                             .small()
                                             .icon(IconName::Close)
-                                            .accessibility_label("Close preferences")
+                                            .accessibility_label(if self.theme_open {
+                                                "Close themes"
+                                            } else {
+                                                "Close preferences"
+                                            })
                                             .tooltip("Close")
                                             .on_click(cx.listener(|view, _, window, cx| {
                                                 view.settings.dismiss(window, cx);
@@ -189,21 +197,29 @@ impl SettingsView {
                                             })),
                                     ),
                             )
-                            .child(
+                            .child(if self.theme_open {
+                                div()
+                                    .size_full()
+                                    .min_h_0()
+                                    .p_4()
+                                    .child(self.theme_page.clone())
+                                    .into_any_element()
+                            } else {
                                 Settings::new(("app-settings", self.navigation_revision))
                                     .with_size(Size::Small)
                                     .default_selected_index(SelectIndex {
                                         page_ix: self.page_index,
                                         group_ix: None,
                                     })
-                                    .pages(self.settings_pages(cx)),
-                            ),
+                                    .pages(self.settings_pages(cx))
+                                    .into_any_element()
+                            }),
                     )
                     .focus_trap("preferences-focus", &self.focus_handle),
             )
     }
 
-    fn settings_pages(&self, cx: &Context<DatalithView>) -> Vec<SettingPage> {
+    fn settings_pages(&self, _cx: &Context<DatalithView>) -> Vec<SettingPage> {
         SETTINGS_PAGES
             .iter()
             .map(|page| match page {
@@ -213,8 +229,8 @@ impl SettingsView {
                 SettingsPage::Appearance => SettingPage::new(page.title())
                     .default_open(true)
                     .groups(vec![
-                        Self::theme_group(cx),
                         Self::display_group(&self.font_size_slider_state),
+                        Self::theme_navigation_group(),
                     ]),
                 SettingsPage::Server => {
                     SettingPage::new(page.title()).groups(vec![Self::server_group()])

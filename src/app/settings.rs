@@ -42,15 +42,6 @@ impl ThemePreference {
         }
     }
 
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "system" => Some(Self::System),
-            "light" => Some(Self::Light),
-            "dark" => Some(Self::Dark),
-            _ => None,
-        }
-    }
-
     /// The theme mode that `self` resolves to given the OS appearance.
     pub const fn resolve(self, appearance: WindowAppearance) -> ThemeMode {
         match self {
@@ -133,6 +124,87 @@ impl ServerSettings {
 impl Default for ServerSettings {
     fn default() -> Self {
         Self::normalized(true, DEFAULT_SERVER_PORT, None)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FontRole {
+    Interface,
+    Reading,
+    Headings,
+    Code,
+}
+
+impl FontRole {
+    pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
+}
+impl ThemeKind {
+    pub const ALL: [Self; 2] = [Self::Light, Self::Dark];
+    pub const fn select<T>(self, values: &[T; 2]) -> &T {
+        let [light, dark] = values;
+        match self {
+            Self::Light => light,
+            Self::Dark => dark,
+        }
+    }
+    pub const fn select_mut<T>(self, values: &mut [T; 2]) -> &mut T {
+        let [light, dark] = values;
+        match self {
+            Self::Light => light,
+            Self::Dark => dark,
+        }
+    }
+    pub const fn mode(self) -> gpui_kit::component::ThemeMode {
+        match self {
+            Self::Light => gpui_kit::component::ThemeMode::Light,
+            Self::Dark => gpui_kit::component::ThemeMode::Dark,
+        }
+    }
+}
+impl From<gpui_kit::component::ThemeMode> for ThemeKind {
+    fn from(value: gpui_kit::component::ThemeMode) -> Self {
+        match value {
+            gpui_kit::component::ThemeMode::Light => Self::Light,
+            gpui_kit::component::ThemeMode::Dark => Self::Dark,
+        }
+    }
+}
+
+/// Optional families stored on an individual theme variant.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(default)]
+pub struct FontSettings {
+    interface: Option<String>,
+    reading: Option<String>,
+    headings: Option<String>,
+    code: Option<String>,
+}
+
+impl FontSettings {
+    pub fn is_empty(&self) -> bool {
+        FontRole::ALL
+            .into_iter()
+            .all(|role| self.family(role).is_none())
+    }
+    pub fn family(&self, role: FontRole) -> Option<&str> {
+        match role {
+            FontRole::Interface => self.interface.as_deref(),
+            FontRole::Reading => self.reading.as_deref(),
+            FontRole::Headings => self.headings.as_deref(),
+            FontRole::Code => self.code.as_deref(),
+        }
+    }
+
+    pub fn set_family(&mut self, role: FontRole, family: Option<String>) {
+        let value = match role {
+            FontRole::Interface => &mut self.interface,
+            FontRole::Reading => &mut self.reading,
+            FontRole::Headings => &mut self.headings,
+            FontRole::Code => &mut self.code,
+        };
+        *value = family
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
     }
 }
 
@@ -332,13 +404,13 @@ fn normalize_font_scale(scale: f64) -> f64 {
     }
 }
 
-struct SettingsStore {
+pub(super) struct SettingsStore {
     file: PathBuf,
     cached: Option<ApplicationSettings>,
 }
 
 impl SettingsStore {
-    const fn new(file: PathBuf) -> Self {
+    pub(super) const fn new(file: PathBuf) -> Self {
         Self { file, cached: None }
     }
 
@@ -400,7 +472,7 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
+pub(super) fn with_store<R>(read: impl FnOnce(&mut SettingsStore) -> R) -> R {
     TEST_SETTINGS.with(|store| read(&mut store.borrow_mut()))
 }
 
@@ -480,14 +552,15 @@ pub fn set_theme_preference(preference: ThemePreference) -> Result<()> {
     update(|settings| settings.theme_preference = preference)
 }
 
-pub fn select_theme(kind: ThemeKind, name: &str) -> Result<()> {
-    let name = name.trim();
-    if name.is_empty() {
-        bail!("Theme name cannot be empty");
-    }
-    update(|settings| match kind {
-        ThemeKind::Light => settings.light_theme_name = Some(name.to_owned()),
-        ThemeKind::Dark => settings.dark_theme_name = Some(name.to_owned()),
+/// Persist both current references before updating the session cache.
+pub fn replace_theme_slots([light, dark]: &[String; 2]) -> Result<()> {
+    with_store(|store| {
+        let mut next = store.snapshot();
+        next.light_theme_name = Some(light.to_owned());
+        next.dark_theme_name = Some(dark.to_owned());
+        store.persist(&next)?;
+        store.cached = Some(next);
+        Ok(())
     })
 }
 
@@ -529,6 +602,39 @@ mod tests {
                 .unwrap_or("test")
                 .replace("::", "-")
         ))
+    }
+
+    #[test]
+    fn older_configs_preserve_typography_scale() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"schema_version":2,"theme_preference":"dark","font_size_multiplier":1.2}"#,
+        )
+        .unwrap();
+        let settings = stored.normalized();
+        assert_eq!(settings.theme_preference, ThemePreference::Dark);
+        assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn variant_fonts_normalize_names() {
+        let mut fonts = FontSettings::default();
+        fonts.set_family(FontRole::Interface, Some("  Helvetica  ".into()));
+        assert_eq!(fonts.family(FontRole::Interface), Some("Helvetica"));
+        assert!(!fonts.is_empty());
+        fonts.set_family(FontRole::Interface, None);
+        assert!(fonts.is_empty());
+    }
+
+    #[test]
+    fn legacy_personal_fonts_are_ignored_on_read_and_write() {
+        let file = temp_settings_file("legacy-fonts");
+        fs::write(&file, r#"{"fonts":{"interface":"Legacy"}}"#).unwrap();
+        let mut store = SettingsStore::new(file.clone());
+        store
+            .update(|settings| settings.theme_preference = ThemePreference::Dark)
+            .unwrap();
+        assert!(!fs::read_to_string(&file).unwrap().contains("fonts"));
+        let _ = fs::remove_file(file);
     }
 
     #[test]
@@ -839,8 +945,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
 
         let stored: StoredSettings =
-            serde_json::from_str(&format!(r#"{{"last_vault":"{}"}}"#, directory.display()))
-                .unwrap();
+            serde_json::from_value(serde_json::json!({"last_vault": directory})).unwrap();
         let normalized = stored.normalized();
         assert!(normalized.onboarding_complete);
         assert_eq!(normalized.last_vault, Some(directory.clone()));

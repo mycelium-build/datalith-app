@@ -4,6 +4,12 @@ use super::Tab;
 use crate::ui::{DatalithView, shortcuts::ShortcutsView};
 
 impl DatalithView {
+    pub(crate) fn open_themes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings.open_theme();
+        self.settings.focus(window, cx);
+        cx.notify();
+    }
+
     pub(crate) fn open_shortcuts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings.close();
         if let Some(index) = self

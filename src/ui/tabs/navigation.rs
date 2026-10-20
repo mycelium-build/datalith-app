@@ -342,7 +342,6 @@ mod tests {
     use super::{DatalithView, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
-    use crate::ui::settings::SettingsView;
 
     #[test]
     fn navigation_preserves_tab_identity_modes_and_only_history_creates_duplicates() {
@@ -361,7 +360,8 @@ mod tests {
         let mut cx = TestAppContext::single();
         cx.update(|cx| {
             gpui_kit::init(cx);
-            SettingsView::init_theme_options(cx);
+            crate::app::fonts::FontCatalog::init(cx);
+            crate::app::themes::ThemeLibrary::init(cx);
         });
         crate::app::settings::set_open_new_tab_mode(ViewMode::View).unwrap();
         let window_handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {

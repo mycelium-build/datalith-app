@@ -122,7 +122,8 @@ mod tests {
         let cx = TestAppContext::single();
         cx.update(|cx| {
             gpui_kit::init(cx);
-            crate::ui::settings::SettingsView::init_theme_options(cx);
+            crate::app::fonts::FontCatalog::init(cx);
+            crate::app::themes::ThemeLibrary::init(cx);
             cx.set_global(AppState::default());
             actions::register(cx);
             crate::app::keymap::register(cx);

@@ -6,11 +6,7 @@ use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, AppContext, PathPromptOptions, SharedString, actions};
 use std::path::PathBuf;
 
-use crate::app::{
-    AppState, preferences,
-    settings::{self, ThemePreference},
-    system,
-};
+use crate::app::{AppState, settings::ThemePreference, system};
 use crate::document::handler::FileHandlerEvent;
 use crate::ui::palette::PaletteKind;
 use crate::ui::tabs::NavigationAction;
@@ -40,6 +36,7 @@ actions!(
         FocusSidebar,
         ToggleTheme,
         OpenSettings,
+        OpenThemes,
         CheckForUpdates,
         OpenShortcuts,
         OpenDocumentation,
@@ -116,6 +113,7 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_8);
     cx.on_action(handle_select_last_tab);
     cx.on_action(open_settings);
+    cx.on_action(open_themes);
     cx.on_action(open_shortcuts);
     cx.on_action(open_documentation);
     cx.on_action(open_about);
@@ -387,13 +385,11 @@ pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
         ThemeMode::Light => ThemePreference::Light,
         ThemeMode::Dark => ThemePreference::Dark,
     };
-    if let Err(error) = settings::set_theme_preference(preference) {
-        notifications::push_window_notification(
-            cx,
-            notifications::settings_save_failed("theme mode", &error),
-        );
-    }
-    preferences::apply_theme_preference(preference, cx);
+    crate::ui::themes::change_mode(preference, cx);
+}
+
+pub fn open_themes(_: &OpenThemes, cx: &mut App) {
+    with_workspace_window(DatalithView::open_themes, cx);
 }
 
 fn with_workspace_window(
