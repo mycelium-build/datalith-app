@@ -42,6 +42,10 @@ impl Drop for Sandbox {
     }
 }
 
+fn color_after_theme_serialization(color: gpui_kit::Hsla) -> gpui_kit::Hsla {
+    serde_json::from_value(serde_json::to_value(color).unwrap()).unwrap()
+}
+
 #[test]
 fn current_document_resolves_selection_and_falls_back_by_mode() {
     let sandbox = Sandbox::new();
@@ -226,6 +230,260 @@ fn tolerant_load_repairs_missing_tokens_but_skips_unreadable_json() {
 }
 
 #[test]
+fn import_conflicts_copy_and_export_round_trip_and_revision_flush_keep_latest() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let id = library
+        .copy_family(library.family_named("Datalith").unwrap().id(), "Working")
+        .unwrap();
+    let export = sandbox.root.join("export.json");
+    library.export(id, &export).unwrap();
+    let exported: serde_json::Value = serde_json::from_slice(&fs::read(&export).unwrap()).unwrap();
+    assert!(exported.get("schema_version").is_none());
+    assert_eq!(exported["themes"].as_array().unwrap().len(), 2);
+    let copied = library.import(&export).unwrap();
+    assert_eq!(library.family(copied).unwrap().name(), "Working - Copy");
+    let variant = library.family(copied).unwrap().variants()[0].id();
+    library
+        .update_color(variant, "background", Some("#123456".into()))
+        .unwrap();
+    library
+        .update_color(variant, "background", Some("#abcdef".into()))
+        .unwrap();
+    library.flush_pending();
+    let mut reloaded = sandbox.library();
+    assert!(reloaded.load().is_empty());
+    assert_eq!(
+        reloaded.family_named("Working - Copy").unwrap().variants()[0]
+            .document()
+            .colors()
+            .unwrap()["background"],
+        Some("#abcdef".into())
+    );
+    assert_eq!(library.suggested_copy_name("Working"), "Working - Copy 2");
+}
+
+fn assert_sparse_variant_fallbacks(library: &mut ThemeLibrary, variant_id: u64, cx: &App) {
+    let variant = library.variant_by_id(variant_id).unwrap();
+    let resolved = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    let colors = variant.document().colors().unwrap();
+    let theme = resolved.theme();
+    let mode = variant.mode();
+    let name = variant.name().to_owned();
+    let gpui_highlight = if mode == ThemeMode::Dark {
+        gpui_kit::component::highlighter::HighlightTheme::default_dark()
+    } else {
+        gpui_kit::component::highlighter::HighlightTheme::default_light()
+    };
+    let gpui_string =
+        serde_json::to_value(&gpui_highlight.style).unwrap()["syntax"]["string"]["color"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+    assert_eq!(colors["background"], None);
+    assert_eq!(colors["link"], None);
+    assert_eq!(colors["list.active.background"], None);
+    assert_eq!(
+        resolved.color("background"),
+        Some(color_after_theme_serialization(theme.background))
+    );
+    assert_eq!(
+        resolved.color("highlight:syntax.string"),
+        Some(gpui_kit::component::try_parse_color(&gpui_string).unwrap()),
+        "{name} omitted syntax colors use GPUI's mode-specific default"
+    );
+    assert_eq!(
+        resolved.color("link"),
+        Some(color_after_theme_serialization(theme.primary))
+    );
+    assert_eq!(
+        resolved.color("list.active.background"),
+        Some(color_after_theme_serialization(theme.list_active))
+    );
+    assert_eq!(theme.table_active, theme.list_active);
+    assert_eq!(theme.selection, theme.primary.alpha(theme.selection.a));
+    assert!(!resolved.color_is_defined("link"));
+    assert!(!resolved.color_is_defined("list.active.background"));
+    assert!(!resolved.color_is_defined("highlight:syntax.string"));
+    assert!(resolved.color_is_defined("primary.background"));
+    assert!(
+        library
+            .resolved_config(&name)
+            .unwrap()
+            .colors
+            .background
+            .is_none(),
+        "{name} keeps omitted background sparse for GPUI"
+    );
+
+    let old_list_active = theme.list_active;
+    let next_primary = if mode == ThemeMode::Dark {
+        "#f97316"
+    } else {
+        "#0f766e"
+    };
+    library
+        .update_color(variant_id, "primary.background", Some(next_primary.into()))
+        .unwrap();
+    let changed = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    assert_eq!(
+        changed.color("link"),
+        Some(color_after_theme_serialization(changed.theme().primary))
+    );
+    assert_ne!(changed.theme().list_active, old_list_active);
+    assert_eq!(changed.theme().table_active, changed.theme().list_active);
+    assert_eq!(
+        changed.color("list.active.background"),
+        Some(color_after_theme_serialization(changed.theme().list_active))
+    );
+
+    library
+        .update_color(variant_id, "primary.background", None)
+        .unwrap();
+    let reset = library
+        .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+        .unwrap();
+    assert_eq!(
+        reset.color("link"),
+        Some(color_after_theme_serialization(reset.theme().primary))
+    );
+    assert_eq!(
+        reset.color("list.active.background"),
+        Some(color_after_theme_serialization(reset.theme().list_active))
+    );
+    assert!(!reset.color_is_defined("primary.background"));
+}
+
+#[test]
+fn sparse_theme_colors_follow_gpui_fallbacks_in_both_modes() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let mut library = sandbox.library();
+        let import = sandbox.root.join("sparse.json");
+        fs::write(
+            &import,
+            r##"{"name":"Sparse","themes":[{"name":"Sparse Light","mode":"light","colors":{"primary.background":"#c05621"}},{"name":"Sparse Dark","mode":"dark","colors":{"primary.background":"#3b82f6"}}]}"##,
+        )
+        .unwrap();
+        let family = library.import(&import).unwrap();
+        let variant_ids: Vec<_> = library
+            .family(family)
+            .unwrap()
+            .variants()
+            .iter()
+            .map(ThemeVariant::id)
+            .collect();
+        for variant_id in variant_ids {
+            assert_sparse_variant_fallbacks(&mut library, variant_id, cx);
+        }
+    });
+}
+
+#[test]
+fn explicit_link_selection_and_highlight_colors_survive_gpui_fallbacks() {
+    let context = gpui_kit::TestAppContext::single();
+    context.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::fonts::FontCatalog::init(cx);
+        let sandbox = Sandbox::new();
+        let mut library = sandbox.library();
+        let import = sandbox.root.join("explicit.json");
+        fs::write(
+            &import,
+            r##"{"name":"Explicit","themes":[{"name":"Explicit","mode":"light","colors":{"primary.background":"#c05621","link":"#12ab34","list.active.background":"#7543c2"},"highlight":{"syntax":{"keyword":{"color":"#fedcba"}}}}]}"##,
+        )
+        .unwrap();
+        let family = library.import(&import).unwrap();
+        let variant = &library.family(family).unwrap().variants()[0];
+        let variant_id = variant.id();
+        let resolved = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        let color = |hex| gpui_kit::component::try_parse_color(hex).unwrap();
+
+        assert_eq!(resolved.color("link"), Some(color("#12ab34")));
+        assert_eq!(resolved.color("list.active.background"), Some(color("#7543c2")));
+        assert_eq!(resolved.color("highlight:syntax.keyword"), Some(color("#fedcba")));
+        assert!(resolved.color_is_defined("link"));
+        assert!(resolved.color_is_defined("list.active.background"));
+        assert!(resolved.color_is_defined("highlight:syntax.keyword"));
+        assert!(!resolved.color_is_defined("highlight:syntax.string"));
+
+        let gpui_default = gpui_kit::component::highlighter::HighlightTheme::default_light();
+        let gpui_string = serde_json::to_value(&gpui_default.style).unwrap()["syntax"]["string"]
+            ["color"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            resolved.color("highlight:syntax.string"),
+            Some(color(&gpui_string)),
+            "an omitted syntax color comes from GPUI's light highlight theme"
+        );
+
+        library
+            .update_color(variant_id, "primary.background", Some("#0011aa".into()))
+            .unwrap();
+        let changed = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        assert_eq!(changed.color("link"), Some(color("#12ab34")));
+        assert_eq!(changed.color("list.active.background"), Some(color("#7543c2")));
+
+        library.update_color(variant_id, "link", None).unwrap();
+        library
+            .update_color(variant_id, "list.active.background", None)
+            .unwrap();
+        let reset = library
+            .resolved(variant_id, cx.global::<super::super::fonts::FontCatalog>())
+            .unwrap();
+        assert_eq!(
+            reset.color("link"),
+            Some(color_after_theme_serialization(reset.theme().primary))
+        );
+        assert_eq!(
+            reset.color("list.active.background"),
+            Some(color_after_theme_serialization(reset.theme().list_active))
+        );
+        assert_eq!(reset.theme().table_active, reset.theme().list_active);
+        assert!(!reset.color_is_defined("link"));
+        assert!(!reset.color_is_defined("list.active.background"));
+    });
+}
+
+#[test]
+fn empty_import_does_not_persist_datalith_colors_or_highlights() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let import = sandbox.root.join("empty.json");
+    fs::write(&import, r#"{"name":"Empty","themes":[]}"#).unwrap();
+
+    let family = library.import(&import).unwrap();
+    let stored = match library.family(family).unwrap().source() {
+        ThemeSource::Custom(path) => path,
+        ThemeSource::Bundled => unreachable!(),
+    };
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(stored).unwrap()).unwrap();
+    assert!(value["themes"][0]["colors"]["background"].is_null());
+    assert!(value["themes"][0]["highlight"].is_null());
+    assert_eq!(
+        library.family(family).unwrap().variants()[0]
+            .document()
+            .colors()
+            .unwrap()["background"],
+        None
+    );
+}
+
+#[test]
 fn every_bundled_editor_color_has_a_resolved_value() {
     let context = gpui_kit::TestAppContext::single();
     context.update(|cx| {
@@ -324,6 +582,41 @@ fn valid_but_damaged_variant_keeps_healthy_tokens_and_unavailable_fonts() {
     assert_eq!(highlight["editor.foreground"], "#abcdefff");
     assert_eq!(highlight["syntax"]["string"]["color"], "#765432ff");
     assert_ne!(highlight["syntax"]["keyword"]["color"], "invalid");
+}
+
+#[test]
+fn importing_a_built_in_name_copies_the_whole_family() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("builtin.json");
+    fs::write(
+        &file,
+        include_str!("../../../assets/themes/catppuccin.json"),
+    )
+    .unwrap();
+    let id = library.import(&file).unwrap();
+    assert_eq!(library.family(id).unwrap().name(), "Catppuccin - Copy");
+    assert_eq!(library.family(id).unwrap().variants().len(), 4);
+}
+
+#[test]
+fn importing_a_damaged_name_persists_the_normalized_variant() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("import.json");
+    fs::write(
+        &file,
+        r#"{"name":"Imported","themes":[{"name":"Unrelated","mode":"light"}]}"#,
+    )
+    .unwrap();
+    let id = library.import(&file).unwrap();
+    assert_eq!(library.family(id).unwrap().variants()[0].name(), "Imported");
+    let path = match library.family(id).unwrap().source() {
+        ThemeSource::Custom(path) => path,
+        ThemeSource::Bundled => unreachable!(),
+    };
+    let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(saved["themes"][0]["name"], "Imported");
 }
 
 #[test]
@@ -936,6 +1229,66 @@ fn loaded_variant_names_are_unique_across_families_ignoring_case() {
     assert!(reloaded.load().is_empty());
     assert!(reloaded.variant("A B").is_some());
     assert!(reloaded.variant("a b Variant 2").is_some());
+}
+
+#[test]
+fn imported_variant_names_and_selected_references_survive_reload() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("import.json");
+    fs::write(
+        &file,
+        r#"{"name":" Solar ","themes":[{"name":" Solar Light ","mode":"light"}]}"#,
+    )
+    .unwrap();
+    let id = library.import(&file).unwrap();
+    let variant = &library.family(id).unwrap().variants()[0];
+    assert_eq!(variant.name(), "Solar Light");
+    library.set_current(variant.id(), ThemeKind::Light).unwrap();
+    let (saved, _) = sandbox.saved_slots();
+    assert_eq!(saved, "Solar Light");
+    let mut reloaded = sandbox.library();
+    assert!(reloaded.load().is_empty());
+    assert_eq!(reloaded.variant(&saved).unwrap().name(), "Solar Light");
+
+    fs::write(&file, r#"{"name":"Duplicates","themes":[{"name":"Duplicates Light"},{"name":"Duplicates Light "}]}"#).unwrap();
+    assert!(library.import(&file).is_err());
+    assert!(library.family_named("Duplicates").is_none());
+}
+
+#[test]
+fn imported_fonts_normalize_roles_and_legacy_before_propagation_and_export() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+    let file = sandbox.root.join("fonts.json");
+    fs::write(&file, r#"{"name":"Fonts","themes":[{"name":"Fonts Light","mode":"light","font.family":" Legacy UI ","mono_font.family":" Legacy Code ","fonts":{"interface":"   ","reading":" Georgia ","headings":" Uninstalled Family ","code":" Role Code "}},{"name":"Fonts Dark","mode":"dark"}]}"#).unwrap();
+    let id = library.import(&file).unwrap();
+    let variant = &library.family(id).unwrap().variants()[0];
+    let source = variant.id();
+    let expected = ["Legacy UI", "Georgia", "Uninstalled Family", "Role Code"];
+    for (role, expected) in FontRole::ALL.into_iter().zip(expected) {
+        assert_eq!(variant.document().font(role), Some(expected));
+    }
+    library.apply_fonts_to_all(source).unwrap();
+    library.export(id, &file).unwrap();
+    let stored = storage::read(&file).unwrap();
+    for document in stored.themes {
+        for (role, expected) in FontRole::ALL.into_iter().zip(expected) {
+            assert_eq!(document.font(role), Some(expected));
+        }
+        assert_eq!(document.config().font_family.as_deref(), Some("Legacy UI"));
+        assert_eq!(
+            document.config().mono_font_family.as_deref(),
+            Some("Role Code")
+        );
+    }
+    let mut document = library.variant_by_id(source).unwrap().document().clone();
+    for role in FontRole::ALL {
+        document.set_font(role, Some("   ".into()));
+        assert_eq!(document.font(role), None);
+    }
+    assert_eq!(document.config().font_family, None);
+    assert_eq!(document.config().mono_font_family, None);
 }
 
 #[cfg(unix)]

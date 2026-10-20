@@ -41,6 +41,11 @@ impl StoredThemeSet {
     }
 }
 
+pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
+    let text = fs::read_to_string(path)?;
+    parse(serde_json::from_str(&text)?)
+}
+
 fn parse(mut value: Value) -> Result<StoredThemeSet> {
     if !value.is_object() {
         value = Value::Object(serde_json::Map::default());

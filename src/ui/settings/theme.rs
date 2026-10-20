@@ -15,7 +15,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement, Render, ScrollHandle, SharedString,
+    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px, rems,
 };
 
@@ -458,6 +458,7 @@ impl ThemePage {
                     PopupMenuItem::new("Customize")
                         .on_click(move |_, window, cx| open_editor(id, window, cx)),
                 )
+                .item(PopupMenuItem::new("Export").on_click(move |_, _, cx| export_family(id, cx)))
                 .separator()
                 .item(
                     PopupMenuItem::element(|_, cx| {
@@ -487,7 +488,7 @@ impl ThemePage {
                 div()
                     .text_sm()
                     .text_center()
-                    .child("Customize a built-in theme to add a custom theme"),
+                    .child("Customize a built-in theme or import one to add a custom theme"),
             )
     }
 
@@ -671,7 +672,14 @@ impl Render for ThemePage {
                             // Keep focus rings inside the scroll clip.
                             .px_1()
                             .pb_4()
-                            .child(Self::render_section_heading("Custom", cx))
+                            .child(
+                                Self::render_section_heading("Custom", cx).child(
+                                    Button::new("import-theme")
+                                        .small()
+                                        .label("Import…")
+                                        .on_click(|_, _, cx| import_theme(cx)),
+                                ),
+                            )
                             .child(custom_section)
                             .child(Self::render_section_heading("Built-in", cx))
                             .child(Self::render_cards_section(
@@ -789,4 +797,56 @@ pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx:
             .autohide(true),
         cx,
     );
+}
+
+fn import_theme(cx: &App) {
+    let receiver = cx.prompt_for_paths(PathPromptOptions {
+        files: true,
+        directories: false,
+        multiple: false,
+        prompt: Some("Import theme".into()),
+    });
+    cx.spawn(async move |cx| {
+        if let Ok(Ok(Some(paths))) = receiver.await
+            && let Some(path) = paths.first()
+        {
+            let path = path.clone();
+            cx.update(|cx| {
+                if let Err(error) = cx.global_mut::<ThemeLibrary>().import(&path) {
+                    notifications::push_window_notification(
+                        cx,
+                        notifications::settings_save_failed("theme import", &error),
+                    );
+                }
+            });
+        }
+    })
+    .detach();
+}
+
+fn export_family(id: u64, cx: &App) {
+    let Some(name) = cx
+        .global::<ThemeLibrary>()
+        .family(id)
+        .map(|family| family.name().to_owned())
+    else {
+        return;
+    };
+    let receiver = cx.prompt_for_new_path(
+        &std::env::current_dir().unwrap_or_default(),
+        Some(&format!("{name}.json")),
+    );
+    cx.spawn(async move |cx| {
+        if let Ok(Ok(Some(path))) = receiver.await {
+            cx.update(|cx| {
+                if let Err(error) = cx.global::<ThemeLibrary>().export(id, &path) {
+                    notifications::push_window_notification(
+                        cx,
+                        notifications::settings_save_failed("theme export", &error),
+                    );
+                }
+            });
+        }
+    })
+    .detach();
 }
