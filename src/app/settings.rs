@@ -342,12 +342,8 @@ impl SettingsStore {
     }
 
     fn persist(&self, settings: &ApplicationSettings) -> Result<()> {
-        let parent = self.file.parent().context("Settings path has no parent")?;
-        fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create settings directory: {}", parent.display())
-        })?;
-        let json = serde_json::to_string(&StoredSettings::from_settings(settings))?;
-        fs::write(&self.file, json)
+        let json = serde_json::to_vec(&StoredSettings::from_settings(settings))?;
+        super::atomic_file::write(&self.file, &json)
             .with_context(|| format!("Failed to write settings: {}", self.file.display()))
     }
 }

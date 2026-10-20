@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod assets;
+mod atomic_file;
 pub mod deeplink;
 pub mod docs;
 pub mod fonts;
