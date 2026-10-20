@@ -2,62 +2,55 @@
 category: reference
 ---
 
-# Files
+Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens in a workspace tab; opening it again returns to the same tab. It is read-only. Use the arrow keys, Page Up / Page Down, Home / End, or the scroll wheel to move through it. Workspace shortcuts still work while the tab is focused.
 
-Use **Command** on macOS and **Ctrl** on Linux and Windows for the `Cmd/Ctrl` shortcuts below.
+`Cmd/Ctrl` means **Command** on macOS and **Ctrl** on Linux and Windows. The application shows the platform's notation in the Shortcuts tab. These entries come from the application's registered keybindings.
 
-| Shortcut | Action |
+# File
+
+| Action | Shortcut |
 | --- | --- |
-| `Cmd/Ctrl+N` | New note |
-| `Cmd/Ctrl+Shift+N` | New folder |
-| `F2` | Rename |
-| `Cmd/Ctrl+Backspace` | Delete |
-| `Cmd/Ctrl+D` | Duplicate |
-| `Cmd/Ctrl+Shift+E` | Open in your explorer |
-| `Cmd/Ctrl+L` | Copy path |
-
-# Sidebar
-
-| Shortcut | Action |
-| --- | --- |
-| `Cmd/Ctrl+0` | Focus sidebar |
-| `↩` | Expand/collapse folder, or open file |
-| `Cmd/Ctrl+Enter` | Open file in a new tab |
-| `↑` / `↓` | Select file |
+| Quit | `Cmd/Ctrl+Q` |
+| New note | `Cmd/Ctrl+N` |
+| New folder | `Cmd/Ctrl+Shift+N` |
+| Rename | `F2` |
+| Delete | `Cmd/Ctrl+Backspace` |
+| Duplicate | `Cmd/Ctrl+D` |
+| Open in Explorer | `Cmd/Ctrl+Shift+E` |
+| Copy path | `Cmd/Ctrl+L` |
 
 # Navigation
 
-| Shortcut | Action |
+| Action | Shortcut |
 | --- | --- |
-| `Cmd/Ctrl+P` | Quick switcher |
-| `Cmd/Ctrl+0` | Focus sidebar |
-| `Cmd/Ctrl+[` / `Cmd/Ctrl+]` | Go back / forward |
-| `Cmd/Ctrl+Enter` | Open link at cursor |
-| `Cmd/Ctrl+Q` | Quit Datalith |
+| Quick switcher | `Cmd/Ctrl+P` |
+| Focus sidebar | `Cmd/Ctrl+0` |
+| Navigate back | `Cmd/Ctrl+[` |
+| Navigate forward | `Cmd/Ctrl+]` |
+| Open link | `Cmd/Ctrl+Enter` |
 
 # Tabs
 
-| Shortcut | Action |
+| Action | Shortcut |
 | --- | --- |
-| `Cmd/Ctrl+T` | New tab |
-| `Cmd/Ctrl+W` | Close tab |
-| `Cmd/Ctrl+1`-`Cmd/Ctrl+8` | Select tab |
-| `Cmd/Ctrl+9` | Select last tab |
-| `Cmd/Ctrl+E` | Toggle edit/view mode |
+| New tab | `Cmd/Ctrl+T` |
+| Close tab | `Cmd/Ctrl+W` |
+| Select tab | `Cmd/Ctrl+1` … `Cmd/Ctrl+8` |
+| Select last tab | `Cmd/Ctrl+9` |
 
 # View
 
-| Shortcut | Action |
+| Action | Shortcut |
 | --- | --- |
-| `Cmd/Ctrl+Shift+F` | Search files |
-| `Cmd/Ctrl+E` | Toggle edit / view |
-| `Cmd/Ctrl+Shift+D` | Toggle between light and dark theme |
-| `Cmd/Ctrl+,` | Open settings |
+| Search files | `Cmd/Ctrl+Shift+F` |
+| Toggle edit / view | `Cmd/Ctrl+E` |
+| Toggle theme | `Cmd/Ctrl+Shift+D` |
+| Open settings | `Cmd/Ctrl+,` |
 
 # Help
 
-| Shortcut | Action |
+| Action | Shortcut |
 | --- | --- |
-| `Cmd/Ctrl+/` | Show shortcuts |
+| Show shortcuts | `Cmd/Ctrl+/` |
 
-For the full set of options, see [[Settings]]. See [[Basics]] if you are new to the app.
+See [[Basics]] if you are new to the app.

@@ -11,7 +11,7 @@ use gpui_kit::{
     Window, div, px,
 };
 
-use crate::app::keymap::display_binding;
+use crate::app::keymap;
 use crate::ui::icons::DatalithIcon;
 use crate::ui::monolith::monolith_mark;
 
@@ -19,11 +19,13 @@ const SIDEBAR_WIDTH: f32 = 260.0;
 const GLYPH_CELL: f32 = 4.0;
 
 fn quick_start_shortcuts() -> String {
+    let registry = keymap::ShortcutRegistry::new();
+    let label = |id| keymap::display_binding_or_unbound(registry.binding_for(id));
     format!(
         "{} search  ·  {} new tab  ·  {} focus sidebar",
-        display_binding("secondary-shift-f"),
-        display_binding("secondary-t"),
-        display_binding("secondary-0"),
+        label("search-files"),
+        label("new-tab"),
+        label("focus-sidebar"),
     )
 }
 
@@ -262,28 +264,25 @@ impl DatalithView {
         let Some(active_tab) = self.tabs.active() else {
             return div().size_full().into_any_element();
         };
-        let is_empty = active_tab.path().is_none();
-
-        v_flex()
-            .size_full()
-            .min_h_0()
-            .overflow_hidden()
-            .child(self.render_tab_bar(cx))
-            .child(if is_empty {
+        let content = match active_tab {
+            super::tabs::Tab::Document(tab) if tab.path().is_none() => {
                 if read_only {
                     Self::render_empty_hint(cx, "Open a personal vault to create notes")
                         .into_any_element()
                 } else {
                     Self::render_quick_start(cx).into_any_element()
                 }
-            } else {
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_hidden()
-                    .child(active_tab.handler().clone())
-                    .into_any_element()
-            })
+            }
+            super::tabs::Tab::Document(tab) => tab.handler().clone().into_any_element(),
+            super::tabs::Tab::Shortcuts(view) => view.clone().into_any_element(),
+        };
+
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .overflow_hidden()
+            .child(self.render_tab_bar(cx))
+            .child(div().flex_1().min_h_0().overflow_hidden().child(content))
             .into_any_element()
     }
 }

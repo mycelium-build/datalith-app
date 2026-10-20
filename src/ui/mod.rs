@@ -6,6 +6,7 @@ pub mod notifications;
 pub mod palette;
 pub mod render;
 pub mod settings;
+mod shortcuts;
 pub mod sidebar;
 pub mod startup;
 pub mod tabs;
@@ -266,7 +267,7 @@ impl DatalithView {
                                         if !view.vault_db_ready_notified {
                                             changed_paths.extend(
                                                 view.tabs
-                                                    .iter()
+                                                    .iter_documents()
                                                     .filter(|(_, path, _)| {
                                                         path.is_some_and(|path| {
                                                             path.starts_with(&root)
@@ -279,7 +280,7 @@ impl DatalithView {
                                         }
                                         let handlers = view
                                             .tabs
-                                            .iter()
+                                            .iter_documents()
                                             .filter(|(_, tab_path, _)| {
                                                 tab_path.is_some_and(|path| path.starts_with(&root))
                                             })

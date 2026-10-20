@@ -44,7 +44,7 @@ fn application_menu(cx: &App) -> Menu {
     items.extend([
         MenuItem::separator(),
         MenuItem::action("Settings", OpenSettings),
-        MenuItem::action("Shortcuts list", OpenShortcuts),
+        MenuItem::action("Shortcuts", OpenShortcuts),
         MenuItem::separator(),
         MenuItem::action(
             format!("Quit {}", crate::channel::Channel::current().product_name()),

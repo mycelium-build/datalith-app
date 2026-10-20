@@ -24,10 +24,8 @@ mod about;
 mod appearance;
 mod general;
 mod server;
-mod shortcuts;
 
 use about::about_page_index;
-use shortcuts::shortcuts_page_index;
 
 #[derive(Clone)]
 pub struct ThemeOptions {
@@ -51,21 +49,18 @@ pub struct SettingsView {
     pub(crate) font_size_slider_state: Entity<SliderState>,
 }
 
-/// The settings pages, in render order.
-/// Page builders and shortcut indexes derive from this list, so they cannot drift.
+/// The settings pages, in render order; shortcuts have their own surface.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     General,
     Appearance,
-    Shortcuts,
     Server,
     About,
 }
 
-pub(super) const SETTINGS_PAGES: [SettingsPage; 5] = [
+pub(super) const SETTINGS_PAGES: [SettingsPage; 4] = [
     SettingsPage::General,
     SettingsPage::Appearance,
-    SettingsPage::Shortcuts,
     SettingsPage::Server,
     SettingsPage::About,
 ];
@@ -75,7 +70,6 @@ impl SettingsPage {
         match self {
             Self::General => "General",
             Self::Appearance => "Appearance",
-            Self::Shortcuts => "Shortcuts",
             Self::Server => "Local Server",
             Self::About => "About",
         }
@@ -106,12 +100,6 @@ impl SettingsView {
     pub(crate) const fn open(&mut self) {
         self.open = true;
         self.page_index = 0;
-        self.navigation_revision = self.navigation_revision.saturating_add(1);
-    }
-
-    pub(crate) fn open_shortcuts(&mut self) {
-        self.open = true;
-        self.page_index = shortcuts_page_index();
         self.navigation_revision = self.navigation_revision.saturating_add(1);
     }
 
@@ -228,9 +216,6 @@ impl SettingsView {
                         Self::theme_group(cx),
                         Self::display_group(&self.font_size_slider_state),
                     ]),
-                SettingsPage::Shortcuts => {
-                    SettingPage::new(page.title()).groups(Self::shortcuts_groups())
-                }
                 SettingsPage::Server => {
                     SettingPage::new(page.title()).groups(vec![Self::server_group()])
                 }
