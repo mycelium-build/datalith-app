@@ -4,17 +4,19 @@ use std::path::PathBuf;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{EditorState, InputEvent, Rope, RopeExt};
 use gpui_kit::{
-    Context, Empty, Entity, EntityInputHandler as _, Focusable as _, HighlightStyle,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement, Point, Render, Styled,
-    StyledText, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
+    AppContext as _, Context, Empty, Entity, EntityInputHandler as _, Focusable as _,
+    HighlightStyle, InteractiveElement as _, IntoElement, MouseButton, ParentElement, Point,
+    Render, Styled, StyledText, Subscription, Task, Window, deferred, div,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::vault::VaultCatalog;
 use crate::vault::catalog::WikiLinkMatch;
 
 const MIN_QUERY_CHARS: usize = 3;
-const MAX_SUGGESTIONS: usize = 32;
+const MAX_SUGGESTIONS: usize = 16;
 const MAX_VISIBLE_ITEMS: usize = 7;
+const SUGGESTION_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(50);
 const POPUP_WIDTH: f32 = 360.0;
 
 struct WikiLink {
@@ -33,6 +35,8 @@ pub struct WikiLinkAutocomplete {
     replace_range: Range<usize>,
     query: String,
     open: bool,
+    query_generation: u64,
+    query_task: Option<Task<()>>,
     _subscription: Subscription,
 }
 
@@ -59,17 +63,14 @@ impl WikiLinkAutocomplete {
             replace_range: 0..0,
             query: String::new(),
             open: false,
+            query_generation: 0,
+            query_task: None,
             _subscription: subscription,
         }
     }
 
     pub fn set_catalog(&mut self, catalog: VaultCatalog) {
         self.catalog = catalog;
-    }
-
-    fn suggestions(&self, query: &str) -> Vec<WikiLinkMatch> {
-        self.catalog
-            .suggest_wiki_links(query, Some(&self.source), MAX_SUGGESTIONS)
     }
 
     fn refresh(&mut self, input: &Entity<EditorState>, cx: &mut Context<Self>) {
@@ -86,18 +87,47 @@ impl WikiLinkAutocomplete {
             return;
         }
 
-        let items = self.suggestions(&link.query);
+        self.query_generation = self.query_generation.wrapping_add(1);
+        let generation = self.query_generation;
+        let catalog = self.catalog.clone();
+        let source = self.source.clone();
+        let query = link.query.clone();
+
+        self.query_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SUGGESTION_DEBOUNCE).await;
+
+            let items = cx
+                .background_spawn(async move {
+                    catalog.suggest_wiki_links(&query, Some(&source), MAX_SUGGESTIONS)
+                })
+                .await;
+
+            let _ = this.update(cx, |this, cx| {
+                if this.query_generation != generation {
+                    return;
+                }
+                this.apply_suggestions(items, link, cx);
+            });
+        }));
+    }
+
+    fn apply_suggestions(
+        &mut self,
+        items: Vec<WikiLinkMatch>,
+        link: WikiLink,
+        cx: &mut Context<Self>,
+    ) {
         if items.is_empty() {
-            self.close(cx);
+            self.open = false;
+            self.items.clear();
+            self.selected = 0;
+            cx.notify();
             return;
         }
 
-        let previous = self
-            .items
-            .get(self.selected)
-            .map(|item| item.target.clone());
+        let previous = self.items.get(self.selected).map(|item| item.path.clone());
         self.selected = previous
-            .and_then(|target| items.iter().position(|item| item.target == target))
+            .and_then(|path| items.iter().position(|item| item.path == path))
             .unwrap_or(0);
         self.items = items;
         self.replace_range = link.replace_start..link.replace_end;
@@ -107,6 +137,8 @@ impl WikiLinkAutocomplete {
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
+        self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_task = None;
         if self.open || !self.items.is_empty() {
             self.open = false;
             self.items.clear();
@@ -165,16 +197,47 @@ impl WikiLinkAutocomplete {
     }
 
     fn accept(&mut self, index: usize, window: &Window, cx: &mut Context<Self>) {
+        let current = {
+            let state = self.input.read(cx);
+            wiki_link_at(state.text(), state.cursor())
+        };
+        let Some(current) = current else {
+            self.close(cx);
+            return;
+        };
+        if current.query != self.query
+            || current.replace_start != self.replace_range.start
+            || current.replace_end != self.replace_range.end
+        {
+            self.close(cx);
+            return;
+        }
+
         let Some(item) = self.items.get(index).cloned() else {
             return;
         };
         let range = self.replace_range.clone();
-        let new_text = format!("[[{}]]", item.target);
+        let original = {
+            let state = self.input.read(cx);
+            state.text().slice(range.clone()).to_string()
+        };
         self.close(cx);
 
+        let catalog = self.catalog.clone();
         let input = self.input.clone();
+        let path = item.path;
+        let label = item.label;
         cx.spawn_in(window, async move |_, cx| {
+            let target = cx
+                .background_spawn(async move { catalog.wiki_link_target(&path, &label) })
+                .await;
+            let new_text = format!("[[{target}]]");
+
             let _ = input.update_in(cx, |state, window, cx| {
+                let current = state.text().slice(range.clone()).to_string();
+                if current != original {
+                    return;
+                }
                 let range_utf16 = {
                     let text = state.text();
                     text.offset_to_offset_utf16(range.start)..text.offset_to_offset_utf16(range.end)
@@ -497,15 +560,15 @@ mod tests {
                 (
                     suggestion.label.as_str(),
                     suggestion.detail.as_deref(),
-                    suggestion.target.as_str(),
+                    suggestion.path.as_str(),
                 )
             })
             .collect::<Vec<_>>();
         assert_eq!(
             rows,
             [
-                ("Note", Some("alpha"), "alpha/Note"),
-                ("Note", Some("beta/nested"), "beta/nested/Note"),
+                ("Note", Some("alpha"), "alpha/Note.md"),
+                ("Note", Some("beta/nested"), "beta/nested/Note.md"),
             ]
         );
 
@@ -513,14 +576,35 @@ mod tests {
         assert_eq!(suggestions.len(), 1);
         assert_eq!(suggestions[0].label, "Other");
         assert_eq!(suggestions[0].detail.as_deref(), Some("beta"));
-        assert_eq!(suggestions[0].target, "Other");
+        assert_eq!(suggestions[0].path, "beta/Other.md");
 
         let suggestions = catalog.suggest_wiki_links("alpha/", Some(&source), MAX_SUGGESTIONS);
         assert_eq!(suggestions.len(), 1);
-        assert_eq!(suggestions[0].target, "alpha/Note");
+        assert_eq!(suggestions[0].path, "alpha/Note.md");
 
         let suggestions = catalog.suggest_wiki_links("sour", Some(&source), MAX_SUGGESTIONS);
         assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn resolves_minimal_targets_when_accepting_suggestions() {
+        let vault = TempVault::new();
+        for relative in ["alpha/Note.md", "beta/nested/Note.md", "beta/Other.md"] {
+            let path = vault.0.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        let catalog = catalog_for(&vault.0);
+
+        assert_eq!(catalog.wiki_link_target("beta/Other.md", "Other"), "Other");
+        assert_eq!(
+            catalog.wiki_link_target("alpha/Note.md", "Note"),
+            "alpha/Note"
+        );
+        assert_eq!(
+            catalog.wiki_link_target("beta/nested/Note.md", "Note"),
+            "beta/nested/Note"
+        );
     }
 
     #[test]

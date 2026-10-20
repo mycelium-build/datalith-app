@@ -22,12 +22,12 @@ pub struct CatalogEvent {
 /// One catalog match for wiki-link autocomplete.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WikiLinkMatch {
+    /// The vault-relative path, including its extension.
+    pub(crate) path: String,
     /// The name shown in the popup, with `.md` removed for Markdown files.
     pub(crate) label: String,
     /// The containing folder, or `None` for files at the vault root.
     pub(crate) detail: Option<String>,
-    /// The text inserted between `[[` and `]]`.
-    pub(crate) target: String,
 }
 
 /// A Base query plan: everything the catalog needs to filter, project, sort, group, and summarize rows for one view.

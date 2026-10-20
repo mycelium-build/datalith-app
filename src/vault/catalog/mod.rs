@@ -9,6 +9,7 @@ mod database;
 use database::{Backlink, CatalogDatabase};
 
 use crate::document::file_types::RegisteredFileTypes;
+use crate::vault::links::qualified_target;
 use crate::vault::search::{SearchEngine, SearchHit};
 use crate::vault::{DATALITH_DIR_NAME, source::VaultSource};
 
@@ -189,6 +190,25 @@ impl VaultCatalog {
                 .unwrap_or_default()
         })
         .unwrap_or_default()
+    }
+
+    /// Resolves the target to insert for an accepted wiki-link suggestion.
+    ///
+    /// This is a single duplicate-name query, run once per accepted suggestion
+    /// rather than on every keystroke. If the query fails, the qualified path
+    /// is used because it is always safe.
+    #[must_use]
+    pub(crate) fn wiki_link_target(&self, path: &str, label: &str) -> String {
+        let database = self.inner.database.clone();
+        let path = path.to_string();
+        let label = label.to_string();
+        let fallback = qualified_target(&path);
+        run_blocking("wiki_link_target", move || {
+            pollster::block_on(database.wiki_link_target(&path, &label))
+        })
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(fallback)
     }
 
     #[must_use]

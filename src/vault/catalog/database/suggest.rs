@@ -4,104 +4,67 @@ use anyhow::Result;
 
 use super::{CatalogDatabase, FILE_BASENAME_SQL, FILE_NAME_SQL};
 use crate::vault::catalog::WikiLinkMatch;
+use crate::vault::links::qualified_target;
 
 impl CatalogDatabase {
-    /// Returns up to `limit` catalog documents whose target can be inserted as a `[[wiki link]]`.
+    /// Returns up to `limit` catalog documents matching a wiki-link query.
     ///
-    /// Matching, ranking, and limiting all happen in `SQLite`
-    /// so the editor never keeps the full vault file list in memory.
-    /// The query is built around three steps:
+    /// Matching, ranking, and limiting happen in `Turso`.
     ///
-    /// 1. `computed` derives the two forms a suggestion can insert.
-    /// 2. `matched` filters by substring, excludes unusable paths, and ranks rows.
-    /// 3. `name_counts` detects duplicate file names so `folder/Note` is used instead of an ambiguous `Note`.
+    /// `path` is the only qualified identifier returned here.
+    /// A minimal target is resolved separately when the user accepts a suggestion.
     pub(crate) async fn suggest_wiki_links(
         &self,
         query: &str,
         excluded: Option<&str>,
         limit: usize,
     ) -> Result<Vec<WikiLinkMatch>> {
-        // Wiki links to Markdown files omit the extension (`[[Note]]`),
-        // while links to other files keep it (`[[image.png]]`).
-        // `label` is the name shown in the popup and `qualified` is the vault-relative target;
-        // both use that same link-target shape so what is displayed is what is inserted.
-        //
-        // `FILE_NAME_SQL` strips any extension.
-        // `FILE_BASENAME_SQL` keeps the extension for other files.
+        // Markdown files display without `.md`;
+        // every other file keeps its extension.
+        // `path` itself is returned unchanged.
         let label = format!(
             "CASE WHEN lower(extension) = 'md' \
              THEN {FILE_NAME_SQL} \
              ELSE {FILE_BASENAME_SQL} END"
         );
 
-        // `computed` also produces `qualified`, the full relative path inserted into the link.
-        // Markdown files lose their three-character `.md` extension;
-        // other files keep their whole path.
+        // `computed` derives the display label once.
+        // `keyed` lowercases the label and path once for matching and sorting.
         //
         // `matched` ranks matches by what the user most likely means:
         //   0 = label starts with the query
-        //   1 = qualified path starts with the query
-        //   2 = label contains the query
-        //   3 = qualified path contains the query
-        //   4 = full path contains the query
-        // Ties prefer the shortest matching value, then name and path order.
+        //   1 = label contains the query
+        //   2 = path contains the query
+        // Ties prefer shorter labels, then label and path order.
         //
-        // `|`, `#`, `[`, and `]` are wiki-link syntax (aliases, anchors, and delimiters).
-        // A path containing one cannot be represented safely in `[[...]]`,
-        // so those rows are filtered.
-        //
-        // `name_counts` counts labels across the whole vault, not just the current matches.
-        // If `Note` exists in several folders,
-        // every match gets the qualified `folder/Note` target even
-        // when the query only matched one of them.
-        // A full relative path is the `documents` primary key, so it has no further ambiguity.
+        // `|`, `#`, `[`, and `]` are wiki-link syntax,
+        // so paths containing them cannot be safely inserted.
         //
         // Parameters: ?1 lowercased query, ?2 excluded current path, ?3 limit.
         let sql = format!(
             "WITH computed AS (\
-                 SELECT path, folder, {label} AS label, \
-                        CASE WHEN lower(extension) = 'md' \
-                             THEN substr(path, 1, length(path) - 3) \
-                             ELSE path END AS qualified \
-                 FROM documents\
-             ), matched AS (\
-                 SELECT path, folder, label, qualified, \
-                        CASE \
-                            WHEN instr(lower(label), ?1) = 1 THEN 0 \
-                            WHEN instr(lower(qualified), ?1) = 1 THEN 1 \
-                            WHEN instr(lower(label), ?1) > 0 THEN 2 \
-                            WHEN instr(lower(qualified), ?1) > 0 THEN 3 \
-                            ELSE 4 \
-                        END AS rank, \
-                        CASE \
-                            WHEN instr(lower(label), ?1) = 1 THEN length(label) \
-                            WHEN instr(lower(qualified), ?1) = 1 THEN length(qualified) \
-                            WHEN instr(lower(label), ?1) > 0 THEN length(label) \
-                            WHEN instr(lower(qualified), ?1) > 0 THEN length(qualified) \
-                            ELSE length(path) \
-                        END AS match_length \
-                 FROM computed \
+                 SELECT path, folder, {label} AS label \
+                 FROM documents \
                  WHERE (?2 IS NULL OR path <> ?2) \
                    AND instr(path, '|') = 0 AND instr(path, '#') = 0 \
-                   AND instr(path, '[') = 0 AND instr(path, ']') = 0 \
-                   AND (instr(lower(label), ?1) > 0 \
-                     OR instr(lower(qualified), ?1) > 0 \
-                     OR instr(lower(path), ?1) > 0)\
-             ), name_counts AS (\
-                 SELECT lower(label) AS name_key, count(*) AS name_count \
-                 FROM computed \
-                 GROUP BY lower(label)\
+                   AND instr(path, '[') = 0 AND instr(path, ']') = 0\
+             ), keyed AS (\
+                 SELECT path, folder, label, \
+                        lower(label) AS label_key, \
+                        lower(path) AS path_key \
+                 FROM computed\
              ) \
-             SELECT matched.label, \
-                    NULLIF(matched.folder, '') AS detail, \
-                    CASE WHEN COALESCE(name_counts.name_count, 1) > 1 \
-                         THEN matched.qualified \
-                         ELSE matched.label \
-                    END AS target \
-             FROM matched \
-             LEFT JOIN name_counts ON name_counts.name_key = lower(matched.label) \
-             ORDER BY matched.rank, matched.match_length, \
-                      lower(matched.label), lower(matched.qualified), matched.path \
+             SELECT path, label, NULLIF(folder, '') AS detail \
+             FROM keyed \
+             WHERE instr(label_key, ?1) > 0 \
+                OR instr(path_key, ?1) > 0 \
+             ORDER BY \
+                 CASE \
+                     WHEN instr(label_key, ?1) = 1 THEN 0 \
+                     WHEN instr(label_key, ?1) > 0 THEN 1 \
+                     ELSE 2 \
+                 END, \
+                 length(label), label_key, path \
              LIMIT ?3"
         );
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
@@ -113,11 +76,45 @@ impl CatalogDatabase {
         let mut matches = Vec::new();
         while let Some(row) = rows.next().await? {
             matches.push(WikiLinkMatch {
-                label: row.get::<String>(0)?,
-                detail: row.get::<Option<String>>(1)?,
-                target: row.get::<String>(2)?,
+                path: row.get::<String>(0)?,
+                label: row.get::<String>(1)?,
+                detail: row.get::<Option<String>>(2)?,
             });
         }
         Ok(matches)
+    }
+
+    /// Resolves the target to insert for an accepted suggestion.
+    ///
+    /// A unique file name can stay unqualified.
+    /// If another document shares the label,
+    /// the full relative path is used instead.
+    /// This runs once per accepted suggestion.
+    pub(crate) async fn wiki_link_target(&self, path: &str, label: &str) -> Result<String> {
+        let duplicate = self.has_duplicate_label(path, label).await?;
+        Ok(if duplicate {
+            qualified_target(path)
+        } else {
+            label.to_string()
+        })
+    }
+
+    async fn has_duplicate_label(&self, path: &str, label: &str) -> Result<bool> {
+        let label_sql = format!(
+            "CASE WHEN lower(extension) = 'md' \
+             THEN {FILE_NAME_SQL} \
+             ELSE {FILE_BASENAME_SQL} END"
+        );
+        let sql = format!(
+            "SELECT 1 FROM documents \
+             WHERE path <> ?1 \
+               AND lower({label_sql}) = ?2 \
+             LIMIT 1"
+        );
+        let connection = self.connection().await?;
+        let mut rows = connection
+            .query(&sql, turso::params![path, label.to_lowercase()])
+            .await?;
+        Ok(rows.next().await?.is_some())
     }
 }

@@ -19,6 +19,23 @@ pub fn normalized_target(authored: &str) -> String {
         .replace('\\', "/")
 }
 
+/// Converts a vault-relative path into the qualified wiki-link target.
+///
+/// Markdown keeps the existing wiki-link convention of omitting `.md`.
+/// Other files keep their full path and extension.
+#[must_use]
+pub fn qualified_target(path: &str) -> String {
+    let suffix_start = path.len().saturating_sub(3);
+    if path
+        .get(suffix_start..)
+        .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".md"))
+    {
+        path.get(..suffix_start).unwrap_or_default().to_string()
+    } else {
+        path.to_string()
+    }
+}
+
 // Byte-cursor arithmetic below is bounded by the length of each line and cannot overflow.
 #[allow(clippy::arithmetic_side_effects)]
 pub fn occurrences(source: &str) -> Vec<LinkOccurrence> {
