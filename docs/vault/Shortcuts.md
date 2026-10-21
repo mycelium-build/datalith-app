@@ -35,6 +35,15 @@ Use **Command** on macOS and **Ctrl** on Linux and Windows for the `Cmd/Ctrl` sh
 | `Cmd/Ctrl+Enter` | Open link at cursor |
 | `Cmd/Ctrl+Q` | Quit Datalith |
 
+# Wiki links
+
+| Shortcut | Action |
+| --- | --- |
+| `[[` | Open link suggestions once three characters are typed |
+| `↑` / `↓` | Select a suggestion |
+| `↩` | Insert the selected suggestion |
+| `Esc` | Dismiss suggestions |
+
 # Tabs
 
 | Shortcut | Action |

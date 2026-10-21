@@ -39,6 +39,8 @@ See [[formats/Properties]] for the details.
 
 Wiki links are what make a Vault feel connected. In a Markdown file, write `[[My Other Note]]` to create a link. Datalith resolves it automatically. Use `[[My Other Note|display text]]` to set a custom label.
 
+Start typing the target to get suggestions from the Vault: the list appears after three characters. Press `↑` / `↓` to move through it, `↩` to insert the selected link, and `Esc` to dismiss it. Datalith inserts the bare note name when it is unique and a folder-qualified target such as `[[projects/Plan]]` when several notes share the name.
+
 Links between Markdown files become the edges of a [[formats/bases/Graph|graph view]].
 
 # Navigate
