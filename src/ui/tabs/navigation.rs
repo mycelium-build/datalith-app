@@ -504,7 +504,7 @@ mod tests {
                 assert_eq!(view.tabs.active_path(), Some(question.as_path()));
                 assert_eq!(window.notifications(cx).len(), notifications_before);
 
-                // A colon in a missing note name is not a URL scheme: 
+                // A colon in a missing note name is not a URL scheme:
                 // report it instead of handing it to the system opener, which fails silently.
                 let notifications_before = window.notifications(cx).len();
                 view.open_link_target("Compte-rendu:%20lundi", false, &source, window, cx);
