@@ -1,8 +1,5 @@
 use std::fs;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
-
 use super::*;
 
 struct Sandbox {
@@ -566,7 +563,13 @@ fn valid_but_damaged_variant_keeps_healthy_tokens_and_unavailable_fonts() {
     fs::create_dir_all(&library.directory).unwrap();
     fs::write(library.directory.join("damaged.json"), r##"{"name":"Damaged","themes":[{"name":"Damaged","mode":"dark","colors":{"background":"#123456","foreground":42,"border":"not-a-color"},"fonts":{"interface":"Not installed","code":12},"highlight":{"editor.foreground":"#abcdef","editor.background":"bad","syntax":{"keyword":{"color":"invalid"},"string":{"color":"#765432"}}}}]}"##).unwrap();
     let errors = library.load();
-    assert!(errors.is_empty(), "{errors:?}");
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [LoadFailure::Ignored { values, .. }] if values.len() == 5
+        ),
+        "{errors:?}"
+    );
     let document = library.get("Damaged").unwrap();
     assert_eq!(
         document.colors().unwrap()["background"],
@@ -1291,42 +1294,32 @@ fn imported_fonts_normalize_roles_and_legacy_before_propagation_and_export() {
     assert_eq!(document.config().mono_font_family, None);
 }
 
-#[cfg(unix)]
 #[test]
-fn failed_normalization_write_is_pending_and_can_be_retried() {
+fn load_reports_invalid_values_without_rewriting_the_file() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
     fs::create_dir_all(&library.directory).unwrap();
-    let path = library.directory.join("imported.json");
-    let original = r#"{"name":"Imported","themes":[{"name":"Unrelated","mode":"light"}]}"#;
+    let path = library.directory.join("my-theme.json");
+    let original = r##"{"name":"Mine","future_key":1,"themes":[{"name":"Mine","mode":"light","colors":{"background":"#ffffff","foreground":"#20202"}}]}"##;
     fs::write(&path, original).unwrap();
-    let permissions = fs::metadata(&library.directory).unwrap().permissions();
-    fs::set_permissions(&library.directory, fs::Permissions::from_mode(0o555)).unwrap();
-    // Elevated users can bypass Unix directory permissions, so this fault requires
-    // an unprivileged runner. Restore permissions before every assertion/return.
-    let probe = library.directory.join("write-probe");
-    if fs::write(&probe, b"").is_ok() {
-        fs::set_permissions(&library.directory, permissions).unwrap();
-        eprintln!("Skipping permission fault: this user can write to a read-only directory");
-        return;
-    }
     let errors = library.load();
-    fs::set_permissions(&library.directory, permissions).unwrap();
-    assert_eq!(errors.len(), 1);
     assert!(matches!(
-        errors.first(),
-        Some(LoadFailure::Normalization { .. })
+        errors.as_slice(),
+        [LoadFailure::Ignored { theme, values }]
+            if theme == "Mine" && values == &["Mine: colors.foreground"]
     ));
-    let family = library.family_named("Imported").unwrap();
-    let id = family.id();
-    assert_eq!(family.variants()[0].name(), "Imported");
-    assert!(matches!(family.status(), SaveStatus::Failed(_)));
     assert_eq!(fs::read_to_string(&path).unwrap(), original);
-    assert!(library.flush_pending().is_empty());
-    assert!(matches!(
-        library.family(id).unwrap().status(),
-        SaveStatus::Autosaved
-    ));
+    let document = library.get("Mine").unwrap();
+    assert_eq!(
+        document.colors().unwrap()["background"],
+        Some("#ffffff".into())
+    );
+    assert_eq!(document.colors().unwrap()["foreground"], None);
+    let variant = library.variant("Mine").unwrap().id();
+    library
+        .update_color(variant, "foreground", Some("#202020".into()))
+        .unwrap();
+    library.flush_pending();
     let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(saved["themes"][0]["name"], "Imported");
+    assert_eq!(saved["themes"][0]["colors"]["foreground"], "#202020");
 }

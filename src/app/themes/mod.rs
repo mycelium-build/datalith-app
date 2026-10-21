@@ -358,13 +358,8 @@ impl ThemeLibrary {
                 LoadFailure::Read { theme, error } => {
                     crate::ui::notifications::theme_load_failed(&theme, &error)
                 }
-                LoadFailure::Normalization { theme, error } => {
-                    crate::ui::notifications::settings_save_failed(
-                        &format!(
-                            "normalized changes to the {theme} theme (loaded for this session)"
-                        ),
-                        &error,
-                    )
+                LoadFailure::Ignored { theme, values } => {
+                    crate::ui::notifications::theme_values_ignored(&theme, &values)
                 }
             })
             .collect();

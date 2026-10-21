@@ -105,6 +105,14 @@ pub fn theme_load_failed(theme: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to load the {theme} theme: {error}")).autohide(false)
 }
 
+pub fn theme_values_ignored(theme: &str, values: &[String]) -> Notification {
+    Notification::warning(format!(
+        "Ignored invalid values in the {theme} theme: {}",
+        values.join(", ")
+    ))
+    .autohide(false)
+}
+
 pub fn create_file_failed(base_name: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to create {base_name}: {error}")).autohide(false)
 }

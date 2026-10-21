@@ -26,7 +26,7 @@ The **Fonts** tab shows each role at its real size in the variant's colors above
 
 Font choices belong to each theme variant. There are no personal font overrides in Appearance. An unset role uses Datalith's defaults: interface and code follow the platform, reading follows interface, and headings use Pixeloid Sans. An unavailable font remains saved and is visibly marked; rendering uses that role's fallback until the font becomes available.
 
-Custom themes are individual files in the `themes` folder beside the channel's user `config.json`. Each file holds one theme with all its variants.
+Custom themes are individual files in the `themes` folder beside the channel's user `config.json`. Each file holds one theme with all its variants. You can edit these files by hand: at launch, Datalith ignores invalid values and lists them in a warning, without changing the file. The file is rewritten only when you edit that theme in the editor.
 
 # Understanding theme colors
 

@@ -11,11 +11,18 @@ use super::{
     next_id, valid_variant_name,
 };
 
-/// Loading can retain a usable theme even when its repaired document cannot be saved.
+/// Loading keeps a usable theme even when some of its values are invalid.
 #[derive(Debug)]
 pub(super) enum LoadFailure {
-    Read { theme: String, error: anyhow::Error },
-    Normalization { theme: String, error: anyhow::Error },
+    Read {
+        theme: String,
+        error: anyhow::Error,
+    },
+    /// Values dropped from a loaded theme, as `variant: group.key` paths.
+    Ignored {
+        theme: String,
+        values: Vec<String>,
+    },
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -43,10 +50,11 @@ impl StoredThemeSet {
 
 pub(super) fn read(path: &Path) -> Result<StoredThemeSet> {
     let text = fs::read_to_string(path)?;
-    parse(serde_json::from_str(&text)?)
+    Ok(parse(serde_json::from_str(&text)?)?.0)
 }
 
-fn parse(mut value: Value) -> Result<StoredThemeSet> {
+/// Repair a theme document; also returns the values that had to be dropped.
+fn parse(mut value: Value) -> Result<(StoredThemeSet, Vec<String>)> {
     if !value.is_object() {
         value = Value::Object(serde_json::Map::default());
     }
@@ -89,6 +97,7 @@ fn parse(mut value: Value) -> Result<StoredThemeSet> {
         }));
     }
     let multi = variants.len() > 1;
+    let mut ignored = Vec::new();
     for (ix, variant) in variants.iter_mut().enumerate() {
         if !variant.is_object() {
             *variant = Value::Object(serde_json::Map::default());
@@ -131,16 +140,27 @@ fn parse(mut value: Value) -> Result<StoredThemeSet> {
             }
             .into(),
         );
-        sanitize_variant(object);
+        let variant_name = object
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        ignored.extend(
+            sanitize_variant(object)
+                .into_iter()
+                .map(|path| format!("{variant_name}: {path}")),
+        );
     }
     let mut set: StoredThemeSet = serde_json::from_value(value)?;
     for document in &mut set.themes {
         document.normalize_fonts();
     }
-    Ok(set)
+    Ok((set, ignored))
 }
 
-fn sanitize_variant(variant: &mut serde_json::Map<String, Value>) {
+/// Drop invalid values and return their paths within the variant.
+fn sanitize_variant(variant: &mut serde_json::Map<String, Value>) -> Vec<String> {
+    let mut ignored = Vec::new();
     // Validate each property in isolation: a bad font or one syntax color must
     // not hide the other tokens or prevent the family from loading.
     for group in ["colors", "fonts", "highlight"] {
@@ -160,8 +180,12 @@ fn sanitize_variant(variant: &mut serde_json::Map<String, Value>) {
                     inner.insert(key.clone(), value.clone());
                     let mut highlight = serde_json::Map::new();
                     highlight.insert("syntax".into(), Value::Object(inner));
-                    valid_fragment("highlight", Value::Object(highlight))
-                        && value.get("color").is_none_or(valid_color)
+                    let valid = valid_fragment("highlight", Value::Object(highlight))
+                        && value.get("color").is_none_or(valid_color);
+                    if !valid {
+                        ignored.push(format!("highlight.syntax.{key}"));
+                    }
+                    valid
                 });
                 properties.insert("syntax".into(), Value::Object(syntax));
             }
@@ -172,15 +196,24 @@ fn sanitize_variant(variant: &mut serde_json::Map<String, Value>) {
         properties.retain(|key, value| {
             let mut one = serde_json::Map::new();
             one.insert(key.clone(), value.clone());
-            valid_fragment(group, Value::Object(one))
-                && (group == "fonts" || (key == "syntax" || valid_color(value)))
+            let valid = valid_fragment(group, Value::Object(one))
+                && (group == "fonts" || (key == "syntax" || valid_color(value)));
+            if !valid {
+                ignored.push(format!("{group}.{key}"));
+            }
+            valid
         });
         variant.insert(group.into(), Value::Object(properties));
     }
     variant.retain(|key, value| {
-        ["name", "mode", "colors", "fonts", "highlight"].contains(&key.as_str())
-            || valid_fragment(key, value.clone())
+        let valid = ["name", "mode", "colors", "fonts", "highlight"].contains(&key.as_str())
+            || valid_fragment(key, value.clone());
+        if !valid {
+            ignored.push(key.clone());
+        }
+        valid
     });
+    ignored
 }
 
 fn valid_color(value: &Value) -> bool {
@@ -241,9 +274,10 @@ impl ThemeLibrary {
         }
         paths.sort();
         for path in paths {
+            // The repaired theme stays in memory: the file is only written after an
+            // edit, so hand-edited files keep their typos and unknown keys.
             let result = (|| -> Result<()> {
-                let before: Value = serde_json::from_slice(&fs::read(&path)?)?;
-                let mut set = parse(before.clone())?;
+                let (mut set, ignored) = parse(serde_json::from_slice(&fs::read(&path)?)?)?;
                 if self
                     .families
                     .iter()
@@ -251,17 +285,12 @@ impl ThemeLibrary {
                 {
                     set.rename(&self.suggested_copy_name(&set.name));
                 }
-                let id = self.insert_set(set, ThemeSource::Custom(path.clone()))?;
-                let normalized = self
-                    .family(id)
-                    .context("Loaded theme is unavailable")?
-                    .set();
-                if serde_json::to_value(&normalized)? != before
-                    && let Err(error) = self.flush_family(id)
-                {
-                    errors.push(LoadFailure::Normalization {
-                        theme: normalized.name.to_string(),
-                        error,
+                let theme = set.name.to_string();
+                self.insert_set(set, ThemeSource::Custom(path.clone()))?;
+                if !ignored.is_empty() {
+                    errors.push(LoadFailure::Ignored {
+                        theme,
+                        values: ignored,
                     });
                 }
                 Ok(())
