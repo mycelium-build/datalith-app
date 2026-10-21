@@ -172,6 +172,14 @@ impl VaultCatalog {
         .unwrap_or_default()
     }
 
+    /// Returns up to `limit` suggestions for a partially typed wiki-link target.
+    ///
+    /// Matching is case-insensitive over the display label and the vault-relative path.
+    /// `excluded` is normally the note being edited and is left out of its own suggestions.
+    ///
+    /// Catalog failures are reported as an empty list.
+    /// The popup already hides when there is nothing to show
+    /// and a broken catalog must not interrupt typing.
     #[must_use]
     pub(crate) fn suggest_wiki_links(
         &self,
@@ -179,17 +187,25 @@ impl VaultCatalog {
         excluded: Option<&Path>,
         limit: usize,
     ) -> Vec<WikiLinkMatch> {
+        // The first failure is logged; later ones are silent to avoid one warning per keystroke.
+        static LOGGED_FAILURE: std::sync::Once = std::sync::Once::new();
+
         let database = self.inner.database.clone();
         let root = self.root();
         let excluded = excluded
             .and_then(|path| path.strip_prefix(&root).ok())
             .map(database::path_text);
         let query = query.to_lowercase();
-        run_blocking("wiki_links", move || {
+        let result = run_blocking("wiki_links", move || {
             pollster::block_on(database.suggest_wiki_links(&query, excluded.as_deref(), limit))
-                .unwrap_or_default()
         })
-        .unwrap_or_default()
+        .and_then(std::convert::identity);
+        result.unwrap_or_else(|error| {
+            LOGGED_FAILURE.call_once(|| {
+                eprintln!("Wiki-link suggestions failed: {error}");
+            });
+            Vec::new()
+        })
     }
 
     /// Resolves the target to insert for an accepted wiki-link suggestion.
