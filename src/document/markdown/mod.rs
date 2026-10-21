@@ -4,7 +4,7 @@ mod links;
 mod parse;
 
 pub use self::frontmatter::{Frontmatter, FrontmatterValue, build_note_document};
-pub use links::find_link_at_offset;
+pub use links::{find_link_at_offset, is_external_url};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MarkdownDocument {

@@ -8,6 +8,7 @@ use super::Tab;
 use crate::app::system;
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
+use crate::document::markdown::is_external_url;
 use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
 use crate::ui::notifications;
@@ -411,17 +412,6 @@ fn link_target(url: &str) -> String {
         .to_owned()
 }
 
-/// Whether `target` uses a URL scheme (`https:`, `mailto:`, ...), as opposed to a vault path.
-/// A single-letter scheme is treated as a Windows drive path.
-fn is_external_url(target: &str) -> bool {
-    target.split_once(':').is_some_and(|(scheme, _)| {
-        scheme.len() > 1
-            && scheme
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-    })
-}
-
 fn next_history(history: &[PathBuf], position: usize, path: &Path) -> (Vec<PathBuf>, usize) {
     let mut history = history.to_vec();
     if history.get(position).is_some_and(|current| current == path) {
@@ -442,7 +432,7 @@ mod tests {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{AppContext, TestAppContext, px, size};
 
-    use super::{DatalithView, is_external_url, link_target, next_history};
+    use super::{DatalithView, link_target, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
     use crate::ui::settings::SettingsView;
@@ -457,6 +447,8 @@ mod tests {
         let notes = root_path.join("notes");
         std::fs::create_dir_all(&notes).unwrap();
         std::fs::write(root_path.join("Basics.md"), "# Basics").unwrap();
+        // A title ending in `?`, the way French note titles usually do.
+        std::fs::write(root_path.join("Pourquoi ?.md"), "# Pourquoi ?").unwrap();
         let source = notes.join("Source.md");
         std::fs::write(&source, "# Source").unwrap();
 
@@ -505,6 +497,19 @@ mod tests {
                 view.open_link_target("Note%231.md", false, &source, window, cx);
                 assert_eq!(view.tabs.active_path(), Some(hashed.as_path()));
 
+                // `[[Pourquoi ?]]` is encoded as `Pourquoi%20%3F`, so the `?` stays in the name.
+                let question = root_path.join("Pourquoi ?.md");
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Pourquoi%20%3F", false, &source, window, cx);
+                assert_eq!(view.tabs.active_path(), Some(question.as_path()));
+                assert_eq!(window.notifications(cx).len(), notifications_before);
+
+                // A colon in a missing note name is not a URL scheme: 
+                // report it instead of handing it to the system opener, which fails silently.
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Compte-rendu:%20lundi", false, &source, window, cx);
+                assert_eq!(window.notifications(cx).len(), notifications_before + 1);
+
                 // Without a vault, the failure is reported as unavailable
                 // rather than as loading.
                 view.vault_catalog = None;
@@ -527,31 +532,8 @@ mod tests {
         assert_eq!(link_target("Note.md#heading"), "Note.md");
         assert_eq!(link_target("Note.md?query=1"), "Note.md");
         assert_eq!(link_target("#heading"), "");
-    }
-
-    #[test]
-    fn external_links_are_distinguished_from_vault_paths() {
-        for external in [
-            "https://example.com",
-            "http://example.com/notes/Note.md",
-            "mailto:someone@example.com",
-            "obsidian://open?vault=Notes",
-            "file:///tmp/Note.md",
-        ] {
-            assert!(is_external_url(external), "{external}");
-        }
-        for local in [
-            "Note",
-            "Note.md",
-            "../Note.md",
-            "./notes/Note.md",
-            "notes/Note",
-            "/vault/Note.md",
-            "C:\\Notes\\Note.md",
-            "C:/Notes/Note.md",
-        ] {
-            assert!(!is_external_url(local), "{local}");
-        }
+        // What `convert_wiki_links("[[Pourquoi ?]]")` emits.
+        assert_eq!(link_target("Pourquoi%20%3F"), "Pourquoi ?");
     }
 
     #[test]
