@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{EditorState, InputEvent, Rope, RopeExt};
 use gpui_kit::{
-    AppContext as _, Context, Empty, Entity, EntityInputHandler as _, Focusable as _,
+    Anchor, AppContext as _, Context, Empty, Entity, EntityInputHandler as _, Focusable as _,
     HighlightStyle, InteractiveElement as _, IntoElement, MouseButton, ParentElement, Point,
-    Render, Styled, StyledText, Subscription, Task, Window, deferred, div,
+    Render, Styled, StyledText, Subscription, Task, Window, anchored, deferred, div,
     prelude::FluentBuilder as _, px,
 };
 
@@ -18,6 +18,8 @@ const MAX_SUGGESTIONS: usize = 16;
 const MAX_VISIBLE_ITEMS: usize = 7;
 const SUGGESTION_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(50);
 const POPUP_WIDTH: f32 = 360.0;
+const POPUP_MARGIN: f32 = 8.0;
+const POPUP_GAP: f32 = 4.0;
 
 struct WikiLink {
     query: String,
@@ -26,7 +28,7 @@ struct WikiLink {
 }
 
 /// Suggests vault files while the user types the target of a `[[wiki link]]`.
-pub struct WikiLinkAutocomplete {
+pub(super) struct WikiLinkAutocomplete {
     input: Entity<EditorState>,
     source: PathBuf,
     catalog: VaultCatalog,
@@ -41,7 +43,10 @@ pub struct WikiLinkAutocomplete {
 }
 
 impl WikiLinkAutocomplete {
-    pub fn new(
+    /// Creates the autocomplete for `input`, resolving suggestions from `catalog`.
+    ///
+    /// `source` is the note being edited and is excluded from its own suggestions.
+    pub(super) fn new(
         input: Entity<EditorState>,
         source: PathBuf,
         catalog: VaultCatalog,
@@ -69,8 +74,13 @@ impl WikiLinkAutocomplete {
         }
     }
 
-    pub fn set_catalog(&mut self, catalog: VaultCatalog) {
+    /// Replaces the catalog used for future suggestions.
+    ///
+    /// Any open popup is dismissed because its entries, query,
+    /// and replacement range were produced from the previous catalog.
+    pub(super) fn set_catalog(&mut self, catalog: VaultCatalog, cx: &mut Context<Self>) {
         self.catalog = catalog;
+        self.close(cx);
     }
 
     fn refresh(&mut self, input: &Entity<EditorState>, cx: &mut Context<Self>) {
@@ -256,7 +266,7 @@ impl Render for WikiLinkAutocomplete {
             return Empty.into_any_element();
         }
 
-        let Some(position) = popup_position(&self.input, cx) else {
+        let Some((position, flip_padding)) = popup_anchor(&self.input, window, cx) else {
             return Empty.into_any_element();
         };
 
@@ -327,9 +337,6 @@ impl Render for WikiLinkAutocomplete {
 
         let popup = div()
             .id("wikilink-popup")
-            .absolute()
-            .left(position.x)
-            .top(position.y)
             .w(px(POPUP_WIDTH))
             .occlude()
             .overflow_hidden()
@@ -347,10 +354,14 @@ impl Render for WikiLinkAutocomplete {
                 this.close(cx);
             }))
             .children(rows);
-        #[cfg(test)]
-        let popup = popup.debug_selector(|| "wikilink-popup".to_string());
 
-        deferred(popup).into_any_element()
+        deferred(
+            anchored()
+                .position(position)
+                .anchor(Anchor::TopLeft)
+                .child(div().pb(flip_padding).child(popup)),
+        )
+        .into_any_element()
     }
 }
 
@@ -365,17 +376,29 @@ fn visible_range(total: usize, selected: usize) -> Range<usize> {
     start..start.saturating_add(MAX_VISIBLE_ITEMS)
 }
 
+/// Returns the popup anchor in window coordinates (just below the caret)
+// Cursor and viewport arithmetic below is bounded by the rendered viewport size, so it cannot overflow.
 #[allow(clippy::arithmetic_side_effects)]
-fn popup_position(
+fn popup_anchor(
     input: &Entity<EditorState>,
+    window: &Window,
     cx: &gpui_kit::App,
-) -> Option<Point<gpui_kit::Pixels>> {
+) -> Option<(Point<gpui_kit::Pixels>, gpui_kit::Pixels)> {
     let editor = input.read(cx);
     let (cursor_bounds, line_height) = editor.cursor_layout()?;
-    Some(
-        editor.scroll_offset() + cursor_bounds.origin - editor.input_bounds().origin
-            + Point::new(px(-4.), line_height + px(4.)),
-    )
+    let origin = editor.input_bounds().origin;
+    let anchor = editor.scroll_offset() + cursor_bounds.origin - origin
+        + Point::new(px(-4.), line_height + px(POPUP_GAP));
+
+    let viewport = window.viewport_size();
+    let margin = px(POPUP_MARGIN);
+    let max_x = (viewport.width - px(POPUP_WIDTH + POPUP_MARGIN)).max(margin);
+
+    // `anchored` positions in window coordinates and measures the real popup height
+    // before deciding whether to flip it above the caret.
+    let position = origin + anchor;
+    let x = position.x.clamp(margin, max_x);
+    Some((Point::new(x, position.y), line_height + px(2. * POPUP_GAP)))
 }
 
 fn highlight_style(color: gpui_kit::Hsla) -> HighlightStyle {
@@ -399,12 +422,16 @@ fn highlight_in(text: &str, needle: &str) -> Option<Range<usize>> {
         return None;
     }
 
-    let length = needle.len();
+    let needle_folded = needle.to_lowercase();
+    let needle_len = needle.chars().count();
     text.char_indices().find_map(|(start, _)| {
-        let end = start.saturating_add(length);
-        text.get(start..end)
-            .filter(|candidate| candidate.eq_ignore_ascii_case(needle))
-            .map(|_| start..end)
+        let end = text
+            .get(start..)?
+            .char_indices()
+            .nth(needle_len)
+            .map_or(text.len(), |(offset, _)| start.saturating_add(offset));
+        let candidate = text.get(start..end)?;
+        (candidate.to_lowercase() == needle_folded).then_some(start..end)
     })
 }
 

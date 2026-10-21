@@ -47,7 +47,7 @@ impl MarkdownEditor {
         }
 
         if let Some(autocomplete) = &self.autocomplete {
-            autocomplete.update(cx, |autocomplete, _| autocomplete.set_catalog(catalog));
+            autocomplete.update(cx, |autocomplete, cx| autocomplete.set_catalog(catalog, cx));
         } else {
             let input = self.input.clone();
             let source = self.source.clone();
