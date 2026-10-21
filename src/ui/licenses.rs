@@ -9,10 +9,10 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    StatefulInteractiveElement, Styled, UniformListScrollHandle, div, px, uniform_list,
+    Styled, UniformListScrollHandle, div, px, uniform_list,
 };
 
-use super::DatalithView;
+use super::{DatalithView, modal};
 
 const MIT_LICENSE: &str = include_str!("../../LICENSE");
 const LICENSING: &str = include_str!("../../LICENSING.md");
@@ -110,90 +110,67 @@ impl LicensesView {
 
     pub fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
-        div()
-            .absolute()
-            .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("licenses-backdrop")
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.licenses.close();
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .w(px(760.))
-                    .h(px(620.))
-                    .bg(cx.theme().background)
-                    .border(px(1.))
-                    .border_color(cx.theme().border)
-                    .rounded_md()
-                    .shadow_lg()
-                    .id("licenses-panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .track_focus(&focus_handle)
-                    .on_key_down(cx.listener(
-                        |view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
-                            if event.keystroke.key == "escape" {
-                                view.licenses.close();
-                                cx.notify();
-                            }
-                        },
-                    ))
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .overflow_hidden()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .px_2()
-                                    .py_1()
-                                    .justify_between()
-                                    .border_b(px(1.))
-                                    .border_color(cx.theme().border)
-                                    .child(div().text_sm().child("Licenses"))
-                                    .child(
-                                        Button::new("close-licenses")
-                                            .ghost()
-                                            .small()
-                                            .icon(IconName::Close)
-                                            .on_click(cx.listener(|view, _, _, cx| {
-                                                view.licenses.close();
-                                                cx.notify();
-                                            })),
+        modal::backdrop("licenses-backdrop", cx, |view| view.licenses.close()).child(
+            modal::panel("licenses-panel", cx)
+                .w(px(760.))
+                .h(px(620.))
+                .track_focus(&focus_handle)
+                .on_key_down(
+                    cx.listener(|view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
+                        if event.keystroke.key == "escape" {
+                            view.licenses.close();
+                            cx.notify();
+                        }
+                    }),
+                )
+                .child(
+                    v_flex()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .px_2()
+                                .py_1()
+                                .justify_between()
+                                .border_b(px(1.))
+                                .border_color(cx.theme().border)
+                                .child(div().text_sm().child("Licenses"))
+                                .child(
+                                    Button::new("close-licenses")
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::Close)
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.licenses.close();
+                                            cx.notify();
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .relative()
+                                .flex_1()
+                                .child(
+                                    uniform_list("licenses-scroll", ROWS.len(), |range, _, _| {
+                                        range
+                                            .filter_map(|ix| ROWS.get(ix).map(render_row))
+                                            .collect()
+                                    })
+                                    .track_scroll(&self.scroll_handle)
+                                    .size_full()
+                                    .px_4()
+                                    .py_2(),
+                                )
+                                .child(
+                                    div().absolute().inset_0().child(
+                                        Scrollbar::vertical(&self.scroll_handle)
+                                            .mode(ScrollbarMode::Always),
                                     ),
-                            )
-                            .child(
-                                div()
-                                    .relative()
-                                    .flex_1()
-                                    .child(
-                                        uniform_list(
-                                            "licenses-scroll",
-                                            ROWS.len(),
-                                            |range, _, _| {
-                                                range
-                                                    .filter_map(|ix| ROWS.get(ix).map(render_row))
-                                                    .collect()
-                                            },
-                                        )
-                                        .track_scroll(&self.scroll_handle)
-                                        .size_full()
-                                        .px_4()
-                                        .py_2(),
-                                    )
-                                    .child(
-                                        div().absolute().inset_0().child(
-                                            Scrollbar::vertical(&self.scroll_handle)
-                                                .mode(ScrollbarMode::Always),
-                                        ),
-                                    ),
-                            ),
-                    ),
-            )
+                                ),
+                        ),
+                ),
+        )
     }
 }
 

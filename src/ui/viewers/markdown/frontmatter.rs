@@ -11,13 +11,13 @@ use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{Frontmatter, FrontmatterValue};
 
 use super::constants::{
-    MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_MARGIN, MD_FRONTMATTER_PADDING,
-    MD_FRONTMATTER_RADIUS, MD_LINE_HEIGHT,
+    MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_PADDING, MD_FRONTMATTER_RADIUS, MD_LINE_HEIGHT,
 };
 
 pub(super) fn render_frontmatter(
     frontmatter: &Frontmatter,
     base_font_size: f32,
+    margin_top: f32,
     handler: &Entity<FileHandler>,
     cx: &App,
 ) -> AnyElement {
@@ -105,7 +105,7 @@ pub(super) fn render_frontmatter(
         .bg(cx.theme().tab_bar)
         .rounded(px(MD_FRONTMATTER_RADIUS))
         .p(px(MD_FRONTMATTER_PADDING))
-        .mb(px(MD_FRONTMATTER_MARGIN))
+        .mt(px(margin_top))
         .children(rows)
         .into_any_element()
 }

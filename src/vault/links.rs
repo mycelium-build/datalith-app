@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct LinkOccurrence {
@@ -16,6 +17,23 @@ pub fn normalized_target(authored: &str) -> String {
         .trim()
         .trim_start_matches('/')
         .replace('\\', "/")
+}
+
+/// Converts a vault-relative path into the qualified wiki-link target.
+///
+/// Markdown keeps the existing wiki-link convention of omitting `.md`.
+/// Other files keep their full path and extension.
+#[must_use]
+pub fn qualified_target(path: &str) -> String {
+    let suffix_start = path.len().saturating_sub(3);
+    if path
+        .get(suffix_start..)
+        .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".md"))
+    {
+        path.get(..suffix_start).unwrap_or_default().to_string()
+    } else {
+        path.to_string()
+    }
 }
 
 // Byte-cursor arithmetic below is bounded by the length of each line and cannot overflow.
@@ -101,6 +119,27 @@ fn push_occurrence(
     }
 }
 
+/// The authored link text that points at `path` after a rename.
+///
+/// Keeps the shape the author used:
+/// a bare name stays a bare name, a qualified target stays qualified, and an explicit extension is preserved.
+pub fn replacement_target(authored: &str, path: &Path, root: &Path) -> String {
+    let qualified = authored.contains(['/', '\\']);
+    let include_extension = Path::new(authored).extension().is_some();
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let selected = if qualified {
+        relative.to_path_buf()
+    } else {
+        PathBuf::from(relative.file_name().unwrap_or(relative.as_os_str()))
+    };
+    let selected = if include_extension {
+        selected
+    } else {
+        selected.with_extension("")
+    };
+    selected.to_string_lossy().replace('\\', "/")
+}
+
 pub fn rewrite(source: &str, replacements: &[(usize, String)]) -> String {
     let occurrences = occurrences(source);
     let mut edits = replacements
@@ -135,5 +174,22 @@ mod tests {
             ["A", "folder/B"]
         );
         assert_eq!(&source[found[1].range.clone()], "folder/B");
+    }
+
+    #[test]
+    fn rename_replacements_keep_the_authored_shape() {
+        let root = Path::new("/vault");
+        let renamed = Path::new("/vault/New/Note.md");
+        assert_eq!(replacement_target("Note", renamed, root), "Note");
+        assert_eq!(replacement_target("Note.md", renamed, root), "Note.md");
+        assert_eq!(replacement_target("Old/Note", renamed, root), "New/Note");
+        assert_eq!(
+            replacement_target("Old/Note.md", renamed, root),
+            "New/Note.md"
+        );
+        assert_eq!(
+            replacement_target("Old\\Note.md", renamed, root),
+            "New/Note.md"
+        );
     }
 }

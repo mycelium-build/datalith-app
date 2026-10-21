@@ -3,10 +3,64 @@ use std::str::CharIndices;
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
-const ENCODE_IN_LINK: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
+const ENCODE_IN_VAULT_PATH: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'<')
+    .add(b'>')
+    .add(b'`')
+    .add(b'?');
+
+const ENCODE_IN_URL: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
 fn wiki_link_target(inner: &str) -> &str {
     inner.split(['|', '#']).next().unwrap_or(inner).trim()
+}
+
+fn encode_wiki_target(inner: &str) -> String {
+    let target = inner
+        .split_once('|')
+        .map_or(inner, |(target, _)| target)
+        .trim();
+    if is_external_url(target) {
+        return utf8_percent_encode(target, ENCODE_IN_URL).to_string();
+    }
+    utf8_percent_encode(wiki_link_target(target), ENCODE_IN_VAULT_PATH).to_string()
+}
+
+/// Schemes that address a resource without an authority (`mailto:someone@example.com`).
+const OPAQUE_URL_SCHEMES: [&str; 3] = ["mailto", "tel", "sms"];
+
+/// Whether `target` is a URL (`https://…`, `mailto:…`), as opposed to a vault path.
+///
+/// Vault names may contain a colon (`Compte-rendu: lundi`),
+/// so a scheme must have a valid shape, contain no whitespace,
+/// and be followed by an authority (`//`) unless it is a known opaque scheme.
+/// A single-letter scheme is treated as a Windows drive path.
+#[must_use]
+pub fn is_external_url(target: &str) -> bool {
+    // Whitespace ends a URL, while it is a legal part of a note name.
+    if target.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((scheme, rest)) = target.split_once(':') else {
+        return false;
+    };
+    // RFC 3986: `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`.
+    let mut chars = scheme.chars();
+    let valid_scheme = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    // A single-letter scheme is a Windows drive path (`C:/notes`).
+    if !valid_scheme || scheme.len() < 2 {
+        return false;
+    }
+    if OPAQUE_URL_SCHEMES
+        .iter()
+        .any(|known| scheme.eq_ignore_ascii_case(known))
+    {
+        return !rest.is_empty();
+    }
+    rest.starts_with("//")
 }
 
 /// A fenced code block boundary on `line`, when the line is a valid opening/closing fence.
@@ -196,14 +250,14 @@ fn consume_wiki_link(chars: &mut Peekable<CharIndices<'_>>, is_image: bool, resu
         result.push_str(&link_text);
         return;
     }
-    let (target, display) = link_text
+    let display = link_text
         .split_once('|')
-        .unwrap_or((link_text.as_str(), link_text.as_str()));
-    let encoded = utf8_percent_encode(wiki_link_target(target), ENCODE_IN_LINK);
+        .map_or(link_text.as_str(), |(_, display)| display);
+    let encoded = encode_wiki_target(&link_text);
     result.push_str(if is_image { "![" } else { "[" });
     result.push_str(display);
     result.push_str("](");
-    result.push_str(&encoded.to_string());
+    result.push_str(&encoded);
     result.push(')');
 }
 
@@ -282,7 +336,7 @@ pub fn find_link_at_offset(text: &str, offset: usize) -> Option<String> {
                     && offset < end
                     && let Some(inner) = text.get(pos + 2..end - 2)
                 {
-                    return Some(wiki_link_target(inner).to_string());
+                    return Some(encode_wiki_target(inner));
                 }
                 pos = end;
                 continue;
@@ -362,7 +416,69 @@ mod tests {
     fn finds_target_before_pipe_in_wiki_link() {
         let text = "[[not this|but this]]";
         let url = find_link_at_offset(text, 5).unwrap();
-        assert_eq!(url, "not this");
+        // Encoded like the generated Markdown link, so both click paths decode alike.
+        assert_eq!(url, "not%20this");
+    }
+
+    #[test]
+    fn wiki_links_encode_query_delimiters_in_the_target() {
+        // A trailing `?` is part of the note name, not the start of a query string.
+        assert_eq!(
+            convert_wiki_links("[[Pourquoi ?]]"),
+            "[Pourquoi ?](Pourquoi%20%3F)"
+        );
+        assert_eq!(
+            find_link_at_offset("[[Pourquoi ?]]", 3),
+            Some("Pourquoi%20%3F".to_string())
+        );
+    }
+
+    #[test]
+    fn external_wiki_links_keep_their_query_and_fragment() {
+        assert_eq!(
+            convert_wiki_links("[[https://google.com?q=1]]"),
+            "[https://google.com?q=1](https://google.com?q=1)"
+        );
+        assert_eq!(
+            convert_wiki_links("[[https://example.com/a#b|site]]"),
+            "[site](https://example.com/a#b)"
+        );
+        assert_eq!(
+            find_link_at_offset("[[https://google.com?q=1]]", 5),
+            Some("https://google.com?q=1".to_string())
+        );
+    }
+
+    #[test]
+    fn external_links_are_distinguished_from_vault_paths() {
+        for external in [
+            "https://example.com",
+            "http://example.com/notes/Note.md",
+            "mailto:someone@example.com",
+            "tel:+33600000000",
+            "obsidian://open?vault=Notes",
+            "file:///tmp/Note.md",
+        ] {
+            assert!(is_external_url(external), "{external}");
+        }
+        for local in [
+            "Note",
+            "Note.md",
+            "../Note.md",
+            "./notes/Note.md",
+            "notes/Note",
+            "/vault/Note.md",
+            "C:\\Notes\\Note.md",
+            "C:/Notes/Note.md",
+            // A note name with a colon is not a scheme.
+            "Compte-rendu: lundi",
+            "Compte-rendu:lundi",
+            "Notes:2026",
+            // A URL never contains whitespace.
+            "https://example.com/a note",
+        ] {
+            assert!(!is_external_url(local), "{local}");
+        }
     }
 
     #[test]

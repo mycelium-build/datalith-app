@@ -334,6 +334,23 @@ fn reconstruct_unchanged(
     documents
 }
 
+/// The label shown for a document in wiki-link suggestions.
+///
+/// Markdown files drop their extension; every other file keeps it.
+/// Stored on the document row so matching
+/// and duplicate detection share one definition of a label
+/// instead of duplicating a SQL expression.
+pub(super) fn display_label(path: &Path, extension: &str) -> String {
+    let name = if extension.eq_ignore_ascii_case("md") {
+        path.file_stem()
+    } else {
+        path.file_name()
+    };
+    name.unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn placeholders(count: usize) -> String {
     (1..=count)
         .map(|i| format!("?{i}"))
@@ -380,6 +397,7 @@ async fn upsert_documents_and_links(
         let mut params: Vec<Value> = Vec::new();
         for document in chunk {
             let relative = path_text(&document.path);
+            let label = display_label(&document.path, &document.extension);
             let metadata_json = document
                 .metadata
                 .as_ref()
@@ -389,11 +407,15 @@ async fn upsert_documents_and_links(
             // - once for the NULL test,
             // - once for the jsonb() conversion
             // so a single NULL maps to a NULL column value.
-            value_groups
-                .push("(?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)");
-            params.push(Value::Text(relative));
+            value_groups.push(
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE jsonb(?) END)",
+            );
+            params.push(Value::Text(relative.clone()));
             params.push(Value::Text(document.extension.clone()));
             params.push(Value::Text(document.folder.clone()));
+            params.push(Value::Text(label.clone()));
+            params.push(Value::Text(label.to_lowercase()));
+            params.push(Value::Text(relative.to_lowercase()));
             params.push(Value::Integer(document.size_bytes));
             params.push(Value::Integer(document.modified_ns));
             params.push(Value::Integer(document.created_ns));
@@ -401,11 +423,15 @@ async fn upsert_documents_and_links(
             params.push(metadata_json.map_or(Value::Null, Value::Text));
         }
         let sql = format!(
-            "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, created_ns, metadata) \
+            "INSERT INTO documents(path, extension, folder, label, label_key, path_key, \
+                                 size_bytes, modified_ns, created_ns, metadata) \
              VALUES {} \
              ON CONFLICT(path) DO UPDATE SET \
                 extension=excluded.extension, \
                 folder=excluded.folder, \
+                label=excluded.label, \
+                label_key=excluded.label_key, \
+                path_key=excluded.path_key, \
                 size_bytes=excluded.size_bytes, \
                 modified_ns=excluded.modified_ns, \
                 created_ns=excluded.created_ns, \

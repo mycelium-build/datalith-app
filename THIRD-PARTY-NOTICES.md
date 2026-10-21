@@ -9786,7 +9786,7 @@ Used by:
 - `rustix` 1.1.4 — `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT` — <https://github.com/bytecodealliance/rustix>
 - `rustls-native-certs` 0.8.4 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls-native-certs>
 - `rustls-pemfile` 2.2.0 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/pemfile>
-- `rustls` 0.23.45 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls>
+- `rustls` 0.23.46 — `Apache-2.0 OR ISC OR MIT` — <https://github.com/rustls/rustls>
 - `scoped-tls` 1.0.1 — `MIT OR Apache-2.0` — <https://github.com/alexcrichton/scoped-tls>
 - `scopeguard` 1.2.0 — `MIT OR Apache-2.0` — <https://github.com/bluss/scopeguard>
 - `security-framework-sys` 2.17.0 — `MIT OR Apache-2.0` — <https://github.com/kornelski/rust-security-framework>
@@ -16138,7 +16138,7 @@ SPDX identifier: `CDLA-Permissive-2.0`
 
 Used by:
 
-- `webpki-roots` 1.0.9 — `CDLA-Permissive-2.0` — <https://github.com/rustls/webpki-roots>
+- `webpki-roots` 1.0.10 — `CDLA-Permissive-2.0` — <https://github.com/rustls/webpki-roots>
 ```
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -16329,7 +16329,7 @@ SPDX identifier: `ISC`
 
 Used by:
 
-- `rustls-webpki` 0.103.14 — `ISC` — <https://github.com/rustls/webpki>
+- `rustls-webpki` 0.103.16 — `ISC` — <https://github.com/rustls/webpki>
 ```
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:

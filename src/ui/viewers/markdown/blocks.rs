@@ -15,7 +15,7 @@ use gpui_kit::{
 
 use super::constants::{
     MD_BLOCKQUOTE_BORDER, MD_BLOCKQUOTE_PADDING, MD_CODE_BLOCK_PADDING, MD_CODE_BLOCK_RADIUS,
-    MD_CODE_FONT_SCALE, MD_LINE_HEIGHT, MD_LIST_INDENT, MD_PARAGRAPH_MARGIN,
+    MD_CODE_FONT_SCALE, MD_HEADING_MARGIN, MD_LINE_HEIGHT, MD_LIST_INDENT, MD_PARAGRAPH_MARGIN,
 };
 use super::{BlockContext, InlineStyle, MarkdownViewer};
 use crate::document::markdown::{ListItem, MarkdownBlock, MarkdownInline};
@@ -26,17 +26,16 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
+        at_flow_start: bool,
         ctx: &mut BlockContext,
     ) -> Vec<AnyElement> {
         blocks
             .iter()
             .enumerate()
             .map(|(index, block)| {
-                let next_index = index.saturating_add(1);
-                let is_last = next_index == blocks.len();
-                let next_is_paragraph =
-                    matches!(blocks.get(next_index), Some(MarkdownBlock::Paragraph(_)));
-                self.render_block(block, list_depth, is_last, next_is_paragraph, ctx)
+                let is_first = at_flow_start && index == 0;
+                let margin_top = block_margin_top(block, list_depth, is_first);
+                self.render_block(block, list_depth, margin_top, ctx)
             })
             .collect()
     }
@@ -45,28 +44,29 @@ impl MarkdownViewer {
         &self,
         block: &MarkdownBlock,
         list_depth: usize,
-        is_last: bool,
-        next_is_paragraph: bool,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         match block {
-            MarkdownBlock::Heading { level, content } => self.render_heading(*level, content, ctx),
-            MarkdownBlock::Paragraph(content) => {
-                self.render_paragraph(content, list_depth, is_last, next_is_paragraph, ctx)
+            MarkdownBlock::Heading { level, content } => {
+                self.render_heading(*level, content, margin_top, ctx)
             }
-            MarkdownBlock::BlockQuote(blocks) => self.render_blockquote(blocks, list_depth, ctx),
+            MarkdownBlock::Paragraph(content) => self.render_paragraph(content, margin_top, ctx),
+            MarkdownBlock::BlockQuote(blocks) => {
+                self.render_blockquote(blocks, list_depth, margin_top, ctx)
+            }
             MarkdownBlock::List { start, items } => {
-                self.render_list(*start, items, list_depth, ctx)
+                self.render_list(*start, items, list_depth, margin_top, ctx)
             }
             MarkdownBlock::Table { headers, rows } => {
-                self.render_table(headers, rows, list_depth, ctx)
+                self.render_table(headers, rows, margin_top, ctx)
             }
             MarkdownBlock::Code { language, content } => {
-                Self::render_code(language.as_ref(), content, ctx)
+                Self::render_code(language.as_ref(), content, margin_top, ctx)
             }
             MarkdownBlock::Rule => div()
                 .w_full()
-                .my_2()
+                .mt(px(margin_top))
                 .border_t_1()
                 .border_color(ctx.cx.theme().border)
                 .into_any_element(),
@@ -77,16 +77,18 @@ impl MarkdownViewer {
         &self,
         blocks: &[MarkdownBlock],
         list_depth: usize,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         div()
             .w_full()
             .min_w_0()
+            .mt(px(margin_top))
             .pl(px(MD_BLOCKQUOTE_PADDING))
             .border_l(px(MD_BLOCKQUOTE_BORDER))
             .border_color(ctx.cx.theme().border)
             .text_color(ctx.cx.theme().muted_foreground)
-            .children(self.render_blocks(blocks, list_depth, ctx))
+            .children(self.render_blocks(blocks, list_depth, true, ctx))
             .into_any_element()
     }
 
@@ -95,6 +97,7 @@ impl MarkdownViewer {
         start: Option<u64>,
         items: &[ListItem],
         list_depth: usize,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         let ordered = start.is_some();
@@ -148,17 +151,14 @@ impl MarkdownViewer {
                 .child(div().flex_1().min_w_0().children(self.render_blocks(
                     &item.blocks,
                     list_depth.saturating_add(1),
+                    true,
                     ctx,
                 )))
         });
         div()
             .w_full()
+            .mt(px(margin_top))
             .children(rows)
-            .mb(px(if list_depth > 0 {
-                0.0
-            } else {
-                MD_PARAGRAPH_MARGIN
-            }))
             .into_any_element()
     }
 
@@ -166,7 +166,7 @@ impl MarkdownViewer {
         &self,
         headers: &[Vec<MarkdownInline>],
         rows: &[Vec<Vec<MarkdownInline>>],
-        list_depth: usize,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         let header_style = InlineStyle {
@@ -189,11 +189,7 @@ impl MarkdownViewer {
             .border_1()
             .border_color(ctx.cx.theme().border)
             .rounded(px(MD_CODE_BLOCK_RADIUS))
-            .mb(px(if list_depth > 0 {
-                0.0
-            } else {
-                MD_PARAGRAPH_MARGIN
-            }))
+            .mt(px(margin_top))
             .child(TableHeader::new().child(header_row))
             .child(body)
             .into_any_element()
@@ -202,6 +198,7 @@ impl MarkdownViewer {
     pub(super) fn render_code(
         language: Option<&String>,
         content: &str,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         let label = language.map(|language| {
@@ -216,11 +213,30 @@ impl MarkdownViewer {
             .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE))
             .rounded(px(MD_CODE_BLOCK_RADIUS))
             .p(px(MD_CODE_BLOCK_PADDING))
-            .mb_2()
+            .mt(px(margin_top))
             .overflow_x_scrollbar()
             .children(label)
             .child(content.to_owned())
             .into_any_element()
+    }
+}
+
+/// Space above a block inside a flow. The first block of a nested flow is
+/// flush with its container; at the document root the title/frontmatter
+/// precede the blocks, so `is_first` is false there. List items keep their
+/// nested containers compact, while paragraphs and headings keep their
+/// normal rhythm.
+fn block_margin_top(block: &MarkdownBlock, list_depth: usize, is_first: bool) -> f32 {
+    if is_first {
+        return 0.0;
+    }
+    match block {
+        MarkdownBlock::Heading { level, .. } => {
+            MD_HEADING_MARGIN * MarkdownViewer::heading_size(*level)
+        }
+        MarkdownBlock::Paragraph(_) => MD_PARAGRAPH_MARGIN,
+        _ if list_depth > 0 => 0.0,
+        _ => MD_PARAGRAPH_MARGIN,
     }
 }
 

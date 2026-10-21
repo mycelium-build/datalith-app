@@ -1,6 +1,7 @@
 pub mod editors;
 pub mod icons;
 pub mod licenses;
+mod modal;
 pub mod monolith;
 pub mod notifications;
 pub mod palette;
@@ -19,7 +20,7 @@ pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui_kit::component::{
     input::InputState,
@@ -78,7 +79,7 @@ pub struct DatalithView {
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
     rename_sub: Option<Subscription>,
-    pub(crate) drag_hover: Option<(PathBuf, Instant)>,
+    pub(crate) drag_drop_target: Option<sidebar::DragDropTarget>,
     pub(crate) expanded_tree_ids: Vec<SharedString>,
     pub(crate) focus_sidebar_requested: bool,
     pub(crate) focus_editor_requested: bool,
@@ -173,7 +174,7 @@ impl DatalithView {
             context_menu_from_row: false,
             rename_target: None,
             rename_state: None,
-            drag_hover: None,
+            drag_drop_target: None,
             expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
@@ -237,102 +238,125 @@ impl DatalithView {
                 cx.background_executor()
                     .timer(Duration::from_millis(200))
                     .await;
-                if this
-                    .update(cx, |view, cx| {
-                        let mut changed_paths = Vec::new();
-                        let mut catalog_changed = !view.vault_db_ready_notified
-                            && view
-                                .vault_catalog
-                                .as_ref()
-                                .is_some_and(|catalog| catalog.state() == CatalogState::Ready);
-                        let mut structure_changed = false;
-                        if let Some(ref updates) = view.catalog_updates {
-                            while let Ok(update) = updates.try_recv() {
-                                catalog_changed = true;
-                                structure_changed |= update.structure_changed;
-                                changed_paths.extend(update.paths.iter().cloned());
-                            }
-                        }
-
-                        if catalog_changed {
-                            let catalog_state =
-                                view.vault_catalog.as_ref().map(VaultCatalog::state);
-                            match catalog_state {
-                                Some(CatalogState::Ready) => {
-                                    if let (Some(catalog), Some(root)) =
-                                        (view.vault_catalog.clone(), view.root_path.clone())
-                                    {
-                                        // Recheck restored documents once when the catalog is ready.
-                                        if !view.vault_db_ready_notified {
-                                            changed_paths.extend(
-                                                view.tabs
-                                                    .iter()
-                                                    .filter(|(_, path, _)| {
-                                                        path.is_some_and(|path| {
-                                                            path.starts_with(&root)
-                                                        })
-                                                    })
-                                                    .filter_map(|(_, path, _)| {
-                                                        path.map(Path::to_path_buf)
-                                                    }),
-                                            );
-                                        }
-                                        let handlers = view
-                                            .tabs
-                                            .iter()
-                                            .filter(|(_, tab_path, _)| {
-                                                tab_path.is_some_and(|path| path.starts_with(&root))
-                                            })
-                                            .map(|(_, _, handler)| handler.clone())
-                                            .collect::<Vec<_>>();
-                                        for handler in handlers {
-                                            let catalog = catalog.clone();
-                                            handler.update(cx, |handler, cx| {
-                                                handler.set_vault_catalog(catalog, cx);
-                                            });
-                                        }
-                                    }
-                                    if !view.vault_db_ready_notified {
-                                        view.vault_db_ready_notified = true;
-                                        view.pending_notifications
-                                            .push(notifications::vault_db_ready());
-                                    }
-                                    view.refresh_tree(cx);
-                                    structure_changed = false;
-                                }
-                                Some(CatalogState::Failed) => {
-                                    view.pending_notifications
-                                        .push(notifications::vault_db_failed_to_load());
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        if !changed_paths.is_empty() {
-                            for removed in changed_paths
-                                .iter()
-                                .filter(|path| !crate::vault::source::exists(path))
-                            {
-                                view.close_tabs_under(removed, cx);
-                            }
-                            view.pending_external_updates.extend(changed_paths);
-                            if structure_changed {
-                                view.refresh_tree(cx);
-                            }
-                            cx.notify();
-                        }
-                        if catalog_changed && view.palette.open {
-                            let open_files = view.tabs.open_paths();
-                            view.palette
-                                .refresh(view.vault_catalog.as_ref(), &open_files);
-                        }
-                    })
-                    .is_err()
-                {
+                if this.update(cx, Self::poll_catalog).is_err() {
                     break;
                 }
             }
         });
+    }
+
+    fn poll_catalog(&mut self, cx: &mut Context<Self>) {
+        let (mut changed_paths, catalog_changed, mut structure_changed) =
+            self.drain_catalog_updates();
+        if catalog_changed {
+            self.handle_catalog_state(&mut changed_paths, &mut structure_changed, cx);
+        }
+        self.apply_catalog_changes(changed_paths, structure_changed, cx);
+        if catalog_changed && self.palette.open {
+            let open_files = self.tabs.open_paths();
+            self.palette
+                .refresh(self.vault_catalog.as_ref(), &open_files);
+        }
+    }
+
+    fn drain_catalog_updates(&self) -> (Vec<PathBuf>, bool, bool) {
+        let mut changed_paths = Vec::new();
+        let mut catalog_changed = !self.vault_db_ready_notified
+            && self
+                .vault_catalog
+                .as_ref()
+                .is_some_and(|catalog| catalog.state() == CatalogState::Ready);
+        let mut structure_changed = false;
+        if let Some(updates) = &self.catalog_updates {
+            while let Ok(update) = updates.try_recv() {
+                catalog_changed = true;
+                structure_changed |= update.structure_changed;
+                changed_paths.extend(update.paths.iter().cloned());
+            }
+        }
+        (changed_paths, catalog_changed, structure_changed)
+    }
+
+    fn handle_catalog_state(
+        &mut self,
+        changed_paths: &mut Vec<PathBuf>,
+        structure_changed: &mut bool,
+        cx: &mut Context<Self>,
+    ) {
+        let catalog_state = self.vault_catalog.as_ref().map(VaultCatalog::state);
+        match catalog_state {
+            Some(CatalogState::Ready) => {
+                self.on_catalog_ready(changed_paths, structure_changed, cx);
+            }
+            Some(CatalogState::Failed) => {
+                self.pending_notifications
+                    .push(notifications::vault_db_failed_to_load());
+            }
+            _ => {}
+        }
+    }
+
+    fn on_catalog_ready(
+        &mut self,
+        changed_paths: &mut Vec<PathBuf>,
+        structure_changed: &mut bool,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.vault_db_ready_notified {
+            if let (Some(catalog), Some(root)) =
+                (self.vault_catalog.clone(), self.root_path.clone())
+            {
+                changed_paths.extend(
+                    self.tabs
+                        .iter()
+                        .filter(|(_, path, _)| path.is_some_and(|path| path.starts_with(&root)))
+                        .filter_map(|(_, path, _)| path.map(Path::to_path_buf)),
+                );
+                self.set_catalog_on_tabs(&catalog, &root, cx);
+            }
+            self.vault_db_ready_notified = true;
+            self.pending_notifications
+                .push(notifications::vault_db_ready());
+        }
+        self.refresh_tree(cx);
+        *structure_changed = false;
+    }
+
+    fn set_catalog_on_tabs(&self, catalog: &VaultCatalog, root: &Path, cx: &mut Context<Self>) {
+        let handlers = self
+            .tabs
+            .iter()
+            .filter(|(_, tab_path, _)| tab_path.is_some_and(|path| path.starts_with(root)))
+            .map(|(_, _, handler)| handler.clone())
+            .collect::<Vec<_>>();
+        for handler in handlers {
+            let catalog = catalog.clone();
+            handler.update(cx, |handler, cx| {
+                handler.set_vault_catalog(catalog, cx);
+            });
+        }
+    }
+
+    fn apply_catalog_changes(
+        &mut self,
+        changed_paths: Vec<PathBuf>,
+        structure_changed: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if changed_paths.is_empty() {
+            return;
+        }
+        for removed in changed_paths
+            .iter()
+            .filter(|path| !crate::vault::source::exists(path))
+        {
+            self.close_tabs_under(removed, cx);
+        }
+        self.pending_external_updates.extend(changed_paths);
+        if structure_changed {
+            self.refresh_tree(cx);
+        }
+        cx.notify();
     }
 
     pub(crate) fn create_quick_file(&mut self, extension: &str, cx: &mut Context<Self>) {

@@ -9,7 +9,7 @@ use gpui_kit::{Entity, Subscription};
 
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::FileHandler;
-use crate::vault::file_ops;
+use crate::vault::path::normalized_path;
 
 pub struct Tab {
     id: TabId,
@@ -220,9 +220,7 @@ impl Tab {
 
 fn same_document(left: Option<&Path>, right: Option<&Path>) -> bool {
     match (left, right) {
-        (Some(left), Some(right)) => {
-            file_ops::normalized_path(left) == file_ops::normalized_path(right)
-        }
+        (Some(left), Some(right)) => normalized_path(left) == normalized_path(right),
         _ => false,
     }
 }
