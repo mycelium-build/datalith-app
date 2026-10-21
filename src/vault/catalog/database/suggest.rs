@@ -2,14 +2,15 @@
 
 use anyhow::Result;
 
-use super::{CatalogDatabase, FILE_BASENAME_SQL, FILE_NAME_SQL};
+use super::CatalogDatabase;
 use crate::vault::catalog::WikiLinkMatch;
 use crate::vault::links::qualified_target;
 
 impl CatalogDatabase {
     /// Returns up to `limit` catalog documents matching a wiki-link query.
     ///
-    /// Matching, ranking, and limiting happen in `Turso`.
+    /// `query` must already be lowercased.
+    /// `label_key` and `path_key` are folded with Rust's Unicode lowercasing when a document is written.
     ///
     /// `path` is the only qualified identifier returned here.
     /// A minimal target is resolved separately when the user accepts a suggestion.
@@ -19,18 +20,6 @@ impl CatalogDatabase {
         excluded: Option<&str>,
         limit: usize,
     ) -> Result<Vec<WikiLinkMatch>> {
-        // Markdown files display without `.md`;
-        // every other file keeps its extension.
-        // `path` itself is returned unchanged.
-        let label = format!(
-            "CASE WHEN lower(extension) = 'md' \
-             THEN {FILE_NAME_SQL} \
-             ELSE {FILE_BASENAME_SQL} END"
-        );
-
-        // `computed` derives the display label once.
-        // `keyed` lowercases the label and path once for matching and sorting.
-        //
         // `matched` ranks matches by what the user most likely means:
         //   0 = label starts with the query
         //   1 = label contains the query
@@ -41,37 +30,25 @@ impl CatalogDatabase {
         // so paths containing them cannot be safely inserted.
         //
         // Parameters: ?1 lowercased query, ?2 excluded current path, ?3 limit.
-        let sql = format!(
-            "WITH computed AS (\
-                 SELECT path, folder, {label} AS label \
-                 FROM documents \
-                 WHERE (?2 IS NULL OR path <> ?2) \
-                   AND instr(path, '|') = 0 AND instr(path, '#') = 0 \
-                   AND instr(path, '[') = 0 AND instr(path, ']') = 0\
-             ), keyed AS (\
-                 SELECT path, folder, label, \
-                        lower(label) AS label_key, \
-                        lower(path) AS path_key \
-                 FROM computed\
-             ) \
-             SELECT path, label, NULLIF(folder, '') AS detail \
-             FROM keyed \
-             WHERE instr(label_key, ?1) > 0 \
-                OR instr(path_key, ?1) > 0 \
-             ORDER BY \
-                 CASE \
-                     WHEN instr(label_key, ?1) = 1 THEN 0 \
-                     WHEN instr(label_key, ?1) > 0 THEN 1 \
-                     ELSE 2 \
-                 END, \
-                 length(label), label_key, path \
-             LIMIT ?3"
-        );
+        let sql = "SELECT path, label, NULLIF(folder, '') AS detail \
+                   FROM documents \
+                   WHERE (?2 IS NULL OR path <> ?2) \
+                     AND instr(path, '|') = 0 AND instr(path, '#') = 0 \
+                     AND instr(path, '[') = 0 AND instr(path, ']') = 0 \
+                     AND (instr(label_key, ?1) > 0 OR instr(path_key, ?1) > 0) \
+                   ORDER BY \
+                       CASE \
+                           WHEN instr(label_key, ?1) = 1 THEN 0 \
+                           WHEN instr(label_key, ?1) > 0 THEN 1 \
+                           ELSE 2 \
+                       END, \
+                       length(label), label_key, path \
+                   LIMIT ?3";
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let excluded = excluded.map(str::to_string);
         let connection = self.connection().await?;
         let mut rows = connection
-            .query(&sql, turso::params![query, excluded, limit])
+            .query(sql, turso::params![query, excluded, limit])
             .await?;
         let mut matches = Vec::new();
         while let Some(row) = rows.next().await? {
@@ -100,20 +77,13 @@ impl CatalogDatabase {
     }
 
     async fn has_duplicate_label(&self, path: &str, label: &str) -> Result<bool> {
-        let label_sql = format!(
-            "CASE WHEN lower(extension) = 'md' \
-             THEN {FILE_NAME_SQL} \
-             ELSE {FILE_BASENAME_SQL} END"
-        );
-        let sql = format!(
-            "SELECT 1 FROM documents \
-             WHERE path <> ?1 \
-               AND lower({label_sql}) = ?2 \
-             LIMIT 1"
-        );
+        let sql = "SELECT 1 FROM documents \
+                   WHERE path <> ?1 \
+                     AND label_key = ?2 \
+                   LIMIT 1";
         let connection = self.connection().await?;
         let mut rows = connection
-            .query(&sql, turso::params![path, label.to_lowercase()])
+            .query(sql, turso::params![path, label.to_lowercase()])
             .await?;
         Ok(rows.next().await?.is_some())
     }

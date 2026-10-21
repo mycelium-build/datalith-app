@@ -234,6 +234,31 @@ mod tests {
 
     use super::*;
 
+    async fn insert_document(
+        connection: &turso::Connection,
+        path: &str,
+        extension: &str,
+        folder: &str,
+    ) {
+        let label = super::super::document::display_label(Path::new(path), extension);
+        connection
+            .execute(
+                "INSERT INTO documents(path, extension, folder, label, label_key, path_key, \
+                                        size_bytes, modified_ns, metadata) \
+                 VALUES (?, ?, ?, ?, ?, ?, 0, 0, NULL)",
+                params![
+                    path,
+                    extension,
+                    folder,
+                    label.clone(),
+                    label.to_lowercase(),
+                    path.to_lowercase()
+                ],
+            )
+            .await
+            .unwrap();
+    }
+
     #[test]
     fn resolves_links_from_catalogued_paths_using_ambiguity_order() {
         let root =
@@ -251,14 +276,7 @@ mod tests {
                 ("a/Same.md", "md", "a"),
                 ("b/Same.md", "md", "b"),
             ] {
-                connection
-                    .execute(
-                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
-                         VALUES (?, ?, ?, 0, 0, NULL)",
-                        params![path, extension, folder],
-                    )
-                    .await
-                    .unwrap();
+                insert_document(&connection, path, extension, folder).await;
             }
 
             assert_eq!(
@@ -301,14 +319,7 @@ mod tests {
                 ("docs/covers/pic.md", "md", "docs/covers"),
                 ("deep/docs/covers/pic.md", "md", "deep/docs/covers"),
             ] {
-                connection
-                    .execute(
-                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
-                         VALUES (?, ?, ?, 0, 0, NULL)",
-                        params![path, extension, folder],
-                    )
-                    .await
-                    .unwrap();
+                insert_document(&connection, path, extension, folder).await;
             }
 
             // Suffix match resolves into the vault, fewest folders first.
@@ -346,14 +357,7 @@ mod tests {
                 ("%_/Target.md", "%_"),
                 ("ab/Target.md", "ab"),
             ] {
-                connection
-                    .execute(
-                        "INSERT INTO documents(path, extension, folder, size_bytes, modified_ns, metadata) \
-                         VALUES (?, 'md', ?, 0, 0, NULL)",
-                        params![path, folder],
-                    )
-                    .await
-                    .unwrap();
+                insert_document(&connection, path, "md", folder).await;
             }
             connection
                 .execute(

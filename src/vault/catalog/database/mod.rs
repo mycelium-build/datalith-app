@@ -21,19 +21,6 @@ pub(super) const FILE_BASENAME_SQL: &str =
 pub(super) const PATH_WITHOUT_EXTENSION_SQL: &str =
     "substr(path, 1, length(path) - length(extension) - 1)";
 
-/// The label shown for a document in wiki-link suggestions.
-///
-/// Markdown files drop their extension; every other file keeps it.
-/// The suggestion list and the duplicate-label check must compute the label the same way,
-/// otherwise an accepted suggestion can be qualified incorrectly.
-pub(super) fn display_label_sql() -> String {
-    format!(
-        "CASE WHEN lower(extension) = 'md' \
-         THEN {FILE_NAME_SQL} \
-         ELSE {FILE_BASENAME_SQL} END"
-    )
-}
-
 #[derive(Clone, Debug)]
 pub struct Backlink {
     pub source: PathBuf,
