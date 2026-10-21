@@ -4,11 +4,12 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     resizable::{h_resizable, resizable_panel},
+    tree::TreeState,
     v_flex,
 };
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, MouseDownEvent, MouseMoveEvent,
+    ParentElement, Render, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::app::keymap::display_binding;
@@ -95,23 +96,7 @@ impl Render for DatalithView {
                         .flex_none()
                         .child(self.render_sidebar(window, cx)),
                 )
-                .child(
-                    resizable_panel().child(
-                        div()
-                            .size_full()
-                            .overflow_hidden()
-                            .on_mouse_down(
-                                gpui_kit::MouseButton::Left,
-                                cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
-                                    tree_state.update(cx, |state, cx| {
-                                        state.set_selected_index(None, cx);
-                                    });
-                                    this.last_sidebar_selection = None;
-                                }),
-                            )
-                            .child(self.render_editor(cx)),
-                    ),
-                ),
+                .child(resizable_panel().child(self.render_editor_pane(tree_state, cx))),
         );
 
         if self.palette.open {
@@ -143,6 +128,30 @@ impl Render for DatalithView {
 }
 
 impl DatalithView {
+    fn render_editor_pane(
+        &self,
+        tree_state: gpui_kit::Entity<TreeState>,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .size_full()
+            .overflow_hidden()
+            .on_mouse_move(cx.listener(|this, _: &MouseMoveEvent, _window, cx| {
+                // Dragging out of the sidebar clears its drop highlight.
+                this.clear_drag_target(cx);
+            }))
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
+                    tree_state.update(cx, |state, cx| {
+                        state.set_selected_index(None, cx);
+                    });
+                    this.last_sidebar_selection = None;
+                }),
+            )
+            .child(self.render_editor(cx))
+    }
+
     fn render_empty_logo(cx: &Context<Self>) -> impl IntoElement {
         div()
             .opacity(0.24)

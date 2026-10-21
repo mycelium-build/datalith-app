@@ -20,7 +20,7 @@ pub const BASE_FONT_SIZE: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.6;
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui_kit::component::{
     input::InputState,
@@ -79,7 +79,7 @@ pub struct DatalithView {
     pub(crate) rename_target: Option<PathBuf>,
     pub(crate) rename_state: Option<Entity<InputState>>,
     rename_sub: Option<Subscription>,
-    pub(crate) drag_hover: Option<(PathBuf, Instant)>,
+    pub(crate) drag_drop_target: Option<sidebar::DragDropTarget>,
     pub(crate) expanded_tree_ids: Vec<SharedString>,
     pub(crate) focus_sidebar_requested: bool,
     pub(crate) focus_editor_requested: bool,
@@ -174,7 +174,7 @@ impl DatalithView {
             context_menu_from_row: false,
             rename_target: None,
             rename_state: None,
-            drag_hover: None,
+            drag_drop_target: None,
             expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
