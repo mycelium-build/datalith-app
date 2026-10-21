@@ -16138,7 +16138,7 @@ SPDX identifier: `CDLA-Permissive-2.0`
 
 Used by:
 
-- `webpki-roots` 1.0.9 — `CDLA-Permissive-2.0` — <https://github.com/rustls/webpki-roots>
+- `webpki-roots` 1.0.10 — `CDLA-Permissive-2.0` — <https://github.com/rustls/webpki-roots>
 ```
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -16329,7 +16329,7 @@ SPDX identifier: `ISC`
 
 Used by:
 
-- `rustls-webpki` 0.103.14 — `ISC` — <https://github.com/rustls/webpki>
+- `rustls-webpki` 0.103.16 — `ISC` — <https://github.com/rustls/webpki>
 ```
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
