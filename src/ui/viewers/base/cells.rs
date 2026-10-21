@@ -1,8 +1,8 @@
 //! Cell rendering over projected snapshot values.
 
-use gpui_kit::component::{ActiveTheme, h_flex};
+use gpui_kit::component::{ActiveTheme, Theme, h_flex};
 use gpui_kit::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
 };
 
@@ -18,7 +18,7 @@ pub(super) fn render_property_cell(
     handler: &gpui_kit::WeakEntity<FileHandler>,
     id: ElementId,
     truncate: bool,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     if property.source == "file.name" {
         return render_link(
@@ -27,7 +27,7 @@ pub(super) fn render_property_cell(
             path_text(&row.path),
             truncate,
             handler.clone(),
-            cx,
+            theme,
         );
     }
     let value = snapshot.projection_value(row, &property.source);
@@ -53,7 +53,7 @@ pub(super) fn render_property_cell(
                 target.clone(),
                 false,
                 handler.clone(),
-                cx,
+                theme,
             )
         });
         return h_flex()
@@ -63,7 +63,7 @@ pub(super) fn render_property_cell(
             .into_any_element();
     }
     if let Some((label, target)) = wikilink_parts(value) {
-        return render_link(id, &label, target, truncate, handler.clone(), cx);
+        return render_link(id, &label, target, truncate, handler.clone(), theme);
     }
     div()
         .id(id)
@@ -124,13 +124,14 @@ fn render_link(
     target: String,
     truncate: bool,
     handler: gpui_kit::WeakEntity<FileHandler>,
-    cx: &App,
+    theme: &Theme,
 ) -> AnyElement {
     div()
         .id(id)
         .when(truncate, Styled::text_ellipsis)
-        .text_color(cx.theme().primary)
-        .hover(Styled::underline)
+        .text_color(theme.link)
+        .hover(|style| style.text_decoration_1().text_color(theme.link_hover))
+        .active(|style| style.text_color(theme.link_active))
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
             if let Some(handler) = handler.upgrade() {

@@ -56,5 +56,5 @@ Some files only have a viewer or only an editor. See [[FileTypes]].
 
 - The **OS menu bar** has File and Navigate menus with all available actions.
 - **Cmd/Ctrl+Shift+D** toggles between light and dark mode. See [[Settings]].
-- **Right-click** any file or folder in the sidebar for: New File, New Folder, Rename, Delete, Duplicate, Open in Explorer, and Copy Path.
+- **Right-click** any file or folder in the sidebar for: New File, New Folder, Rename, Delete, Duplicate, Open in Explorer, and Copy Path. After **Delete**, click **Undo** in the notification, or press `Cmd/Ctrl+Z` while the sidebar has focus, to restore the item.
 - See [[Shortcuts]] for the full keybinding reference.

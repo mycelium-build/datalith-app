@@ -131,20 +131,15 @@ impl DatalithView {
     ) -> ListItem {
         let is_renaming = this.rename_target.as_ref().is_some_and(|p| *p == path);
 
-        let icon = if is_folder {
-            Icon::new(if is_expanded {
-                IconName::FolderOpen
-            } else {
-                IconName::Folder
-            })
-        } else {
-            Icon::new(this.registry.config_for(Some(path)).icon)
-        };
+        let icon = this.tree_row_icon(path, is_folder, is_expanded);
 
-        let mut list_item = ListItem::new(ix).selected(selected).pl(px(depth
-            .approx_as::<f32>()
-            .unwrap_or_inf()
-            .mul_add(TREE_INDENT_PX, TREE_PADDING_PX)));
+        let mut list_item = ListItem::new(ix)
+            .selected(selected)
+            .text_color(cx.theme().sidebar_foreground)
+            .pl(px(depth
+                .approx_as::<f32>()
+                .unwrap_or_inf()
+                .mul_add(TREE_INDENT_PX, TREE_PADDING_PX)));
 
         if is_renaming && let Some(rename_state) = this.rename_state.clone() {
             return list_item.child(
@@ -243,6 +238,18 @@ impl DatalithView {
                 }
             }
         }))
+    }
+
+    fn tree_row_icon(&self, path: &Path, is_folder: bool, is_expanded: bool) -> Icon {
+        if is_folder {
+            Icon::new(if is_expanded {
+                IconName::FolderOpen
+            } else {
+                IconName::Folder
+            })
+        } else {
+            Icon::new(self.registry.config_for(Some(path)).icon)
+        }
     }
 
     fn attach_folder_drop(

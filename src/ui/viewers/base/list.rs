@@ -370,7 +370,7 @@ fn cell(
         handler,
         ElementId::Name(format!("base-cell-{ordinal}-{column}").into()),
         truncate,
-        cx,
+        cx.theme(),
     )
 }
 
