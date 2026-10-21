@@ -13,7 +13,15 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let modifiers = event.keystroke.modifiers;
         match event.keystroke.key.as_str() {
+            "z" if modifiers.secondary()
+                && !modifiers.shift
+                && !modifiers.alt
+                && self.rename_target.is_none() =>
+            {
+                self.undo_delete(None, window, cx);
+            }
             "escape" if self.rename_target.is_some() => self.cancel_rename(cx),
             "enter" if self.rename_target.is_none() => self.handle_enter_key(event, window, cx),
             "up" => self.navigate_tree_up(cx),

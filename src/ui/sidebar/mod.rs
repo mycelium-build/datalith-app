@@ -2,6 +2,8 @@ pub mod file_tree;
 mod navigation;
 mod tree_actions;
 
+pub use tree_actions::DeletedItem;
+
 use std::path::{Path, PathBuf};
 
 use gpui_kit::component::{

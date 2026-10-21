@@ -1,14 +1,91 @@
 use std::path::{Path, PathBuf};
 
-use gpui_kit::component::tree::TreeItem;
-use gpui_kit::{Context, SharedString};
+use gpui_kit::component::{
+    Sizable as _, WindowExt as _, button::Button, notification::Notification, tree::TreeItem,
+};
+use gpui_kit::{Context, SharedString, Window};
 
 use super::file_tree::build_file_items_with_expanded;
 use crate::vault::path::display_name;
 
-use crate::ui::DatalithView;
+use crate::app::AppState;
+use crate::ui::{DatalithView, notifications};
+use crate::vault::file_ops::{self, Deleted};
+
+/// How many deletions Undo keeps track of.
+const DELETED_HISTORY: usize = 20;
+
+struct FileDeletion;
+
+pub struct DeletedItem {
+    deleted: Deleted,
+    notification_id: u64,
+}
 
 impl DatalithView {
+    /// Remember a deletion and offer to undo it.
+    pub(crate) fn push_deleted(&mut self, deleted: Deleted) {
+        let notification_id = rand::random::<u64>();
+        let name = deleted
+            .original
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        if self.deleted_items.len() == DELETED_HISTORY {
+            self.deleted_items.remove(0);
+        }
+        self.deleted_items.push(DeletedItem {
+            deleted,
+            notification_id,
+        });
+        self.pending_notifications.push(
+            Notification::new()
+                .id1::<FileDeletion>(("file-deletion", notification_id))
+                .title(format!("“{name}” deleted"))
+                .message("You can restore it with Undo")
+                .action(move |_, _, _| {
+                    Button::new("undo-file-delete")
+                        .small()
+                        .label("Undo")
+                        .on_click(move |_, window, cx| {
+                            if let Some(view) = AppState::view(cx) {
+                                view.update(cx, |view, cx| {
+                                    view.undo_delete(Some(notification_id), window, cx);
+                                });
+                            }
+                        })
+                })
+                .autohide(true),
+        );
+    }
+
+    /// Restore the deletion shown by `notification_id`, or the most recent one.
+    pub(crate) fn undo_delete(
+        &mut self,
+        notification_id: Option<u64>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let index = match notification_id {
+            Some(id) => self
+                .deleted_items
+                .iter()
+                .position(|item| item.notification_id == id),
+            None => self.deleted_items.len().checked_sub(1),
+        };
+        let Some(index) = index else {
+            return;
+        };
+        let item = self.deleted_items.remove(index);
+        if let Err(error) = file_ops::restore(&item.deleted) {
+            window.push_notification(notifications::file_restore_failed(&error), cx);
+            self.deleted_items.insert(index, item);
+            return;
+        }
+        window.remove_notification1::<FileDeletion>(("file-deletion", item.notification_id), cx);
+        self.refresh_tree(cx);
+        cx.notify();
+    }
+
     pub(crate) fn refresh_tree(&self, cx: &mut Context<Self>) {
         let selected = self.root_path.as_ref().and_then(|_| {
             self.tree_state

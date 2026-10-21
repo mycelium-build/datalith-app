@@ -113,6 +113,10 @@ pub fn theme_values_ignored(theme: &str, values: &[String]) -> Notification {
     .autohide(false)
 }
 
+pub fn file_restore_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to restore the deleted item: {error}")).autohide(false)
+}
+
 pub fn create_file_failed(base_name: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to create {base_name}: {error}")).autohide(false)
 }

@@ -271,11 +271,16 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
             .take()
             .or_else(|| view.resolve_target(cx));
         view.commit_rename(cx);
-        if let Some(target) = target {
-            if let Err(e) = file_ops::delete(&target) {
-                eprintln!("{e}");
-                cx.notify();
-                return;
+        if let Some(target) = target
+            && let Some(root) = view.root_path.clone()
+        {
+            match file_ops::delete(&root, &target) {
+                Ok(deleted) => view.push_deleted(deleted),
+                Err(e) => {
+                    eprintln!("{e}");
+                    cx.notify();
+                    return;
+                }
             }
             view.close_tabs_under(&target, cx);
             view.refresh_tree(cx);

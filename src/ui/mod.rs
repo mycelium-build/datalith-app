@@ -87,6 +87,8 @@ pub struct DatalithView {
     pub(crate) last_sidebar_selection: Option<PathBuf>,
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
+    /// Deletions that Undo can still restore, most recent last.
+    pub(crate) deleted_items: Vec<sidebar::DeletedItem>,
     pub(crate) registry: FileRegistry,
     app_menu_bar: Entity<title_bar::ApplicationMenu>,
     pub(crate) startup: Option<Entity<StartupAnimation>>,
@@ -164,6 +166,7 @@ impl DatalithView {
             last_sidebar_selection: None,
             pending_navigation: None,
             pending_notifications: initial_notifications,
+            deleted_items: Vec::new(),
             registry: registry::default_registry(),
             app_menu_bar,
             startup: Some(startup),

@@ -19,6 +19,8 @@ Open **Shortcuts** from the Help menu or press `Cmd/Ctrl+/`. The reference opens
 | Open in Explorer | `Cmd/Ctrl+Shift+E` |
 | Copy path | `Cmd/Ctrl+L` |
 
+Known limitation: these shortcuts also apply while you type in an editor, so they take over the editor's own keys. `Cmd/Ctrl+Backspace` deletes the open note instead of the previous word; press `Cmd/Ctrl+Z` right away, or use **Undo** in the notification, to restore it. `Cmd/Ctrl+[` and `Cmd/Ctrl+]` navigate instead of changing indentation.
+
 # Navigation
 
 | Action | Shortcut |
