@@ -53,4 +53,4 @@ The zoom slider scales the interface from `0.5×` to `3.0×` independently of th
 
 # Shortcuts
 
-Open **Shortcuts** from the gear or Datalith menu, or press **Cmd/Ctrl+/**. It opens a read-only reference tab with actions grouped by category and their current platform shortcuts.
+Open **Shortcuts** from the gear or Datalith menu, or press **Cmd/Ctrl+/**. It opens a tab with actions grouped by category and their current platform shortcuts. Click a shortcut to change it, or hover a row to reset or remove it; see [[Shortcuts]].

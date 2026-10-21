@@ -171,4 +171,6 @@ When importing a theme from another editor, use Datalith's supported key names:
 | `colors.link.active` | `colors.link.active.foreground` |
 | `colors.window.border` | `colors.window_border` |
 
+Invalid values, such as a malformed color, are ignored when Datalith loads the theme, and a warning lists them. The file itself is left unchanged until you edit the theme in the editor.
+
 Unknown keys are ignored on import and omitted on export. This includes `colors.panel.background`, `colors.action_bar.background`, `colors.chart.grid`, `colors.created`, `colors.renamed`, `colors.info`, and `colors.editor.active_line_number`, as well as Zed diff/status fields under `highlight` such as `conflict`, `created`, `deleted`, `hidden`, `ignored`, `modified`, `predictive`, `renamed`, and `unreachable`, including their background and border variants.
