@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use levenshtein_automata::{DFA, Distance, LevenshteinAutomatonBuilder, SINK_STATE};
@@ -7,12 +7,14 @@ use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::{Searcher, Term};
 use tantivy_fst::Automaton;
 
-/// Matches in file names weigh more than matches in the body.
-const NAME_FIELD_BOOST: f32 = 3.0;
-/// Guards against pathological short prefixes expanding to every term.
+/// Guards against pathological prefixes expanding to every term.
 const MAX_PREFIX_EXPANSIONS: usize = 256;
-/// Maximum edit distance tolerated in the prefix, as in the previous fuzzy query.
 const MAX_EDIT_DISTANCE: u8 = 2;
+const NAME_FIELD_BOOST: f32 = 3.0; // NAME_FIELD_BOOST * X_MATCH_BOOST
+const EXACT_MATCH_BOOST: f32 = 2.0;
+const PREFIX_MATCH_BOOST: f32 = 1.0;
+const ONE_EDIT_BOOST: f32 = 0.5;
+const TWO_EDITS_BOOST: f32 = 0.25;
 
 #[must_use]
 pub fn build_query(
@@ -25,20 +27,14 @@ pub fn build_query(
 
     for word in query_str.split_whitespace() {
         let word = word.to_lowercase();
+        let max_edits = max_edit_distance(&word);
 
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
-        for term in expand_prefix_terms(searcher, name_field, &word) {
-            let term_query = TermQuery::new(term, IndexRecordOption::WithFreqs);
-            clauses.push((
-                Occur::Should,
-                Box::new(BoostQuery::new(Box::new(term_query), NAME_FIELD_BOOST)),
-            ));
+        for expansion in expand_prefix_terms(searcher, name_field, &word, max_edits) {
+            clauses.push(expansion.clause(name_field, NAME_FIELD_BOOST));
         }
-        for term in expand_prefix_terms(searcher, content_field, &word) {
-            clauses.push((
-                Occur::Should,
-                Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs)),
-            ));
+        for expansion in expand_prefix_terms(searcher, content_field, &word, max_edits) {
+            clauses.push(expansion.clause(content_field, 1.0));
         }
 
         if clauses.is_empty() {
@@ -56,14 +52,66 @@ pub fn build_query(
     }
 }
 
-/// Expands a word into every indexed term that matches it as a prefix,
-/// tolerating up to [`MAX_EDIT_DISTANCE`] edits in that prefix.
+/// A term matched by a word, with the weight the match earned.
+struct Expansion {
+    term: String,
+    boost: f32,
+}
+
+impl Expansion {
+    fn clause(self, field: Field, field_boost: f32) -> (Occur, Box<dyn Query>) {
+        let term_query = TermQuery::new(
+            Term::from_field_text(field, &self.term),
+            IndexRecordOption::WithFreqs,
+        );
+        let boost = field_boost * self.boost;
+        (
+            Occur::Should,
+            Box::new(BoostQuery::new(Box::new(term_query), boost)),
+        )
+    }
+}
+
+/// Maximum edits tolerated for `word`.
+///
+/// Short words match almost any term within two edits,
+/// so tolerance grows with the length that gives it meaning.
+fn max_edit_distance(word: &str) -> u8 {
+    match word.chars().count() {
+        0..=2 => 0,
+        3..=5 => 1,
+        _ => MAX_EDIT_DISTANCE,
+    }
+}
+
+/// Weight of a matched `term` relative to the searched `word`.
+fn match_boost(term: &str, word: &str, edits: u8) -> f32 {
+    if term == word {
+        EXACT_MATCH_BOOST
+    } else {
+        match edits {
+            0 => PREFIX_MATCH_BOOST,
+            1 => ONE_EDIT_BOOST,
+            _ => TWO_EDITS_BOOST,
+        }
+    }
+}
+
+/// Expands a word into every indexed term matching it as a prefix,
+/// tolerating up to `max_edits` edits in that prefix.
 ///
 /// `TermQuery` scores each expanded term with BM25,
-/// so term frequency and document length still contribute.
-fn expand_prefix_terms(searcher: &Searcher, field: Field, prefix: &str) -> Vec<Term> {
-    let dfa = levenshtein_builder().build_prefix_dfa(prefix);
-    let mut terms = BTreeSet::new();
+/// so term frequency and document length still contribute,
+/// while the edit distance decides how much the expansion weighs:
+/// the exact term and true prefixes must outrank typo matches.
+fn expand_prefix_terms(
+    searcher: &Searcher,
+    field: Field,
+    word: &str,
+    max_edits: u8,
+) -> Vec<Expansion> {
+    let dfa = levenshtein_builder(max_edits).build_prefix_dfa(word);
+    let mut closest: BTreeMap<String, u8> = BTreeMap::new();
 
     for segment in searcher.segment_readers() {
         let Ok(inverted_index) = segment.inverted_index(field) else {
@@ -77,27 +125,56 @@ fn expand_prefix_terms(searcher: &Searcher, field: Field, prefix: &str) -> Vec<T
             continue;
         };
         while stream.advance() {
-            if terms.len() >= MAX_PREFIX_EXPANSIONS {
-                break;
-            }
-            if let Ok(term) = std::str::from_utf8(stream.key()) {
-                terms.insert(term.to_string());
-            }
-        }
-        if terms.len() >= MAX_PREFIX_EXPANSIONS {
-            break;
+            let Ok(term) = std::str::from_utf8(stream.key()) else {
+                continue;
+            };
+            let Some(edits) = prefix_edit_distance(&dfa, term) else {
+                continue;
+            };
+            // The same term can live in several segments; the closest match wins.
+            closest
+                .entry(term.to_string())
+                .and_modify(|known| *known = (*known).min(edits))
+                .or_insert(edits);
         }
     }
 
-    terms
+    let mut expansions: Vec<Expansion> = closest
         .into_iter()
-        .map(|term| Term::from_field_text(field, &term))
-        .collect()
+        .map(|(term, edits)| Expansion {
+            boost: match_boost(&term, word, edits),
+            term,
+        })
+        .collect();
+    // The cap must drop typo matches before exact and prefix ones.
+    expansions.sort_by(|left, right| {
+        right
+            .boost
+            .total_cmp(&left.boost)
+            .then_with(|| left.term.cmp(&right.term))
+    });
+    expansions.truncate(MAX_PREFIX_EXPANSIONS);
+    expansions
 }
 
-fn levenshtein_builder() -> &'static LevenshteinAutomatonBuilder {
-    static BUILDER: OnceLock<LevenshteinAutomatonBuilder> = OnceLock::new();
-    BUILDER.get_or_init(|| LevenshteinAutomatonBuilder::new(MAX_EDIT_DISTANCE, true))
+/// Edits the prefix automaton needed to match `term`, if it matched at all.
+fn prefix_edit_distance(dfa: &DFA, term: &str) -> Option<u8> {
+    match dfa.eval(term) {
+        Distance::Exact(edits) => Some(edits),
+        Distance::AtLeast(_) => None,
+    }
+}
+
+fn levenshtein_builder(max_edits: u8) -> &'static LevenshteinAutomatonBuilder {
+    static DISTANCE_0: OnceLock<LevenshteinAutomatonBuilder> = OnceLock::new();
+    static DISTANCE_1: OnceLock<LevenshteinAutomatonBuilder> = OnceLock::new();
+    static DISTANCE_2: OnceLock<LevenshteinAutomatonBuilder> = OnceLock::new();
+    let (slot, distance) = match max_edits {
+        0 => (&DISTANCE_0, 0),
+        1 => (&DISTANCE_1, 1),
+        _ => (&DISTANCE_2, MAX_EDIT_DISTANCE),
+    };
+    slot.get_or_init(|| LevenshteinAutomatonBuilder::new(distance, true))
 }
 
 /// Adapts a `levenshtein_automata` DFA to the automaton trait used by Tantivy's term dictionary.
@@ -198,5 +275,21 @@ mod tests {
         let first = results.first().unwrap();
         assert_eq!(first.0, 0);
         assert!(first.1 > 0.0);
+    }
+
+    #[test]
+    fn exact_and_prefix_matches_outrank_typo_matches() {
+        let results = scored_docs(
+            &[("alpha", "dat"), ("beta", "database"), ("gamma", "dxta")],
+            "dat",
+        );
+        let order: Vec<u32> = results.iter().map(|(doc_id, _)| *doc_id).collect();
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn short_words_do_not_tolerate_typos() {
+        let results = scored_docs(&[("alpha", "gist")], "go");
+        assert!(results.is_empty());
     }
 }
