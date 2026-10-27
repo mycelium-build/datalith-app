@@ -9,16 +9,18 @@ use super::actions::{
     ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
+/// Static shortcut metadata, default binding, and action constructors.
 #[derive(Clone, Copy)]
 struct ShortcutDefinition {
     id: &'static str,
     category: &'static str,
-    binding: &'static str,
+    binding: &'static str, // a string because GPUI represents it like this
     description: &'static str,
     make_binding: fn(&str) -> KeyBinding,
     make_unbind: fn(&str) -> KeyBinding,
 }
 
+/// A shortcut with its effective binding after applying user overrides.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Shortcut {
     id: &'static str,
