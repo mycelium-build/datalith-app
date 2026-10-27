@@ -50,7 +50,7 @@ Create a `.json` file with a top-level object containing the theme metadata and 
 }
 ```
 
-The example defines two independent variants. The dark variant uses defaults for its omitted colors, syntax styles, and fonts; it does not inherit the light variant's settings.
+The example defines two independent variants. The dark variant uses defaults for its omitted colors, syntax styles, and fonts.
 
 | Top-level field | Value |
 | --- | --- |
@@ -70,7 +70,7 @@ For a single variant, use the theme name as its name. For multiple variants, pre
 | `colors` | Object containing component and palette colors. There are 140 recognized entries. |
 | `highlight` | Optional object containing 7 source-editor colors, 15 diagnostic colors, and a `syntax` object with 41 optional styles. |
 | `fonts` | Optional object with `interface`, `reading`, `headings`, and `code` font-family strings. |
-| `font.family`, `mono_font.family` | Alternative interface and code font-family strings. The corresponding `fonts` value takes precedence; the theme editor keeps these fields synchronized. |
+| `font.family`, `mono_font.family` | Alternative interface and code font-family strings. The corresponding `fonts` value takes precedence. The theme editor keeps these fields synchronized. |
 | `font.size` | Accepted, but interface size is controlled by the display zoom setting. |
 | `mono_font.size` | Source-editor typography size. Rendered Markdown uses its own layout sizes. |
 | `radius`, `radius.lg`, `shadow` | Corner radii and shadow settings for library components that use them. These settings have no controls in the theme editor. |
@@ -80,7 +80,7 @@ Keys containing dots are literal JSON keys. For example, put `"primary.backgroun
 
 ## Define colors
 
-Put component colors inside `colors`. Use hexadecimal strings such as `"#2864DC"`; an eight-digit value such as `"#2864DC15"` includes an alpha channel.
+Put component colors inside `colors`. Use hexadecimal strings such as `"#2864DC"`, you can add the alpha channel by adding two digits `"#2864DC15"`.
 
 Start with the six base roles: `background`, `foreground`, `muted.background`, `border`, `primary.background`, and `secondary.background`. Add component overrides only where you want a different color.
 
@@ -151,26 +151,8 @@ If a font is unavailable, its name remains saved and rendering uses that role's 
 
 ## Compatibility and limitations
 
-The **Advanced** tab lists all 203 recognized color entries: 140 component colors and 63 highlight colors, including unset fields. Use it to find supported keys, then place component keys in `colors` and highlight keys in `highlight` (or `highlight.syntax` for token styles). Some fields can be saved without producing a visible change:
-
-- `highlight.editor.foreground`: the source editor uses `colors.foreground`.
-- Line-number, whitespace, and gutter colors: these require the corresponding features to be visible; Datalith hides line numbers.
-- Diagnostic colors: Datalith does not supply a diagnostic provider.
-- Chart, accordion, group-box, description-list, skeleton, status-bar, and tiles colors: Datalith's screens do not use these components. `group_box.title.foreground` is recognized but not applied by the component library.
-- `window.border`: applies only on Linux.
-- `sidebar.primary.*` and `sidebar.accent.*`: file-row hover and selection use `list.*` instead.
-- `tab.background`: inactive tabs use the tab-bar surface.
-- `table.active.*`, `table.even.background`, and `table.hover.background`: Datalith's tables do not use these colors.
-
-When importing a theme from another editor, use Datalith's supported key names:
-
-| Use | Instead of |
-| --- | --- |
-| `colors.link` | `colors.link.foreground` |
-| `colors.link.hover` | `colors.link.hover.foreground` |
-| `colors.link.active` | `colors.link.active.foreground` |
-| `colors.window.border` | `colors.window_border` |
+The **Advanced** tab lists all recognized color entries. Use it to find supported keys, then place component keys in `colors` and highlight keys in `highlight` (or `highlight.syntax` for token styles). Some fields can be saved without producing a visible change.
 
 Invalid values, such as a malformed color, are ignored when Datalith loads the theme, and a warning lists them. The file itself is left unchanged until you edit the theme in the editor.
 
-Unknown keys are ignored on import and omitted on export. This includes `colors.panel.background`, `colors.action_bar.background`, `colors.chart.grid`, `colors.created`, `colors.renamed`, `colors.info`, and `colors.editor.active_line_number`, as well as Zed diff/status fields under `highlight` such as `conflict`, `created`, `deleted`, `hidden`, `ignored`, `modified`, `predictive`, `renamed`, and `unreachable`, including their background and border variants.
+Unknown keys are ignored on import and omitted on export.
