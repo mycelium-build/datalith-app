@@ -141,7 +141,7 @@ impl DatalithView {
             close_button.tooltip(close_label)
         };
         Tab::new()
-            .label(name.clone())
+            .label(name)
             .prefix(icon.size_3().ml_2())
             .suffix(
                 close_button.on_click(cx.listener(move |view, _, window, cx| {

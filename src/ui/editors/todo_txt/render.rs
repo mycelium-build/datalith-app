@@ -225,6 +225,19 @@ impl TodoTxtState {
         cx.notify();
     }
 
+    fn choose_preview_option(
+        &mut self,
+        kind: PreviewSelectKind,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match kind {
+            PreviewSelectKind::Filter => self.choose_filter(index, window, cx),
+            PreviewSelectKind::Sort => self.choose_sort(index, window, cx),
+        }
+    }
+
     fn render_error_banner(&self, cx: &Context<Self>) -> Option<AnyElement> {
         if self.workspace.parse_error_count() == 0 {
             return None;
@@ -369,6 +382,22 @@ impl PreviewSelectKind {
     }
 }
 
+fn preview_menu_item(
+    label: &'static str,
+    index: usize,
+    selected_index: usize,
+    kind: PreviewSelectKind,
+    editor: Entity<TodoTxtState>,
+) -> PopupMenuItem {
+    PopupMenuItem::new(label)
+        .checked(index == selected_index)
+        .on_click(move |_, window, app| {
+            app.update_entity(&editor, |todo, cx| {
+                todo.choose_preview_option(kind, index, window, cx);
+            });
+        })
+}
+
 #[derive(Default)]
 struct PreviewPopupState {
     menu: Option<Entity<PopupMenu>>,
@@ -428,21 +457,13 @@ impl RenderOnce for PreviewSelect {
                     let menu_editor = select_editor.clone();
                     let menu = PopupMenu::build(window, cx, move |mut menu, _, _| {
                         for (index, label) in menu_labels.into_iter().enumerate() {
-                            let item_editor = menu_editor.clone();
-                            menu = menu.item(
-                                PopupMenuItem::new(label)
-                                    .checked(index == selected_index)
-                                    .on_click(move |_, window, app| {
-                                        app.update_entity(&item_editor, |todo, cx| match kind {
-                                            PreviewSelectKind::Filter => {
-                                                todo.choose_filter(index, window, cx);
-                                            }
-                                            PreviewSelectKind::Sort => {
-                                                todo.choose_sort(index, window, cx);
-                                            }
-                                        });
-                                    }),
-                            );
+                            menu = menu.item(preview_menu_item(
+                                label,
+                                index,
+                                selected_index,
+                                kind,
+                                menu_editor.clone(),
+                            ));
                         }
                         menu
                     });
@@ -453,9 +474,7 @@ impl RenderOnce for PreviewSelect {
                         .subscribe(&menu, cx, {
                             let menu_state = menu_state.clone();
                             move |_, _: &DismissEvent, window, cx| {
-                                popover_state.update(cx, |state, cx| {
-                                    state.dismiss(window, cx);
-                                });
+                                popover_state.update(cx, |state, cx| state.dismiss(window, cx));
                                 menu_state.update(cx, |state, _| state.menu = None);
                             }
                         })

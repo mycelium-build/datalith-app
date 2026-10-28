@@ -233,6 +233,17 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
+    fn emit_link_clicked(
+        handler: &Entity<FileHandler>,
+        url: String,
+        secondary: bool,
+        cx: &mut App,
+    ) {
+        handler.update(cx, move |_, cx| {
+            cx.emit(FileHandlerEvent::LinkClicked(url, secondary));
+        });
+    }
+
     fn render_inlines(
         &self,
         inlines: &[MarkdownInline],
@@ -277,12 +288,12 @@ impl MarkdownViewer {
                             .when(ctx.handler.is_some(), gpui_kit::Styled::cursor_pointer)
                             .when_some(handler_clone, |link, handler| {
                                 link.on_click(move |event: &ClickEvent, _window, cx| {
-                                    handler.update(cx, |_, cx| {
-                                        cx.emit(FileHandlerEvent::LinkClicked(
-                                            link_url.clone(),
-                                            event.modifiers().secondary(),
-                                        ));
-                                    });
+                                    Self::emit_link_clicked(
+                                        &handler,
+                                        link_url.clone(),
+                                        event.modifiers().secondary(),
+                                        cx,
+                                    );
                                 })
                             })
                             .children(self.render_inlines(content, style, ctx))
