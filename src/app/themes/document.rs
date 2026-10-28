@@ -18,6 +18,16 @@ pub struct ThemeDocument {
 }
 
 impl ThemeDocument {
+    pub(super) fn new(name: &str, mode: ThemeMode) -> Self {
+        let mut config = ThemeConfig::default();
+        config.name = name.to_owned().into();
+        config.mode = mode;
+        Self {
+            config,
+            fonts: FontSettings::default(),
+        }
+    }
+
     #[cfg(test)]
     pub fn from_config(config: ThemeConfig) -> Self {
         Self {

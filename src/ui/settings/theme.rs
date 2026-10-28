@@ -35,6 +35,7 @@ const PREFERENCES: [ThemePreference; 3] = [
 
 const CARD_WIDTH: f32 = 16.5;
 const PREVIEW_HEIGHT: f32 = 6.5;
+const CARD_HEIGHT: f32 = 11.75;
 
 const fn preference_label(preference: ThemePreference) -> &'static str {
     match preference {
@@ -292,6 +293,7 @@ impl ThemePage {
             v_flex()
                 .id(("theme-family", id))
                 .w(rems(CARD_WIDTH))
+                .h(rems(CARD_HEIGHT))
                 .p_2()
                 .gap_2()
                 .rounded_lg()
@@ -469,26 +471,21 @@ impl ThemePage {
             .into_any_element()
     }
 
-    fn render_empty_custom(cx: &Context<Self>) -> impl IntoElement {
-        v_flex()
+    fn render_create_custom() -> impl IntoElement {
+        Button::new("create-theme")
+            .outline()
             .w(rems(CARD_WIDTH))
-            .h(rems(PREVIEW_HEIGHT + 4.))
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .px_4()
-            .rounded_lg()
-            .border_1()
+            .h(rems(CARD_HEIGHT))
             .border_dashed()
-            .border_color(cx.theme().border)
-            .text_color(cx.theme().muted_foreground)
-            .child(Icon::new(IconName::Plus))
             .child(
-                div()
-                    .text_sm()
-                    .text_center()
-                    .child("Customize a built-in theme or import one to add a custom theme"),
+                v_flex()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .child(Icon::new(IconName::Plus))
+                    .child("Create a theme"),
             )
+            .on_click(|_, window, cx| create_theme(window, cx))
     }
 
     fn render_cards(
@@ -632,17 +629,15 @@ impl Render for ThemePage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let preference = settings::snapshot().theme_preference;
         let query = self.query.read(cx).value().to_lowercase();
-        let has_custom = cx
-            .global::<ThemeLibrary>()
-            .families()
-            .any(ThemeFamily::is_custom);
         let custom = self.render_cards(true, preference, &query, cx);
         let bundled = self.render_cards(false, preference, &query, cx);
-        let custom_section = if has_custom {
-            Self::render_cards_section(custom, Self::render_no_match("No custom themes match", cx))
-        } else {
-            Self::render_empty_custom(cx).into_any_element()
-        };
+        let custom_section = h_flex()
+            .w_full()
+            .flex_wrap()
+            .items_start()
+            .gap_4()
+            .child(Self::render_create_custom())
+            .children(custom);
         v_flex()
             .id("theme-settings-page")
             .size_full()
@@ -709,6 +704,15 @@ fn customize_bundled(id: u64, window: &mut Window, cx: &mut App) {
 fn open_editor(id: u64, window: &mut Window, cx: &mut App) {
     if let Some(view) = AppState::view(cx) {
         view.update(cx, |view, cx| view.open_theme_editor_for(id, window, cx));
+    }
+}
+
+fn create_theme(window: &mut Window, cx: &mut App) {
+    match cx.global_mut::<ThemeLibrary>().create_family() {
+        Ok(id) => open_editor(id, window, cx),
+        Err(error) => {
+            window.push_notification(notifications::theme_create_failed(&error), cx);
+        }
     }
 }
 

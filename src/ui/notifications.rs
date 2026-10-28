@@ -182,6 +182,10 @@ pub fn theme_editor_open_failed(error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to open theme editor: {error}")).autohide(false)
 }
 
+pub fn theme_create_failed(error: &anyhow::Error) -> Notification {
+    Notification::error(format!("Failed to create theme: {error}")).autohide(false)
+}
+
 pub fn theme_load_failed(theme: &str, error: &anyhow::Error) -> Notification {
     Notification::error(format!("Failed to load the {theme} theme: {error}")).autohide(false)
 }

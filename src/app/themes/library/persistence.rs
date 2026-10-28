@@ -1,6 +1,31 @@
 use super::*;
 
 impl ThemeLibrary {
+    /// Create a custom theme with light and dark variants using mode-aware fallback colors.
+    pub fn create_family(&mut self) -> Result<u64> {
+        let base = "Untitled theme";
+        let mut name = base.to_owned();
+        let mut suffix = 2u64;
+        while self
+            .families
+            .iter()
+            .any(|family| family.name.eq_ignore_ascii_case(&name))
+        {
+            name = format!("{base} {suffix}");
+            suffix = suffix.saturating_add(1);
+        }
+        let light_name = format!("{name} Light");
+        let dark_name = format!("{name} Dark");
+        self.store_import(StoredThemeSet {
+            name: name.clone().into(),
+            themes: vec![
+                ThemeDocument::new(&light_name, ThemeMode::Light),
+                ThemeDocument::new(&dark_name, ThemeMode::Dark),
+            ],
+            ..StoredThemeSet::default()
+        })
+    }
+
     pub fn export(&self, id: u64, to: &Path) -> Result<()> {
         let family = self.family(id).context("Theme is unavailable")?;
         ensure!(family.is_custom(), "Only custom themes can be exported");

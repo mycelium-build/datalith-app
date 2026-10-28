@@ -168,6 +168,35 @@ fn copy_rename_and_reload_preserve_every_variant_fonts_colors_highlight_and_ids(
 }
 
 #[test]
+fn create_family_starts_from_fallbacks_and_uses_an_available_name() {
+    let sandbox = Sandbox::new();
+    let mut library = sandbox.library();
+
+    let first = library.create_family().unwrap();
+    let second = library.create_family().unwrap();
+    let first = library.family(first).unwrap();
+    let second = library.family(second).unwrap();
+
+    assert_eq!(first.name(), "Untitled theme");
+    assert_eq!(first.variants().len(), 2);
+    assert_eq!(first.variants()[0].name(), "Untitled theme Light");
+    assert_eq!(first.variants()[0].mode(), ThemeMode::Light);
+    assert_eq!(first.variants()[1].name(), "Untitled theme Dark");
+    assert_eq!(first.variants()[1].mode(), ThemeMode::Dark);
+    assert!(first.variants().iter().all(|variant| {
+        variant
+            .document()
+            .colors()
+            .unwrap()
+            .values()
+            .all(Option::is_none)
+    }));
+    assert_eq!(second.name(), "Untitled theme 2");
+    assert_eq!(second.variants()[0].name(), "Untitled theme 2 Light");
+    assert_eq!(second.variants()[1].name(), "Untitled theme 2 Dark");
+}
+
+#[test]
 fn add_from_non_first_clones_and_name_validation_does_not_mutate_on_failure() {
     let sandbox = Sandbox::new();
     let mut library = sandbox.library();
