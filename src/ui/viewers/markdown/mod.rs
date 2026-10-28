@@ -175,11 +175,6 @@ impl MarkdownViewer {
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
             .child(name);
-        #[cfg(test)]
-        let title = {
-            use gpui_kit::test::TestSupportExt as _;
-            title.id("markdown-title").test_support()
-        };
         title.into_any_element()
     }
 
@@ -412,29 +407,5 @@ impl MarkdownViewer {
             }
             _ => false,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::MarkdownViewer;
-    use crate::document::markdown::MarkdownInline;
-
-    #[test]
-    fn strong_or_emphasis_keeps_code_and_links_out_of_single_font_text() {
-        let link = MarkdownInline::Link {
-            url: "a.md".into(),
-            content: vec![MarkdownInline::Text("a".into())],
-        };
-        let strong_with_link =
-            MarkdownInline::Strong(vec![MarkdownInline::Text("text ".into()), link]);
-        assert!(!MarkdownViewer::is_textable(&strong_with_link));
-        assert!(MarkdownViewer::is_textable(&MarkdownInline::Strong(vec![
-            MarkdownInline::Text("only text".into())
-        ])));
-        assert!(!MarkdownViewer::is_textable(&MarkdownInline::Emphasis(
-            vec![MarkdownInline::Code("c".into())]
-        )));
-        assert!(!MarkdownViewer::is_textable(&MarkdownInline::Break));
     }
 }

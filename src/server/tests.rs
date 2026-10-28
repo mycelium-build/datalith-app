@@ -392,7 +392,7 @@ fn manager_binds_ephemeral_port_and_stops() {
 }
 
 #[test]
-fn manager_reports_bind_failure_without_losing_state() {
+fn manager_retains_bind_failure_for_status() {
     let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = held.local_addr().unwrap().port();
 

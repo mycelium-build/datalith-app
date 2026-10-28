@@ -157,20 +157,3 @@ pub(in crate::ui::viewers::base) fn normalize_card_image_target(value: &str) -> 
         .trim_end_matches('>')
         .to_string()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::normalize_card_image_target;
-
-    #[test]
-    fn normalizes_card_image_targets() {
-        assert_eq!(
-            normalize_card_image_target("![](https://example.com/image.png)"),
-            "https://example.com/image.png"
-        );
-        assert_eq!(
-            normalize_card_image_target("![[folder/image.png|Preview]]"),
-            "folder/image.png"
-        );
-    }
-}

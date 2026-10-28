@@ -478,15 +478,3 @@ impl Render for GraphState {
         }
     }
 }
-
-#[cfg(test)]
-pub(in crate::ui) fn test_snapshot(
-    base_source: &str,
-    rows: Vec<(PathBuf, Vec<String>, Vec<bool>)>,
-) -> GraphSnapshot {
-    let definition =
-        crate::document::base::BaseDefinition::parse(base_source).expect("valid base source");
-    let view = definition.views.first().expect("at least one view");
-    let config = view.as_graph().expect("graph view").clone();
-    snapshot::build(&config, std::path::Path::new(""), rows, Vec::new())
-}

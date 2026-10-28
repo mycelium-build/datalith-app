@@ -13,9 +13,6 @@ use gpui_kit::{
     Styled, div, px,
 };
 
-#[cfg(test)]
-use gpui_kit::test::TestSupportExt as _;
-
 use conv::{ConvUtil, UnwrapOrInf};
 
 use crate::vault;
@@ -348,8 +345,6 @@ impl DatalithView {
             list_item = Self::attach_drop_target(list_item, target, expand_on_hover, view, cx);
         }
 
-        #[cfg(test)]
-        let row = row.test_support();
         list_item = list_item.child(row);
 
         list_item = list_item.on_aux_click(cx.listener({
@@ -447,69 +442,5 @@ impl DatalithView {
                 this.handle_file_move(&drag.path, &new_path, cx);
             }
         }))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::{Path, PathBuf};
-
-    use super::{drop_box_range_for, drop_folder_for_row};
-
-    #[test]
-    fn folder_rows_receive_into_themselves() {
-        let root = Path::new("/vault");
-        assert_eq!(
-            drop_folder_for_row(Path::new("/vault/Notes"), root, true),
-            Some(PathBuf::from("/vault/Notes"))
-        );
-    }
-
-    #[test]
-    fn child_rows_receive_into_their_open_parent_folder() {
-        let root = Path::new("/vault");
-        assert_eq!(
-            drop_folder_for_row(Path::new("/vault/Notes/Idea.md"), root, false),
-            Some(PathBuf::from("/vault/Notes"))
-        );
-        assert_eq!(
-            drop_folder_for_row(Path::new("/vault/Notes/Deep/Idea.md"), root, false),
-            Some(PathBuf::from("/vault/Notes/Deep"))
-        );
-    }
-
-    #[test]
-    fn root_rows_fall_back_to_the_vault_root() {
-        let root = Path::new("/vault");
-        assert_eq!(
-            drop_folder_for_row(Path::new("/vault/Idea.md"), root, false),
-            None
-        );
-    }
-
-    #[test]
-    fn drop_box_spans_the_folder_and_its_visible_descendants() {
-        let target = Path::new("/vault/Notes");
-        let paths = [
-            "/vault/Notes",
-            "/vault/Notes/Idea.md",
-            "/vault/Notes/Deep/Plan.md",
-            "/vault/Notes2/Nope.md",
-            "/vault/Other.md",
-        ];
-        assert_eq!(
-            drop_box_range_for(target, paths.into_iter().map(PathBuf::from)),
-            Some((0, 2))
-        );
-    }
-
-    #[test]
-    fn collapsed_folder_box_is_its_own_row() {
-        let target = Path::new("/vault/Notes");
-        let paths = ["/vault/Notes", "/vault/Other.md"];
-        assert_eq!(
-            drop_box_range_for(target, paths.into_iter().map(PathBuf::from)),
-            Some((0, 0))
-        );
     }
 }

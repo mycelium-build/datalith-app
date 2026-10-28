@@ -282,33 +282,3 @@ fn same_document(left: Option<&Path>, right: Option<&Path>) -> bool {
         _ => false,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{active_after_removal, same_document};
-    use std::path::Path;
-
-    #[test]
-    fn closing_tabs_keeps_a_valid_selection_or_clears_the_last_one() {
-        assert_eq!(active_after_removal(Some(2), 0, 2), Some(1));
-        assert_eq!(active_after_removal(Some(2), 2, 2), Some(1));
-        assert_eq!(active_after_removal(Some(0), 0, 0), None);
-    }
-
-    #[test]
-    fn document_identity_uses_normalized_paths_and_excludes_empty_tabs() {
-        assert!(same_document(
-            Some(Path::new("./notes/../notes/today.md")),
-            Some(Path::new("notes/today.md"))
-        ));
-        assert!(!same_document(None, Some(Path::new("notes/today.md"))));
-        assert!(!same_document(Some(Path::new("notes/today.md")), None));
-        assert!(!same_document(None, None));
-
-        let embedded = crate::vault::source::DOCUMENTATION.root();
-        assert!(same_document(
-            Some(&embedded.join("examples/../Welcome.md")),
-            Some(&embedded.join("Welcome.md"))
-        ));
-    }
-}

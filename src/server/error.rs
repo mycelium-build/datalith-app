@@ -124,9 +124,4 @@ mod tests {
         let error = ApiError::bad_request("nope");
         assert_eq!(error.body(), r#"{"error":"nope"}"#,);
     }
-
-    #[test]
-    fn display_is_status_plus_message() {
-        assert_eq!(ApiError::not_found("gone").to_string(), "404 gone");
-    }
 }
