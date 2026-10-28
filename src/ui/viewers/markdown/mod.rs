@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use percent_encoding::percent_decode_str;
 
-use crate::app::fonts;
+use crate::app::fonts::{self, ResolvedFonts};
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
@@ -98,14 +98,8 @@ impl MarkdownViewer {
     pub fn render(&self, handler: Entity<FileHandler>, cx: &App) -> AnyElement {
         let content = self.input.read(cx).value().to_string();
         let appearance = cx.theme();
-        let [_, reading, headings, code] = fonts::families(cx);
-        self.render_document(
-            &content,
-            Some(handler),
-            appearance,
-            &[reading, headings, code],
-            cx,
-        )
+        let fonts = fonts::families(cx);
+        self.render_document(&content, Some(handler), appearance, &fonts, cx)
     }
 
     /// The same Markdown document renderer used by the workspace, with a
@@ -115,7 +109,7 @@ impl MarkdownViewer {
         content: &str,
         handler: Option<Entity<FileHandler>>,
         appearance: &Theme,
-        fonts: &[SharedString; 3],
+        fonts: &ResolvedFonts,
         cx: &App,
     ) -> AnyElement {
         if content.is_empty() {
@@ -132,7 +126,7 @@ impl MarkdownViewer {
         let document = parse_markdown(content);
         let mut elements = Vec::new();
         let mut element_id = 0usize;
-        elements.push(self.render_title(&fonts[1]));
+        elements.push(self.render_title(fonts.headings()));
         if let (Some(frontmatter), Some(handler)) = (&document.frontmatter, &handler) {
             elements.push(render_frontmatter(frontmatter, BASE_FONT_SIZE, handler, cx));
         }
@@ -140,8 +134,8 @@ impl MarkdownViewer {
             element_id: &mut element_id,
             handler,
             appearance,
-            code_font: &fonts[2],
-            headings_font: &fonts[1],
+            code_font: fonts.code(),
+            headings_font: fonts.headings(),
         };
         elements.extend(self.render_blocks(&document.blocks, 0, &mut ctx));
 
@@ -155,7 +149,7 @@ impl MarkdownViewer {
             .whitespace_normal()
             .bg(appearance.background)
             .text_color(appearance.foreground)
-            .font_family(fonts[0].clone())
+            .font_family(fonts.reading().clone())
             .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements))
             .into_any_element()

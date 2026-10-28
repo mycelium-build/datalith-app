@@ -1,4 +1,4 @@
-use super::{ThemeDocument, storage::StoredThemeSet};
+use super::{ThemeDocument, model::ThemeModes, storage::StoredThemeSet};
 
 // From https://github.com/longbridge/gpui-component/tree/main/themes
 const THEME_SETS: &[&str] = &[
@@ -30,7 +30,7 @@ pub(super) fn sets() -> impl Iterator<Item = StoredThemeSet> {
     clippy::expect_used,
     reason = "bundled JSON and Light/Dark theme variants are invariants covered by domain tests"
 )]
-pub(super) fn defaults() -> [ThemeDocument; 2] {
+pub(super) fn defaults() -> ThemeModes<ThemeDocument> {
     let set: StoredThemeSet =
         serde_json::from_str(include_str!("../../../assets/themes/datalith.json"))
             .expect("Bundled Datalith theme must parse");
@@ -46,5 +46,5 @@ pub(super) fn defaults() -> [ThemeDocument; 2] {
         .find(|v| v.name() == "Datalith Dark")
         .expect("Datalith Dark must exist")
         .clone();
-    [light, dark]
+    ThemeModes::new(light, dark)
 }

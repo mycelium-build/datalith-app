@@ -137,14 +137,7 @@ pub enum FontRole {
 
 impl FontRole {
     pub const ALL: [Self; 4] = [Self::Interface, Self::Reading, Self::Headings, Self::Code];
-    pub const fn index(self) -> usize {
-        match self {
-            Self::Interface => 0,
-            Self::Reading => 1,
-            Self::Headings => 2,
-            Self::Code => 3,
-        }
-    }
+
     pub const fn label(self) -> &'static str {
         match self {
             Self::Interface => "Interface",
@@ -156,20 +149,7 @@ impl FontRole {
 }
 impl ThemeKind {
     pub const ALL: [Self; 2] = [Self::Light, Self::Dark];
-    pub const fn select<T>(self, values: &[T; 2]) -> &T {
-        let [light, dark] = values;
-        match self {
-            Self::Light => light,
-            Self::Dark => dark,
-        }
-    }
-    pub const fn select_mut<T>(self, values: &mut [T; 2]) -> &mut T {
-        let [light, dark] = values;
-        match self {
-            Self::Light => light,
-            Self::Dark => dark,
-        }
-    }
+
     pub const fn mode(self) -> gpui_kit::component::ThemeMode {
         match self {
             Self::Light => gpui_kit::component::ThemeMode::Light,
@@ -202,6 +182,7 @@ impl FontSettings {
             .into_iter()
             .all(|role| self.family(role).is_none())
     }
+
     pub fn family(&self, role: FontRole) -> Option<&str> {
         match role {
             FontRole::Interface => self.interface.as_deref(),

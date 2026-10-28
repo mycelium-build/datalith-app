@@ -40,8 +40,7 @@ impl DatalithView {
         self.pending_notifications.push(
             Notification::new()
                 .id1::<FileDeletion>(("file-deletion", notification_id))
-                .title(format!("“{name}” deleted"))
-                .message("You can restore it with Undo")
+                .title(format!("\"{name}\" deleted"))
                 .action(move |_, _, _| {
                     Button::new("undo-file-delete")
                         .small()

@@ -22,7 +22,7 @@ use gpui_kit::{
 use crate::app::{
     AppState,
     fonts::FontCatalog,
-    settings::{self, FontRole, ThemeKind, ThemePreference},
+    settings::{self, ThemeKind, ThemePreference},
     themes::{self, DeletedTheme, ResolvedAppearance, ThemeFamily, ThemeLibrary, ThemeVariant},
 };
 use crate::ui::{icons::DatalithIcon, notifications, themes as ui_themes};
@@ -254,7 +254,7 @@ impl ThemePage {
                     .bg(theme.background)
                     .text_color(theme.foreground)
                     .text_xs()
-                    .font_family(appearance.font(FontRole::Headings).clone())
+                    .font_family(appearance.fonts().headings().clone())
                     .child("Aa")
             }))
             .child(name)
@@ -588,14 +588,14 @@ fn miniature(appearance: &ResolvedAppearance) -> impl IntoElement {
                                 .truncate()
                                 .text_sm()
                                 .font_weight(FontWeight::MEDIUM)
-                                .font_family(appearance.font(FontRole::Headings).clone())
+                                .font_family(appearance.fonts().headings().clone())
                                 .child("Field notes"),
                         )
                         .child(
                             div()
                                 .truncate()
                                 .text_color(theme.muted_foreground)
-                                .font_family(appearance.font(FontRole::Reading).clone())
+                                .font_family(appearance.fonts().reading().clone())
                                 .child("Follow the thread…"),
                         )
                         .child(
@@ -604,7 +604,7 @@ fn miniature(appearance: &ResolvedAppearance) -> impl IntoElement {
                                     .px_1()
                                     .rounded_sm()
                                     .bg(theme.muted)
-                                    .font_family(appearance.font(FontRole::Code).clone())
+                                    .font_family(appearance.fonts().code().clone())
                                     .child("build()"),
                             ),
                         )
@@ -617,7 +617,7 @@ fn miniature(appearance: &ResolvedAppearance) -> impl IntoElement {
                                         .rounded_sm()
                                         .bg(theme.primary)
                                         .text_color(theme.primary_foreground)
-                                        .font_family(appearance.font(FontRole::Interface).clone())
+                                        .font_family(appearance.fonts().interface().clone())
                                         .child("Open"),
                                 )
                                 .child(div().text_color(theme.link).underline().child("Atlas"))
@@ -765,7 +765,6 @@ pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx:
         Notification::new()
             .id1::<ThemeDeletion>(("theme-deletion", notification_id))
             .title(message)
-            .message("You can restore it with Undo")
             .action(move |_, _, _| {
                 let deleted = deleted.clone();
                 Button::new("undo-theme-delete")

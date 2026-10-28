@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
-    ThemeDocument, ThemeFamily, ThemeLibrary, ThemeSource, ThemeVariant, free_variant_name,
-    next_id, valid_variant_name,
+    ThemeDocument, ThemeFamily, ThemeLibrary, ThemeSource, ThemeVariant,
+    model::{free_variant_name, next_id, valid_variant_name},
 };
 
 /// Loading keeps a usable theme even when some of its values are invalid.

@@ -1,6 +1,15 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
-use super::*;
+use gpui_kit::App;
+use gpui_kit::component::{ThemeConfig, ThemeMode};
+
+use super::{
+    SaveStatus, ThemeDocument, ThemeFamily, ThemeLibrary, ThemeSource, ThemeVariant, embedded,
+    library::{DEFAULT_DARK, DEFAULT_LIGHT},
+    model::ThemeModes,
+    storage::{self, LoadFailure, StoredThemeSet},
+};
+use crate::app::settings::{self, FontRole, ThemeKind};
 
 struct Sandbox {
     root: PathBuf,
@@ -55,7 +64,7 @@ fn current_document_resolves_selection_and_falls_back_by_mode() {
         "Catppuccin Latte"
     );
 
-    library.slots = ["Missing light".into(), "Missing dark".into()];
+    library.slots = ThemeModes::new("Missing light".into(), "Missing dark".into());
     for kind in [ThemeKind::Light, ThemeKind::Dark] {
         let document = library.current_document(kind);
         assert_eq!(document.mode(), kind.mode());

@@ -18,10 +18,7 @@ use gpui_kit::{
 
 use super::{RenameTarget, ThemeEditor, render::variant_label};
 use crate::{
-    app::{
-        settings::FontRole,
-        themes::{ResolvedAppearance, ThemeFamily, ThemeVariant},
-    },
+    app::themes::{ResolvedAppearance, ThemeFamily, ThemeVariant},
     ui::icons::DatalithIcon,
 };
 
@@ -132,7 +129,7 @@ fn miniature_note(appearance: &ResolvedAppearance) -> impl IntoElement {
                 .text_sm()
                 .line_height(relative(1.2))
                 .truncate()
-                .font_family(appearance.font(FontRole::Headings).clone())
+                .font_family(appearance.fonts().headings().clone())
                 .font_weight(FontWeight::SEMIBOLD)
                 .child("Heading"),
         )
@@ -141,7 +138,7 @@ fn miniature_note(appearance: &ResolvedAppearance) -> impl IntoElement {
                 .text_xs()
                 .line_height(relative(1.2))
                 .truncate()
-                .font_family(appearance.font(FontRole::Reading).clone())
+                .font_family(appearance.fonts().reading().clone())
                 .child("Reading text flows"),
         )
         .child(
@@ -152,7 +149,7 @@ fn miniature_note(appearance: &ResolvedAppearance) -> impl IntoElement {
                     .bg(theme.muted)
                     .text_xs()
                     .line_height(relative(1.3))
-                    .font_family(appearance.font(FontRole::Code).clone())
+                    .font_family(appearance.fonts().code().clone())
                     .child("build()"),
             ),
         )

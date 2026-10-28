@@ -17,7 +17,7 @@ use gpui_kit::{
     ParentElement, Render, Styled, Window, div,
 };
 
-use crate::app::{settings::FontRole, themes::ResolvedAppearance};
+use crate::app::themes::ResolvedAppearance;
 use crate::ui::{
     editors::todo_txt::{TodoTxtEditor, TodoTxtState},
     viewers::{base::BaseViewState, markdown::MarkdownViewer},
@@ -96,11 +96,7 @@ impl Render for ThemePreview {
                     &self.note.read(cx).value(),
                     None,
                     appearance.theme(),
-                    &[
-                        appearance.font(FontRole::Reading).clone(),
-                        appearance.font(FontRole::Headings).clone(),
-                        appearance.font(FontRole::Code).clone(),
-                    ],
+                    appearance.fonts(),
                     cx,
                 )
             }
@@ -156,7 +152,7 @@ impl Render for ThemePreview {
                     .overflow_hidden()
                     .bg(appearance.theme().background)
                     .text_color(appearance.theme().foreground)
-                    .font_family(appearance.font(FontRole::Interface).clone())
+                    .font_family(appearance.fonts().interface().clone())
                     .child(themed(theme.clone(), body)),
             )
             .into_any_element()

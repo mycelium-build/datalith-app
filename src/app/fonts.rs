@@ -13,6 +13,32 @@ use super::themes::{ThemeDocument, ThemeLibrary};
 
 pub const PIXELOID_FONT: &str = "Pixeloid Sans";
 
+#[derive(Clone)]
+pub struct ResolvedFonts {
+    interface: SharedString,
+    reading: SharedString,
+    headings: SharedString,
+    code: SharedString,
+}
+
+impl ResolvedFonts {
+    pub const fn interface(&self) -> &SharedString {
+        &self.interface
+    }
+
+    pub const fn reading(&self) -> &SharedString {
+        &self.reading
+    }
+
+    pub const fn headings(&self) -> &SharedString {
+        &self.headings
+    }
+
+    pub const fn code(&self) -> &SharedString {
+        &self.code
+    }
+}
+
 /// Enumerated once after bundled fonts load. Variant fonts are the sole font choices.
 pub struct FontCatalog {
     families: Vec<SharedString>,
@@ -53,7 +79,7 @@ impl FontCatalog {
     }
 
     /// Stored unavailable choices remain in the document; only rendering falls back.
-    pub fn resolve_roles(&self, document: &ThemeDocument) -> [SharedString; 4] {
+    pub fn resolve_roles(&self, document: &ThemeDocument) -> ResolvedFonts {
         let interface = self
             .installed(document.font(FontRole::Interface))
             .unwrap_or_else(|| self.default_interface.clone());
@@ -67,26 +93,31 @@ impl FontCatalog {
         let code = self
             .installed(document.font(FontRole::Code))
             .unwrap_or_else(|| self.default_code.clone());
-        [interface, reading, headings, code]
+        ResolvedFonts {
+            interface,
+            reading,
+            headings,
+            code,
+        }
     }
 }
 
 /// Reapply typography after a theme change. Resolve defaults from the selected
 /// theme rather than its previously overridden runtime values.
 pub fn apply(cx: &mut App) {
-    let [interface, _, _, code] = families(cx);
+    let fonts = families(cx);
     let theme = Theme::global_mut(cx);
     // Keep the independent interface scale stable across theme selection.
     theme.font_size = gpui_kit::px(
         crate::ui::BASE_FONT_SIZE * settings::snapshot().font_scale.approx().unwrap_or(1.0),
     );
-    theme.font_family = interface;
-    theme.mono_font_family = code;
+    theme.font_family = fonts.interface().clone();
+    theme.mono_font_family = fonts.code().clone();
     Theme::sync_base(cx);
 }
 
 /// Resolve the active slot's interface, reading, headings, and code fonts once.
-pub fn families(cx: &App) -> [SharedString; 4] {
+pub fn families(cx: &App) -> ResolvedFonts {
     let library = cx.global::<ThemeLibrary>();
     let kind = ThemeKind::from(cx.theme().mode);
     let document = library.current_document(kind);
@@ -124,10 +155,10 @@ mod tests {
         document.set_font(FontRole::Headings, Some("Missing font".into()));
         document.set_font(FontRole::Code, Some("Code".into()));
         let resolved = catalog.resolve_roles(&document);
-        assert_eq!(resolved[FontRole::Interface.index()].as_str(), "Interface");
-        assert_eq!(resolved[FontRole::Reading.index()].as_str(), "Interface");
-        assert_eq!(resolved[FontRole::Headings.index()].as_str(), PIXELOID_FONT);
-        assert_eq!(resolved[FontRole::Code.index()].as_str(), "Code");
+        assert_eq!(resolved.interface().as_str(), "Interface");
+        assert_eq!(resolved.reading().as_str(), "Interface");
+        assert_eq!(resolved.headings().as_str(), PIXELOID_FONT);
+        assert_eq!(resolved.code().as_str(), "Code");
         assert_eq!(document.font(FontRole::Reading), Some("Missing font"));
     }
 }

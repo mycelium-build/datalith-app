@@ -65,6 +65,27 @@ struct ColorControls {
     _subscriptions: Vec<Subscription>,
 }
 
+type FontControl = Entity<Choices<Option<SharedString>>>;
+
+struct FontControls {
+    interface: FontControl,
+    reading: FontControl,
+    headings: FontControl,
+    code: FontControl,
+}
+
+impl FontControls {
+    fn iter(&self) -> impl Iterator<Item = (FontRole, &FontControl)> {
+        [
+            (FontRole::Interface, &self.interface),
+            (FontRole::Reading, &self.reading),
+            (FontRole::Headings, &self.headings),
+            (FontRole::Code, &self.code),
+        ]
+        .into_iter()
+    }
+}
+
 fn color_hex(color: Hsla) -> String {
     let rgba = Rgba::from(color);
     let channel = |value: f32| {
@@ -87,7 +108,7 @@ fn color_hex(color: Hsla) -> String {
 }
 
 struct VariantControls {
-    fonts: [Entity<Choices<Option<SharedString>>>; 4],
+    fonts: FontControls,
     colors: BTreeMap<String, ColorRow>,
     _subscriptions: Vec<Subscription>,
 }
@@ -440,10 +461,16 @@ impl ThemeEditor {
         colors.extend(themes::highlight_tokens(
             &document.config().highlight.clone().unwrap_or_default(),
         ));
-        let fonts = FontRole::ALL.map(|role| {
+        let mut font_control = |role| {
             let value = document.font(role).map(SharedString::from);
             make_choices(font_choices(document, role, cx), &value, window, cx)
-        });
+        };
+        let fonts = FontControls {
+            interface: font_control(FontRole::Interface),
+            reading: font_control(FontRole::Reading),
+            headings: font_control(FontRole::Headings),
+            code: font_control(FontRole::Code),
+        };
         let mut rows = BTreeMap::new();
         for (token, valid) in colors {
             let display = valid
@@ -464,7 +491,7 @@ impl ThemeEditor {
             );
         }
         let mut subscriptions = Vec::new();
-        for (role, state) in FontRole::ALL.into_iter().zip(&fonts) {
+        for (role, state) in fonts.iter() {
             subscriptions.push(cx.subscribe_in(
                 state,
                 window,
@@ -721,7 +748,7 @@ impl ThemeEditor {
         else {
             return;
         };
-        for (role, state) in FontRole::ALL.into_iter().zip(&self.controls.fonts) {
+        for (role, state) in self.controls.fonts.iter() {
             state.update(cx, |state, cx| {
                 state.set_items(
                     SearchableVec::new(font_choices(&document, role, cx)),
@@ -971,11 +998,13 @@ fn font_choices(
     let catalog = cx.global::<FontCatalog>();
     let mut default = document.clone();
     default.set_font(role, None);
-    let fallback = catalog
-        .resolve_roles(&default)
-        .into_iter()
-        .nth(role.index())
-        .unwrap_or_default();
+    let resolved = catalog.resolve_roles(&default);
+    let fallback = match role {
+        FontRole::Interface => resolved.interface(),
+        FontRole::Reading => resolved.reading(),
+        FontRole::Headings => resolved.headings(),
+        FontRole::Code => resolved.code(),
+    };
     let mut choices = vec![Choice::new(None, format!("Default ({fallback})"))];
     choices.extend(
         catalog

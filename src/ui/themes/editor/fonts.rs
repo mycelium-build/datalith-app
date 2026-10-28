@@ -79,57 +79,58 @@ impl ThemeEditor {
             .w_full()
             .p_4()
             .gap_6()
-            .children(
-                FontRole::ALL
-                    .into_iter()
-                    .zip(&self.controls.fonts)
-                    .map(|(role, state)| {
-                        let unavailable = document
-                            .and_then(|document| document.font(role))
-                            .filter(|name| !catalog.contains(name));
-                        v_flex()
+            .children(self.controls.fonts.iter().map(|(role, state)| {
+                let unavailable = document
+                    .and_then(|document| document.font(role))
+                    .filter(|name| !catalog.contains(name));
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(role.label()),
+                    )
+                    .children(self.preview.as_ref().map(|appearance| {
+                        let theme = appearance.theme();
+                        let font = match role {
+                            FontRole::Interface => appearance.fonts().interface(),
+                            FontRole::Reading => appearance.fonts().reading(),
+                            FontRole::Headings => appearance.fonts().headings(),
+                            FontRole::Code => appearance.fonts().code(),
+                        };
+                        div()
+                            .p_4()
+                            .rounded(cx.theme().radius_lg)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .bg(theme.background)
+                            .text_color(theme.foreground)
+                            .child(specimen(role, theme, font.clone()))
+                    }))
+                    .child(
+                        Select::new(state)
+                            .small()
                             .w_full()
+                            .search_placeholder("Search fonts")
+                            .accessibility_label(role.label()),
+                    )
+                    .children(unavailable.map(|font| {
+                        h_flex()
                             .gap_2()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
                             .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(role.label()),
-                            )
-                            .children(self.preview.as_ref().map(|appearance| {
-                                let theme = appearance.theme();
-                                div()
-                                    .p_4()
-                                    .rounded(cx.theme().radius_lg)
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .bg(theme.background)
-                                    .text_color(theme.foreground)
-                                    .child(specimen(role, theme, appearance.font(role).clone()))
-                            }))
-                            .child(
-                                Select::new(state)
+                                Icon::new(IconName::TriangleAlert)
                                     .small()
-                                    .w_full()
-                                    .search_placeholder("Search fonts")
-                                    .accessibility_label(role.label()),
+                                    .text_color(cx.theme().warning),
                             )
-                            .children(unavailable.map(|font| {
-                                h_flex()
-                                    .gap_2()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(
-                                        Icon::new(IconName::TriangleAlert)
-                                            .small()
-                                            .text_color(cx.theme().warning),
-                                    )
-                                    .child(format!(
-                                        "{font} is unavailable; samples use the fallback font."
-                                    ))
-                            }))
-                    }),
-            )
+                            .child(format!(
+                                "{font} is unavailable; samples use the fallback font."
+                            ))
+                    }))
+            }))
             .child(
                 h_flex().child(
                     Button::new(("apply-family-fonts", id))
