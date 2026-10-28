@@ -5,12 +5,17 @@ use gpui_kit::{AppContext, Context, Window};
 use percent_encoding::percent_decode_str;
 
 use super::{DocumentTab, Tab};
+use crate::app::system;
 use crate::app::workspace::{TabId, WorkspaceTab};
 use crate::document::handler::{FileHandler, FileHandlerEvent, ViewMode};
+use crate::document::markdown::is_external_url;
 use crate::document::registry::ViewerDependencies;
 use crate::ui::DatalithView;
 use crate::ui::notifications;
+use crate::vault::CatalogState;
+use crate::vault::VaultCatalog;
 use crate::vault::file_ops;
+use crate::vault::path::{path_to_vault_relative, resolve_relative_link};
 
 enum OpenMode {
     Replace,
@@ -40,6 +45,73 @@ pub enum NavigationAction {
 }
 
 impl DatalithView {
+    fn open_link_target(
+        &mut self,
+        url: &str,
+        new_tab: bool,
+        source: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = link_target(url);
+        let target = target.as_str();
+        // A fragment-only link points inside the current document.
+        if target.is_empty() {
+            return;
+        }
+        let explicitly_relative = target.starts_with("./") || target.starts_with("../");
+        let root = self.root_path.as_deref();
+        let relative = root.and_then(|root| resolve_relative_link(source, target, root));
+        // ./ / ../ that exists on disk -> open.
+        if explicitly_relative
+            && let Some(resolved) = relative.as_ref().filter(|path| self.is_openable(path))
+        {
+            self.open_file(resolved.clone(), new_tab, window, cx);
+            return;
+        }
+        // ./ / ../ extensionless -> catalog, scoped by the relative folder.
+        if explicitly_relative
+            && let Some(relative_target) = root
+                .zip(relative.as_deref())
+                .and_then(|(root, path)| path_to_vault_relative(path, root).ok().flatten())
+            && let Some(ref catalog) = self.vault_catalog
+            && let Some(resolved) = catalog.resolve(&relative_target)
+        {
+            self.open_file(resolved, new_tab, window, cx);
+            return;
+        }
+        // Vault-wide catalog resolution.
+        if let Some(ref catalog) = self.vault_catalog
+            && let Some(resolved) = catalog.resolve(target)
+        {
+            self.open_file(resolved, new_tab, window, cx);
+            return;
+        }
+        // Plain relative existing file (catalog miss).
+        if let Some(resolved) = relative.filter(|path| self.is_openable(path)) {
+            self.open_file(resolved, new_tab, window, cx);
+            return;
+        }
+        // External URL -> system opener, notify on command failure.
+        if is_external_url(target) {
+            if let Err(error) = system::open_url(url) {
+                window.push_notification(notifications::open_url_failed(url, &error), cx);
+            }
+        } else {
+            let notification = match self.vault_catalog.as_ref().map(VaultCatalog::state) {
+                Some(CatalogState::Ready) => notifications::link_target_not_found(url),
+                Some(CatalogState::Failed) => notifications::link_target_catalog_failed(),
+                Some(CatalogState::Syncing) => notifications::link_target_while_loading(),
+                None => notifications::link_target_no_vault(),
+            };
+            window.push_notification(notification, cx);
+        }
+    }
+
+    fn is_openable(&self, path: &Path) -> bool {
+        crate::vault::source::is_file(path) && self.registry.is_supported(path)
+    }
+
     pub(crate) fn open_file(
         &mut self,
         path: PathBuf,
@@ -163,31 +235,24 @@ impl DatalithView {
             handler.read(cx).input().cloned().map(|state| {
                 let path = path.clone();
                 cx.subscribe_in(&state, window, move |_view, state, event, window, cx| {
-                    if matches!(event, InputEvent::Change) {
-                        let content = state.read(cx).value();
-                        if let Err(error) = file_ops::update(&path, &content) {
-                            window.push_notification(
-                                notifications::save_file_failed(&path, &error),
-                                cx,
-                            );
-                        }
+                    if !matches!(event, InputEvent::Change) {
+                        return;
                     }
+                    let content = state.read(cx).value();
+                    let Err(error) = file_ops::update(&path, &content) else {
+                        return;
+                    };
+                    window.push_notification(notifications::save_file_failed(&path, &error), cx);
                 })
             })
         };
+        let link_source = path.clone();
         let event_subscription = cx.subscribe_in(
             &handler,
             window,
             move |view, _handler, event: &FileHandlerEvent, window, cx| match event {
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
-                    let decoded_url = percent_decode_str(url).decode_utf8_lossy();
-                    if let Some(ref catalog) = view.vault_catalog
-                        && let Some(resolved) = catalog.resolve(&decoded_url)
-                    {
-                        view.open_file(resolved, *new_tab, window, cx);
-                        return;
-                    }
-                    cx.open_url(url);
+                    view.open_link_target(url, *new_tab, &link_source, window, cx);
                 }
             },
         );
@@ -320,6 +385,19 @@ impl DatalithView {
     }
 }
 
+/// Strips the fragment/query from `url` and percent-decodes the remaining path.
+///
+/// The delimiters are structural in the raw URL,
+/// so they are split off before decoding;
+/// a percent-encoded `#` or `?` is part of the file name.
+fn link_target(url: &str) -> String {
+    let raw_target = url.split_once(['#', '?']).map_or(url, |(target, _)| target);
+    percent_decode_str(raw_target)
+        .decode_utf8_lossy()
+        .trim()
+        .to_owned()
+}
+
 fn next_history(history: &[PathBuf], position: usize, path: &Path) -> (Vec<PathBuf>, usize) {
     let mut history = history.to_vec();
     if history.get(position).is_some_and(|current| current == path) {
@@ -334,14 +412,115 @@ fn next_history(history: &[PathBuf], position: usize, path: &Path) -> (Vec<PathB
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::time::Duration;
 
-    use gpui_kit::component::Root;
+    use gpui_kit::component::{Root, WindowExt as _};
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{AppContext, TestAppContext, px, size};
 
-    use super::{DatalithView, next_history};
+    use super::{DatalithView, link_target, next_history};
     use crate::app::workspace::{TabId, WorkspaceTab};
     use crate::document::handler::ViewMode;
+    use crate::vault::VaultCatalog;
+
+    #[test]
+    fn relative_extensionless_links_keep_catalog_priority() {
+        let root_path = std::env::temp_dir().join(format!(
+            "datalith-relative-links-{:032x}",
+            rand::random::<u128>()
+        ));
+        let notes = root_path.join("notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::write(root_path.join("Basics.md"), "# Basics").unwrap();
+        // A title ending in `?`, the way French note titles usually do.
+        std::fs::write(root_path.join("Pourquoi ?.md"), "# Pourquoi ?").unwrap();
+        let source = notes.join("Source.md");
+        std::fs::write(&source, "# Source").unwrap();
+
+        let mut cx = TestAppContext::single();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::app::fonts::FontCatalog::init(cx);
+            crate::app::themes::ThemeLibrary::init(cx);
+        });
+        let window_handle = cx.open_window(size(px(1000.), px(700.)), |window, cx| {
+            let view = cx.new(|cx| DatalithView::new(false, Vec::new(), window, cx));
+            Root::new(view, window, cx)
+        });
+        cx.update_window(window_handle.into(), |root, window, cx| {
+            let root = root.downcast::<Root>().unwrap();
+            let view = root
+                .read(cx)
+                .view()
+                .clone()
+                .downcast::<DatalithView>()
+                .unwrap();
+            view.update(cx, |view, cx| {
+                let catalog =
+                    VaultCatalog::open(&root_path, view.registry.registered_file_types()).unwrap();
+                catalog.wait_until_ready(Duration::from_secs(5));
+                view.root_path = Some(root_path.clone());
+                view.vault_catalog = Some(catalog);
+                view.open_file(source.clone(), true, window, cx);
+
+                // `[[../Basics]]` must resolve like `[[Basics]]`, not only when
+                // the extension is spelled out.
+                view.open_link_target("../Basics", false, &source, window, cx);
+                assert_eq!(
+                    view.tabs.active_path(),
+                    Some(root_path.join("Basics.md").as_path())
+                );
+
+                // An unresolved vault link reports the failure instead of
+                // falling through to the system URL opener.
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Missing", false, &source, window, cx);
+                assert_eq!(window.notifications(cx).len(), notifications_before + 1);
+
+                // A percent-encoded `#` is part of the file name, not a fragment delimiter.
+                let hashed = notes.join("Note#1.md");
+                std::fs::write(&hashed, "# Hashed").unwrap();
+                view.open_link_target("Note%231.md", false, &source, window, cx);
+                assert_eq!(view.tabs.active_path(), Some(hashed.as_path()));
+
+                // `[[Pourquoi ?]]` is encoded as `Pourquoi%20%3F`, so the `?` stays in the name.
+                let question = root_path.join("Pourquoi ?.md");
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Pourquoi%20%3F", false, &source, window, cx);
+                assert_eq!(view.tabs.active_path(), Some(question.as_path()));
+                assert_eq!(window.notifications(cx).len(), notifications_before);
+
+                // A colon in a missing note name is not a URL scheme:
+                // report it instead of handing it to the system opener, which fails silently.
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Compte-rendu:%20lundi", false, &source, window, cx);
+                assert_eq!(window.notifications(cx).len(), notifications_before + 1);
+
+                // Without a vault, the failure is reported as unavailable
+                // rather than as loading.
+                view.vault_catalog = None;
+                let notifications_before = window.notifications(cx).len();
+                view.open_link_target("Missing", false, &source, window, cx);
+                assert_eq!(window.notifications(cx).len(), notifications_before + 1);
+            });
+        })
+        .unwrap();
+        finish_startup(&mut cx, window_handle);
+        drop(cx);
+        std::fs::remove_dir_all(root_path).unwrap();
+    }
+
+    #[test]
+    fn link_targets_only_strip_raw_fragments_and_queries() {
+        assert_eq!(link_target("Note%231.md"), "Note#1.md");
+        assert_eq!(link_target("Note%231.md#heading"), "Note#1.md");
+        assert_eq!(link_target("Note%3F1.md?query"), "Note?1.md");
+        assert_eq!(link_target("Note.md#heading"), "Note.md");
+        assert_eq!(link_target("Note.md?query=1"), "Note.md");
+        assert_eq!(link_target("#heading"), "");
+        // What `convert_wiki_links("[[Pourquoi ?]]")` emits.
+        assert_eq!(link_target("Pourquoi%20%3F"), "Pourquoi ?");
+    }
 
     #[test]
     fn navigation_preserves_tab_identity_modes_and_only_history_creates_duplicates() {

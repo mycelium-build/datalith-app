@@ -5,6 +5,7 @@ mod tree_actions;
 pub use tree_actions::DeletedItem;
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use gpui_kit::component::{
     ActiveTheme, Sizable as _,
@@ -14,8 +15,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
-    ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    prelude::FluentBuilder, px,
+    MouseMoveEvent, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::app::actions::{
@@ -24,7 +25,7 @@ use crate::app::actions::{
 use crate::app::settings as app_settings;
 use crate::ui::notifications;
 use crate::vault::file_ops;
-use crate::vault::path::display_name;
+use crate::vault::path::{display_name, unique_path};
 
 use super::DatalithView;
 
@@ -159,6 +160,22 @@ pub struct DragFile {
     pub path: PathBuf,
 }
 
+/// Folder highlighted as the destination of the file being dragged.
+pub struct DragDropTarget {
+    pub folder: PathBuf,
+    /// Set while a collapsed folder row is hovered; drives the delayed auto-expand.
+    expand_at: Option<Instant>,
+}
+
+impl DragDropTarget {
+    fn new(folder: PathBuf, expand_on_hover: bool) -> Self {
+        Self {
+            folder,
+            expand_at: expand_on_hover.then(Instant::now),
+        }
+    }
+}
+
 impl Render for DragFile {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let name = display_name(&self.path).to_string();
@@ -176,6 +193,20 @@ impl Render for DragFile {
 }
 
 impl DatalithView {
+    pub(crate) fn start_inline_rename(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.reveal_in_sidebar(path, window, cx);
+        if crate::vault::source::is_read_only(path) {
+            return;
+        }
+        self.context_menu_target = Some(path.to_path_buf());
+        window.dispatch_action(Box::new(Rename), cx);
+    }
+
     pub fn rename_file(
         &mut self,
         old_path: &std::path::Path,
@@ -253,7 +284,7 @@ impl DatalithView {
                 if let Some(parent) = target.parent() {
                     let candidate = parent.join(&name);
                     if candidate != *target {
-                        let final_path = file_ops::unique_name(parent, &name);
+                        let final_path = unique_path(parent, &name);
                         self.rename_file(target, &final_path, cx);
                     }
                 }
@@ -314,6 +345,8 @@ impl DatalithView {
 
         self.ensure_rename_state(window, cx);
 
+        let drop_box = self.prepare_sidebar_drag_state(cx);
+
         let selector_view = cx.entity();
         let active_read_only = self
             .root_path
@@ -345,8 +378,15 @@ impl DatalithView {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 this.on_sidebar_key_down(event, window, cx);
             }))
+            .on_mouse_move(cx.listener(|this, _event: &MouseMoveEvent, _window, cx| {
+                // Rows stop propagation when the pointer is over a folder subtree;
+                // reaching this handler means the pointer is above empty space,
+                // where a drop falls back to the vault root.
+                this.clear_drag_target(cx);
+            }))
             .when(!active_read_only, |sidebar| {
                 sidebar.on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
+                    this.drag_drop_target = None;
                     if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
                         let new_path = root.join(name);
                         this.handle_file_move(&drag.path, &new_path, cx);
@@ -356,7 +396,7 @@ impl DatalithView {
             .child(
                 div()
                     .flex_1()
-                    .child(Self::render_file_tree(cx, &self.tree_state)),
+                    .child(Self::render_file_tree(cx, &self.tree_state, drop_box)),
             )
             .child(
                 div()

@@ -246,40 +246,45 @@ impl TodoTxtState {
                     {
                         this.delete_task(fi, window, cx);
                     }
-                    "up" => {
-                        let visible = this.workspace.visible_tasks();
-                        if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
-                            if let Some(&(prev_fi, _)) =
-                                pos.checked_sub(1).and_then(|p| visible.get(p))
-                            {
-                                if let Some(e) = this.desc_inputs.get(&prev_fi) {
-                                    e.focus_handle(cx).focus(window, cx);
-                                }
-                            } else {
-                                this.search_input.focus_handle(cx).focus(window, cx);
-                            }
-                        }
-                    }
-                    "down" => {
-                        let visible = this.workspace.visible_tasks();
-                        if let Some(pos) = visible.iter().position(|&(idx, _)| idx == fi) {
-                            if let Some(&(next_fi, _)) =
-                                pos.checked_add(1).and_then(|p| visible.get(p))
-                            {
-                                if let Some(e) = this.desc_inputs.get(&next_fi) {
-                                    e.focus_handle(cx).focus(window, cx);
-                                }
-                            } else if this.workspace.is_read_only() {
-                                this.search_input.focus_handle(cx).focus(window, cx);
-                            } else {
-                                this.new_task_input.focus_handle(cx).focus(window, cx);
-                            }
-                        }
-                    }
+                    "up" => this.focus_previous_task(fi, window, cx),
+                    "down" => this.focus_next_task(fi, window, cx),
                     _ => {}
                 }
             }))
             .into_any_element()
+    }
+
+    fn focus_previous_task(&self, flat_index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let visible = self.workspace.visible_tasks();
+        let Some(position) = visible.iter().position(|&(index, _)| index == flat_index) else {
+            return;
+        };
+        if let Some(&(previous_index, _)) =
+            position.checked_sub(1).and_then(|index| visible.get(index))
+        {
+            if let Some(input) = self.desc_inputs.get(&previous_index) {
+                input.focus_handle(cx).focus(window, cx);
+            }
+        } else {
+            self.search_input.focus_handle(cx).focus(window, cx);
+        }
+    }
+
+    fn focus_next_task(&self, flat_index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let visible = self.workspace.visible_tasks();
+        let Some(position) = visible.iter().position(|&(index, _)| index == flat_index) else {
+            return;
+        };
+        if let Some(&(next_index, _)) = position.checked_add(1).and_then(|index| visible.get(index))
+        {
+            if let Some(input) = self.desc_inputs.get(&next_index) {
+                input.focus_handle(cx).focus(window, cx);
+            }
+        } else if self.workspace.is_read_only() {
+            self.search_input.focus_handle(cx).focus(window, cx);
+        } else {
+            self.new_task_input.focus_handle(cx).focus(window, cx);
+        }
     }
 
     fn render_hover_actions(flat_index: usize, cx: &Context<Self>) -> AnyElement {

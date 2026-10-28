@@ -116,9 +116,13 @@ impl FileRegistry {
     ) -> FileHandler {
         let config = self.config_for(Some(path));
         let read_only = crate::vault::source::is_read_only(path);
-        let editor = config
+        let mut editor = config
             .editor_factory
             .map(|factory| factory(path, window, cx));
+        if let (Some(catalog), Some(editor)) = (dependencies.vault_catalog.clone(), editor.as_mut())
+        {
+            editor.set_vault_catalog(catalog, cx);
+        }
         let viewer = config
             .viewer_factory
             .and_then(|factory| factory(path, editor.as_ref(), dependencies, cx));
@@ -174,6 +178,7 @@ pub fn default_registry() -> FileRegistry {
             editor_factory: Some(|path, window, cx| {
                 EditorKind::Markdown(MarkdownEditor::new(
                     MarkdownEditor::new_state(path, window, cx),
+                    path,
                     crate::vault::source::is_read_only(path),
                 ))
             }),

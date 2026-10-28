@@ -86,7 +86,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
-    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::test::TestWindowExt;
     use gpui_kit::{MouseButton, TestAppContext, VisualTestContext, WindowHandle};
 
     use super::*;
@@ -396,6 +396,59 @@ mod tests {
                 vec![ViewMode::View, ViewMode::Edit, ViewMode::View]
             );
         });
+    }
+
+    #[test]
+    fn dropping_a_file_on_open_folder_contents_moves_it_into_that_folder() {
+        let vault = VaultFixture::new("drag-into-open-folder");
+        let notes = vault.0.join("Notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::write(notes.join("Idea.md"), "# Idea\n").unwrap();
+
+        let mut cx = app();
+        let (handle, view) = open(&mut cx, &vault.0, false);
+
+        let row_center = |cx: &mut TestAppContext, index: usize| {
+            cx.update_window(handle.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window.find(("file-tree-row", index)).bounds().center()
+            })
+            .unwrap()
+        };
+
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.click(("file-tree-row", 0_usize), cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
+
+        // Notes (0), Notes/Idea.md (1), Basics.md (2), Welcome.md (3).
+        let from = row_center(&mut cx, 3);
+        let to = row_center(&mut cx, 1);
+
+        let mut visual = VisualTestContext::from_window(handle.into(), &cx);
+        let modifiers = gpui_kit::Modifiers::default();
+        visual.simulate_mouse_move(from, None, modifiers);
+        visual.simulate_mouse_down(from, MouseButton::Left, modifiers);
+        visual.simulate_mouse_move(to, MouseButton::Left, modifiers);
+        visual.update(TestWindowExt::render_frame);
+        visual.update(|_, cx| {
+            assert_eq!(
+                view.read(cx)
+                    .drag_drop_target
+                    .as_ref()
+                    .map(|target| target.folder.as_path()),
+                Some(notes.as_path()),
+                "hovering a row inside the open folder should target that folder"
+            );
+        });
+        visual.simulate_mouse_up(to, MouseButton::Left, modifiers);
+        visual.update(TestWindowExt::render_frame);
+        drop(visual);
+
+        assert!(notes.join("Welcome.md").is_file());
+        assert!(!vault.0.join("Welcome.md").is_file());
     }
 
     fn middle_click_file_tree_row(

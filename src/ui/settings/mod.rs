@@ -14,7 +14,7 @@ use gpui_kit::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use super::DatalithView;
+use super::{DatalithView, modal};
 use crate::app::settings;
 
 pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
@@ -126,34 +126,20 @@ impl SettingsView {
     }
 
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
-        div()
-            .absolute()
-            .inset_0()
+        modal::backdrop("settings-backdrop", cx, |view| view.settings.close())
             .p(px(32.))
             .bg(cx.theme().overlay)
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("settings-backdrop")
-            // Keep wheel events on the modal, including at its scroll boundaries.
-            .occlude()
             .on_click(cx.listener(|view: &mut DatalithView, _, window, cx| {
                 view.settings.dismiss(window, cx);
                 cx.notify();
             }))
             .child(
-                div()
+                modal::panel("settings-panel", cx)
                     .w(rems(60.))
                     .max_w_full()
                     .h(rems(42.))
                     .max_h_full()
-                    .bg(cx.theme().background)
-                    .border(px(1.))
-                    .border_color(cx.theme().border)
-                    .rounded_md()
-                    .shadow_lg()
-                    .id("settings-panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
+                    .track_focus(&self.focus_handle)
                     .on_key_down(cx.listener(
                         |view: &mut DatalithView, event: &KeyDownEvent, window, cx| {
                             if event.keystroke.key == "escape" {

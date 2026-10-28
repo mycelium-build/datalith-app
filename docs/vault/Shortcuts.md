@@ -38,6 +38,15 @@ Known limitation: these shortcuts also apply while you type in an editor, so the
 | Navigate forward | `Cmd/Ctrl+]` |
 | Open link | `Cmd/Ctrl+Enter` |
 
+# Wiki links
+
+| Shortcut | Action |
+| --- | --- |
+| `[[` | Open link suggestions once three characters are typed |
+| `↑` / `↓` | Select a suggestion |
+| `↩` | Insert the selected suggestion |
+| `Esc` | Dismiss suggestions |
+
 # Tabs
 
 | Action | Shortcut |

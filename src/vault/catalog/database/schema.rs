@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 
 use super::CatalogDatabase;
 
-pub(super) const SCHEMA_VERSION: i64 = 4;
+pub(super) const SCHEMA_VERSION: i64 = 5;
 
 impl CatalogDatabase {
     pub(super) async fn initialize_schema(&self) -> Result<()> {
@@ -39,6 +39,9 @@ impl CatalogDatabase {
                     path        TEXT PRIMARY KEY,
                     extension   TEXT NOT NULL,
                     folder      TEXT NOT NULL,
+                    label       TEXT NOT NULL,
+                    label_key   TEXT NOT NULL,
+                    path_key    TEXT NOT NULL,
                     size_bytes  INTEGER NOT NULL,
                     modified_ns INTEGER NOT NULL,
                     created_ns  INTEGER NOT NULL DEFAULT 0,
@@ -57,7 +60,7 @@ impl CatalogDatabase {
                 );
                 CREATE INDEX IF NOT EXISTS wiki_links_target_nocase_idx ON wiki_links(target COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS wiki_links_target_path_idx ON wiki_links(target_path);
-                PRAGMA user_version = 4;
+                PRAGMA user_version = 5;
                 ",
             )
             .await?;

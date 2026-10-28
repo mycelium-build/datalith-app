@@ -5,6 +5,7 @@ pub(super) const MD_LIST_INDENT: &str = "  ";
 pub(super) const MD_TITLE_SIZE: f32 = 2.75;
 pub(super) const MD_HEADING_SIZES: [f32; 6] = [2.5, 2.25, 2.0, 1.75, 1.5, 1.25];
 pub(super) const MD_HEADING_MARGIN: f32 = 8.0;
+pub(super) const MD_TITLE_MARGIN: f32 = MD_HEADING_MARGIN * MD_TITLE_SIZE;
 
 pub(super) const MD_CODE_FONT_SCALE: f32 = 0.9;
 pub(super) const MD_CODE_BLOCK_PADDING: f32 = 3.0;
@@ -13,7 +14,6 @@ pub(super) const MD_CODE_BLOCK_RADIUS: f32 = 4.0;
 pub(super) const MD_FRONTMATTER_FONT_SCALE: f32 = 0.75;
 pub(super) const MD_FRONTMATTER_PADDING: f32 = 10.0;
 pub(super) const MD_FRONTMATTER_RADIUS: f32 = 6.0;
-pub(super) const MD_FRONTMATTER_MARGIN: f32 = 3.0;
 
 pub(super) const MD_PARAGRAPH_MARGIN: f32 = 16.0;
 

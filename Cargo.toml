@@ -27,6 +27,8 @@ serde_json = "1.0.149"
 sha2 = "0.10.9"
 arboard = "3"
 tantivy = "0.26"
+levenshtein_automata = "0.2.1"
+tantivy-fst = "0.5"
 pulldown-cmark = "0.13"
 percent-encoding = "2.3.2"
 txtodo = "1.0.2"
@@ -56,6 +58,7 @@ harness = false
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
+excessive_nesting = "deny"
 # DENY PANICS:
 unwrap_used = "deny"
 expect_used = "deny"

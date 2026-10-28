@@ -6,21 +6,26 @@ use gpui_kit::component::{
     v_flex, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, AppContext, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Pixels, ScrollStrategy, SharedString, Size,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px, size,
+    AnyElement, AppContext, Context, ElementId, Entity, Focusable, FontWeight, HighlightStyle,
+    Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, ScrollStrategy,
+    SharedString, Size, StatefulInteractiveElement, Styled, StyledText, Subscription, Window, div,
+    px, size,
 };
 
-use crate::ui::DatalithView;
+use crate::ui::{DatalithView, modal};
 use crate::vault::VaultCatalog;
 use crate::vault::path::display_name;
-use crate::vault::search::picker;
+use crate::vault::search::{SearchHit, picker};
 
 const BORDER_WIDTH: f32 = 2.0;
 const MIN_SEARCH_QUERY_LENGTH: usize = 3;
 const PALETTE_WIDTH: f32 = 600.0;
-const ITEM_HEIGHT: f32 = 28.0;
+const SEARCH_ITEM_HEIGHT: f32 = 56.0;
+const QUICK_SWITCHER_ITEM_HEIGHT: f32 = 28.0;
 const PALETTE_MAX_HEIGHT: f32 = 400.0;
+const SNIPPET_INDENT: f32 = 20.0;
+const SCORE_HIGH_RATIO: f32 = 0.66;
+const SCORE_MEDIUM_RATIO: f32 = 0.33;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PaletteKind {
@@ -37,11 +42,116 @@ pub struct Palette {
     pub(crate) input: Entity<InputState>,
     pub(crate) selected: Option<usize>,
     pub(crate) search_query: SharedString,
-    pub(crate) search_results: Vec<PathBuf>,
+    pub(crate) search_results: Vec<SearchHit>,
     pub(crate) qs_query: SharedString,
     pub(crate) quick_switcher_entries: Vec<picker::QuickSwitcherEntry>,
     item_sizes: Vec<Size<Pixels>>,
     scroll_handle: VirtualListScrollHandle,
+}
+
+fn score_color(cx: &Context<DatalithView>, score: f32, max_score: f32) -> Hsla {
+    let ratio = if max_score > 0.0 {
+        (score / max_score).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    if ratio >= SCORE_HIGH_RATIO {
+        cx.theme().success
+    } else if ratio >= SCORE_MEDIUM_RATIO {
+        cx.theme().warning
+    } else {
+        cx.theme().info
+    }
+}
+
+fn score_badge(score: f32, color: Hsla) -> impl IntoElement {
+    div()
+        .px_1p5()
+        .py_0p5()
+        .rounded_sm()
+        .flex_shrink_0()
+        .bg(color.opacity(0.15))
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(color)
+        .child(format!("{score:.2}"))
+}
+
+fn snippet_highlight(cx: &Context<DatalithView>) -> HighlightStyle {
+    HighlightStyle {
+        background_color: Some(cx.theme().warning.opacity(0.3)),
+        font_weight: Some(FontWeight::SEMIBOLD),
+        ..Default::default()
+    }
+}
+
+fn render_search_hit(
+    view: &DatalithView,
+    hit: &SearchHit,
+    index: usize,
+    selected: bool,
+    max_score: f32,
+    cx: &Context<DatalithView>,
+) -> AnyElement {
+    let file_name = display_name(&hit.path).to_string();
+    let file_icon = view.registry.config_for(Some(hit.path.as_path())).icon;
+    let bg = if selected {
+        cx.theme().muted
+    } else {
+        Hsla::default()
+    };
+    let path = hit.path.clone();
+    let score = hit.score;
+    let color = score_color(cx, score, max_score);
+    let highlight = snippet_highlight(cx);
+    let highlights: Vec<_> = hit
+        .highlights
+        .iter()
+        .cloned()
+        .map(|range| (range, highlight))
+        .collect();
+    let snippet = StyledText::new(hit.snippet.clone()).with_highlights(highlights);
+
+    div()
+        .px_2()
+        .py_1()
+        .h(px(SEARCH_ITEM_HEIGHT))
+        .bg(bg)
+        .hover(|s| s.bg(cx.theme().muted))
+        .cursor_pointer()
+        .id(ElementId::Name(format!("result-{index}").into()))
+        .on_click(cx.listener(move |view, _, window, cx| {
+            view.palette.close();
+            view.open_file(path.clone(), false, window, cx);
+        }))
+        .child(
+            v_flex()
+                .gap_0p5()
+                .w_full()
+                .min_w_0()
+                .justify_center()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .w_full()
+                        .min_w_0()
+                        .child(Icon::new(file_icon).size_3())
+                        .child(div().flex_1().min_w_0().truncate().child(file_name))
+                        .child(score_badge(score, color)),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .pl(px(SNIPPET_INDENT))
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .truncate()
+                        .child(snippet),
+                ),
+        )
+        .into_any_element()
 }
 
 impl Palette {
@@ -89,7 +199,8 @@ impl Palette {
                 .map(|catalog| catalog.search(&query))
                 .unwrap_or_default()
         };
-        self.item_sizes = vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.search_results.len()];
+        self.item_sizes =
+            vec![size(px(PALETTE_WIDTH), px(SEARCH_ITEM_HEIGHT)); self.search_results.len()];
     }
 
     pub(crate) fn refresh_quick_switcher(
@@ -102,8 +213,10 @@ impl Palette {
             .map(|catalog| picker::collect_from_paths(catalog.paths()))
             .unwrap_or_default();
         self.quick_switcher_entries = picker::filter(&all_files, open_files, query);
-        self.item_sizes =
-            vec![size(px(PALETTE_WIDTH), px(ITEM_HEIGHT)); self.quick_switcher_entries.len()];
+        self.item_sizes = vec![
+            size(px(PALETTE_WIDTH), px(QUICK_SWITCHER_ITEM_HEIGHT));
+            self.quick_switcher_entries.len()
+        ];
     }
 
     pub(crate) fn refresh(&mut self, catalog: Option<&VaultCatalog>, open_files: &[PathBuf]) {
@@ -128,6 +241,11 @@ impl Palette {
         let entity = cx.entity();
         let kind = self.kind;
         let item_sizes = self.item_sizes.clone();
+        let max_score = self
+            .search_results
+            .iter()
+            .map(|hit| hit.score)
+            .fold(0.0_f32, f32::max);
 
         v_virtual_list(
             entity,
@@ -138,36 +256,10 @@ impl Palette {
                 visible_range
                     .map(move |i| match kind {
                         PaletteKind::Search => {
-                            let Some(r) = view.palette.search_results.get(i) else {
+                            let Some(hit) = view.palette.search_results.get(i) else {
                                 return div().into_any_element();
                             };
-                            let file_name = display_name(r).to_string();
-                            let file_icon = view.registry.config_for(Some(r.as_path())).icon;
-                            let bg = if Some(i) == selected_idx {
-                                cx.theme().muted
-                            } else {
-                                gpui_kit::Hsla::default()
-                            };
-                            let path = r.clone();
-                            div()
-                                .px_2()
-                                .h(px(ITEM_HEIGHT))
-                                .bg(bg)
-                                .hover(|s| s.bg(cx.theme().muted))
-                                .cursor_pointer()
-                                .id(ElementId::Name(format!("result-{i}").into()))
-                                .on_click(cx.listener(move |view, _, window, cx| {
-                                    view.palette.close();
-                                    view.open_file(path.clone(), false, window, cx);
-                                }))
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(Icon::new(file_icon).size_3())
-                                        .child(file_name),
-                                )
-                                .into_any_element()
+                            render_search_hit(view, hit, i, Some(i) == selected_idx, max_score, cx)
                         }
                         PaletteKind::QuickSwitcher => {
                             let Some(entry) = view.palette.quick_switcher_entries.get(i) else {
@@ -193,7 +285,7 @@ impl Palette {
                             };
                             div()
                                 .px_2()
-                                .h(px(ITEM_HEIGHT))
+                                .h(px(QUICK_SWITCHER_ITEM_HEIGHT))
                                 .bg(bg)
                                 .hover(|s| s.bg(cx.theme().muted))
                                 .cursor_pointer()
@@ -224,74 +316,54 @@ impl Palette {
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
         let input = self.input.clone();
 
-        div()
-            .absolute()
-            .inset_0()
-            .bg(gpui_kit::black().opacity(0.3))
-            .flex()
-            .items_center()
-            .justify_center()
-            .id("palette-backdrop")
-            .on_click(cx.listener(|view: &mut DatalithView, _, _, cx| {
-                view.palette.close();
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .w(px(PALETTE_WIDTH))
-                    .bg(cx.theme().background)
-                    .border(px(BORDER_WIDTH))
-                    .border_color(cx.theme().border)
-                    .rounded_md()
-                    .shadow_lg()
-                    .id("palette-panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
-                    .child(
-                        v_flex()
-                            .overflow_hidden()
-                            .on_key_down(cx.listener(
-                                |view: &mut DatalithView,
-                                 event: &KeyDownEvent,
-                                 _: &mut Window,
-                                 cx: &mut Context<DatalithView>| {
-                                    let key = event.keystroke.key.as_str();
-                                    if key == "escape" {
-                                        view.palette.close();
-                                        cx.notify();
-                                        return;
-                                    }
-                                    if key == "up" || key == "down" {
-                                        let count = match view.palette.kind {
-                                            PaletteKind::Search => {
-                                                view.palette.search_results.len()
-                                            }
-                                            PaletteKind::QuickSwitcher => {
-                                                view.palette.quick_switcher_entries.len()
-                                            }
-                                        };
-                                        if count > 0
-                                            && let Some(next) = picker::nav_idx(
-                                                key == "down",
-                                                view.palette.selected,
-                                                count,
-                                            )
-                                        {
-                                            view.palette.selected = Some(next);
-                                            view.palette.scroll_to(next);
+        modal::backdrop("palette-backdrop", cx, |view| view.palette.close()).child(
+            modal::panel("palette-panel", cx)
+                .w(px(PALETTE_WIDTH))
+                .border(px(BORDER_WIDTH))
+                .child(
+                    v_flex()
+                        .overflow_hidden()
+                        .on_key_down(cx.listener(
+                            |view: &mut DatalithView,
+                             event: &KeyDownEvent,
+                             _: &mut Window,
+                             cx: &mut Context<DatalithView>| {
+                                let key = event.keystroke.key.as_str();
+                                if key == "escape" {
+                                    view.palette.close();
+                                    cx.notify();
+                                    return;
+                                }
+                                if key == "up" || key == "down" {
+                                    let count = match view.palette.kind {
+                                        PaletteKind::Search => view.palette.search_results.len(),
+                                        PaletteKind::QuickSwitcher => {
+                                            view.palette.quick_switcher_entries.len()
                                         }
-                                        cx.notify();
+                                    };
+                                    if count > 0
+                                        && let Some(next) = picker::nav_idx(
+                                            key == "down",
+                                            view.palette.selected,
+                                            count,
+                                        )
+                                    {
+                                        view.palette.selected = Some(next);
+                                        view.palette.scroll_to(next);
                                     }
-                                },
-                            ))
-                            .child(
-                                div()
-                                    .border_b(px(BORDER_WIDTH))
-                                    .border_color(cx.theme().border)
-                                    .child(Input::new(&input).appearance(false)),
-                            )
-                            .child(self.render_palette_body(cx)),
-                    ),
-            )
+                                    cx.notify();
+                                }
+                            },
+                        ))
+                        .child(
+                            div()
+                                .border_b(px(BORDER_WIDTH))
+                                .border_color(cx.theme().border)
+                                .child(Input::new(&input).appearance(false)),
+                        )
+                        .child(self.render_palette_body(cx)),
+                ),
+        )
     }
 
     fn render_palette_body(&self, cx: &Context<DatalithView>) -> AnyElement {
@@ -387,7 +459,7 @@ impl Palette {
                                 .palette
                                 .selected
                                 .and_then(|i| view.palette.search_results.get(i))
-                                .cloned(),
+                                .map(|hit| hit.path.clone()),
                             PaletteKind::QuickSwitcher => view
                                 .palette
                                 .selected

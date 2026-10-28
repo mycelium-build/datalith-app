@@ -24,9 +24,7 @@ use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
 use crate::vault::path::display_name;
 
-use constants::{
-    MD_HEADING_MARGIN, MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_PARAGRAPH_MARGIN, MD_TITLE_SIZE,
-};
+use constants::{MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_TITLE_MARGIN, MD_TITLE_SIZE};
 use frontmatter::render_frontmatter;
 
 pub struct MarkdownViewer {
@@ -128,7 +126,13 @@ impl MarkdownViewer {
         let mut element_id = 0usize;
         elements.push(self.render_title(fonts.headings()));
         if let (Some(frontmatter), Some(handler)) = (&document.frontmatter, &handler) {
-            elements.push(render_frontmatter(frontmatter, BASE_FONT_SIZE, handler, cx));
+            elements.push(render_frontmatter(
+                frontmatter,
+                BASE_FONT_SIZE,
+                MD_TITLE_MARGIN,
+                handler,
+                cx,
+            ));
         }
         let mut ctx = BlockContext {
             element_id: &mut element_id,
@@ -137,7 +141,7 @@ impl MarkdownViewer {
             code_font: fonts.code(),
             headings_font: fonts.headings(),
         };
-        elements.extend(self.render_blocks(&document.blocks, 0, &mut ctx));
+        elements.extend(self.render_blocks(&document.blocks, 0, false, &mut ctx));
 
         div()
             .id("markdown-preview")
@@ -170,7 +174,6 @@ impl MarkdownViewer {
             .font_weight(FontWeight::BOLD)
             .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
             .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
-            .mb(px(MD_HEADING_MARGIN * MD_TITLE_SIZE))
             .child(name);
         #[cfg(test)]
         let title = {
@@ -180,21 +183,26 @@ impl MarkdownViewer {
         title.into_any_element()
     }
 
-    fn render_heading(
-        &self,
-        level: u32,
-        content: &[MarkdownInline],
-        ctx: &mut BlockContext,
-    ) -> AnyElement {
-        let size = MD_HEADING_SIZES
+    fn heading_size(level: u32) -> f32 {
+        MD_HEADING_SIZES
             .get(
                 usize::try_from(level)
                     .unwrap_or_default()
                     .saturating_sub(1)
-                    .min(5),
+                    .min(MD_HEADING_SIZES.len().saturating_sub(1)),
             )
             .copied()
-            .unwrap_or_else(|| MD_HEADING_SIZES.last().copied().unwrap_or(1.0));
+            .unwrap_or(1.0)
+    }
+
+    fn render_heading(
+        &self,
+        level: u32,
+        content: &[MarkdownInline],
+        margin_top: f32,
+        ctx: &mut BlockContext,
+    ) -> AnyElement {
+        let size = Self::heading_size(level);
         div()
             .w_full()
             .min_w_0()
@@ -203,8 +211,7 @@ impl MarkdownViewer {
             .font_family(ctx.headings_font.clone())
             .text_size(px(BASE_FONT_SIZE * size))
             //.font_weight(FontWeight::BOLD)
-            .mt(px(MD_HEADING_MARGIN * size))
-            .mb(px(MD_HEADING_MARGIN * size))
+            .mt(px(margin_top))
             .line_height(px(BASE_FONT_SIZE * size * MD_LINE_HEIGHT))
             .children(self.render_inlines(content, InlineStyle::default(), ctx))
             .into_any_element()
@@ -213,9 +220,7 @@ impl MarkdownViewer {
     fn render_paragraph(
         &self,
         content: &[MarkdownInline],
-        list_depth: usize,
-        is_last: bool,
-        next_is_paragraph: bool,
+        margin_top: f32,
         ctx: &mut BlockContext,
     ) -> AnyElement {
         div()
@@ -223,11 +228,7 @@ impl MarkdownViewer {
             .min_w_0()
             .flex()
             .flex_wrap()
-            .mb(px(if is_last || (list_depth > 0 && !next_is_paragraph) {
-                0.0
-            } else {
-                MD_PARAGRAPH_MARGIN
-            }))
+            .mt(px(margin_top))
             .children(self.render_inlines(content, InlineStyle::default(), ctx))
             .into_any_element()
     }
@@ -247,21 +248,7 @@ impl MarkdownViewer {
             if let Some(end) = adjacent_image_run_end(inlines, index) {
                 flush_inline_text(&mut elements, &mut text, &mut highlights);
                 if let Some(run) = inlines.get(index..end) {
-                    let images = run.iter().filter_map(|inline| {
-                        let MarkdownInline::Image { url, alt } = inline else {
-                            return None;
-                        };
-                        Some(self.render_image(url, alt, true, ctx.appearance))
-                    });
-                    elements.push(
-                        div()
-                            .w_full()
-                            .min_w_0()
-                            .flex()
-                            .gap_2()
-                            .children(images)
-                            .into_any_element(),
-                    );
+                    elements.push(self.render_image_run(run, ctx));
                 }
                 index = end;
                 continue;
@@ -343,6 +330,22 @@ impl MarkdownViewer {
         }
         flush_inline_text(&mut elements, &mut text, &mut highlights);
         elements
+    }
+
+    fn render_image_run(&self, run: &[MarkdownInline], ctx: &mut BlockContext) -> AnyElement {
+        let images = run.iter().filter_map(|inline| {
+            let MarkdownInline::Image { url, alt } = inline else {
+                return None;
+            };
+            Some(self.render_image(url, alt, true, ctx.appearance))
+        });
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .gap_2()
+            .children(images)
+            .into_any_element()
     }
 
     fn strong_or_emphasis_children(inline: &MarkdownInline) -> Option<&[MarkdownInline]> {
