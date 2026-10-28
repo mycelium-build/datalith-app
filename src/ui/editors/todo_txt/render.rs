@@ -10,8 +10,8 @@ use gpui_kit::component::select::Select;
 use gpui_kit::component::{ActiveTheme, Icon, IconName, IndexPath, h_flex, v_flex, v_virtual_list};
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DismissEvent, Element, ElementId, Entity, Focusable,
-    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, RenderOnce, Styled,
-    Window, div, px, relative,
+    InteractiveElement, IntoElement, KeyDownEvent, ListSizingBehavior, ParentElement, Render,
+    RenderOnce, Styled, Window, div, px, relative,
 };
 
 use conv::ConvAsUtil;
@@ -99,6 +99,7 @@ impl Render for TodoTxtState {
             .children(error_banner)
             .child(task_list)
             .child(new_row)
+            .child(div().flex_1().min_h_0())
     }
 }
 
@@ -259,7 +260,9 @@ impl TodoTxtState {
     fn render_task_list(&self, visible: &[(usize, bool)], cx: &Context<Self>) -> AnyElement {
         if visible.is_empty() {
             return v_flex()
-                .flex_1()
+                .flex_shrink_0()
+                .h(px(TODO_ROW_HEIGHT * 2.0))
+                .w_full()
                 .items_center()
                 .justify_center()
                 .gap_2()
@@ -279,7 +282,7 @@ impl TodoTxtState {
         let visible_owned = visible.to_vec();
 
         v_flex()
-            .flex_1()
+            .flex_shrink_1()
             .min_h_0()
             .relative()
             .overflow_hidden()
@@ -304,6 +307,9 @@ impl TodoTxtState {
                             .collect()
                     },
                 )
+                .with_sizing_behavior(ListSizingBehavior::Infer)
+                .flex_shrink_1()
+                .min_h_0()
                 .track_scroll(&self.scroll_handle),
             )
             .child(Scrollbar::vertical(&self.scroll_handle))
@@ -312,17 +318,21 @@ impl TodoTxtState {
 
     fn render_new_task_row(&self, cx: &Context<Self>) -> AnyElement {
         if self.workspace.is_read_only() {
-            return div().h(px(TODO_NEW_ROW_HEIGHT)).w_full().into_any_element();
+            return div()
+                .h(px(TODO_NEW_ROW_HEIGHT))
+                .w_full()
+                .flex_shrink_0()
+                .into_any_element();
         }
         h_flex()
             .h(px(TODO_NEW_ROW_HEIGHT))
             .w_full()
+            .flex_shrink_0()
             .items_center()
             .gap_2()
-            .px_3()
             .border_t_1()
             .border_color(cx.theme().border)
-            .child(div().w(px(TODO_INDENT_PX + 16.0)))
+            .child(div().w(px(TODO_INDENT_PX)))
             .child(
                 div()
                     .flex_1()
