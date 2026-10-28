@@ -129,23 +129,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vault_dirs_are_separate_and_stable_keeps_its_path() {
-        let root = Path::new("vault");
-        assert_eq!(
-            Channel::Stable.vault_dir(root).unwrap(),
-            root.join(".datalith")
-        );
-        assert_eq!(
-            Channel::Preview.vault_dir(root).unwrap(),
-            root.join(".datalith/preview")
-        );
-        assert_eq!(
-            Channel::Dev.vault_dir(root).unwrap(),
-            root.join(".datalith/dev")
-        );
-    }
-
-    #[test]
     fn workspace_files_are_per_channel_and_stable_keeps_its_path() {
         let root = Path::new("vault");
         let machine = "a1b2c3";

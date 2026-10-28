@@ -17,8 +17,14 @@ x decouple editor and renderer
 
 x hot reload side bar and files preview/editor
 
-custom themes editor (explore GPUI components)
-font picker with OS fonts
+x custom themes editor
+    x font picker with OS fonts
+
+template engine
+
+AI integration
+
+cloud integration
 
 right sidebar
     outline

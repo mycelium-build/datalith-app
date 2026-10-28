@@ -152,9 +152,11 @@ impl LicensesView {
                                 .relative()
                                 .flex_1()
                                 .child(
-                                    uniform_list("licenses-scroll", ROWS.len(), |range, _, _| {
+                                    uniform_list("licenses-scroll", ROWS.len(), |range, _, cx| {
                                         range
-                                            .filter_map(|ix| ROWS.get(ix).map(render_row))
+                                            .filter_map(|ix| {
+                                                ROWS.get(ix).map(|row| render_row(row, cx))
+                                            })
                                             .collect()
                                     })
                                     .track_scroll(&self.scroll_handle)
@@ -174,7 +176,7 @@ impl LicensesView {
     }
 }
 
-fn render_row(row: &Row) -> impl IntoElement {
+fn render_row(row: &Row, cx: &gpui_kit::App) -> gpui_kit::Div {
     let (text, is_header) = match row {
         Row::Header(title) => (title.as_str(), true),
         Row::Line(line) => (line.as_str(), false),
@@ -184,7 +186,7 @@ fn render_row(row: &Row) -> impl IntoElement {
         .h(px(ROW_HEIGHT))
         .flex()
         .items_center()
-        .font_family("monospace")
+        .font_family(cx.theme().mono_font_family.clone())
         .text_xs()
         .child(text.to_string());
 
@@ -225,42 +227,5 @@ mod tests {
         assert!(LICENSING.contains("MIT"));
         assert!(LICENSING.contains("Apache-2.0"));
         assert!(!LICENSING.contains("GPL-3.0-or-later"));
-    }
-
-    #[test]
-    fn wrap_line_splits_long_lines_on_word_boundaries() {
-        let wrapped = wrap_line("one two three four five", 10);
-        assert!(wrapped.iter().all(|line| line.len() <= 10));
-        assert_eq!(wrapped.join(" "), "one two three four five");
-    }
-
-    #[test]
-    fn wrap_line_preserves_blank_lines() {
-        assert_eq!(wrap_line("", 10), vec![String::new()]);
-        assert_eq!(wrap_line("   ", 10), vec![String::new()]);
-    }
-
-    #[test]
-    fn wrap_line_keeps_an_overlong_word_intact() {
-        let word = "x".repeat(50);
-        let wrapped = wrap_line(&word, 10);
-        assert_eq!(wrapped, vec![word]);
-    }
-
-    #[test]
-    fn rows_cover_every_section_with_a_header() {
-        let header_count = ROWS
-            .iter()
-            .filter(|row| matches!(row, Row::Header(_)))
-            .count();
-        assert_eq!(header_count, 3);
-        assert!(matches!(ROWS.first(), Some(Row::Header(_))));
-        // Wrapping must never produce a row wider than the configured budget.
-        for row in ROWS.iter() {
-            let text = match row {
-                Row::Header(text) | Row::Line(text) => text,
-            };
-            assert!(text.len() <= WRAP_WIDTH || !text.contains(' '));
-        }
     }
 }

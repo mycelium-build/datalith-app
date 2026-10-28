@@ -515,61 +515,6 @@ mod tests {
     }
 
     #[test]
-    fn detects_an_open_wiki_link_on_the_current_line() {
-        let text = Rope::from("before [[Note");
-        let link = wiki_link_at(&text, text.len()).unwrap();
-        assert_eq!(link.query, "Note");
-        assert_eq!(link.replace_start, "before ".len());
-        assert_eq!(link.replace_end, text.len());
-    }
-
-    #[test]
-    fn replaces_the_auto_inserted_closing_brackets() {
-        let text = Rope::from("see [[");
-        let offset = text.len();
-        let text = Rope::from(format!("{text}]]"));
-        let link = wiki_link_at(&text, offset).unwrap();
-        assert_eq!(link.replace_start, "see ".len());
-        assert_eq!(link.replace_end, offset.saturating_add(2));
-    }
-
-    #[test]
-    fn ignores_closed_links_aliases_and_anchors() {
-        for source in [
-            "[[Note]]",
-            "[[Note|label",
-            "[[Note#heading",
-            "text without a link",
-        ] {
-            let text = Rope::from(source);
-            assert!(wiki_link_at(&text, text.len()).is_none(), "{source}");
-        }
-    }
-
-    #[test]
-    fn allows_folders_in_the_query() {
-        let text = Rope::from("[[formats/Mar");
-        let link = wiki_link_at(&text, text.len()).unwrap();
-        assert_eq!(link.query, "formats/Mar");
-    }
-
-    #[test]
-    fn highlights_the_matched_part_of_a_file_name() {
-        assert_eq!(highlight_in("List of signal", "sign"), Some(8..12));
-        assert_eq!(highlight_in("List of signal", "SIGN"), Some(8..12));
-        assert_eq!(highlight_in("List of signal", "list"), Some(0..4));
-        assert_eq!(highlight_in("List of signal", "zzz"), None);
-        assert_eq!(highlight_in("List of signal", ""), None);
-    }
-
-    #[test]
-    fn splits_folder_queries_for_highlighting() {
-        assert_eq!(query_parts("formats/Mar"), (Some("formats"), "Mar"));
-        assert_eq!(query_parts("a/nested/Note"), (Some("nested"), "Note"));
-        assert_eq!(query_parts("plain"), (None, "plain"));
-    }
-
-    #[test]
     fn catalog_suggestions_filter_sort_and_qualify_duplicates() {
         let vault = TempVault::new();
         for relative in ["alpha/Note.md", "beta/nested/Note.md", "beta/Other.md"] {

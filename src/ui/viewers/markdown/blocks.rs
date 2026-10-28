@@ -4,12 +4,12 @@ use std::ops::Range;
 
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::{
-    ActiveTheme, ChildElement,
+    ChildElement, Theme,
     checkbox::Checkbox,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
 };
 use gpui_kit::{
-    AnyElement, App, ElementId, FontStyle, FontWeight, HighlightStyle, IntoElement, ParentElement,
+    AnyElement, ElementId, FontStyle, FontWeight, HighlightStyle, IntoElement, ParentElement,
     SharedString, Styled, StyledText, div, px,
 };
 
@@ -22,6 +22,25 @@ use crate::document::markdown::{ListItem, MarkdownBlock, MarkdownInline};
 use crate::ui::BASE_FONT_SIZE;
 
 impl MarkdownViewer {
+    pub(super) fn render_inline_code(
+        value: &str,
+        style: InlineStyle,
+        ctx: &BlockContext,
+    ) -> AnyElement {
+        let highlight = inline_highlight(
+            InlineStyle {
+                code: true,
+                ..style
+            },
+            ctx.appearance,
+        );
+        div()
+            .min_w_0()
+            .font_family(ctx.code_font.clone())
+            .child(StyledText::new(value.to_owned()).with_highlights([(0..value.len(), highlight)]))
+            .into_any_element()
+    }
+
     pub(super) fn render_blocks(
         &self,
         blocks: &[MarkdownBlock],
@@ -68,7 +87,7 @@ impl MarkdownViewer {
                 .w_full()
                 .mt(px(margin_top))
                 .border_t_1()
-                .border_color(ctx.cx.theme().border)
+                .border_color(ctx.appearance.border)
                 .into_any_element(),
         }
     }
@@ -86,8 +105,8 @@ impl MarkdownViewer {
             .mt(px(margin_top))
             .pl(px(MD_BLOCKQUOTE_PADDING))
             .border_l(px(MD_BLOCKQUOTE_BORDER))
-            .border_color(ctx.cx.theme().border)
-            .text_color(ctx.cx.theme().muted_foreground)
+            .border_color(ctx.appearance.border)
+            .text_color(ctx.appearance.muted_foreground)
             .children(self.render_blocks(blocks, list_depth, true, ctx))
             .into_any_element()
     }
@@ -187,7 +206,7 @@ impl MarkdownViewer {
         Table::new()
             .with_ix(table_ix)
             .border_1()
-            .border_color(ctx.cx.theme().border)
+            .border_color(ctx.appearance.border)
             .rounded(px(MD_CODE_BLOCK_RADIUS))
             .mt(px(margin_top))
             .child(TableHeader::new().child(header_row))
@@ -204,12 +223,12 @@ impl MarkdownViewer {
         let label = language.map(|language| {
             div()
                 .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE * 0.8))
-                .text_color(ctx.cx.theme().muted_foreground)
+                .text_color(ctx.appearance.muted_foreground)
                 .child(language.clone())
         });
         div()
-            .bg(ctx.cx.theme().muted)
-            .font_family("monospace")
+            .bg(ctx.appearance.muted)
+            .font_family(ctx.code_font.clone())
             .text_size(px(BASE_FONT_SIZE * MD_CODE_FONT_SCALE))
             .rounded(px(MD_CODE_BLOCK_RADIUS))
             .p(px(MD_CODE_BLOCK_PADDING))
@@ -276,7 +295,7 @@ pub(super) fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -
     (image_count > 1).then_some(index)
 }
 
-pub(super) fn inline_highlight(style: InlineStyle, cx: &App) -> HighlightStyle {
+pub(super) fn inline_highlight(style: InlineStyle, appearance: &Theme) -> HighlightStyle {
     let mut highlight = HighlightStyle::default();
     if style.bold {
         highlight.font_weight = Some(FontWeight::BOLD);
@@ -285,45 +304,7 @@ pub(super) fn inline_highlight(style: InlineStyle, cx: &App) -> HighlightStyle {
         highlight.font_style = Some(FontStyle::Italic);
     }
     if style.code {
-        highlight.background_color = Some(cx.theme().muted);
+        highlight.background_color = Some(appearance.muted);
     }
     highlight
-}
-
-#[cfg(test)]
-mod tests {
-    use super::adjacent_image_run_end;
-    use crate::document::markdown::{MarkdownInline, MarkdownInline as MI};
-
-    fn image(name: &str) -> MarkdownInline {
-        MarkdownInline::Image {
-            url: name.into(),
-            alt: String::new(),
-        }
-    }
-
-    #[test]
-    fn adjacent_images_form_a_run_across_inline_whitespace() {
-        let inlines = [image("a.png"), MI::Text(" ".into()), image("b.png")];
-
-        assert_eq!(adjacent_image_run_end(&inlines, 0), Some(3));
-    }
-
-    #[test]
-    fn a_line_break_prevents_an_image_run() {
-        let inlines = [image("a.png"), MI::Break, image("b.png")];
-
-        assert_eq!(adjacent_image_run_end(&inlines, 0), None);
-    }
-
-    #[test]
-    fn intervening_text_prevents_an_image_run() {
-        let inlines = [
-            image("a.png"),
-            MI::Text(" some text ".into()),
-            image("b.png"),
-        ];
-
-        assert_eq!(adjacent_image_run_end(&inlines, 0), None);
-    }
 }

@@ -1,8 +1,7 @@
 //! Per-vault workspace state and its local machine identity.
 
 use std::collections::HashSet;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
@@ -173,7 +172,7 @@ impl Workspace {
         };
         let file = workspace_file_path(vault_root, machine_id)?;
         let json = serde_json::to_vec_pretty(&stored).context("Failed to serialize workspace")?;
-        write_atomically(&file, &json)
+        super::atomic_file::write(&file, &json).context("Failed to write workspace")
     }
 
     fn validate_tab_ids(&self) -> Result<()> {
@@ -222,46 +221,6 @@ fn workspace_file_path(vault_root: &Path, machine_id: &str) -> Result<PathBuf> {
             .join(format!("{}.json", vault.id())));
     }
     channel.workspace_file(vault_root, machine_id)
-}
-
-fn write_atomically(path: &Path, contents: &[u8]) -> Result<()> {
-    let parent = path.parent().context("Workspace path has no parent")?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("Failed to create workspace directory: {}", parent.display()))?;
-    let file_name = path
-        .file_name()
-        .context("Workspace path has no file name")?
-        .to_string_lossy();
-    let temporary = parent.join(format!(".{file_name}.{:032x}.tmp", rand::random::<u128>()));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .with_context(|| {
-            format!(
-                "Failed to create temporary workspace file: {}",
-                temporary.display()
-            )
-        })?;
-    let write_result = (|| -> Result<()> {
-        file.write_all(contents)
-            .with_context(|| format!("Failed to write workspace: {}", temporary.display()))?;
-        file.sync_all()
-            .with_context(|| format!("Failed to flush workspace: {}", temporary.display()))?;
-        drop(file);
-        fs::rename(&temporary, path).with_context(|| {
-            format!(
-                "Failed to replace workspace file {} with {}",
-                path.display(),
-                temporary.display()
-            )
-        })?;
-        Ok(())
-    })();
-    if write_result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    write_result
 }
 
 #[cfg(test)]

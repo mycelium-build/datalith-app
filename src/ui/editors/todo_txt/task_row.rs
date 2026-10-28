@@ -46,7 +46,7 @@ impl TodoTxtState {
         let read_only = self.workspace.is_read_only();
 
         let row_bg = if is_selected {
-            cx.theme().accent.opacity(0.1)
+            cx.theme().list_active
         } else {
             gpui_kit::transparent_black()
         };
@@ -123,11 +123,7 @@ impl TodoTxtState {
         for project in &task.projects {
             row = row.child(super::render_pill(
                 &format!("+{project}"),
-                if task.completed {
-                    cx.theme().muted_foreground
-                } else {
-                    cx.theme().info
-                },
+                cx.theme().muted_foreground,
             ));
         }
 
@@ -135,11 +131,7 @@ impl TodoTxtState {
         for context in &task.contexts {
             row = row.child(super::render_pill(
                 &format!("@{context}"),
-                if task.completed {
-                    cx.theme().muted_foreground
-                } else {
-                    cx.theme().success
-                },
+                cx.theme().muted_foreground,
             ));
         }
 
@@ -227,6 +219,7 @@ impl TodoTxtState {
         let mut desc_input = Input::new(desc_entity)
             .appearance(false)
             .p_0()
+            .text_color(cx.theme().foreground)
             .readonly(self.workspace.is_read_only());
         if task.completed {
             desc_input = desc_input.text_color(cx.theme().muted_foreground);
@@ -348,17 +341,17 @@ impl TodoTxtState {
         };
 
         let content_entity = entity.clone();
+        let muted_foreground = cx.theme().muted_foreground;
+        let accent = cx.theme().accent;
         let content =
-            move |_: &mut PopoverState, _window: &mut Window, cx: &mut Context<PopoverState>| {
+            move |_: &mut PopoverState, _window: &mut Window, _cx: &mut Context<PopoverState>| {
                 let mut menu = v_flex().py_1().min_w(px(80.0));
 
                 for value in PRIORITY_VALUES {
                     let pri = value.map(Priority);
                     let label = value.map_or_else(|| "×".to_string(), |value| value.to_string());
-                    let color = pri.map_or_else(
-                        || cx.theme().muted_foreground,
-                        |p| super::priority_color(p.as_char()),
-                    );
+                    let color = pri
+                        .map_or_else(|| muted_foreground, |p| super::priority_color(p.as_char()));
                     let pri_char = pri.map(Priority::as_char);
                     let ent = content_entity.clone();
                     menu = menu.child(
@@ -370,7 +363,7 @@ impl TodoTxtState {
                             .px_3()
                             .py_1()
                             .cursor_pointer()
-                            .hover(|s| s.bg(cx.theme().accent.opacity(0.1)))
+                            .hover(|s| s.bg(accent.opacity(0.1)))
                             .text_sm()
                             .text_color(color)
                             .child(label)

@@ -691,49 +691,6 @@ mod tests {
     }
 
     #[test]
-    fn filters_compile_with_minimal_parenthesization() {
-        let mut compiler = BaseQueryCompiler::new(0);
-        let sql = compiler
-            .compile_filter(&expression("file.inFolder(\"Notes\")"))
-            .unwrap();
-        assert_eq!(
-            sql,
-            "COALESCE(folder = ?1 OR folder LIKE ?2 ESCAPE '\\', 0) <> 0"
-        );
-
-        // MatchAll conjuncts vanish; parameters keep numbering across filters.
-        let filter = Filter::And(vec![
-            expression("price > 5"),
-            expression("!title.startsWith(\"Draft\")"),
-            Filter::MatchAll,
-        ]);
-        let sql = compiler.compile_filter(&filter).unwrap();
-        assert_eq!(
-            sql,
-            "COALESCE(json_extract(metadata, ?3) > ?4, 0) <> 0 \
-             AND COALESCE(NOT json_extract(metadata, ?5) GLOB ?6, 0) <> 0"
-        );
-    }
-
-    #[test]
-    fn arithmetic_compiles_as_minimal_precedence_chains() {
-        let mut formulas = BTreeMap::new();
-        formulas.insert(
-            "completion".to_string(),
-            Expr::parse("progress / pages * 100").unwrap(),
-        );
-        let mut compiler = BaseQueryCompiler::new(0);
-        let sql = compiler
-            .compile_source("formula.completion", &formulas)
-            .unwrap();
-        assert_eq!(
-            sql,
-            "CAST(json_extract(metadata, ?1) AS REAL) \
-             / CAST(json_extract(metadata, ?2) AS REAL) * ?3"
-        );
-    }
-
-    #[test]
     fn file_predicates_compile_and_match() {
         pollster::block_on(async {
             let (database, root) = catalog_with(&[

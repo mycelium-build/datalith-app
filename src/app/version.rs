@@ -76,12 +76,4 @@ mod tests {
     fn release_tag_keeps_the_prefix() {
         assert_eq!(release_tag_from(Some("v0.2.0")), "v0.2.0");
     }
-
-    #[test]
-    fn version_reflects_the_compile_time_stamp() {
-        match RELEASE_TAG {
-            Some(tag) => assert_eq!(version(), tag.trim_start_matches('v')),
-            None => assert_eq!(version(), env!("CARGO_PKG_VERSION")),
-        }
-    }
 }

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 
 use crate::vault::path::{parent_dir, unique_path};
 use crate::vault::{VaultCatalog, links, source};
@@ -90,17 +90,85 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
     })
 }
 
-pub fn delete(target: &Path) -> Result<()> {
-    source::ensure_writable(target)?;
+/// Deleted items stay restorable for this long before a later deletion purges them.
+const DELETED_RETENTION: std::time::Duration = std::time::Duration::from_hours(1);
 
-    if source::is_dir(target) {
-        fs::remove_dir_all(target)
-            .with_context(|| format!("Failed to delete directory {}", target.display()))?;
-    } else {
-        fs::remove_file(target)
-            .with_context(|| format!("Failed to delete file {}", target.display()))?;
+/// A file or folder moved aside by [`delete`], restorable with [`restore`].
+#[derive(Clone, Debug)]
+pub struct Deleted {
+    pub original: PathBuf,
+    staged: PathBuf,
+}
+
+fn deleted_dir(vault_root: &Path) -> Result<PathBuf> {
+    Ok(crate::channel::Channel::current()
+        .vault_dir(vault_root)?
+        .join("deleted"))
+}
+
+/// Move `target` into the vault's `deleted` folder so the deletion can be undone.
+pub fn delete(vault_root: &Path, target: &Path) -> Result<Deleted> {
+    source::ensure_writable(target)?;
+    let directory = deleted_dir(vault_root)?;
+    purge_deleted(&directory, DELETED_RETENTION);
+    fs::create_dir_all(&directory)
+        .with_context(|| format!("Failed to create {}", directory.display()))?;
+    // Name staged items by deletion time: a rename keeps the original mtime.
+    let staged = directory.join(format!(
+        "{}-{:016x}",
+        unix_seconds(std::time::SystemTime::now()),
+        rand::random::<u64>()
+    ));
+    fs::rename(target, &staged)
+        .with_context(|| format!("Failed to delete {}", target.display()))?;
+    Ok(Deleted {
+        original: target.to_path_buf(),
+        staged,
+    })
+}
+
+/// Put a deleted item back where it was, unless something else now uses that path.
+pub fn restore(deleted: &Deleted) -> Result<()> {
+    ensure!(
+        !deleted.original.exists(),
+        "{} already exists",
+        deleted.original.display()
+    );
+    if let Some(parent) = deleted.original.parent() {
+        fs::create_dir_all(parent)?;
     }
-    Ok(())
+    fs::rename(&deleted.staged, &deleted.original)
+        .with_context(|| format!("Failed to restore {}", deleted.original.display()))
+}
+
+fn unix_seconds(time: std::time::SystemTime) -> u64 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// Permanently remove deleted items older than `retention`.
+fn purge_deleted(directory: &Path, retention: std::time::Duration) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    let now = unix_seconds(std::time::SystemTime::now());
+    for entry in entries.flatten() {
+        let deleted_at = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.split_once('-'))
+            .and_then(|(seconds, _)| seconds.parse::<u64>().ok());
+        let expired =
+            deleted_at.is_none_or(|seconds| now.saturating_sub(seconds) >= retention.as_secs());
+        if expired {
+            let path = entry.path();
+            let _ = if path.is_dir() {
+                fs::remove_dir_all(&path)
+            } else {
+                fs::remove_file(&path)
+            };
+        }
+    }
 }
 
 pub fn duplicate(target: &Path) -> Result<PathBuf> {
@@ -142,6 +210,68 @@ mod tests {
     use super::*;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
+    fn temp_vault(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("datalith-{name}-{:032x}", rand::random::<u128>()));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn deleted_files_and_folders_can_be_restored() {
+        let root = temp_vault("delete-restore");
+        let note = root.join("Note.md");
+        fs::write(&note, "hello").unwrap();
+        let folder = root.join("Folder");
+        fs::create_dir_all(folder.join("Inner")).unwrap();
+        fs::write(folder.join("Inner/Child.md"), "child").unwrap();
+
+        let deleted_note = delete(&root, &note).unwrap();
+        let deleted_folder = delete(&root, &folder).unwrap();
+        assert!(!note.exists());
+        assert!(!folder.exists());
+
+        restore(&deleted_note).unwrap();
+        restore(&deleted_folder).unwrap();
+        assert_eq!(fs::read_to_string(&note).unwrap(), "hello");
+        assert_eq!(
+            fs::read_to_string(folder.join("Inner/Child.md")).unwrap(),
+            "child"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn restore_never_overwrites_a_new_item_at_the_same_path() {
+        let root = temp_vault("delete-conflict");
+        let note = root.join("Note.md");
+        fs::write(&note, "old").unwrap();
+        let deleted = delete(&root, &note).unwrap();
+        fs::write(&note, "new").unwrap();
+        assert!(restore(&deleted).is_err());
+        assert_eq!(fs::read_to_string(&note).unwrap(), "new");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn purge_removes_only_expired_deleted_items() {
+        let root = temp_vault("delete-purge");
+        let directory = deleted_dir(&root).unwrap();
+        fs::create_dir_all(&directory).unwrap();
+        let expired = directory.join("0-0000000000000000");
+        let unnamed = directory.join("unexpected");
+        fs::write(&expired, "").unwrap();
+        fs::create_dir_all(&unnamed).unwrap();
+        fs::write(root.join("Note.md"), "").unwrap();
+        let recent = delete(&root, &root.join("Note.md")).unwrap();
+
+        purge_deleted(&directory, DELETED_RETENTION);
+        assert!(!expired.exists());
+        assert!(!unnamed.exists());
+        restore(&recent).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn immutable_vault_rejects_every_file_mutation() {
         let root = source::DOCUMENTATION.root();
@@ -156,7 +286,7 @@ mod tests {
         assert!(create(&root).is_err());
         assert!(create_folder(&root).is_err());
         assert!(update(&note, "changed").is_err());
-        assert!(delete(&note).is_err());
+        assert!(delete(&root, &note).is_err());
         assert!(duplicate(&note).is_err());
         assert!(rename(&catalog, &note, &root.join("Renamed.md")).is_err());
         let personal_note = personal.join("Personal.md");

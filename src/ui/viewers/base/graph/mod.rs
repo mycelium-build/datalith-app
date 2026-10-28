@@ -8,7 +8,7 @@ mod snapshot;
 
 use std::path::PathBuf;
 
-use gpui_kit::component::{ActiveTheme, ElementExt, WindowExt, h_flex};
+use gpui_kit::component::{ActiveTheme, ElementExt, Theme, WindowExt, h_flex};
 use gpui_kit::{
     AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
@@ -29,6 +29,8 @@ use paint::HOVER_DIM_OPACITY;
 
 /// Owns camera, simulation, and pointer state for one embedded graph view.
 pub(super) struct GraphState {
+    /// Theme previews disable link navigation.
+    preview: bool,
     handler: WeakEntity<FileHandler>,
     snapshot: Option<GraphSnapshot>,
     focus_handle: FocusHandle,
@@ -59,6 +61,7 @@ struct PointerInteraction {
 impl GraphState {
     pub(super) fn new(handler: WeakEntity<FileHandler>, cx: &Context<Self>) -> Self {
         Self {
+            preview: false,
             handler,
             snapshot: None,
             focus_handle: cx.focus_handle(),
@@ -70,6 +73,10 @@ impl GraphState {
             interaction: None,
             simulation: Simulation::default(),
         }
+    }
+
+    pub(super) const fn set_preview(&mut self) {
+        self.preview = true;
     }
 
     /// Swaps in a freshly built snapshot;
@@ -246,7 +253,8 @@ impl GraphState {
         } else {
             None
         };
-        if !interaction.moved
+        if !self.preview
+            && !interaction.moved
             && let Some(target) = target
         {
             let new_tab = event.modifiers.platform;
@@ -282,6 +290,7 @@ impl GraphState {
     }
 
     pub(super) fn render_canvas(&mut self, window: &Window, cx: &Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
         let pinned = self.interaction.and_then(|interaction| interaction.node);
         let hover_query = self
             .interaction
@@ -308,13 +317,14 @@ impl GraphState {
         let snapshot_for_paint = snapshot.clone();
         let camera_for_paint = self.camera;
         let hovered_for_paint = active_hover;
+        let paint_theme = theme.clone();
         let entity = cx.entity().downgrade();
         let mut root = div()
             .id("graph-view")
             .size_full()
             .relative()
             .overflow_hidden()
-            .bg(cx.theme().background)
+            .bg(theme.background)
             .track_focus(&self.focus_handle)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
             .on_mouse_move(cx.listener(Self::handle_mouse_move))
@@ -324,14 +334,14 @@ impl GraphState {
             .child(
                 gpui_kit::canvas(
                     move |bounds, _window, _cx| (bounds, snapshot_for_paint, camera_for_paint),
-                    move |_bounds, (bounds, snapshot, camera), window, cx| {
+                    move |_bounds, (bounds, snapshot, camera), window, _cx| {
                         paint::paint_graph(
                             bounds,
                             &snapshot,
                             camera,
                             hovered_for_paint,
+                            &paint_theme,
                             window,
-                            cx,
                         );
                     },
                 )
@@ -363,14 +373,14 @@ impl GraphState {
                         .text_center()
                         .text_sm()
                         .whitespace_nowrap()
-                        .text_color(cx.theme().foreground)
+                        .text_color(theme.foreground)
                         .opacity(if dimmed { HOVER_DIM_OPACITY } else { 1.0 })
                         .child(node.label.clone()),
                 );
             }
         }
 
-        if let Some(overlay) = render_overlay(&snapshot.legend, &snapshot.summaries, cx) {
+        if let Some(overlay) = render_overlay(&snapshot.legend, &snapshot.summaries, &theme) {
             root = root.child(overlay);
         }
 
@@ -379,7 +389,11 @@ impl GraphState {
 }
 
 /// Top-right column stacking the legend and the summary box.
-fn render_overlay(legend: &[LegendEntry], summaries: &[String], cx: &App) -> Option<AnyElement> {
+fn render_overlay(
+    legend: &[LegendEntry],
+    summaries: &[String],
+    theme: &Theme,
+) -> Option<AnyElement> {
     if legend.is_empty() && summaries.is_empty() {
         return None;
     }
@@ -390,18 +404,18 @@ fn render_overlay(legend: &[LegendEntry], summaries: &[String], cx: &App) -> Opt
             .right_2()
             .items_end()
             .gap_2()
-            .children((!legend.is_empty()).then(|| render_legend(legend, cx)))
-            .children((!summaries.is_empty()).then(|| render_summary_box(summaries, cx)))
+            .children((!legend.is_empty()).then(|| render_legend(legend, theme)))
+            .children((!summaries.is_empty()).then(|| render_summary_box(summaries, theme)))
             .into_any_element(),
     )
 }
 
 /// One "Pages Sum: 350" line per entry, boxed like the legend.
-fn render_summary_box(summaries: &[String], cx: &App) -> AnyElement {
+fn render_summary_box(summaries: &[String], theme: &Theme) -> AnyElement {
     let lines = summaries.iter().map(|line| {
         div()
             .text_sm()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(theme.muted_foreground)
             .child(line.clone())
             .into_any_element()
     });
@@ -410,15 +424,15 @@ fn render_summary_box(summaries: &[String], cx: &App) -> AnyElement {
         .p_2()
         .rounded_md()
         .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
+        .border_color(theme.border)
+        .bg(theme.background)
         .children(lines)
         .into_any_element()
 }
 
-fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
+fn render_legend(legend: &[LegendEntry], theme: &Theme) -> AnyElement {
     let rows = legend.iter().map(|entry| {
-        let color = entry.color.map_or(cx.theme().info, paint::graph_color);
+        let color = entry.color.map_or(theme.info, paint::graph_color);
         h_flex()
             .items_center()
             .gap_2()
@@ -426,7 +440,7 @@ fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
             .child(
                 div()
                     .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(theme.muted_foreground)
                     .child(entry.name.clone()),
             )
             .into_any_element()
@@ -436,8 +450,8 @@ fn render_legend(legend: &[LegendEntry], cx: &App) -> AnyElement {
         .p_2()
         .rounded_md()
         .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
+        .border_color(theme.border)
+        .bg(theme.background)
         .children(rows)
         .into_any_element()
 }
@@ -463,16 +477,4 @@ impl Render for GraphState {
             div().into_any_element()
         }
     }
-}
-
-#[cfg(test)]
-pub(in crate::ui) fn test_snapshot(
-    base_source: &str,
-    rows: Vec<(PathBuf, Vec<String>, Vec<bool>)>,
-) -> GraphSnapshot {
-    let definition =
-        crate::document::base::BaseDefinition::parse(base_source).expect("valid base source");
-    let view = definition.views.first().expect("at least one view");
-    let config = view.as_graph().expect("graph view").clone();
-    snapshot::build(&config, std::path::Path::new(""), rows, Vec::new())
 }

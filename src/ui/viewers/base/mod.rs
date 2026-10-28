@@ -2,6 +2,7 @@ mod cards;
 mod cells;
 mod graph;
 mod list;
+mod preview;
 mod snapshot;
 mod table;
 
@@ -64,6 +65,8 @@ impl BaseViewer {
 }
 
 pub struct BaseViewState {
+    /// Theme previews are read-only and take their palette from the scoped global theme.
+    preview: bool,
     input: Entity<EditorState>,
     /// The parsed definition the switcher renders from and queries reuse;
     /// replaced whenever the source parses successfully again.
@@ -95,6 +98,7 @@ impl BaseViewState {
         cx: &Context<Self>,
     ) -> Self {
         Self {
+            preview: false,
             input,
             definition: None,
             catalog,
@@ -244,6 +248,9 @@ impl BaseViewState {
             cx.new(|cx| graph::GraphState::new(handler, cx))
         });
         entity.update(cx, |graph, cx| {
+            if self.preview {
+                graph.set_preview();
+            }
             graph.set_snapshot(has_nodes.then_some(built), reset_view, cx);
         });
     }
@@ -256,6 +263,7 @@ impl BaseViewState {
     }
 
     fn render_view_switcher(
+        &self,
         definition: &BaseDefinition,
         selected_name: Option<&str>,
         cx: &Context<Self>,
@@ -277,8 +285,23 @@ impl BaseViewState {
                     .small()
                     .label(view.name.clone())
                     .when(selected, ButtonVariants::primary)
+                    .when(self.preview, |button| {
+                        button
+                            .bg(if selected {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().background
+                            })
+                            .text_color(if selected {
+                                cx.theme().primary_foreground
+                            } else {
+                                cx.theme().foreground
+                            })
+                    })
                     .on_click(cx.listener(move |state, _, _, cx| {
-                        state.select_view(name.clone(), cx);
+                        if !state.preview {
+                            state.select_view(name.clone(), cx);
+                        }
                     }))
                     .into_any_element()
             }))
@@ -305,9 +328,13 @@ impl BaseViewState {
 
 impl Render for BaseViewState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut column = v_flex().size_full();
+        let mut column = v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .font_family(cx.theme().font_family.clone());
         if let Some(definition) = &self.definition {
-            column = column.child(Self::render_view_switcher(
+            column = column.child(self.render_view_switcher(
                 definition,
                 self.selected_view.as_deref(),
                 cx,
@@ -341,6 +368,8 @@ impl Render for BaseViewState {
         let root_content = column.child(content).into_any_element();
         let mut root = div()
             .id("base-viewer-root")
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
             .size_full()
             .relative()
             .overflow_hidden()

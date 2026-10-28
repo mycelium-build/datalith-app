@@ -1,13 +1,17 @@
 use std::ops::Div;
+use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
+use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::popover::Popover;
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::component::select::Select;
-use gpui_kit::component::{ActiveTheme, Icon, IconName, h_flex, v_flex, v_virtual_list};
+use gpui_kit::component::{ActiveTheme, Icon, IconName, IndexPath, h_flex, v_flex, v_virtual_list};
 use gpui_kit::{
-    AnyElement, Context, Element, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Render, Styled, Window, div, px, relative,
+    AnyElement, App, AppContext as _, Context, DismissEvent, Element, ElementId, Entity, Focusable,
+    InteractiveElement, IntoElement, KeyDownEvent, ListSizingBehavior, ParentElement, Render,
+    RenderOnce, Styled, Window, div, px, relative,
 };
 
 use conv::ConvAsUtil;
@@ -16,6 +20,7 @@ use crate::ui::icons::DatalithIcon;
 
 use super::TodoTxtState;
 use super::constants::{TODO_HEADER_HEIGHT, TODO_INDENT_PX, TODO_NEW_ROW_HEIGHT, TODO_ROW_HEIGHT};
+use super::{FilterKind, SortKind};
 
 impl Render for TodoTxtState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -77,6 +82,9 @@ impl Render for TodoTxtState {
 
         v_flex()
             .size_full()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .font_family(cx.theme().font_family.clone())
             .min_h_0()
             .overflow_hidden()
             .track_focus(&self.editor_focus)
@@ -91,14 +99,18 @@ impl Render for TodoTxtState {
             .children(error_banner)
             .child(task_list)
             .child(new_row)
+            .child(div().flex_1().min_h_0())
     }
 }
 
 impl TodoTxtState {
     fn render_header(&self, cx: &Context<Self>) -> AnyElement {
-        let search = Input::new(&self.search_input).cleanable(true);
-        let filter_select = Select::new(&self.filter_select);
-        let sort_select = Select::new(&self.sort_select);
+        let search = Input::new(&self.search_input)
+            .cleanable(true)
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground);
+        let filter_select = self.render_select(PreviewSelectKind::Filter, cx);
+        let sort_select = self.render_select(PreviewSelectKind::Sort, cx);
 
         let sort_icon = if self.workspace.sort_descending() {
             Icon::new(DatalithIcon::ArrowDownAz).size_4()
@@ -169,6 +181,64 @@ impl TodoTxtState {
             .into_any_element()
     }
 
+    fn render_select(&self, kind: PreviewSelectKind, cx: &Context<Self>) -> AnyElement {
+        let state = match kind {
+            PreviewSelectKind::Filter => &self.filter_select,
+            PreviewSelectKind::Sort => &self.sort_select,
+        };
+        self.appearance.as_ref().map_or_else(
+            || {
+                Select::new(state)
+                    .bg(cx.theme().background)
+                    .text_color(cx.theme().foreground)
+                    .into_any_element()
+            },
+            |appearance| {
+                PreviewSelect {
+                    kind,
+                    selected_index: state
+                        .read(cx)
+                        .selected_index(cx)
+                        .map_or(0, |index| index.row),
+                    editor: cx.entity(),
+                    appearance: appearance.clone(),
+                }
+                .into_any_element()
+            },
+        )
+    }
+
+    fn choose_filter(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.filter_select.update(cx, |state, cx| {
+            state.set_selected_index(Some(IndexPath::new(index)), window, cx);
+        });
+        self.workspace.set_filter(FilterKind::from_index(index));
+        self.refresh_item_sizes();
+        cx.notify();
+    }
+
+    fn choose_sort(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.sort_select.update(cx, |state, cx| {
+            state.set_selected_index(Some(IndexPath::new(index)), window, cx);
+        });
+        self.workspace.set_sort(SortKind::from_index(index));
+        self.refresh_item_sizes();
+        cx.notify();
+    }
+
+    fn choose_preview_option(
+        &mut self,
+        kind: PreviewSelectKind,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match kind {
+            PreviewSelectKind::Filter => self.choose_filter(index, window, cx),
+            PreviewSelectKind::Sort => self.choose_sort(index, window, cx),
+        }
+    }
+
     fn render_error_banner(&self, cx: &Context<Self>) -> Option<AnyElement> {
         if self.workspace.parse_error_count() == 0 {
             return None;
@@ -190,7 +260,9 @@ impl TodoTxtState {
     fn render_task_list(&self, visible: &[(usize, bool)], cx: &Context<Self>) -> AnyElement {
         if visible.is_empty() {
             return v_flex()
-                .flex_1()
+                .flex_shrink_0()
+                .h(px(TODO_ROW_HEIGHT * 2.0))
+                .w_full()
                 .items_center()
                 .justify_center()
                 .gap_2()
@@ -210,7 +282,7 @@ impl TodoTxtState {
         let visible_owned = visible.to_vec();
 
         v_flex()
-            .flex_1()
+            .flex_shrink_1()
             .min_h_0()
             .relative()
             .overflow_hidden()
@@ -235,6 +307,9 @@ impl TodoTxtState {
                             .collect()
                     },
                 )
+                .with_sizing_behavior(ListSizingBehavior::Infer)
+                .flex_shrink_1()
+                .min_h_0()
                 .track_scroll(&self.scroll_handle),
             )
             .child(Scrollbar::vertical(&self.scroll_handle))
@@ -243,22 +318,31 @@ impl TodoTxtState {
 
     fn render_new_task_row(&self, cx: &Context<Self>) -> AnyElement {
         if self.workspace.is_read_only() {
-            return div().h(px(TODO_NEW_ROW_HEIGHT)).w_full().into_any_element();
+            return div()
+                .h(px(TODO_NEW_ROW_HEIGHT))
+                .w_full()
+                .flex_shrink_0()
+                .into_any_element();
         }
         h_flex()
             .h(px(TODO_NEW_ROW_HEIGHT))
             .w_full()
+            .flex_shrink_0()
             .items_center()
             .gap_2()
-            .px_3()
             .border_t_1()
             .border_color(cx.theme().border)
-            .child(div().w(px(TODO_INDENT_PX + 16.0)))
+            .child(div().w(px(TODO_INDENT_PX)))
             .child(
                 div()
                     .flex_1()
                     .id("new-task-input-wrap")
-                    .child(Input::new(&self.new_task_input).appearance(false))
+                    .child(
+                        Input::new(&self.new_task_input)
+                            .bg(cx.theme().background)
+                            .text_color(cx.theme().foreground)
+                            .appearance(false),
+                    )
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
                             "enter" if !event.keystroke.modifiers.secondary() => {
@@ -279,5 +363,141 @@ impl TodoTxtState {
                     })),
             )
             .into_any_element()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PreviewSelectKind {
+    Filter,
+    Sort,
+}
+
+impl PreviewSelectKind {
+    fn id(self, suffix: &str) -> ElementId {
+        ElementId::from(format!("todo-preview-{}-{suffix}", self.as_str()))
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Filter => "filter",
+            Self::Sort => "sort",
+        }
+    }
+
+    fn labels(self) -> Vec<&'static str> {
+        match self {
+            Self::Filter => FilterKind::ALL.iter().map(|kind| kind.label()).collect(),
+            Self::Sort => SortKind::ALL.iter().map(|kind| kind.label()).collect(),
+        }
+    }
+}
+
+fn preview_menu_item(
+    label: &'static str,
+    index: usize,
+    selected_index: usize,
+    kind: PreviewSelectKind,
+    editor: Entity<TodoTxtState>,
+) -> PopupMenuItem {
+    PopupMenuItem::new(label)
+        .checked(index == selected_index)
+        .on_click(move |_, window, app| {
+            app.update_entity(&editor, |todo, cx| {
+                todo.choose_preview_option(kind, index, window, cx);
+            });
+        })
+}
+
+#[derive(Default)]
+struct PreviewPopupState {
+    menu: Option<Entity<PopupMenu>>,
+    appearance: Option<Rc<gpui_kit::component::Theme>>,
+}
+
+#[derive(IntoElement)]
+struct PreviewSelect {
+    kind: PreviewSelectKind,
+    selected_index: usize,
+    editor: Entity<TodoTxtState>,
+    appearance: Rc<gpui_kit::component::Theme>,
+}
+
+impl RenderOnce for PreviewSelect {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let menu_state = window.use_keyed_state(self.kind.id("menu-state"), cx, |_, _| {
+            PreviewPopupState::default()
+        });
+        let labels = self.kind.labels();
+        let selected_label = labels.get(self.selected_index).copied().unwrap_or_default();
+        let appearance = self.appearance.clone();
+        let select_editor = self.editor.clone();
+        let kind = self.kind;
+        let selected_index = self.selected_index;
+
+        let previous_appearance = menu_state.read(cx).appearance.clone();
+        if previous_appearance
+            .as_ref()
+            .is_some_and(|previous| !Rc::ptr_eq(previous, &appearance))
+            && let Some(menu) = menu_state.read(cx).menu.clone()
+        {
+            menu.update(cx, |_, cx| cx.notify());
+        }
+        menu_state.update(cx, |state, _| {
+            state.appearance = Some(appearance.clone());
+        });
+
+        Popover::new(kind.id("popover"))
+            .appearance(false)
+            .overlay_closable(false)
+            .trigger(
+                Button::new(kind.id("trigger"))
+                    .outline()
+                    .label(selected_label)
+                    .dropdown_caret(true)
+                    .w_full()
+                    .accessibility_label(match kind {
+                        PreviewSelectKind::Filter => format!("Filter: {selected_label}"),
+                        PreviewSelectKind::Sort => format!("Sort: {selected_label}"),
+                    }),
+            )
+            .content(move |_, window, cx| {
+                let existing_menu = menu_state.read(cx).menu.clone();
+                let menu = existing_menu.unwrap_or_else(|| {
+                    let menu_labels = labels.clone();
+                    let menu_editor = select_editor.clone();
+                    let menu = PopupMenu::build(window, cx, move |mut menu, _, _| {
+                        for (index, label) in menu_labels.into_iter().enumerate() {
+                            menu = menu.item(preview_menu_item(
+                                label,
+                                index,
+                                selected_index,
+                                kind,
+                                menu_editor.clone(),
+                            ));
+                        }
+                        menu
+                    });
+                    menu.focus_handle(cx).focus(window, cx);
+
+                    let popover_state = cx.entity();
+                    window
+                        .subscribe(&menu, cx, {
+                            let menu_state = menu_state.clone();
+                            move |_, _: &DismissEvent, window, cx| {
+                                popover_state.update(cx, |state, cx| state.dismiss(window, cx));
+                                menu_state.update(cx, |state, _| state.menu = None);
+                            }
+                        })
+                        .detach();
+
+                    menu_state.update(cx, |state, _| state.menu = Some(menu.clone()));
+                    menu
+                });
+
+                crate::ui::themes::preview::themed(
+                    appearance.clone(),
+                    div().id(kind.id("popup")).child(menu),
+                )
+            })
     }
 }

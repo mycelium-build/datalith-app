@@ -7,6 +7,7 @@ pub mod notifications;
 pub mod palette;
 pub mod render;
 pub mod settings;
+mod shortcuts;
 pub mod sidebar;
 pub mod startup;
 pub mod tabs;
@@ -87,6 +88,8 @@ pub struct DatalithView {
     pub(crate) last_sidebar_selection: Option<PathBuf>,
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
+    /// Deletions that Undo can still restore, most recent last.
+    pub(crate) deleted_items: Vec<sidebar::DeletedItem>,
     pub(crate) registry: FileRegistry,
     app_menu_bar: Entity<title_bar::ApplicationMenu>,
     pub(crate) startup: Option<Entity<StartupAnimation>>,
@@ -108,26 +111,8 @@ impl DatalithView {
         let tree_state = cx.new(|cx| TreeState::new(cx));
         let tree_state_sub = Self::subscribe_tree_events(&tree_state, window, cx);
 
-        let settings = SettingsView::new(cx);
-        let font_size_slider_sub = cx.subscribe(
-            &settings.font_size_slider_state,
-            |view, _, event: &SliderEvent, cx| {
-                let SliderEvent::Change(value) = event else {
-                    return;
-                };
-                let val = f64::from(value.start());
-                let new_size = px(BASE_FONT_SIZE * value.start());
-                cx.global_mut::<settings::ThemeOptions>()
-                    .font_size_multiplier = val;
-                gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
-                cx.refresh_windows();
-                if let Err(error) = app_settings::set_font_scale(val) {
-                    view.pending_notifications
-                        .push(notifications::settings_save_failed("font scale", &error));
-                }
-            },
-        );
-
+        let settings = SettingsView::new(window, cx);
+        let font_size_slider_sub = Self::subscribe_font_scale(&settings, cx);
         let appearance_sub = Self::observe_system_appearance(window, cx);
 
         let startup = cx.new(|cx| {
@@ -182,6 +167,7 @@ impl DatalithView {
             last_sidebar_selection: None,
             pending_navigation: None,
             pending_notifications: initial_notifications,
+            deleted_items: Vec::new(),
             registry: registry::default_registry(),
             app_menu_bar,
             startup: Some(startup),
@@ -189,6 +175,25 @@ impl DatalithView {
         };
         view.spawn_startup_driver(cx);
         view
+    }
+
+    fn subscribe_font_scale(settings: &SettingsView, cx: &mut Context<Self>) -> Subscription {
+        cx.subscribe(
+            &settings.font_size_slider_state,
+            |view, _, event: &SliderEvent, cx| {
+                let SliderEvent::Change(value) = event else {
+                    return;
+                };
+                let val = f64::from(value.start());
+                let new_size = px(BASE_FONT_SIZE * value.start());
+                gpui_kit::component::Theme::global_mut(cx).font_size = new_size;
+                cx.refresh_windows();
+                if let Err(error) = app_settings::set_font_scale(val) {
+                    view.pending_notifications
+                        .push(notifications::settings_save_failed("font scale", &error));
+                }
+            },
+        )
     }
 
     fn subscribe_tree_events(
@@ -216,6 +221,7 @@ impl DatalithView {
                 let effective = preference.resolve(window.appearance()).into();
                 gpui_kit::component::Theme::change(effective, Some(window), cx);
                 gpui_kit::component::Theme::global_mut(cx).mode = effective;
+                crate::app::fonts::apply(cx);
             }
         })
     }
@@ -308,7 +314,7 @@ impl DatalithView {
             {
                 changed_paths.extend(
                     self.tabs
-                        .iter()
+                        .iter_documents()
                         .filter(|(_, path, _)| path.is_some_and(|path| path.starts_with(&root)))
                         .filter_map(|(_, path, _)| path.map(Path::to_path_buf)),
                 );
@@ -325,7 +331,7 @@ impl DatalithView {
     fn set_catalog_on_tabs(&self, catalog: &VaultCatalog, root: &Path, cx: &mut Context<Self>) {
         let handlers = self
             .tabs
-            .iter()
+            .iter_documents()
             .filter(|(_, tab_path, _)| tab_path.is_some_and(|path| path.starts_with(root)))
             .map(|(_, _, handler)| handler.clone())
             .collect::<Vec<_>>();

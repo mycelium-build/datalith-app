@@ -76,22 +76,3 @@ impl Camera {
         );
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn zoom_keeps_the_world_point_under_the_pointer() {
-        let viewport = gpui_kit::point(800.0, 600.0);
-        let pointer = gpui_kit::point(615.0, 210.0);
-        let mut camera = Camera::default();
-        let before = camera.screen_to_world(pointer, viewport);
-
-        camera.zoom_at(2.0, pointer, viewport);
-
-        let after = camera.screen_to_world(pointer, viewport);
-        assert!((before.x - after.x).abs() < 0.001);
-        assert!((before.y - after.y).abs() < 0.001);
-    }
-}

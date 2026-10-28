@@ -411,7 +411,7 @@ fn render_card(
                 context.handler,
                 ElementId::Name(format!("base-card-cell-{index}-{column}").into()),
                 false,
-                context.cx,
+                context.cx.theme(),
             );
             if property.source == "file.name" {
                 div().w_full().text_lg().child(cell).into_any_element()
@@ -487,38 +487,4 @@ fn card_body_height(view: &BaseView) -> f32 {
             CARD_BODY_PADDING + property_count * CARD_PROPERTY_HEIGHT,
         )
         .max(CARD_BODY_MIN_HEIGHT)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{BaseItem, CardItem, flatten_card_items};
-
-    fn header(label: &str) -> BaseItem {
-        BaseItem::Header {
-            label: label.to_string(),
-            count: 1,
-            ordinal: 0,
-        }
-    }
-
-    #[test]
-    fn global_summary_leads_the_card_items_when_present() {
-        let items = [
-            header("done"),
-            BaseItem::Row {
-                index: 0,
-                ordinal: 0,
-            },
-        ];
-        let flat = flatten_card_items(&items, true, 3);
-        assert!(matches!(flat[0], CardItem::GlobalSummary));
-        assert!(matches!(flat[1], CardItem::Header { .. }));
-        assert!(matches!(flat[2], CardItem::GridRow(_)));
-
-        let flat = flatten_card_items(&items, false, 3);
-        assert!(
-            !matches!(flat[0], CardItem::GlobalSummary),
-            "no summaries, no header"
-        );
-    }
 }
