@@ -8,7 +8,6 @@ use gpui_kit::component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenuItem},
-    notification::Notification,
     scroll::ScrollableElement as _,
     v_flex,
 };
@@ -756,44 +755,28 @@ pub fn close_deleted_editor(family_id: u64, window: &Window, cx: &mut App) {
 }
 
 pub fn show_undo(family_id: u64, deleted: DeletedTheme, window: &mut Window, cx: &mut App) {
-    struct ThemeDeletion;
     close_deleted_editor(family_id, window, cx);
     let notification_id = rand::random::<u64>();
     let message = deleted.message();
     let deleted = std::rc::Rc::new(std::cell::RefCell::new(Some(deleted)));
     window.push_notification(
-        Notification::new()
-            .id1::<ThemeDeletion>(("theme-deletion", notification_id))
-            .title(message)
-            .action(move |_, _, _| {
-                let deleted = deleted.clone();
-                Button::new("undo-theme-delete")
-                    .small()
-                    .label("Undo")
-                    .on_click(move |_, window, cx| {
-                        let pending = deleted.borrow_mut().take();
-                        if let Some(undo) = pending {
-                            if let Err(error) =
-                                cx.global_mut::<ThemeLibrary>().undo_delete(undo.clone())
-                            {
-                                *deleted.borrow_mut() = Some(undo);
-                                window.push_notification(
-                                    notifications::settings_save_failed("theme", &error),
-                                    cx,
-                                );
-                            } else {
-                                themes::refresh_current(cx);
-                                refresh_theme_editor(family_id, false, window, cx);
-                                window.remove_notification1::<ThemeDeletion>(
-                                    ("theme-deletion", notification_id),
-                                    cx,
-                                );
-                                cx.refresh_windows();
-                            }
-                        }
-                    })
-            })
-            .autohide(true),
+        notifications::theme_deletion(message, notification_id, move |window, cx| {
+            let pending = deleted.borrow_mut().take();
+            if let Some(undo) = pending {
+                if let Err(error) = cx.global_mut::<ThemeLibrary>().undo_delete(undo.clone()) {
+                    *deleted.borrow_mut() = Some(undo);
+                    window.push_notification(
+                        notifications::settings_save_failed("theme", &error),
+                        cx,
+                    );
+                } else {
+                    themes::refresh_current(cx);
+                    refresh_theme_editor(family_id, false, window, cx);
+                    notifications::remove_theme_deletion(notification_id, window, cx);
+                    cx.refresh_windows();
+                }
+            }
+        }),
         cx,
     );
 }

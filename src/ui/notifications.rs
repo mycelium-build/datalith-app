@@ -1,7 +1,72 @@
-use gpui_kit::App;
-use gpui_kit::component::WindowExt;
-use gpui_kit::component::notification::Notification;
-use std::path::Path;
+use std::{path::Path, rc::Rc};
+
+use gpui_kit::component::{
+    Sizable as _, WindowExt as _, button::Button, notification::Notification,
+};
+use gpui_kit::{App, SharedString, Window};
+
+struct FileDeletion;
+struct ThemeDeletion;
+
+fn deletion<T>(
+    kind: &'static str,
+    button_id: &'static str,
+    notification_id: u64,
+    title: impl Into<SharedString>,
+    on_undo: impl Fn(&mut Window, &mut App) + 'static,
+) -> Notification
+where
+    T: Sized + 'static,
+{
+    let on_undo = Rc::new(on_undo);
+    Notification::new()
+        .id1::<T>((kind, notification_id))
+        .title(title)
+        .action(move |_, _, _| {
+            let on_undo = Rc::clone(&on_undo);
+            Button::new(button_id)
+                .small()
+                .label("Undo")
+                .on_click(move |_, window, cx| on_undo(window, cx))
+        })
+        .autohide(true)
+}
+
+pub fn file_deletion(
+    name: impl Into<SharedString>,
+    notification_id: u64,
+    on_undo: impl Fn(&mut Window, &mut App) + 'static,
+) -> Notification {
+    deletion::<FileDeletion>(
+        "file-deletion",
+        "undo-file-delete",
+        notification_id,
+        format!("\"{}\" deleted", name.into()),
+        on_undo,
+    )
+}
+
+pub fn remove_file_deletion(notification_id: u64, window: &mut Window, cx: &mut App) {
+    window.remove_notification1::<FileDeletion>(("file-deletion", notification_id), cx);
+}
+
+pub fn theme_deletion(
+    message: impl Into<SharedString>,
+    notification_id: u64,
+    on_undo: impl Fn(&mut Window, &mut App) + 'static,
+) -> Notification {
+    deletion::<ThemeDeletion>(
+        "theme-deletion",
+        "undo-theme-delete",
+        notification_id,
+        message,
+        on_undo,
+    )
+}
+
+pub fn remove_theme_deletion(notification_id: u64, window: &mut Window, cx: &mut App) {
+    window.remove_notification1::<ThemeDeletion>(("theme-deletion", notification_id), cx);
+}
 
 pub fn push_window_notification(cx: &mut App, notification: Notification) {
     if let Some(window) = cx.windows().first().copied()

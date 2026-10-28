@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use gpui_kit::component::{
-    Sizable as _, WindowExt as _, button::Button, notification::Notification, tree::TreeItem,
-};
+use gpui_kit::component::{WindowExt as _, tree::TreeItem};
 use gpui_kit::{Context, SharedString, Window};
 
 use super::file_tree::build_file_items_with_expanded;
@@ -14,8 +12,6 @@ use crate::vault::file_ops::{self, Deleted};
 
 /// How many deletions Undo keeps track of.
 const DELETED_HISTORY: usize = 20;
-
-struct FileDeletion;
 
 pub struct DeletedItem {
     deleted: Deleted,
@@ -37,24 +33,18 @@ impl DatalithView {
             deleted,
             notification_id,
         });
-        self.pending_notifications.push(
-            Notification::new()
-                .id1::<FileDeletion>(("file-deletion", notification_id))
-                .title(format!("\"{name}\" deleted"))
-                .action(move |_, _, _| {
-                    Button::new("undo-file-delete")
-                        .small()
-                        .label("Undo")
-                        .on_click(move |_, window, cx| {
-                            if let Some(view) = AppState::view(cx) {
-                                view.update(cx, |view, cx| {
-                                    view.undo_delete(Some(notification_id), window, cx);
-                                });
-                            }
-                        })
-                })
-                .autohide(true),
-        );
+        self.pending_notifications
+            .push(notifications::file_deletion(
+                name,
+                notification_id,
+                move |window, cx| {
+                    if let Some(view) = AppState::view(cx) {
+                        view.update(cx, |view, cx| {
+                            view.undo_delete(Some(notification_id), window, cx);
+                        });
+                    }
+                },
+            ));
     }
 
     /// Restore the deletion shown by `notification_id`, or the most recent one.
@@ -80,7 +70,7 @@ impl DatalithView {
             self.deleted_items.insert(index, item);
             return;
         }
-        window.remove_notification1::<FileDeletion>(("file-deletion", item.notification_id), cx);
+        notifications::remove_file_deletion(item.notification_id, window, cx);
         self.refresh_tree(cx);
         cx.notify();
     }
