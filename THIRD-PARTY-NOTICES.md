@@ -19416,7 +19416,7 @@ SPDX identifier: `MIT`
 Used by:
 
 - `pulldown-cmark-escape` 0.11.0 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
-- `pulldown-cmark` 0.13.4 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
+- `pulldown-cmark` 0.13.5 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
 ```
 The MIT License
 
