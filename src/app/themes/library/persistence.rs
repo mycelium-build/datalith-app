@@ -17,7 +17,7 @@ impl ThemeLibrary {
         let light_name = format!("{name} Light");
         let dark_name = format!("{name} Dark");
         self.store_import(StoredThemeSet {
-            name: name.clone().into(),
+            name: name.into(),
             themes: vec![
                 ThemeDocument::new(&light_name, ThemeMode::Light),
                 ThemeDocument::new(&dark_name, ThemeMode::Dark),
