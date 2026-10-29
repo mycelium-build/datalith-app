@@ -11,6 +11,8 @@ The GitHub App requires **Contents: read and write** and **Pull requests: read a
 
 After CI succeeds for a push to `main`, **Prepare release** runs Release Please to create or update a release PR when there are releasable changes. The PR updates `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`, the release manifest, and the application version in `THIRD-PARTY-NOTICES.md`.
 
+Versioning follows conventional commits: `fix:` bumps the patch, `feat:` bumps the minor, and `!` or a `BREAKING CHANGE:` footer bumps the major. `bump-minor-pre-major` is explicitly disabled, so breaking changes also bump the major while the current version is `0.x`. The breaking changes accumulated since v0.1.0 therefore make the next stable release v1.0.0, with normal automatic versioning continuing afterward.
+
 To publish a release candidate, manually run **Create release candidate** from the Actions tab. It requires exactly one open Release Please PR whose branch contains the current `main` commit. It tags that PR's head as `vX.Y.Z-rc.N`, using the version from its `Cargo.toml` and the next available RC number. Pushes to `main` do not create RC tags automatically.
 
 To publish a stable release, merge the Release Please PR into `main`, preserving its generated release title and metadata. [Release Please supports both squash merges and merge commits](https://github.com/googleapis/release-please#whats-a-release-pr). After CI succeeds, **Prepare release** creates a draft release and pushes its `vX.Y.Z` tag at the draft's target commit once successful CI covers that commit. The stable tag is not a promotion of the previously tagged RC commit, so it can point to a different commit after merging.
