@@ -1,6 +1,9 @@
 name: Prepare release
 
 on:
+  # Release PR merges were already tested on the PR: release immediately.
+  push:
+    branches: [main]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -14,8 +17,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-please:
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Create automation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # Creates the draft release and, with force-tag-creation, its tag, which
+      # starts Release. A no-op unless the push merged a release PR.
+      - name: Create release from merged release PR
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+
+  release-pr:
     if: >-
+      github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -32,7 +61,7 @@ jobs:
           permission-pull-requests: write
 
       # The Rust strategy edits Cargo.toml/Cargo.lock without cargo package.
-      - name: Release or prepare next release
+      - name: Prepare next release
         id: release-please
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         with:
@@ -40,42 +69,7 @@ jobs:
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      # Draft releases do not create their tag. Push it explicitly so Release
-      # builds the installers and publishes the draft only after verification.
-      - name: Start binary release from draft
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          TRIGGERING_SHA: ${{ github.event.workflow_run.head_sha }}
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              ...context.repo, per_page: 100,
-            })
-            for (const release of releases) {
-              if (!release.draft || !/^v\d+\.\d+\.\d+$/.test(release.tag_name)) continue
-              try {
-                await github.rest.git.getRef({ ...context.repo, ref: `tags/${release.tag_name}` })
-                continue
-              } catch (error) {
-                if (error.status !== 404) throw error
-              }
-              const sha = release.target_commitish
-              if (!/^[a-f0-9]{40}$/.test(sha)) {
-                throw new Error(`Draft ${release.tag_name} must target an exact commit`)
-              }
-              const comparison = await github.rest.repos.compareCommitsWithBasehead({
-                ...context.repo, basehead: `${sha}...${process.env.TRIGGERING_SHA}`,
-              })
-              if (!['ahead', 'identical'].includes(comparison.data.status)) {
-                core.info(`Waiting for successful CI covering ${release.tag_name}`)
-                continue
-              }
-              await github.rest.git.createRef({
-                ...context.repo, ref: `refs/tags/${release.tag_name}`, sha,
-              })
-            }
+          skip-github-release: true
 
       - name: Wait for release PR branch to propagate
         if: steps.release-please.outputs.prs_created == 'true'
