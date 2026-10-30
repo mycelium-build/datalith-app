@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1](https://github.com/mycelium-build/datalith-app/compare/v1.0.0...v1.0.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **release:** tag drafts and release without waiting for CI ([c932adf](https://github.com/mycelium-build/datalith-app/commit/c932adf088252bc1296ee97d0142f62b9f977ea8))
+* **release:** tag drafts and release without waiting for CI ([69c00da](https://github.com/mycelium-build/datalith-app/commit/69c00da0cc2c3e9050854effa94eec434e4ddac9))
+
 ## [1.0.0](https://github.com/mycelium-build/datalith-app/compare/v0.1.0...v1.0.0) (2026-10-29)
 
 
