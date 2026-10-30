@@ -18966,7 +18966,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `datalith` 1.0.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith` 1.0.1 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
 ```
 MIT License
 
