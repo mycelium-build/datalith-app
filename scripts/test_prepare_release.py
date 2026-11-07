@@ -69,6 +69,33 @@ class ReleaseIdentityTests(unittest.TestCase):
                 config = json.loads((directory / "packager.json").read_text())
                 self.assertEqual(config.get("macos", {}).get("signing-identity"), expected)
 
+    def test_liquid_glass_icon_applies_only_to_apple_targets(self):
+        for triple, apple in (("aarch64-apple-darwin", True), ("x86_64-unknown-linux-gnu", False)):
+            with self.subTest(target=triple), tempfile.TemporaryDirectory() as temporary:
+                target = str(Path(temporary) / triple)
+                directory = Path(target) / "release"
+                directory.mkdir(parents=True)
+                suffix = ".exe" if release.os.name == "nt" else ""
+                (directory / f"datalith{suffix}").write_bytes(b"binary")
+                identity = dict(channel="preview", stem="datalith-preview", product_name="Datalith Preview",
+                                identifier="build.mycelium.datalith-preview", data_directory="datalith-preview",
+                                update_endpoint="https://updates.datalith.work/preview",
+                                version="1.2.3-rc.1")
+                with patch.object(release.subprocess, "check_output", return_value=json.dumps(identity)), \
+                        patch.dict(release.os.environ, {"APPLE_SIGNING_IDENTITY": ""}):
+                    release.prepare("v1.2.3-rc.1", target)
+                config = json.loads((directory / "packager.json").read_text())
+                cars = [r for r in config["resources"] if r["target"] == "Assets.car"]
+                plist = config.get("macos", {}).get("info-plist-path")
+                if apple:
+                    self.assertEqual(len(cars), 1)
+                    self.assertTrue(Path(cars[0]["src"]).is_file())
+                    self.assertEqual(Path(cars[0]["src"]).parent.name, "preview")
+                    self.assertTrue(Path(plist).is_file())
+                else:
+                    self.assertEqual(cars, [])
+                    self.assertIsNone(plist)
+
 
 if __name__ == "__main__":
     unittest.main()
