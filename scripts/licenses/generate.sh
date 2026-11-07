@@ -9,9 +9,9 @@ cd "$REPO_ROOT"
 
 SCRIPTS_DIR="$REPO_ROOT/scripts/licenses"
 
-# Pinned tool versions.
-# Bump in a dedicated dependency-update change that also regenerates the notices.
-CARGO_ABOUT_VERSION="0.9.1"
+# Pinned tool versions: scripts/tool-versions.env.
+# shellcheck source=../tool-versions.env
+source "$REPO_ROOT/scripts/tool-versions.env"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

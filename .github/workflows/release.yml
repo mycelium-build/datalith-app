@@ -61,15 +61,19 @@ jobs:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Dependabot bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
+        shell: bash
+        run: rustup toolchain install
+
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
-          tool: cargo-about@0.9.1,cargo-deny@0.20.2
+          tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }},cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: Run license-compliance checks
         run: scripts/licenses/check.sh
@@ -88,10 +92,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Dependabot bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
+        shell: bash
+        run: rustup toolchain install
 
       - name: Build corresponding-source archive
         run: scripts/licenses/package_source.sh --tag "$RELEASE_TAG"
@@ -182,11 +186,10 @@ jobs:
         if: runner.os == 'Linux'
         run: scripts/install-linux-build-dependencies.sh
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Dependabot bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
-          targets: ${{ matrix.target }}
+        shell: bash
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
 
       # Release candidates build on main (see release-rc.yml) and save this cache there; stable
       # tag runs restore it, since every run can read main's caches. Its key follows the
@@ -244,16 +247,19 @@ jobs:
         if: runner.os == 'Linux'
         run: scripts/install-linux-build-dependencies.sh
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Dependabot bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
-          targets: ${{ matrix.target }}
+        shell: bash
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
+
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-packager
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
-          tool: cargo-packager@0.11.8
+          tool: cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
 
       # With CI=true, cargo-packager passes --skip-jenkins to create-dmg, which then skips the
       # Finder AppleScript that applies the DMG background, icon positions and window size.
@@ -264,8 +270,6 @@ jobs:
 
       - name: Install nFPM
         if: runner.os == 'Linux'
-        env:
-          NFPM_VERSION: 2.47.0
         run: |
           case "$(uname -m)" in
             x86_64) NFPM_ARCH=x86_64 ;;
@@ -521,14 +525,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "$RELEASE_TAG" --draft=false
 
-      - name: Create website deployment token
+      - name: Create website and clipper token
         id: website-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
           owner: mycelium-build
-          repositories: datalith
+          repositories: datalith,datalith-clipper
           permission-actions: write
 
       - name: Trigger website deployment
@@ -543,6 +547,26 @@ jobs:
               ref: 'main',
               inputs: {
                 source_ref: process.env.RELEASE_TAG,
+              },
+            })
+
+      # The clipper copies assets from datalith-app at a pinned tag. On a stable release, its
+      # bump-datalith-source workflow opens a PR to move the pin, which its CI then tests.
+      # The release is already published here, so a failure only warns.
+      - name: Propose the new tag to the clipper
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
+        continue-on-error: true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.website-token.outputs.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'mycelium-build',
+              repo: 'datalith-clipper',
+              workflow_id: 'bump-datalith-source.yml',
+              ref: 'main',
+              inputs: {
+                tag: process.env.RELEASE_TAG,
               },
             })
 

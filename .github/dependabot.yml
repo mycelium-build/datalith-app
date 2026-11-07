@@ -1,7 +1,8 @@
 # Version updates, grouped by update type. Security updates (enabled in the repository
 # settings) still open one PR per advisory, outside this schedule.
 # Transitive crates are refreshed weekly by the Cargo.lock refresh workflow, since Dependabot
-# only updates them for security fixes. Dependabot PRs are reviewed and merged by hand.
+# only updates them for security fixes; tools it cannot see are bumped by the Tool versions
+# workflow (scripts/tool-versions.env). Dependabot PRs are reviewed and merged by hand.
 version: 2
 
 updates:
@@ -30,6 +31,18 @@ updates:
       major:
         patterns: ["*"]
         update-types: [major]
+
+  # rust-toolchain.toml is the only place the toolchain is pinned: the workflows install
+  # it from there. "chore(toolchain): ...": a compiler bump alone does not cut a release.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    commit-message:
+      prefix: chore(toolchain)
 
   - package-ecosystem: github-actions
     directories: ["/", "/.github/actions/*"]

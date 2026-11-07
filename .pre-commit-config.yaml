@@ -21,7 +21,7 @@ repos:
         name: license compliance
         language: system
         entry: scripts/hooks/license-compliance.sh
-        files: ^(Cargo\.toml|Cargo\.lock|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/)
+        files: ^(Cargo\.toml|Cargo\.lock|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/tool-versions\.env$)
         pass_filenames: false
 
       # Same command as CI's "Run clippy" step, on push only (it compiles the crate).

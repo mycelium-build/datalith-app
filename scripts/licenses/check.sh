@@ -7,7 +7,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-CARGO_DENY_VERSION="0.20.2"
+# Pinned tool versions: scripts/tool-versions.env.
+# shellcheck source=../tool-versions.env
+source "$REPO_ROOT/scripts/tool-versions.env"
 
 fail() {
     echo "LICENSE-E2xx $*" >&2

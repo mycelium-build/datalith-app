@@ -39,8 +39,8 @@ Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 uv run --no-project --python '>=3.11' -- scripts/licenses/generate.sh
 ```
 
-The generation script requires `cargo-about` version `0.9.1`. 
-Before submitting a pull request, verify the result with `cargo-deny` version `0.20.2` using:
+The generation script requires the `cargo-about` version pinned in `scripts/tool-versions.env`.
+Before submitting a pull request, verify the result with the pinned `cargo-deny` using:
 
 ```bash
 uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
@@ -52,6 +52,8 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 - On Dependabot Cargo PRs, the **Dependency notices** workflow regenerates `THIRD-PARTY-NOTICES.md` and pushes it, so `license-compliance` passes on the rerun.
 - The **Cargo.lock refresh** workflow opens one `chore(deps): refresh Cargo.lock` PR each Monday for transitive crates, which Dependabot only updates for security fixes.
 - The **Advisories** workflow checks RustSec advisories on `main` daily.
+- Dependabot also bumps the Rust toolchain in `rust-toolchain.toml`; the workflows install the toolchain from that file.
+- Tools Dependabot cannot see (cargo-deny, cargo-about, cargo-packager, nFPM) are pinned once in `scripts/tool-versions.env`. The **Tool versions** workflow checks for new releases every Monday and opens one `chore(ci): bump tool versions` PR. After it is merged, run `scripts/install-dev-tools.sh` again.
 
 ## Development Setup
 
@@ -61,7 +63,8 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 - Git
 - [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
-- For changes to dependencies or license material: `cargo-deny` 0.20.2 and `cargo-about` 0.9.1.
+- For changes to dependencies or license material: `cargo-deny` and `cargo-about` at the versions
+  pinned in `scripts/tool-versions.env` (install them with `scripts/install-dev-tools.sh`).
   The license hook runs the scripts with a Python 3.11+ from uv (they use `tomllib`, newer than
   macOS's `python3`); to run them by hand, use `uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh`
 
@@ -86,10 +89,9 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
     | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
     | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
 
-    The license hook needs the license tools:
+    The license hook needs the license tools at their pinned versions:
     ```bash
-    cargo install --locked cargo-deny@0.20.2
-    cargo install --locked --features cli cargo-about@0.9.1
+    scripts/install-dev-tools.sh
     ```
     Run every pre-commit hook on the whole tree with `prek run --all-files`.
     Bypass a hook once with `--no-verify`.
