@@ -35,6 +35,30 @@ Preview uses yellow launcher icons and a yellow in-app monolith; the UI theme is
 
 Preview points at `https://updates.datalith.work/preview` and receives only published `vX.Y.Z-rc.N` releases. Stable points at `https://updates.datalith.work/stable` and receives only stable releases.
 
+## macOS signing and notarization
+
+macOS apps and DMGs are signed with a **Developer ID Application** certificate and notarized by Apple, so Gatekeeper opens them without warnings. This uses the paid Apple Developer Program membership and requires no approval from Apple: notarization is an automated scan. The macOS jobs fail if any of these repository secrets is missing:
+
+- `APPLE_CERTIFICATE`: the Developer ID Application certificate and its private key, exported as `.p12` and base64-encoded.
+- `APPLE_CERTIFICATE_PASSWORD`: the `.p12` export password.
+- `APPLE_SIGNING_IDENTITY`: the certificate's full name, e.g. `Developer ID Application: Name (TEAMID)`.
+- `APPLE_API_KEY`: the App Store Connect API key ID used by `notarytool`.
+- `APPLE_API_ISSUER`: that key's issuer ID.
+- `APPLE_API_PRIVATE_KEY`: the contents of that key's `AuthKey_<KEY_ID>.p8` file.
+
+Only the Account Holder can create Developer ID certificates. Create one from Xcode (**Settings → Accounts → Manage Certificates → + → Developer ID Application**), then export it from Keychain Access (**My Certificates**, certificate with its private key, `.p12`). Create the API key in App Store Connect under **Users and Access → Integrations → App Store Connect API**, with the *Developer* role; its `.p8` file can only be downloaded once.
+
+```sh
+base64 -i DeveloperID.p12 | gh secret set APPLE_CERTIFICATE --repo mycelium-build/datalith-app
+gh secret set APPLE_CERTIFICATE_PASSWORD --repo mycelium-build/datalith-app
+gh secret set APPLE_SIGNING_IDENTITY --repo mycelium-build/datalith-app
+gh secret set APPLE_API_KEY --repo mycelium-build/datalith-app
+gh secret set APPLE_API_ISSUER --repo mycelium-build/datalith-app
+gh secret set APPLE_API_PRIVATE_KEY --repo mycelium-build/datalith-app < AuthKey_<KEY_ID>.p8
+```
+
+cargo-packager signs the app with the hardened runtime, notarizes and staples it, then builds and signs the DMG. The workflow then notarizes and staples the DMG and checks both with `codesign`, `spctl`, and `stapler`. The updater bundle is archived from the stapled app. Check the certificate's expiry date (`security find-certificate -c "Developer ID Application" -p | openssl x509 -noout -enddate`) and renew the secrets before then. Already-notarized releases keep working after the certificate expires.
+
 ## Automatic updates
 
 Stable releases newer than `v0.1.0` publish a signed update for each of the six OS/architecture targets. `v0.1.0` predates the updater and is excluded from discovery. RC releases publish signed Preview updates. Each deployment regenerates both manifests from GitHub releases, selecting each channel independently.
