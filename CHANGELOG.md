@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/mycelium-build/datalith-app/compare/v1.0.0...v1.1.0) (2026-11-07)
+
+
+### Features
+
+* move website and update endpoints to datalith.work ([486a2b1](https://github.com/mycelium-build/datalith-app/commit/486a2b186d5b661299081561de2e5f6f4d675af8))
+* move website and update endpoints to datalith.work ([d4a8f4a](https://github.com/mycelium-build/datalith-app/commit/d4a8f4a4ad66dd50efedeb00ec85a0604b0c3e60))
+* **release:** sign and notarize macOS builds ([89950fe](https://github.com/mycelium-build/datalith-app/commit/89950fedd9c42ea25dac2630e9d34b3b5fe93925))
+* **release:** sign and notarize macOS builds ([1003c7a](https://github.com/mycelium-build/datalith-app/commit/1003c7afd6a93ee505ab110038460bae084459b1))
+
+
+### Bug Fixes
+
+* **deps:** update pulldown-cmark and async-executor ([ac2fce2](https://github.com/mycelium-build/datalith-app/commit/ac2fce22b6bce61e70ba9cdfc1f3cb0cb95544c3))
+* **release:** tag drafts and release without waiting for CI ([c932adf](https://github.com/mycelium-build/datalith-app/commit/c932adf088252bc1296ee97d0142f62b9f977ea8))
+* **release:** tag drafts and release without waiting for CI ([69c00da](https://github.com/mycelium-build/datalith-app/commit/69c00da0cc2c3e9050854effa94eec434e4ddac9))
+
 ## [1.0.0](https://github.com/mycelium-build/datalith-app/compare/v0.1.0...v1.0.0) (2026-10-29)
 
 
