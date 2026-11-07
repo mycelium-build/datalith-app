@@ -1,0 +1,106 @@
+name: Advisories
+
+# RustSec advisories depend on the advisory database, not on commits: check main daily
+# instead of failing unrelated PRs. CI still checks them when Cargo.lock or deny.toml change.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisories
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.97.1
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: Check advisories
+        id: deny
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo deny --manifest-path Cargo.toml --color never check advisories 2>&1 | tee deny.log
+
+      # One open issue tracks the failure: opened on the first failing day, commented on
+      # later failing days, closed once main passes again.
+      - name: Report in an issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          OUTCOME: ${{ steps.deny.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const title = 'RustSec advisories affect main'
+            const failed = process.env.OUTCOME !== 'success'
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const open = issues.find((issue) => issue.title === title && !issue.pull_request)
+
+            if (!failed) {
+              if (open) {
+                await github.rest.issues.createComment({
+                  ...context.repo,
+                  issue_number: open.number,
+                  body: `Advisories pass on main again: ${process.env.RUN_URL}`,
+                })
+                await github.rest.issues.update({
+                  ...context.repo,
+                  issue_number: open.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+              }
+              return
+            }
+
+            const log = fs.readFileSync('deny.log', 'utf8')
+            const excerpt = log.length > 60000 ? `${log.slice(0, 60000)}\n…(truncated)` : log
+            const body = [
+              `\`cargo deny check advisories\` fails on main: ${process.env.RUN_URL}`,
+              '',
+              'Update the affected crates (a Dependabot security update may already be open),',
+              'or document an exception in `deny.toml`.',
+              '',
+              '<details><summary>cargo-deny output</summary>',
+              '',
+              '```',
+              excerpt,
+              '```',
+              '',
+              '</details>',
+            ].join('\n')
+
+            if (open) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: open.number, body })
+            } else {
+              await github.rest.issues.create({ ...context.repo, title, body })
+            }
+            core.setFailed('RustSec advisories affect main')
