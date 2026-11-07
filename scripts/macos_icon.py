@@ -44,7 +44,7 @@ CANVAS = 1024
 GRID_BODY = 824
 
 # Height of the monolith as a fraction of the icon canvas.
-MARK_FRACTION = 0.82
+MARK_FRACTION = 0.94
 
 _spec = importlib.util.spec_from_file_location("app_icon", pathlib.Path(__file__).with_name("app_icon.py"))
 app_icon = importlib.util.module_from_spec(_spec)
