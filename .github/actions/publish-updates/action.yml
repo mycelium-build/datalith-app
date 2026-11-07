@@ -15,7 +15,12 @@ runs:
         sudo apt-get update
         sudo apt-get install -y minisign
         for channel in stable preview; do
-          python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --channel "$channel" --output "update-site/updates/$channel.json"
+          python3 scripts/updates/generate_manifest.py --repository "$GITHUB_REPOSITORY" --channel "$channel" --output "update-site/$channel"
+        done
+        # Legacy paths.
+        mkdir -p update-site/updates
+        for channel in stable preview; do
+          cp "update-site/$channel" "update-site/updates/$channel.json"
         done
 
     - name: Upload Pages artifact

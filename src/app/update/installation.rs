@@ -31,4 +31,4 @@ impl InstallationKind {
 }
 
 /// The website download page opened for externally managed installations.
-pub const DOWNLOAD_PAGE_URL: &str = "https://mycelium-build.github.io/datalith/#download";
+pub const DOWNLOAD_PAGE_URL: &str = "https://datalith.work/#download";

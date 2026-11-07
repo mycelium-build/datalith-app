@@ -51,7 +51,7 @@ Run on both x86_64 and ARM64 for Linux, macOS, and Windows, using two updater-be
 4. Choose **Restart to update**. Datalith should quit, install, and reopen with the newer About version. Check that settings and a test Vault survive.
 5. Uninstall using the platform's normal method. On Windows, check that updating did not duplicate shortcuts or the uninstall entry.
 
-For `.deb`, `.rpm`, and `.pkg.tar.zst`, install through the matching package manager and check for an update. The control must open `https://mycelium-build.github.io/datalith/#download`, without downloading or replacing application files. Compare package verification results before and after (`dpkg --verify datalith`, `rpm -V datalith`, or `pacman -Qkk datalith`).
+For `.deb`, `.rpm`, and `.pkg.tar.zst`, install through the matching package manager and check for an update. The control must open `https://datalith.work/#download`, without downloading or replacing application files. Compare package verification results before and after (`dpkg --verify datalith`, `rpm -V datalith`, or `pacman -Qkk datalith`).
 
 Record the package versions, OS/architecture, result, and any Gatekeeper, SmartScreen, or other unsigned-application warnings for each run.
 
