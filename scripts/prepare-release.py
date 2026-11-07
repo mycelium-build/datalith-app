@@ -48,6 +48,11 @@ def prepare(tag, target):
     config["dmg"]["background"] = str(Path(config["dmg"]["background"]).resolve())
     for resource in config["resources"]:
         resource["src"] = str(Path(resource["src"]).resolve())
+    # cargo-packager reads the certificate and notarization credentials from
+    # the environment, but the signing identity only from its configuration.
+    signing_identity = os.environ.get("APPLE_SIGNING_IDENTITY")
+    if signing_identity and target.endswith("-apple-darwin"):
+        config.setdefault("macos", {})["signing-identity"] = signing_identity
     output = directory / "packager.json"
     output.write_text(json.dumps(config, indent=2) + "\n")
     print(f"Verified {identity['product_name']} {version}; wrote {output}")
