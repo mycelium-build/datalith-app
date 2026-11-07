@@ -17,7 +17,7 @@ use conv::{ConvUtil, UnwrapOrInf};
 use super::{DatalithView, modal};
 use crate::app::settings;
 
-pub const DOCS_URL: &str = "https://mycelium-build.github.io/datalith/docs/";
+pub const DOCS_URL: &str = "https://datalith.work/docs/";
 
 mod about;
 mod appearance;

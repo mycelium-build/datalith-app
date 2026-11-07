@@ -113,12 +113,8 @@ impl Channel {
 
     pub const fn update_endpoint(self) -> Option<&'static str> {
         match self {
-            Self::Stable => {
-                Some("https://mycelium-build.github.io/datalith-app/updates/stable.json")
-            }
-            Self::Preview => {
-                Some("https://mycelium-build.github.io/datalith-app/updates/preview.json")
-            }
+            Self::Stable => Some("https://updates.datalith.work/stable"),
+            Self::Preview => Some("https://updates.datalith.work/preview"),
             Self::Dev => None,
         }
     }

@@ -33,7 +33,7 @@ Identifiers use the `build.mycelium.` prefix. App data lives under the OS data d
 
 Preview uses yellow launcher icons and a yellow in-app monolith; the UI theme is unchanged. Dev uses a green logo. Run `python3 scripts/app_icon.py` to regenerate all three icon sets. About shows the Git commit for Dev, the full RC version for Preview, and the release version for Stable. NSIS uses separate product names for install directories/uninstall entries and separate executable names for process detection. macOS uses separate app names and bundle identifiers. Linux packages use separate names, executables, desktop entries, icons, and license paths.
 
-Preview points at `updates/preview.json` and receives only published `vX.Y.Z-rc.N` releases. Stable points at `updates/stable.json` and receives only stable releases.
+Preview points at `https://updates.datalith.work/preview` and receives only published `vX.Y.Z-rc.N` releases. Stable points at `https://updates.datalith.work/stable` and receives only stable releases.
 
 ## Automatic updates
 
@@ -41,7 +41,7 @@ Stable releases newer than `v0.1.0` publish a signed update for each of the six 
 
 Configure this application's repository (`mycelium-build/datalith-app`) under **Settings → Pages → Source → GitHub Actions**. Allow release tags and the default branch to deploy to the `github-pages` environment. No `gh-pages` branch or cross-repository token is needed. The website repository remains separate.
 
-The final release step deploys `updates/stable.json` and `updates/preview.json` at `https://mycelium-build.github.io/datalith-app/` using the workflow's `GITHUB_TOKEN`. Missing bundles or signatures, duplicate assets, wrong filenames, and invalid signatures fail validation before the draft is published. Manifest generation verifies the signatures again, selects the highest published version in each channel, and waits for Pages deployment to succeed. RC numbers compare numerically (`rc.10` follows `rc.9`). Drafts and releases whose prerelease flag disagrees with their channel are excluded. Release finalization and regeneration share a concurrency group.
+The final release step deploys the `stable` and `preview` manifests at `https://updates.datalith.work/` using the workflow's `GITHUB_TOKEN`. Missing bundles or signatures, duplicate assets, wrong filenames, and invalid signatures fail validation before the draft is published. Manifest generation verifies the signatures again, selects the highest published version in each channel, and waits for Pages deployment to succeed. RC numbers compare numerically (`rc.10` follows `rc.9`). Drafts and releases whose prerelease flag disagrees with their channel are excluded. Release finalization and regeneration share a concurrency group.
 
 ### Signing key
 

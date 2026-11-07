@@ -18,4 +18,4 @@ Start with the [[Tour.todotxt]] checklist, or read what you need:
 
 Open [[Overview.base]] to see a graph of this Vault colored by category, and [[Tour.todotxt]] for a checklist of things to explore.
 
-Visit the [Datalith website](https://mycelium-build.github.io/datalith/) for downloads, documentation, and updates.
+Visit the [Datalith website](https://datalith.work/) for downloads, documentation, and updates.

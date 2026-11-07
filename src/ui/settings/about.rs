@@ -12,8 +12,8 @@ use super::{SETTINGS_PAGES, SettingsPage, SettingsView};
 use crate::ui::monolith::monolith_mark;
 use crate::ui::notifications;
 
-const PRIVACY_POLICY_URL: &str = "https://mycelium-build.github.io/datalith/privacy/";
-const TERMS_OF_SERVICE_URL: &str = "https://mycelium-build.github.io/datalith/terms/";
+const PRIVACY_POLICY_URL: &str = "https://datalith.work/privacy/";
+const TERMS_OF_SERVICE_URL: &str = "https://datalith.work/terms/";
 
 fn open_external_url(url: &str, cx: &mut App) {
     if let Err(error) = crate::app::system::open_url(url) {
