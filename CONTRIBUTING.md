@@ -36,14 +36,14 @@ When adding a bundled asset, add it to `assets/licenses.toml` and include its li
 Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 
 ```bash
-scripts/licenses/generate.sh
+uv run --no-project --python '>=3.11' -- scripts/licenses/generate.sh
 ```
 
 The generation script requires `cargo-about` version `0.9.1`. 
 Before submitting a pull request, verify the result with `cargo-deny` version `0.20.2` using:
 
 ```bash
-scripts/licenses/check.sh
+uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 ```
 
 ## Development Setup
@@ -52,9 +52,11 @@ scripts/licenses/check.sh
 
 - Rust
 - Git
+- [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
-- For changes to dependencies or license material: `cargo-deny` 0.20.2, `cargo-about` 0.9.1
-  and Python 3.11 or newer as `python3` (the license scripts use `tomllib`; macOS ships an older one)
+- For changes to dependencies or license material: `cargo-deny` 0.20.2 and `cargo-about` 0.9.1.
+  The license hook runs the scripts with a Python 3.11+ from uv (they use `tomllib`, newer than
+  macOS's `python3`); to run them by hand, use `uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh`
 
 ### Installation
 
@@ -66,7 +68,7 @@ scripts/licenses/check.sh
 
 2. Install prek and enable the Git hooks:
     ```bash
-    brew install prek        # or: uv tool install prek, or: cargo install --locked prek
+    uv tool install prek
     prek install
     ```
     `prek install` reads `.pre-commit-config.yaml` and installs both hooks once for the clone:

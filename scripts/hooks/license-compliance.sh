@@ -9,16 +9,16 @@ cd "$(git rev-parse --show-toplevel)"
 missing=()
 command -v cargo-deny >/dev/null 2>&1 || missing+=("cargo install --locked cargo-deny@0.20.2")
 command -v cargo-about >/dev/null 2>&1 || missing+=("cargo install --locked --features cli cargo-about@0.9.1")
-# scripts/licenses/*.py use tomllib (Python 3.11+); macOS ships an older python3.
-python3 -c 'import tomllib' >/dev/null 2>&1 \
-    || missing+=("python3 >= 3.11 first on PATH (e.g. brew install python, or uv python install 3.12)")
+command -v uv >/dev/null 2>&1 || missing+=("uv: https://docs.astral.sh/uv/getting-started/installation/")
 if ((${#missing[@]})); then
     echo "Dependency or license files changed, but the license tools are missing. Install with:" >&2
     printf '  %s\n' "${missing[@]}" >&2
     exit 1
 fi
 
-if ! LICENSE_CHECK_SKIP_ADVISORIES=1 scripts/licenses/check.sh; then
+# scripts/licenses/*.py use tomllib (Python 3.11+), newer than macOS's python3. uv puts a
+# matching python3 first on PATH for the whole script, downloading it if needed.
+if ! LICENSE_CHECK_SKIP_ADVISORIES=1 uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh; then
     if ! git diff --quiet -- THIRD-PARTY-NOTICES.md scripts/licenses/about.toml; then
         echo "License material was stale and has been regenerated." >&2
         echo "Review it, then: git add THIRD-PARTY-NOTICES.md scripts/licenses/about.toml" >&2
