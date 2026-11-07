@@ -35,6 +35,9 @@ FONT = ROOT / "assets" / "fonts" / "Pixeloid" / "PixeloidSans-Bold.ttf"
 # Window content geometry, in points. Keep in sync with `[dmg]` in packager.stable.toml and packager.preview.toml,
 # whose window-size adds Finder's 28 pt title bar to the height.
 WINDOW = (660, 420)
+# Finder lays out items without a stored position (the volume's hidden files, when shown) below the
+# background image, so the image runs on past the window in the page colour to keep them out of view.
+OVERFLOW = 240
 APP = (164, 180)
 APPLICATIONS = (496, 180)
 ICON = 128  # create-dmg's default icon size.
@@ -352,10 +355,10 @@ def to_svg(fb, runs, baseline, accent):
         f'<text x="{x:g}" y="{baseline}" fill="{accent if color else "#000000"}" xml:space="preserve">{text}</text>'
         for x, text, color in runs
     )
-    width, height = WINDOW
+    width, height = WINDOW[0], WINDOW[1] + OVERFLOW
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'shape-rendering="crispEdges">{"".join(rects)}'
+        f'shape-rendering="crispEdges"><rect width="{width}" height="{height}" fill="{css(BG)}"/>{"".join(rects)}'
         f'<g font-family="Pixeloid Sans" font-weight="700" font-size="{TITLE_SIZE}">{texts}</g></svg>'
     )
 
@@ -380,7 +383,7 @@ def build(channel, svg_dir=None):
         text_rendering="optimize_speed",
     )
     image = Image.open(io.BytesIO(bytes(png))).convert("RGB")
-    assert image.size == (WINDOW[0] * SCALE, WINDOW[1] * SCALE), image.size
+    assert image.size == (WINDOW[0] * SCALE, (WINDOW[1] + OVERFLOW) * SCALE), image.size
     OUTPUT.mkdir(parents=True, exist_ok=True)
     path = OUTPUT / f"background-{channel}.png"
     image.save(path, dpi=(72 * SCALE, 72 * SCALE), optimize=True)
