@@ -30,7 +30,7 @@ class ReleaseIdentityTests(unittest.TestCase):
                 (directory / f"datalith{suffix}").write_bytes(b"binary")
                 identity = dict(channel=channel, stem=stem, product_name=product,
                                 identifier=f"build.mycelium.{stem}", data_directory=stem,
-                                update_endpoint=f"https://mycelium-build.github.io/datalith-app/updates/{channel}.json",
+                                update_endpoint=f"https://updates.datalith.work/{channel}",
                                 version=version)
                 with patch.object(release.subprocess, "check_output", return_value=json.dumps(identity)):
                     release.prepare(f"v{version}", temporary)
