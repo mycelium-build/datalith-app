@@ -1,46 +1,64 @@
 name: Release
 
 on:
+  # Release candidates are built through workflow_dispatch from main (see release-rc.yml),
+  # so their Rust build caches are saved on main, where later runs can restore them:
+  # a run started by a tag cannot read the caches of another tag.
   push:
-    tags: ["v[0-9]+.*"]
+    tags: ["v[0-9]+.*", "!v*-rc.*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: >-
-          Release tag to finalize. The tag must already exist and its draft
-          release must already contain all artifacts (e.g. after a failed or
-          intentionally interrupted run). Only the finalize job runs; the
-          build matrix is skipped.
+        description: Release tag to build or finalize. The tag must already exist.
         required: true
         type: string
+      mode:
+        description: >-
+          build: build, package and publish the release, as a tag push does.
+          finalize: only run the finalize job, for a draft release that already
+          contains all artifacts (e.g. after a failed or interrupted run).
+        required: true
+        default: finalize
+        type: choice
+        options: [finalize, build]
 
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
 jobs:
   release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'build'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
+
+      - name: Check the release tag
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\. ]] || { echo "::error::Not a release tag: $RELEASE_TAG"; exit 1; }
 
       - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
 
   compliance:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'build'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Install Rust toolchain
@@ -57,7 +75,7 @@ jobs:
         run: scripts/licenses/check.sh
 
   source:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'build'
     needs: [release, compliance]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -66,6 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -75,16 +94,17 @@ jobs:
           toolchain: 1.97.1
 
       - name: Build corresponding-source archive
-        run: scripts/licenses/package_source.sh --tag "${GITHUB_REF_NAME}"
+        run: scripts/licenses/package_source.sh --tag "$RELEASE_TAG"
 
       - name: Upload corresponding-source archive
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: datalith-*-corresponding-source.tar.zst
 
   artifacts:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'build'
     needs: [release, compliance]
     name: ${{ matrix.name }}
     strategy:
@@ -156,6 +176,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Install Linux dependencies
@@ -167,6 +188,19 @@ jobs:
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
+
+      # A new key every 2 days. Only runs on main (release candidates, see release-rc.yml)
+      # save it; stable tag runs restore main's cache but cannot save one others could read.
+      - name: Compute cache period
+        id: cache-period
+        shell: bash
+        run: echo "period=$(( $(date +%s) / 172800 ))" >> "$GITHUB_OUTPUT"
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: release
+          key: ${{ matrix.target }}-${{ steps.cache-period.outputs.period }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-packager
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
@@ -203,11 +237,11 @@ jobs:
 
       - name: Stamp release channel
         shell: bash
-        run: python scripts/prepare-release.py --tag "$GITHUB_REF_NAME"
+        run: python scripts/prepare-release.py --tag "$RELEASE_TAG"
 
       - name: Build release binary
         env:
-          DATALITH_RELEASE_TAG: ${{ github.ref_name }}
+          DATALITH_RELEASE_TAG: ${{ env.RELEASE_TAG }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       # macOS releases must be signed with a Developer ID Application
@@ -244,7 +278,7 @@ jobs:
         shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-        run: python scripts/prepare-release.py --tag "$GITHUB_REF_NAME" --target ${{ matrix.target }}
+        run: python scripts/prepare-release.py --tag "$RELEASE_TAG" --target ${{ matrix.target }}
 
       - name: Package desktop application
         if: runner.os != 'macOS'
@@ -315,7 +349,7 @@ jobs:
           PACKAGE_ARCH: ${{ matrix.package-arch }}
           PACKAGE_TARGET: ${{ matrix.target }}
         run: |
-          export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+          export PACKAGE_VERSION="${RELEASE_TAG#v}"
           export PACKAGE_CHANNEL="$(cat CHANNEL)"
           export PACKAGE_STEM="$(python -c 'import json, os; print(json.load(open("target/" + os.environ["PACKAGE_TARGET"] + "/release/packager.json"))["name"])')"
           for packager in deb rpm archlinux; do
@@ -327,13 +361,14 @@ jobs:
 
       - name: Sign updater bundle
         env:
-          DATALITH_RELEASE_TAG: ${{ github.ref_name }}
+          DATALITH_RELEASE_TAG: ${{ env.RELEASE_TAG }}
           CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.DATALITH_UPDATER_PRIVATE_KEY }}
         run: python scripts/updates/sign.py --target ${{ matrix.target }} --platform ${{ matrix.platform }}
 
       - name: Upload package to GitHub release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           fail_on_unmatched_files: true
           draft: true
           files: ${{ matrix.artifact }}
@@ -347,10 +382,10 @@ jobs:
     needs: [artifacts, source]
     if: >-
       always()
-      && ((github.event_name == 'push'
+      && (((github.event_name == 'push' || inputs.mode == 'build')
           && needs.artifacts.result == 'success'
           && needs.source.result == 'success')
-        || (github.event_name == 'workflow_dispatch'
+        || (github.event_name == 'workflow_dispatch' && inputs.mode == 'finalize'
           && needs.artifacts.result == 'skipped'
           && needs.source.result == 'skipped'))
     runs-on: ubuntu-24.04
@@ -359,8 +394,6 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -376,7 +409,7 @@ jobs:
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         env:
           SYFT_SOURCE_NAME: datalith
-          SYFT_SOURCE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          SYFT_SOURCE_VERSION: ${{ env.RELEASE_TAG }}
         with:
           path: release-source
           format: spdx-json
@@ -446,8 +479,6 @@ jobs:
 
       - name: Trigger website deployment
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         with:
           github-token: ${{ steps.website-token.outputs.token }}
           script: |
