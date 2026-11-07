@@ -18,3 +18,11 @@ formats = ["appimage", "dmg", "nsis"]
 [nsis]
 installMode = "currentUser"
 installer-icon = "assets/logo/stable/datalith.ico"
+
+# Finder draws the icons over assets/dmg/background-stable.png, whose artwork scripts/dmg_background.py lays out
+# for these positions. The window size includes Finder's 28 pt title bar above the 660x420 background.
+[dmg]
+background = "assets/dmg/background-stable.png"
+window-size = { width = 660, height = 448 }
+app-position = { x = 164, y = 180 }
+application-folder-position = { x = 496, y = 180 }

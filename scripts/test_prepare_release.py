@@ -39,6 +39,9 @@ class ReleaseIdentityTests(unittest.TestCase):
                 self.assertEqual(config["binaries"][0]["path"], stem)
                 self.assertEqual((directory / f"{stem}{suffix}").read_bytes(), b"binary")
                 self.assertTrue(all(Path(icon).is_file() for icon in config["icons"]))
+                background = Path(config["dmg"]["background"])
+                self.assertTrue(background.is_absolute() and background.is_file())
+                self.assertEqual(background.name, f"background-{channel}.png")
                 for key in identity:
                     with patch.object(release.subprocess, "check_output",
                                       return_value=json.dumps(dict(identity, **{key: "wrong"}))):
