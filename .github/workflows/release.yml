@@ -103,13 +103,14 @@ jobs:
           draft: true
           files: datalith-*-corresponding-source.tar.zst
 
-  artifacts:
+  # Compiles each target. Packaging and signing run in the package job, so a failure there
+  # can be re-run ("Re-run failed jobs") without compiling again.
+  build:
     if: github.event_name == 'push' || inputs.mode == 'build'
-    needs: [release, compliance]
-    name: ${{ matrix.name }}
+    name: Build ${{ matrix.name }}
     strategy:
       fail-fast: false
-      matrix:
+      matrix: &release-targets
         include:
           - name: macOS Apple Silicon DMG
             os: macos-15
@@ -171,6 +172,66 @@ jobs:
               target/aarch64-pc-windows-msvc/release/*.sig
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: scripts/install-linux-build-dependencies.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.97.1
+          targets: ${{ matrix.target }}
+
+      # Release candidates build on main (see release-rc.yml) and save this cache there; stable
+      # tag runs restore it, since every run can read main's caches. Its key follows the
+      # toolchain, Cargo.toml and Cargo.lock, so the RCs of a version and its stable release
+      # share it; GitHub evicts entries unused for 7 days. Saved even when a later step fails.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: release
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Stamp release channel
+        shell: bash
+        run: python scripts/prepare-release.py --tag "$RELEASE_TAG"
+
+      - name: Build release binary
+        env:
+          DATALITH_RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+
+      - name: Upload built binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ runner.os == 'Windows' && 'datalith.exe' || 'datalith' }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Packages, signs, notarizes and uploads the binary built by the build job. A target whose
+  # build failed fails here at the download step; the other targets carry on.
+  package:
+    if: >-
+      !cancelled()
+      && (github.event_name == 'push' || inputs.mode == 'build')
+      && needs.release.result == 'success'
+      && needs.compliance.result == 'success'
+    needs: [release, compliance, build]
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix: *release-targets
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
@@ -188,19 +249,6 @@ jobs:
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
-
-      # A new key every 2 days. Only runs on main (release candidates, see release-rc.yml)
-      # save it; stable tag runs restore main's cache but cannot save one others could read.
-      - name: Compute cache period
-        id: cache-period
-        shell: bash
-        run: echo "period=$(( $(date +%s) / 172800 ))" >> "$GITHUB_OUTPUT"
-
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          prefix-key: release
-          key: ${{ matrix.target }}-${{ steps.cache-period.outputs.period }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-packager
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
@@ -239,10 +287,16 @@ jobs:
         shell: bash
         run: python scripts/prepare-release.py --tag "$RELEASE_TAG"
 
-      - name: Build release binary
-        env:
-          DATALITH_RELEASE_TAG: ${{ env.RELEASE_TAG }}
-        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Download built binary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binary-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release
+
+      # Artifacts do not keep the executable bit.
+      - name: Restore executable bit
+        if: runner.os != 'Windows'
+        run: chmod +x target/${{ matrix.target }}/release/datalith
 
       # macOS releases must be signed with a Developer ID Application
       # certificate and notarized; refuse to build them otherwise.
@@ -379,14 +433,14 @@ jobs:
       cancel-in-progress: false
     environment:
       name: github-pages
-    needs: [artifacts, source]
+    needs: [package, source]
     if: >-
       always()
       && (((github.event_name == 'push' || inputs.mode == 'build')
-          && needs.artifacts.result == 'success'
+          && needs.package.result == 'success'
           && needs.source.result == 'success')
         || (github.event_name == 'workflow_dispatch' && inputs.mode == 'finalize'
-          && needs.artifacts.result == 'skipped'
+          && needs.package.result == 'skipped'
           && needs.source.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
