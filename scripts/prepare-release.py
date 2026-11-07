@@ -45,6 +45,7 @@ def prepare(tag, target):
     config["icons"] = [str(Path(icon).resolve()) for icon in config["icons"]]
     config["license-file"] = str(Path(config["license-file"]).resolve())
     config["nsis"]["installer-icon"] = str(Path(config["nsis"]["installer-icon"]).resolve())
+    config["dmg"]["background"] = str(Path(config["dmg"]["background"]).resolve())
     for resource in config["resources"]:
         resource["src"] = str(Path(resource["src"]).resolve())
     # cargo-packager reads the certificate and notarization credentials from

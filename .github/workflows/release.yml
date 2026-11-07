@@ -173,6 +173,13 @@ jobs:
         with:
           tool: cargo-packager@0.11.8
 
+      # With CI=true, cargo-packager passes --skip-jenkins to create-dmg, which then skips the
+      # Finder AppleScript that applies the DMG background, icon positions and window size.
+      - name: Let create-dmg lay out the DMG window
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "CI=false" >> "$GITHUB_ENV"
+
       - name: Install nFPM
         if: runner.os == 'Linux'
         env:
