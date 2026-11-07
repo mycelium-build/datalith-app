@@ -2,6 +2,8 @@ pub mod actions;
 pub mod assets;
 mod atomic_file;
 pub mod deeplink;
+#[cfg(target_os = "macos")]
+pub mod dock_icon;
 pub mod docs;
 pub mod fonts;
 pub mod keymap;
