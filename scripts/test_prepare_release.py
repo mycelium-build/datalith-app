@@ -45,6 +45,27 @@ class ReleaseIdentityTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             release.prepare(f"v{version}", temporary)
 
+    def test_macos_signing_identity_applies_only_to_apple_targets(self):
+        identity_name = "Developer ID Application: Example (TEAMID1234)"
+        for triple, expected in (("aarch64-apple-darwin", identity_name),
+                                 ("x86_64-unknown-linux-gnu", None)):
+            with self.subTest(target=triple), tempfile.TemporaryDirectory() as temporary:
+                # An absolute target replaces the "target" prefix, as in the test above.
+                target = str(Path(temporary) / triple)
+                directory = Path(target) / "release"
+                directory.mkdir(parents=True)
+                suffix = ".exe" if release.os.name == "nt" else ""
+                (directory / f"datalith{suffix}").write_bytes(b"binary")
+                identity = dict(channel="stable", stem="datalith", product_name="Datalith",
+                                identifier="build.mycelium.datalith", data_directory="datalith",
+                                update_endpoint="https://updates.datalith.work/stable",
+                                version="1.2.3")
+                with patch.object(release.subprocess, "check_output", return_value=json.dumps(identity)), \
+                        patch.dict(release.os.environ, {"APPLE_SIGNING_IDENTITY": identity_name}):
+                    release.prepare("v1.2.3", target)
+                config = json.loads((directory / "packager.json").read_text())
+                self.assertEqual(config.get("macos", {}).get("signing-identity"), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -203,14 +203,104 @@ jobs:
           DATALITH_RELEASE_TAG: ${{ github.ref_name }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      # macOS releases must be signed with a Developer ID Application
+      # certificate and notarized; refuse to build them otherwise.
+      - name: Prepare macOS signing credentials
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                      APPLE_API_KEY APPLE_API_ISSUER APPLE_API_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret $name (see docs/release-automation.md)"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          case "$APPLE_SIGNING_IDENTITY" in
+            "Developer ID Application: "*) ;;
+            *) echo "::error::APPLE_SIGNING_IDENTITY must be a Developer ID Application identity"; exit 1 ;;
+          esac
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          (umask 077 && printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key_path")
+          echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
       - name: Verify build identity and prepare packaging
         shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: python scripts/prepare-release.py --tag "$GITHUB_REF_NAME" --target ${{ matrix.target }}
 
       - name: Package desktop application
+        if: runner.os != 'macOS'
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: cargo packager --config target/${{ matrix.target }}/release/packager.json --target ${{ matrix.target }} --formats ${{ matrix.format }}
+
+      # cargo-packager signs the app (hardened runtime), notarizes and staples
+      # it, then builds and signs the DMG around it.
+      - name: Package, sign and notarize macOS application
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: cargo packager --config target/${{ matrix.target }}/release/packager.json --target ${{ matrix.target }} --formats ${{ matrix.format }}
+
+      # cargo-packager does not notarize the DMG itself.
+      - name: Notarize and staple macOS disk image
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmgs=(target/${{ matrix.target }}/release/*.dmg)
+          [ "${#dmgs[@]}" -eq 1 ] || { echo "::error::Expected one DMG, found ${#dmgs[@]}"; exit 1; }
+          dmg="${dmgs[0]}"
+          result=$(xcrun notarytool submit "$dmg" --wait --output-format json \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+          echo "$result"
+          status=$(jq -r .status <<<"$result")
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$(jq -r .id <<<"$result")" \
+              --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" || true
+            echo "::error::DMG notarization status: $status"
+            exit 1
+          fi
+          xcrun stapler staple -v "$dmg"
+
+      - name: Verify macOS signatures and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          directory=target/${{ matrix.target }}/release
+          apps=("$directory"/*.app)
+          dmgs=("$directory"/*.dmg)
+          [ "${#apps[@]}" -eq 1 ] && [ "${#dmgs[@]}" -eq 1 ] || { echo "::error::Expected one app and one DMG"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "${apps[0]}"
+          codesign --display --verbose=2 "${apps[0]}" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime|Timestamp)'
+          spctl --assess --type execute --verbose=2 "${apps[0]}"
+          xcrun stapler validate "${apps[0]}"
+          codesign --verify --strict --verbose=2 "${dmgs[0]}"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "${dmgs[0]}"
+          xcrun stapler validate "${dmgs[0]}"
+
+      - name: Remove macOS notarization key
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
 
       - name: Package native Linux formats
         if: runner.os == 'Linux'
