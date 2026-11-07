@@ -1,0 +1,53 @@
+# Version updates, grouped by update type. Security updates (enabled in the repository
+# settings) still open one PR per advisory, outside this schedule.
+# Transitive crates are refreshed weekly by the Cargo.lock refresh workflow, since Dependabot
+# only updates them for security fixes. Dependabot PRs are reviewed and merged by hand.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    # "fix(deps): ...": dependency updates change the shipped binary, so release-please
+    # lists them and they make the next release a patch. Dev-only crates (benchmarks,
+    # tests) do not ship: "chore(deps-dev): ...", no release.
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      patch:
+        patterns: ["*"]
+        update-types: [patch]
+      minor:
+        patterns: ["*"]
+        update-types: [minor]
+      major:
+        patterns: ["*"]
+        update-types: [major]
+
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    # "chore(ci): ...": CI changes never trigger a release.
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      patch:
+        patterns: ["*"]
+        update-types: [patch]
+      minor:
+        patterns: ["*"]
+        update-types: [minor]
+      major:
+        patterns: ["*"]
+        update-types: [major]

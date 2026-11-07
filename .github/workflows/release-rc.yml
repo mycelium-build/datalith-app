@@ -6,6 +6,8 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # Starts release.yml for the new tag (workflow_dispatch from main).
+  actions: write
 
 concurrency:
   group: create-release-candidate
@@ -26,6 +28,7 @@ jobs:
           permission-pull-requests: read
 
       - name: Create next release candidate tag
+        id: rc
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -157,6 +160,7 @@ jobs:
               ref: `refs/tags/${tag}`,
               sha: releaseSha,
             })
+            core.setOutput('tag', tag)
 
             const repositoryUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`
             await core.summary
@@ -168,4 +172,22 @@ jobs:
                 [{ data: 'Version', header: true }, version],
                 [{ data: 'Tag', header: true }, `[${tag}](${repositoryUrl}/releases/tag/${tag})`],
               ])
+              .write()
+
+      # RC tags do not start Release on push: building from main saves the Rust build
+      # caches on main, so the next RC and the stable release can restore them.
+      - name: Build the release candidate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TAG: ${{ steps.rc.outputs.tag }}
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: 'release.yml',
+              ref: 'main',
+              inputs: { tag: process.env.TAG, mode: 'build' },
+            })
+            await core.summary
+              .addRaw(`Started [Release](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/release.yml) for ${process.env.TAG}.`)
               .write()

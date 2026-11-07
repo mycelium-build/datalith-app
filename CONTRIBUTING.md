@@ -46,6 +46,13 @@ Before submitting a pull request, verify the result with `cargo-deny` version `0
 scripts/licenses/check.sh
 ```
 
+## Dependency Updates
+
+- Dependabot opens grouped PRs every Monday (`patch`, `minor`, `major`, titled `fix(deps): …`), plus one PR per security advisory. They are reviewed and merged by hand.
+- On Dependabot Cargo PRs, the **Dependency notices** workflow regenerates `THIRD-PARTY-NOTICES.md` and pushes it, so `license-compliance` passes on the rerun.
+- The **Cargo.lock refresh** workflow opens one `chore(deps): refresh Cargo.lock` PR each Monday for transitive crates, which Dependabot only updates for security fixes.
+- The **Advisories** workflow checks RustSec advisories on `main` daily.
+
 ## Development Setup
 
 ### Prerequisites
