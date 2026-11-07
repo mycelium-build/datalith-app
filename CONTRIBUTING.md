@@ -52,21 +52,45 @@ scripts/licenses/check.sh
 
 - Rust
 - Git
+- [prek](https://prek.j178.dev), to run the Git hooks
+- For changes to dependencies or license material: `cargo-deny` 0.20.2, `cargo-about` 0.9.1
+  and Python 3.11 or newer as `python3` (the license scripts use `tomllib`; macOS ships an older one)
 
 ### Installation
 
 1. Clone the repository:
     ```bash
     git clone https://github.com/mycelium-build/datalith-app.git
-    cd datalith
+    cd datalith-app
     ```
 
-2. Build the project:
+2. Install prek and enable the Git hooks:
+    ```bash
+    brew install prek        # or: uv tool install prek, or: cargo install --locked prek
+    prek install
+    ```
+    `prek install` reads `.pre-commit-config.yaml` and installs both hooks once for the clone:
+
+    | Hook | Runs when | Checks |
+    |---|---|---|
+    | pre-commit | Rust files are staged | `cargo fmt --all --check` |
+    | pre-commit | dependency or license files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
+    | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
+
+    The license hook needs the license tools:
+    ```bash
+    cargo install --locked cargo-deny@0.20.2
+    cargo install --locked --features cli cargo-about@0.9.1
+    ```
+    Run every pre-commit hook on the whole tree with `prek run --all-files`.
+    Bypass a hook once with `--no-verify`.
+
+3. Build the project:
     ```bash
     cargo build
     ```
 
-3. Run the project:
+4. Run the project:
     ```bash
     cargo run
     ```
