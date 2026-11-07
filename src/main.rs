@@ -34,7 +34,7 @@ fn main() {
     application.run(move |cx| {
         cx.set_app_identity(channel.identifier(), channel.product_name());
         #[cfg(target_os = "macos")]
-        app::dock_icon::install(channel);
+        app::dock_icon::install();
         app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);
         app::fonts::FontCatalog::init(cx);

@@ -13,7 +13,9 @@ ictool into:
 
   assets/logo/<channel>/Assets.car         the Liquid Glass icon (Info.plist CFBundleIconName)
   assets/logo/<channel>/datalith.icns      the flattened fallback (CFBundleIconFile)
-  assets/logo/<channel>/datalith-macos.png the 1024 px default rendition (DMG background, Dock)
+  assets/logo/<channel>/datalith-macos.png the 1024 px default rendition, full bleed (DMG background)
+  assets/logo/<channel>/datalith-dock.png  the same on Apple's icon grid, an 824 px icon centred in
+                                           1024 px, which unbundled runs set as their Dock icon
 
 This needs macOS with Xcode 26 or later, which ships Icon Composer; the script checks for it first.
 
@@ -38,6 +40,8 @@ LOGO = ROOT / "assets" / "logo" / "datalith.txt"
 ICON_NAME = "datalith"
 MINIMUM_TOOL_VERSION = 26
 CANVAS = 1024
+# Apple's macOS icon grid: the icon body is 824 px of a 1024 px image, the rest is margin.
+GRID_BODY = 824
 
 # Height of the monolith as a fraction of the icon canvas.
 MARK_FRACTION = 0.82
@@ -240,6 +244,12 @@ def export_png(ictool: pathlib.Path, document: pathlib.Path, path: pathlib.Path)
         image = image.convert("RGBA")
     image.save(path, optimize=True)
     print(f"wrote {path.relative_to(ROOT)}")
+    dock = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    offset = (CANVAS - GRID_BODY) // 2
+    dock.alpha_composite(image.resize((GRID_BODY, GRID_BODY), Image.LANCZOS), (offset, offset))
+    dock_path = path.with_name("datalith-dock.png")
+    dock.save(dock_path, optimize=True)
+    print(f"wrote {dock_path.relative_to(ROOT)}")
 
 
 def main() -> int:

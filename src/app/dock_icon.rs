@@ -8,28 +8,12 @@ use objc2::{AllocAnyThread, MainThreadMarker};
 use objc2_app_kit::{NSApplication, NSImage};
 use objc2_foundation::{NSBundle, NSData, ns_string};
 
-macro_rules! channel_icon {
-    ($channel:literal) => {
-        include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/logo/",
-            $channel,
-            "/datalith-macos.png"
-        ))
-    };
-}
-
-const fn icon_bytes(channel: crate::channel::Channel) -> &'static [u8] {
-    use crate::channel::Channel;
-    match channel {
-        Channel::Stable => channel_icon!("stable"),
-        Channel::Preview => channel_icon!("preview"),
-        Channel::Dev => channel_icon!("dev"),
-    }
-}
+/// The current channel's icon on Apple's 1024 px grid (an 824 px icon with its margin),
+/// written by `scripts/macos_icon.py`; `build.rs` picks the file from `CHANNEL`.
+const ICON: &[u8] = include_bytes!(env!("DATALITH_DOCK_ICON"));
 
 /// Set the channel's Dock icon when not running from inside a `.app` bundle.
-pub fn install(channel: crate::channel::Channel) {
+pub fn install() {
     let Some(main_thread) = MainThreadMarker::new() else {
         return;
     };
@@ -39,7 +23,7 @@ pub fn install(channel: crate::channel::Channel) {
     {
         return;
     }
-    let data = NSData::with_bytes(icon_bytes(channel));
+    let data = NSData::with_bytes(ICON);
     let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else {
         return;
     };

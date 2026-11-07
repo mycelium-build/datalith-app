@@ -1,5 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     validate_channel();
+    dock_icon();
     build_commit();
     updater_public_key();
     bundle_docs()?;
@@ -72,6 +73,17 @@ fn updater_public_key() {
         key.to_owned()
     };
     println!("cargo:rustc-env=DATALITH_UPDATER_PUBKEY={key}");
+}
+
+/// The channel's padded Dock icon, which unbundled macOS runs set at startup (`src/app/dock_icon.rs`).
+fn dock_icon() {
+    let channel = include_str!("CHANNEL").trim();
+    let path = format!(
+        "{}/assets/logo/{channel}/datalith-dock.png",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    println!("cargo:rerun-if-changed={path}");
+    println!("cargo:rustc-env=DATALITH_DOCK_ICON={path}");
 }
 
 fn validate_channel() {
