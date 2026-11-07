@@ -14,9 +14,11 @@ updates:
       timezone: Europe/Paris
     open-pull-requests-limit: 5
     # "fix(deps): ...": dependency updates change the shipped binary, so release-please
-    # lists them and they make the next release a patch.
+    # lists them and they make the next release a patch. Dev-only crates (benchmarks,
+    # tests) do not ship: "chore(deps-dev): ...", no release.
     commit-message:
       prefix: fix
+      prefix-development: chore
       include: scope
     groups:
       patch:
