@@ -9871,7 +9871,7 @@ Used by:
 - `arrayvec` 0.7.8 — `MIT OR Apache-2.0` — <https://github.com/bluss/arrayvec>
 - `async-channel` 2.5.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-channel>
 - `async-compression` 0.4.43 — `MIT OR Apache-2.0` — <https://github.com/Nullus157/async-compression>
-- `async-executor` 1.14.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-executor>
+- `async-executor` 1.14.1 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-executor>
 - `async-fs` 2.2.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-fs>
 - `async-io` 2.6.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-io>
 - `async-lock` 3.4.2 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/async-lock>
@@ -19416,7 +19416,7 @@ SPDX identifier: `MIT`
 Used by:
 
 - `pulldown-cmark-escape` 0.11.0 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
-- `pulldown-cmark` 0.13.5 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
+- `pulldown-cmark` 0.13.6 — `MIT` — <https://github.com/raphlinus/pulldown-cmark>
 ```
 The MIT License
 

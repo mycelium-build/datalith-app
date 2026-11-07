@@ -32,7 +32,7 @@ def prepare(tag, target):
         "identifier": config["identifier"],
         "stem": config["binaries"][0]["path"],
         "data_directory": config["name"],
-        "update_endpoint": f"https://mycelium-build.github.io/datalith-app/updates/{channel}.json",
+        "update_endpoint": f"https://updates.datalith.work/{channel}",
         "version": version,
     }
     if identity != expected:
