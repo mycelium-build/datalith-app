@@ -43,8 +43,9 @@ CANVAS = 1024
 # Apple's macOS icon grid: the icon body is 824 px of a 1024 px image, the rest is margin.
 GRID_BODY = 824
 
-# Height of the monolith as a fraction of the icon canvas.
-MARK_FRACTION = 0.94
+# Space between the monolith's tips and the icon's top and bottom edges, in monolith rows.
+# Geometrically 1.5 rows, so that about one row stays visible below Liquid Glass's lit rim.
+MARGIN_ROWS = 1.5
 
 _spec = importlib.util.spec_from_file_location("app_icon", pathlib.Path(__file__).with_name("app_icon.py"))
 app_icon = importlib.util.module_from_spec(_spec)
@@ -141,7 +142,7 @@ def _mark_cells() -> tuple[list[str], tuple[int, int, int, int]]:
 def layer_svg(rows: list[str], bbox, chars: str, color) -> str:
     """One layer as a full-canvas SVG, so every layer lines up with the others when centred."""
     x0, y0, x1, y1 = bbox
-    cell = CANVAS * MARK_FRACTION / (y1 - y0)
+    cell = CANVAS / (y1 - y0 + 2 * MARGIN_ROWS)
     ox = (CANVAS - cell * (x1 - x0)) / 2 - cell * x0
     oy = (CANVAS - cell * (y1 - y0)) / 2 - cell * y0
     # One path of horizontal runs in grid units, scaled once; adjacent squares in a single
