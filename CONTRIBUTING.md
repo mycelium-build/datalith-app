@@ -74,7 +74,7 @@ scripts/licenses/check.sh
     | Hook | Runs when | Checks |
     |---|---|---|
     | pre-commit | Rust files are staged | `cargo fmt --all --check` |
-    | pre-commit | dependency or license files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
+    | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
     | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
 
     The license hook needs the license tools:
