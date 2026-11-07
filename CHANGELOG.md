@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/mycelium-build/datalith-app/compare/v1.0.0...v1.1.0) (2026-11-07)
+
+
+### Features
+
+* **linux:** give cargo run Dev builds their green icon ([1ed85d5](https://github.com/mycelium-build/datalith-app/commit/1ed85d50690ba7d1c7b8f6d80c290907d2c33438))
+* **macos:** show the channel icon in the Dock for unbundled runs ([d164178](https://github.com/mycelium-build/datalith-app/commit/d164178c3ca038997ce07adbb0234bf3024226a8))
+* move website and update endpoints to datalith.work ([a5d2d10](https://github.com/mycelium-build/datalith-app/commit/a5d2d10a5d5b896187c314a2be851ddc9d4ac69b))
+* move website and update endpoints to datalith.work ([504f5e4](https://github.com/mycelium-build/datalith-app/commit/504f5e4697210422e896ed87c8c6faad1149e9ff))
+* **packaging:** brand the macOS DMG window ([452f1bf](https://github.com/mycelium-build/datalith-app/commit/452f1bfc9757646d1490c126e3f233a5d1ec8f32))
+* **packaging:** brand the macOS DMG window ([1d7f88d](https://github.com/mycelium-build/datalith-app/commit/1d7f88df748c1e567eb75bbf8317daf9743f84b7))
+* **packaging:** build the macOS icons with Icon Composer ([01076d5](https://github.com/mycelium-build/datalith-app/commit/01076d58860e570bd8873c4d3c03bd8f177e91d5))
+* **packaging:** enlarge the macOS monolith to 94% of the icon height ([7114597](https://github.com/mycelium-build/datalith-app/commit/7114597c77c3e36f3bee1b59b419ade41e96adcb))
+* **packaging:** keep one monolith row of margin in the macOS icon ([7b6b656](https://github.com/mycelium-build/datalith-app/commit/7b6b6562de2cd1bb05c5ba2f1f57830566ffd01c))
+* **packaging:** layered Liquid Glass macOS icons built with Icon Composer ([2658355](https://github.com/mycelium-build/datalith-app/commit/2658355e4b1e9233c141a79944e1029252a784f5))
+* **release:** sign and notarize macOS builds ([5ed126a](https://github.com/mycelium-build/datalith-app/commit/5ed126a82e2e2a4075c3eb89fb6940efb6e4eed1))
+* **release:** sign and notarize macOS builds ([3b681cf](https://github.com/mycelium-build/datalith-app/commit/3b681cf2b4c18fa850449932c02a3202d4bd0fbd))
+
+
+### Bug Fixes
+
+* **deps:** update pulldown-cmark and async-executor ([8d0d39e](https://github.com/mycelium-build/datalith-app/commit/8d0d39ef30a0e87058ab46126eae10182c6d3656))
+* **macos:** pad the unbundled Dock icon and embed only the current channel's ([0b85845](https://github.com/mycelium-build/datalith-app/commit/0b85845c5382eaa3d40b2c94ad95832c614062a2))
+* **packaging:** keep the DMG's hidden files out of view ([3c0fcfd](https://github.com/mycelium-build/datalith-app/commit/3c0fcfd1bfd54fc2a809c289eb15ae890f0d0d31))
+* **release:** tag drafts and release without waiting for CI ([e314d8a](https://github.com/mycelium-build/datalith-app/commit/e314d8aa1d2bc6e15dbf7d9f6323ea388e5120d6))
+* **release:** tag drafts and release without waiting for CI ([25949d9](https://github.com/mycelium-build/datalith-app/commit/25949d93274a3a4b265e60be5729e413a316634c))
+
 ## [1.0.0](https://github.com/mycelium-build/datalith-app/compare/v0.1.0...v1.0.0) (2026-10-29)
 
 
