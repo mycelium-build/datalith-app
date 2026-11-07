@@ -1,0 +1,101 @@
+name: Cargo.lock refresh
+
+# Dependabot only updates transitive crates for security fixes. This refreshes the whole
+# Cargo.lock within the version requirements of Cargo.toml once a week, regenerates the
+# notices and opens (or updates) a single PR. `chore(deps)`: it never triggers a release.
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cargo-lock-refresh
+  cancel-in-progress: false
+
+env:
+  BRANCH: chore/cargo-lock-refresh
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.97.1
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        with:
+          tool: cargo-about@0.9.1
+
+      # Neither step runs crate code: `cargo update` resolves the index, cargo-about reads metadata.
+      - name: Update Cargo.lock
+        id: update
+        run: |
+          cargo update --color never 2> update.log
+          cat update.log
+          if git diff --quiet -- Cargo.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          scripts/licenses/generate.sh
+          # Keep the per-crate lines ("Updating foo v1.0.0 -> v1.0.1"), not "Updating crates.io index".
+          grep -E '^\s*(Updating|Adding|Removing|Downgrading) \S+ v' update.log | sed -E 's/^\s+/- /' > changes.md || true
+
+      # Mint the write token only after the update and generation have finished.
+      - name: Create automation token
+        if: steps.update.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Push the branch and open or update the PR
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name "datalith-automation[bot]"
+          git config user.email "datalith-automation[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add Cargo.lock THIRD-PARTY-NOTICES.md scripts/licenses/about.toml
+          {
+            echo "chore(deps): refresh Cargo.lock"
+            echo
+            echo "cargo update within the version requirements of Cargo.toml:"
+            echo
+            cat changes.md
+          } > message.txt
+          git commit -q -F message.txt
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git push -q --force origin "$BRANCH"
+
+          {
+            echo "Weekly \`cargo update\` within the version requirements of \`Cargo.toml\`, with the third-party notices regenerated."
+            echo "Dependabot covers direct dependencies and security fixes; this covers the transitive ones."
+            echo
+            cat changes.md
+          } > body.md
+          pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$pr" ]]; then
+            gh pr edit "$pr" --repo "$REPO" --body-file body.md
+          else
+            gh pr create --repo "$REPO" --head "$BRANCH" --base main \
+              --title "chore(deps): refresh Cargo.lock" --body-file body.md
+          fi
