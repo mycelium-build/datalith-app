@@ -57,7 +57,7 @@ gh secret set APPLE_API_ISSUER --repo mycelium-build/datalith-app
 gh secret set APPLE_API_PRIVATE_KEY --repo mycelium-build/datalith-app < AuthKey_<KEY_ID>.p8
 ```
 
-cargo-packager signs the app with the hardened runtime, notarizes and staples it, then builds and signs the DMG. The workflow then notarizes and staples the DMG and checks both with `codesign`, `spctl`, and `stapler`. The updater bundle is archived from the stapled app. Developer ID certificates are valid for five years; renew the secrets before expiry. Already-notarized releases keep working after the certificate expires.
+cargo-packager signs the app with the hardened runtime, notarizes and staples it, then builds and signs the DMG. The workflow then notarizes and staples the DMG and checks both with `codesign`, `spctl`, and `stapler`. The updater bundle is archived from the stapled app. Check the certificate's expiry date (`security find-certificate -c "Developer ID Application" -p | openssl x509 -noout -enddate`) and renew the secrets before then. Already-notarized releases keep working after the certificate expires.
 
 ## Automatic updates
 
