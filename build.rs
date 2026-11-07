@@ -75,11 +75,16 @@ fn updater_public_key() {
     println!("cargo:rustc-env=DATALITH_UPDATER_PUBKEY={key}");
 }
 
-/// The channel's padded Dock icon, which unbundled macOS runs set at startup (`src/app/dock_icon.rs`).
+/// Dev builds set their padded Dock icon at startup on macOS (`src/app/dock_icon.rs`), since `cargo run`
+/// has no `.app` bundle; `cfg(datalith_dev)` keeps that code and the icon out of Stable and Preview builds.
 fn dock_icon() {
-    let channel = include_str!("CHANNEL").trim();
+    println!("cargo:rustc-check-cfg=cfg(datalith_dev)");
+    if include_str!("CHANNEL").trim() != "dev" {
+        return;
+    }
+    println!("cargo:rustc-cfg=datalith_dev");
     let path = format!(
-        "{}/assets/logo/{channel}/datalith-dock.png",
+        "{}/assets/logo/dev/datalith-dock.png",
         env!("CARGO_MANIFEST_DIR")
     );
     println!("cargo:rerun-if-changed={path}");

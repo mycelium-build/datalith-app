@@ -2,7 +2,7 @@ pub mod actions;
 pub mod assets;
 mod atomic_file;
 pub mod deeplink;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", datalith_dev))]
 pub mod dock_icon;
 pub mod docs;
 pub mod fonts;

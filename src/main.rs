@@ -33,7 +33,7 @@ fn main() {
     application.on_open_urls(app::deeplink::capture);
     application.run(move |cx| {
         cx.set_app_identity(channel.identifier(), channel.product_name());
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", datalith_dev))]
         app::dock_icon::install();
         app::init(cx);
         let mut pending_notifications = app::fonts::load_embedded_fonts(cx);

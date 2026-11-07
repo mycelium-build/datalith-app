@@ -1,18 +1,20 @@
-//! Dock icon for unbundled macOS runs.
+//! Dock icon for unbundled Dev runs on macOS.
 //!
-//! Packaged builds get their icon from the `.app` bundle. A bare executable
-//! (`cargo run`, `target/*/datalith`) has no bundle, so the Dock shows the
-//! generic executable icon unless the application sets one at runtime.
+//! Packaged builds get their Liquid Glass icon from the `.app` bundle (`Assets.car`).
+//! A bare executable (`cargo run`, `target/*/datalith`) has no bundle, so the Dock
+//! shows the generic executable icon unless the application sets one at runtime.
+//! Only Dev builds compile this (`cfg(datalith_dev)`, set by `build.rs`).
 
 use objc2::{AllocAnyThread, MainThreadMarker};
 use objc2_app_kit::{NSApplication, NSImage};
 use objc2_foundation::{NSBundle, NSData, ns_string};
 
-/// The current channel's icon on Apple's 1024 px grid (an 824 px icon with its margin),
-/// written by `scripts/macos_icon.py`; `build.rs` picks the file from `CHANNEL`.
+/// The Dev icon on Apple's 1024 px grid (an 824 px icon with its margin), written by
+/// `scripts/macos_icon.py`. A static rendition: the Dock only draws the dynamic
+/// Liquid Glass icon for a bundle's `CFBundleIconName`.
 const ICON: &[u8] = include_bytes!(env!("DATALITH_DOCK_ICON"));
 
-/// Set the channel's Dock icon when not running from inside a `.app` bundle.
+/// Set the Dev Dock icon when not running from inside a `.app` bundle.
 pub fn install() {
     let Some(main_thread) = MainThreadMarker::new() else {
         return;
