@@ -70,6 +70,7 @@ scripts/licenses/check.sh
     ```bash
     cargo run
     ```
+    The Dev build shows its green icon: on macOS it sets its Dock icon at startup; on Linux, Cargo runs it through `scripts/dev-runner-linux.sh`, which installs a hidden `datalith-dev.desktop` entry and the Dev icon under `~/.local/share` (remove them with `scripts/dev-runner-linux.sh --uninstall`, or skip them with `DATALITH_DEV_DESKTOP_ENTRY=0`); on Windows the icon is embedded in the executable.
 
 ### Development Workflow
 

@@ -1,5 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     validate_channel();
+    dock_icon();
     build_commit();
     updater_public_key();
     bundle_docs()?;
@@ -72,6 +73,22 @@ fn updater_public_key() {
         key.to_owned()
     };
     println!("cargo:rustc-env=DATALITH_UPDATER_PUBKEY={key}");
+}
+
+/// Dev builds set their padded Dock icon at startup on macOS (`src/app/dock_icon.rs`), since `cargo run`
+/// has no `.app` bundle; `cfg(datalith_dev)` keeps that code and the icon out of Stable and Preview builds.
+fn dock_icon() {
+    println!("cargo:rustc-check-cfg=cfg(datalith_dev)");
+    if include_str!("CHANNEL").trim() != "dev" {
+        return;
+    }
+    println!("cargo:rustc-cfg=datalith_dev");
+    let path = format!(
+        "{}/assets/logo/dev/datalith-dock.png",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    println!("cargo:rerun-if-changed={path}");
+    println!("cargo:rustc-env=DATALITH_DOCK_ICON={path}");
 }
 
 fn validate_channel() {

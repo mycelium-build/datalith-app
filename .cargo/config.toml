@@ -1,0 +1,4 @@
+# On Linux, `cargo run` of the Dev channel installs a hidden desktop entry and the green Dev icon
+# so the window gets its icon; every binary still runs unchanged. See scripts/dev-runner-linux.sh.
+[target.'cfg(target_os = "linux")']
+runner = "scripts/dev-runner-linux.sh"

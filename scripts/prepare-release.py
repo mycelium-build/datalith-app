@@ -46,6 +46,11 @@ def prepare(tag, target):
     config["license-file"] = str(Path(config["license-file"]).resolve())
     config["nsis"]["installer-icon"] = str(Path(config["nsis"]["installer-icon"]).resolve())
     config["dmg"]["background"] = str(Path(config["dmg"]["background"]).resolve())
+    if target.endswith("-apple-darwin"):
+        # The Liquid Glass icon compiled by scripts/macos_icon.py, which the Info.plist overlay names
+        # (CFBundleIconName); macOS before 26 keeps using the .icns from `icons`.
+        config["resources"].append({"src": f"assets/logo/{channel}/Assets.car", "target": "Assets.car"})
+        config.setdefault("macos", {})["info-plist-path"] = str(Path("packaging/macos/Info.plist").resolve())
     for resource in config["resources"]:
         resource["src"] = str(Path(resource["src"]).resolve())
     # cargo-packager reads the certificate and notarization credentials from
