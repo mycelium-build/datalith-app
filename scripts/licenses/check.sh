@@ -21,7 +21,13 @@ if [[ "$deny_version" != "$CARGO_DENY_VERSION" ]]; then
     fail "cargo-deny $CARGO_DENY_VERSION required, found '${deny_version:-none}'"
 fi
 
-cargo deny --manifest-path "$REPO_ROOT/Cargo.toml" check licenses sources bans advisories
+# The pre-commit hook sets LICENSE_CHECK_SKIP_ADVISORIES=1: advisories depend on the advisory
+# database rather than on the commit, so they stay in CI only.
+deny_checks=(licenses sources bans advisories)
+if [[ "${LICENSE_CHECK_SKIP_ADVISORIES:-0}" == 1 ]]; then
+    deny_checks=(licenses sources bans)
+fi
+cargo deny --manifest-path "$REPO_ROOT/Cargo.toml" check "${deny_checks[@]}"
 
 # 2. Snapshot and regenerate notices, then fail if generation changed them.
 check_tmp_dir="$(mktemp -d)"
