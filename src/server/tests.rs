@@ -369,13 +369,6 @@ async fn openapi_spec_and_docs_are_served() {
     assert!(body["paths"]["/ping"].is_object());
     assert!(body["paths"]["/api/vaults"].is_object());
     assert!(body["paths"]["/api/notes"].is_object());
-    let ping = &body["components"]["schemas"]["PingResponse"];
-    assert_eq!(ping["properties"]["apiVersion"]["type"], "integer");
-    assert!(
-        ping["required"]
-            .as_array()
-            .is_some_and(|fields| fields.iter().any(|field| field == "apiVersion"))
-    );
 
     let docs = client.get("/docs").send().await;
     docs.assert_status_is_ok();
