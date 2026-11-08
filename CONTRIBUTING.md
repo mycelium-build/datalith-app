@@ -36,14 +36,14 @@ When adding a bundled asset, add it to `assets/licenses.toml` and include its li
 Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 
 ```bash
-scripts/licenses/generate.sh
+uv run --no-project --python '>=3.11' -- scripts/licenses/generate.sh
 ```
 
 The generation script requires `cargo-about` version `0.9.1`. 
 Before submitting a pull request, verify the result with `cargo-deny` version `0.20.2` using:
 
 ```bash
-scripts/licenses/check.sh
+uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 ```
 
 ## Development Setup
@@ -52,9 +52,10 @@ scripts/licenses/check.sh
 
 - Rust
 - Git
+- [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
-- For changes to dependencies or license material: `cargo-deny` 0.20.2, `cargo-about` 0.9.1
-  and Python 3.11 or newer as `python3` (the license scripts use `tomllib`; macOS ships an older one)
+- For changes to dependencies or license material: `cargo-deny` 0.20.2 and `cargo-about` 0.9.1.
+  The license scripts run with uv (see [Third-Party Notices](#third-party-notices)).
 
 ### Installation
 
@@ -66,15 +67,15 @@ scripts/licenses/check.sh
 
 2. Install prek and enable the Git hooks:
     ```bash
-    brew install prek        # or: uv tool install prek, or: cargo install --locked prek
+    uv tool install prek
     prek install
     ```
     `prek install` reads `.pre-commit-config.yaml` and installs both hooks once for the clone:
 
     | Hook | Runs when | Checks |
     |---|---|---|
-    | pre-commit | Rust files are staged | `cargo fmt --all --check` |
-    | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
+    | pre-commit | Rust files are staged | `cargo fmt --all`; the formatting of the committed files is staged, so the commit goes through formatted |
+    | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated and staged, so the commit goes through with them. A real license or policy failure still stops the commit |
     | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
 
     The license hook needs the license tools:
@@ -82,6 +83,7 @@ scripts/licenses/check.sh
     cargo install --locked cargo-deny@0.20.2
     cargo install --locked --features cli cargo-about@0.9.1
     ```
+    The fixes only touch what you staged: prek sets unstaged changes aside while the hooks run. If formatting conflicts with unstaged changes in the same file, prek drops the fix and stops the commit; run `cargo fmt --all`, stage, and commit again.
     Run every pre-commit hook on the whole tree with `prek run --all-files`.
     Bypass a hook once with `--no-verify`.
 
