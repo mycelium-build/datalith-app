@@ -79,7 +79,7 @@ async fn ping_reports_app_and_api_versions() {
         .assert_json(json!({
             "app": "datalith",
             "version": env!("CARGO_PKG_VERSION"),
-            "apiVersion": 1
+            "api_version": 1
         }))
         .await;
 }

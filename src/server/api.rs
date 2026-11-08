@@ -35,7 +35,6 @@ struct PingResponse {
     /// The app's package version.
     version: String,
     /// Local API contract version.
-    #[oai(rename = "apiVersion")]
     api_version: u32,
 }
 
