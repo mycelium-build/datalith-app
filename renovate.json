@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>mycelium-build/datalith-app//.github/renovate/preset"],
+  "packageRules": [
+    {
+      "description": "THIRD-PARTY-NOTICES.md lists every crate with its version: regenerate it in each Cargo update.",
+      "matchManagers": ["cargo"],
+      "postUpgradeTasks": {
+        "commands": ["scripts/renovate-post-upgrade.sh"],
+        "fileFilters": ["THIRD-PARTY-NOTICES.md", "scripts/licenses/about.toml"],
+        "executionMode": "branch"
+      }
+    }
+  ]
+}
