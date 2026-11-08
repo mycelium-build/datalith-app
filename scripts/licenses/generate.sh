@@ -9,9 +9,8 @@ cd "$REPO_ROOT"
 
 SCRIPTS_DIR="$REPO_ROOT/scripts/licenses"
 
-# Pinned tool versions: scripts/tool-versions.env.
-# shellcheck source=../tool-versions.env
-source "$REPO_ROOT/scripts/tool-versions.env"
+# Pinned tool versions: [package.metadata.tools] in Cargo.toml.
+eval "$("$REPO_ROOT/scripts/tool-versions.sh")"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

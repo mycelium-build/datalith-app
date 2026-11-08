@@ -47,14 +47,16 @@ CONTAINER = "datalith-builder"
 BUILDER_IMAGE = "docker.io/library/ubuntu:24.04"
 
 def pinned(name: str) -> str:
-    """Return a version from scripts/tool-versions.env or rust-toolchain.toml."""
+    """Return a version from [package.metadata.tools] of Cargo.toml, or the Rust toolchain."""
     if name == "rust":
         text = (ROOT / "rust-toolchain.toml").read_text()
         return re.search(r'^channel\s*=\s*"([^"]+)"', text, re.M).group(1)
-    for line in (ROOT / "scripts" / "tool-versions.env").read_text().splitlines():
+    output = subprocess.run([str(ROOT / "scripts" / "tool-versions.sh")], check=True,
+                            capture_output=True, text=True).stdout
+    for line in output.splitlines():
         key, _, value = line.partition("=")
-        if key.strip() == name:
-            return value.strip()
+        if key == name:
+            return value
     raise KeyError(name)
 
 

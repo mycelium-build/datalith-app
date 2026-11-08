@@ -43,12 +43,12 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Tools pinned in scripts/tool-versions.env, each with a `# renovate:` comment above it.",
+      "description": "Tools pinned in [package.metadata.tools] of Cargo.toml, each with a `# renovate:` comment above it.",
       "managerFilePatterns": [
-        "/^scripts/tool-versions\\.env$/"
+        "/^Cargo\\.toml$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\n[A-Z_]+=(?<currentValue>\\S+)"
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\n[A-Za-z0-9_-]+ = \"(?<currentValue>[^\"]+)\""
       ]
     }
   ]

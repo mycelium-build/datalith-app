@@ -39,7 +39,7 @@ Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 uv run --no-project --python '>=3.11' -- scripts/licenses/generate.sh
 ```
 
-The generation script requires the `cargo-about` version pinned in `scripts/tool-versions.env`.
+The generation script requires the `cargo-about` version pinned in `[package.metadata.tools]` of `Cargo.toml`.
 Before submitting a pull request, verify the result with the pinned `cargo-deny` using:
 
 ```bash
@@ -63,7 +63,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 - In Cargo updates, Renovate runs `scripts/renovate-post-upgrade.sh`, which regenerates `THIRD-PARTY-NOTICES.md` in the same PR.
 - The **Dependency Dashboard** issue lists pending and rate-limited updates; tick one there to get it now.
 - The **Advisories** workflow checks RustSec advisories on `main` daily.
-- The Rust toolchain is pinned only in `rust-toolchain.toml` (the workflows install it from there), and the tools no manifest declares (cargo-deny, cargo-about, cargo-packager, nFPM) only in `scripts/tool-versions.env`. Renovate bumps both in its `update tools` PR; after merging one, run `scripts/install-dev-tools.sh` again.
+- The Rust toolchain is pinned only in `rust-toolchain.toml` (the workflows install it from there), and the tools no manifest declares (cargo-deny, cargo-about, cargo-packager, nFPM) only in `[package.metadata.tools]` of `Cargo.toml` (Cargo ignores that table). Renovate bumps both in its `update tools` PR; after merging one, run `scripts/install-dev-tools.sh` again.
 
 ## Development Setup
 
@@ -74,7 +74,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 - [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
 - For changes to dependencies or license material: `cargo-deny` and `cargo-about` at the versions
-  pinned in `scripts/tool-versions.env` (install them with `scripts/install-dev-tools.sh`).
+  pinned in `[package.metadata.tools]` of `Cargo.toml` (install them with `scripts/install-dev-tools.sh`).
   The license scripts run with uv (see [Third-Party Notices](#third-party-notices)).
 
 ### Installation

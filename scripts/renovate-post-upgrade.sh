@@ -5,8 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# shellcheck source=tool-versions.env
-source scripts/tool-versions.env
+eval "$(scripts/tool-versions.sh)"
 required="$CARGO_ABOUT_VERSION"
 installed="$(cargo about --version 2>/dev/null | awk '{print $NF}' || true)"
 if [[ "$installed" != "$required" ]]; then
