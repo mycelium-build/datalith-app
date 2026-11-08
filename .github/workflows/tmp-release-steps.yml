@@ -1,0 +1,90 @@
+name: TEMP release steps
+
+# Temporary (do not merge): runs the release steps changed by #52 on every release runner.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  steps:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same step as release.yml (build and package jobs).
+      - name: Install Rust toolchain
+        shell: bash
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
+
+      - name: Check the toolchain matches rust-toolchain.toml
+        shell: bash
+        run: |
+          expected="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          actual="$(rustc --version | awk '{print $2}')"
+          echo "expected=$expected actual=$actual"
+          [[ "$actual" == "$expected" ]]
+          rustup target list --installed | grep -x "${{ matrix.target }}"
+          cargo metadata --format-version 1 --no-deps --locked > /dev/null
+
+      # Same step as release.yml (package job).
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
+
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        with:
+          tool: cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
+
+      - name: Check cargo-packager version
+        shell: bash
+        run: |
+          cargo packager --version
+          [[ "$(cargo packager --version | awk '{print $NF}')" == "$CARGO_PACKAGER_VERSION" ]]
+
+      # Same step as release.yml (package job, Linux).
+      - name: Install nFPM
+        if: runner.os == 'Linux'
+        run: |
+          case "$(uname -m)" in
+            x86_64) NFPM_ARCH=x86_64 ;;
+            aarch64) NFPM_ARCH=arm64 ;;
+            *) echo "unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz" \
+            -o "nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz"
+          curl -fsSL \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/checksums.txt" \
+            -o checksums.txt
+          sha256sum --ignore-missing -c checksums.txt
+          tar xzf "nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz" nfpm
+          sudo install -m 0755 nfpm /usr/local/bin/nfpm
+          nfpm --version
+
+      # The license scripts install a pinned tool that is missing (scripts/lib/tools.sh).
+      - name: Check ensure_cargo_tool on a fresh runner
+        if: matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          source scripts/lib/tools.sh
+          ensure_cargo_tool cargo-deny "$CARGO_DENY_VERSION"
+          cargo deny --version
+          [[ "$(command -v cargo-deny)" == "$PWD/target/tools/bin/cargo-deny" ]]
