@@ -39,8 +39,8 @@ Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 uv run --no-project --python '>=3.11' -- scripts/licenses/generate.sh
 ```
 
-The generation script requires `cargo-about` version `0.9.1`. 
-Before submitting a pull request, verify the result with `cargo-deny` version `0.20.2` using:
+Both license scripts use the `cargo-about` and `cargo-deny` versions pinned in `scripts/tool-versions.env`, and install them into `target/tools` the first time (a few minutes, once per version).
+Before submitting a pull request, verify the result with:
 
 ```bash
 uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
@@ -63,6 +63,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 - In Cargo updates, Renovate runs `scripts/renovate-post-upgrade.sh`, which regenerates `THIRD-PARTY-NOTICES.md` in the same PR.
 - The **Dependency Dashboard** issue lists pending and rate-limited updates; tick one there to get it now.
 - The **Advisories** workflow checks RustSec advisories on `main` daily.
+- The Rust toolchain is pinned only in `rust-toolchain.toml` (the workflows install it from there), and the tools no manifest declares (cargo-deny, cargo-about, cargo-packager, nFPM) only in `scripts/tool-versions.env`. Renovate bumps both in its `update tools` PR; the license scripts then install the new tool versions on their next run.
 
 ## Development Setup
 
@@ -72,8 +73,8 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 - Git
 - [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
-- For changes to dependencies or license material: `cargo-deny` 0.20.2 and `cargo-about` 0.9.1.
-  The license scripts run with uv (see [Third-Party Notices](#third-party-notices)).
+- Nothing else for the license checks: the scripts install the pinned `cargo-deny` and `cargo-about`
+  themselves and run with uv (see [Third-Party Notices](#third-party-notices)).
 
 ### Installation
 
@@ -96,11 +97,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
     | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated and staged, so the commit goes through with them. A real license or policy failure still stops the commit |
     | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
 
-    The license hook needs the license tools:
-    ```bash
-    cargo install --locked cargo-deny@0.20.2
-    cargo install --locked --features cli cargo-about@0.9.1
-    ```
+    The license hook installs the pinned `cargo-deny` and `cargo-about` into `target/tools` on its first run.
     The fixes only touch what you staged: prek sets unstaged changes aside while the hooks run. If formatting conflicts with unstaged changes in the same file, prek drops the fix and stops the commit; run `cargo fmt --all`, stage, and commit again.
     Run every pre-commit hook on the whole tree with `prek run --all-files`.
     Bypass a hook once with `--no-verify`.

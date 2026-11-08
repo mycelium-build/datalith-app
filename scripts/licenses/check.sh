@@ -7,7 +7,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-CARGO_DENY_VERSION="0.20.2"
+# Installs the pinned tool versions (scripts/tool-versions.env) when missing.
+# shellcheck source=../lib/tools.sh
+source "$REPO_ROOT/scripts/lib/tools.sh"
 
 fail() {
     echo "LICENSE-E2xx $*" >&2
@@ -16,10 +18,7 @@ fail() {
 
 # 1. cargo-deny policy check (licenses, sources, bans, advisories).
 command -v cargo >/dev/null 2>&1 || fail "cargo not found on PATH"
-deny_version="$(cargo deny --version 2>/dev/null | awk '{print $NF}')"
-if [[ "$deny_version" != "$CARGO_DENY_VERSION" ]]; then
-    fail "cargo-deny $CARGO_DENY_VERSION required, found '${deny_version:-none}'"
-fi
+ensure_cargo_tool cargo-deny "$CARGO_DENY_VERSION" || fail "cannot install cargo-deny $CARGO_DENY_VERSION"
 
 # The pre-commit hook sets LICENSE_CHECK_SKIP_ADVISORIES=1: advisories depend on the advisory
 # database rather than on the commit, so they stay in CI only.
