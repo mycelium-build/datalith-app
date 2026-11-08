@@ -26,15 +26,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Renovate bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
+        shell: bash
+        run: rustup toolchain install
+
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: Check advisories
         id: deny

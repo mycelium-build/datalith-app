@@ -45,7 +45,22 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PKG_DIR = ROOT / "target" / "x86_64-unknown-linux-gnu" / "release"
 CONTAINER = "datalith-builder"
 BUILDER_IMAGE = "docker.io/library/ubuntu:24.04"
-NFPM_VERSION = "2.47.0"
+
+def pinned(name: str) -> str:
+    """Return a version from scripts/tool-versions.env or rust-toolchain.toml."""
+    if name == "rust":
+        text = (ROOT / "rust-toolchain.toml").read_text()
+        return re.search(r'^channel\s*=\s*"([^"]+)"', text, re.M).group(1)
+    for line in (ROOT / "scripts" / "tool-versions.env").read_text().splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.strip()
+    raise KeyError(name)
+
+
+NFPM_VERSION = pinned("NFPM_VERSION")
+CARGO_PACKAGER_VERSION = pinned("CARGO_PACKAGER_VERSION")
+RUST_VERSION = pinned("rust")
 
 # package extension -> (smoke-test distro name, image, install command)
 FORMATS = {
@@ -140,7 +155,7 @@ def build_packages() -> None:
     run(c(CONTAINER, ["bash", "-c",
         "sudo apt-get install -y --no-install-recommends file zstd"]))
 
-    rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.97.1"
+    rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain " + RUST_VERSION
     print("[builder] installing Rust (as pinned in rust-toolchain.toml)")
     run(c(CONTAINER, ["bash", "-c", rust + " && echo 'export PATH=$HOME/.cargo/bin:$PATH' >> ~/.bashrc"]))
 
@@ -175,7 +190,7 @@ def build_packages() -> None:
     print("[builder] building AppImage (CI parity)")
     run(c(CONTAINER, ["bash", "-c",
         "export PATH=$HOME/.cargo/bin:$PATH && "
-        "cargo install cargo-packager --version 0.11.8 --locked && cargo-packager --version"]))
+        f"cargo install cargo-packager --version {CARGO_PACKAGER_VERSION} --locked && cargo-packager --version"]))
     run(c(CONTAINER, ["bash", "-c",
         f"cd {ROOT} && export PATH=$HOME/.cargo/bin:$PATH && "
         "APPIMAGE_EXTRACT_AND_RUN=1 cargo packager --config target/x86_64-unknown-linux-gnu/release/packager.json "

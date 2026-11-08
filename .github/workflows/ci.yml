@@ -64,7 +64,7 @@ jobs:
           flag() { if has "$1"; then echo true; else echo false; fi; }
 
           # check_assets.py checks every tracked file under assets/ against assets/licenses.toml.
-          licenses="$(flag '^(Cargo\.(toml|lock)|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|\.github/workflows/ci\.yml$)')"
+          licenses="$(flag '^(Cargo\.(toml|lock)|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
@@ -73,7 +73,7 @@ jobs:
           # Files the ci job (fmt, clippy, tests) never reads: docs, contributor and release
           # tooling, other workflows. docs/vault/ is embedded in the binary and read by tests, and
           # ci.yml tests itself, so both count as code. Anything else counts as code too.
-          untested='^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|todo\.txt|renovate\.json|\.pre-commit-config\.yaml|release-please-config\.json|\.release-please-manifest\.json|deny\.toml|nfpm\.yaml|packager\.(stable|preview)\.toml|\.agents/|\.github/|docs/|packaging/|scripts/(hooks|licenses)/|scripts/tool-versions\.env$|scripts/[^/]+\.py$|scripts/updates/[^/]+\.py$)'
+          untested='^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|todo\.txt|renovate\.json|\.pre-commit-config\.yaml|release-please-config\.json|\.release-please-manifest\.json|deny\.toml|nfpm\.yaml|packager\.(stable|preview)\.toml|\.agents/|\.github/|docs/|packaging/|scripts/(hooks|licenses)/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|scripts/[^/]+\.py$|scripts/updates/[^/]+\.py$)'
           if [[ "$changed" == "*" ]] || grep -vE "$untested" <<<"$changed" | grep -q . \
               || grep -qE '^(docs/vault/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             code=true
@@ -252,15 +252,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # Installs the toolchain pinned in rust-toolchain.toml, which Renovate bumps.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.97.1
+        shell: bash
+        run: rustup toolchain install
+
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
-          tool: cargo-about@0.9.1,cargo-deny@0.20.2
+          tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }},cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: Run license-compliance checks
         run: scripts/licenses/check.sh

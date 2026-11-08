@@ -41,8 +41,9 @@ jobs:
         shell: bash
         run: rustup toolchain install
 
-      - name: Read the pinned cargo-about version
-        run: echo "CARGO_ABOUT_VERSION=$(sed -n 's/^CARGO_ABOUT_VERSION="\(.*\)"$/\1/p' scripts/licenses/generate.sh)" >> "$GITHUB_ENV"
+      - name: Load tool versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       # For scripts/renovate-post-upgrade.sh, which regenerates the notices in Cargo updates.
       - name: Install cargo-about

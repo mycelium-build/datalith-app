@@ -1,15 +1,56 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>mycelium-build/datalith-app//.github/renovate/preset"],
+  "extends": [
+    "local>mycelium-build/datalith-app//.github/renovate/preset"
+  ],
   "packageRules": [
     {
       "description": "THIRD-PARTY-NOTICES.md lists every crate with its version: regenerate it in each Cargo update.",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "postUpgradeTasks": {
-        "commands": ["scripts/renovate-post-upgrade.sh"],
-        "fileFilters": ["THIRD-PARTY-NOTICES.md", "scripts/licenses/about.toml"],
+        "commands": [
+          "scripts/renovate-post-upgrade.sh"
+        ],
+        "fileFilters": [
+          "THIRD-PARTY-NOTICES.md",
+          "scripts/licenses/about.toml"
+        ],
         "executionMode": "branch"
       }
+    },
+    {
+      "description": "A new cargo-about can render the notices differently: regenerate them in that update too.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "cargo-about"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "scripts/renovate-post-upgrade.sh"
+        ],
+        "fileFilters": [
+          "THIRD-PARTY-NOTICES.md",
+          "scripts/licenses/about.toml"
+        ],
+        "executionMode": "branch"
+      }
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tools pinned in scripts/tool-versions.env, each with a `# renovate:` comment above it. They are exact versions, not Cargo ranges, so they use semver versioning.",
+      "managerFilePatterns": [
+        "/^scripts/tool-versions\\.env$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\n[A-Z_]+=(?<currentValue>\\S+)"
+      ],
+      "versioningTemplate": "semver"
     }
   ]
 }
