@@ -16,7 +16,8 @@ concurrency:
 jobs:
   # Decides what the other jobs must do, so nothing verifies the same inputs twice:
   # - a push to main whose tree was already verified on its PR skips the heavy jobs;
-  # - jobs whose inputs did not change are skipped (a skipped required check counts as passed);
+  # - jobs whose inputs did not change are skipped (a skipped required check counts as passed),
+  #   including ci when only files it never reads change (docs, contributor and release tooling);
   # - a release-please PR that only bumps the version runs a light check.
   plan:
     runs-on: ubuntu-24.04
@@ -25,13 +26,11 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
-      actions: read
     outputs:
       ci-mode: ${{ steps.plan.outputs.ci-mode }}
       licenses: ${{ steps.plan.outputs.licenses }}
       advisories: ${{ steps.plan.outputs.advisories }}
       manifest: ${{ steps.plan.outputs.manifest }}
-      license-cache-key: ${{ steps.plan.outputs.license-cache-key }}
     steps:
       # Blobless, not shallow: the diff needs history but only trees.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,11 +68,20 @@ jobs:
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
-          manifest="$(flag '^(scripts/|\.github/workflows/ci\.yml$)')"
+          # The update and release-preparation tests also read the packager configurations.
+          manifest="$(flag '^(scripts/(updates/|prepare-release\.py$|test_prepare_release\.py$)|packager\.(stable|preview)\.toml$|packaging/|assets/logo/|\.github/workflows/ci\.yml$)')"
+          # Files the ci job (fmt, clippy, tests) never reads: docs, contributor and release
+          # tooling, other workflows. docs/vault/ is embedded in the binary and read by tests, and
+          # ci.yml tests itself, so both count as code. Anything else counts as code too.
+          untested='^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|todo\.txt|renovate\.json|\.pre-commit-config\.yaml|release-please-config\.json|\.release-please-manifest\.json|deny\.toml|nfpm\.yaml|packager\.(stable|preview)\.toml|\.agents/|\.github/|docs/|packaging/|scripts/(hooks|licenses)/|scripts/tool-versions\.env$|scripts/[^/]+\.py$|scripts/updates/[^/]+\.py$)'
+          if [[ "$changed" == "*" ]] || grep -vE "$untested" <<<"$changed" | grep -q . \
+              || grep -qE '^(docs/vault/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            code=true
+          else
+            code=false
+          fi
           # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
           rust_deps="$(flag '^(Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/)')"
-          # The Cargo registry license-compliance needs depends only on Cargo.lock.
-          license_cache_key="license-registry-$(sha256sum Cargo.lock | cut -c1-16)"
           mode=full
 
           if [[ "$EVENT" == push ]]; then
@@ -100,16 +108,7 @@ jobs:
             if $verified; then
               # Only refresh main's caches, and only when their keys change.
               if $rust_deps; then mode=warm; else mode=skip; fi
-              licenses="$(flag '^Cargo\.lock$')"
-              # Also run it when main has no registry cache for this Cargo.lock yet: only
-              # pushes to main save it, and verified pushes skip license-compliance otherwise.
-              if ! $licenses; then
-                cached="$(gh api "repos/$REPO/actions/caches?key=$license_cache_key&ref=refs/heads/main" --jq '.total_count')"
-                if [[ "$cached" == 0 ]]; then
-                  licenses=true
-                  echo "::notice::No $license_cache_key cache on main: running license-compliance to save it."
-                fi
-              fi
+              licenses=false
               advisories=false
               manifest=false
             fi
@@ -130,18 +129,24 @@ jobs:
             if $version_only; then mode=light; fi
           fi
 
+          if ! $code; then
+            mode=skip
+            echo "::notice::Only files the ci job never reads changed: skipping it."
+          fi
+
           {
             echo "ci-mode=$mode"
             echo "licenses=$licenses"
             echo "advisories=$advisories"
             echo "manifest=$manifest"
-            echo "license-cache-key=$license_cache_key"
           } >> "$GITHUB_OUTPUT"
           echo "ci-mode=$mode licenses=$licenses advisories=$advisories manifest=$manifest"
 
+  # Every job below runs in full unless plan explicitly says it may be skipped: if plan fails
+  # or gives no answer, a skipped required check would count as passed.
   update-manifest:
     needs: plan
-    if: needs.plan.outputs.manifest == 'true'
+    if: ${{ !cancelled() && needs.plan.outputs.manifest != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,13 +163,13 @@ jobs:
   # warm (clippy only, to refresh main's Rust cache after an already-verified merge).
   ci:
     needs: plan
-    if: needs.plan.outputs.ci-mode != 'skip'
+    if: ${{ !cancelled() && needs.plan.outputs.ci-mode != 'skip' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
-      MODE: ${{ needs.plan.outputs.ci-mode }}
+      MODE: ${{ needs.plan.outputs.ci-mode || 'full' }}
       INTERNAL_PR: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -237,11 +242,11 @@ jobs:
 
   license-compliance:
     needs: plan
-    if: needs.plan.outputs.licenses == 'true'
+    if: ${{ !cancelled() && needs.plan.outputs.licenses != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'true' && '0' || '1' }}
+      LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'false' && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -252,19 +257,6 @@ jobs:
         with:
           toolchain: 1.97.1
 
-      # cargo-about reads the license files of every crate: restore the Cargo registry instead
-      # of downloading ~1,000 crates. Main saves it once per Cargo.lock (see the plan job).
-      - name: Restore Cargo registry
-        id: registry
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ needs.plan.outputs.license-cache-key }}
-          restore-keys: license-registry-
-
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
@@ -272,13 +264,3 @@ jobs:
 
       - name: Run license-compliance checks
         run: scripts/licenses/check.sh
-
-      - name: Save Cargo registry
-        if: github.event_name == 'push' && steps.registry.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ needs.plan.outputs.license-cache-key }}
