@@ -51,6 +51,7 @@ jobs:
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -euo pipefail
+          echo 'TEMPORARY: simulate a broken plan job'; exit 1
 
           # On a PR, HEAD is the merge ref and its first parent is the base it merged with.
           if [[ "$EVENT" == pull_request ]]; then base="$(git rev-parse HEAD^1)"; else base="$BEFORE"; fi
