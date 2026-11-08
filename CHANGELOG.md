@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/mycelium-build/datalith-app/compare/v1.1.0...v1.1.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **server:** expose the local API contract version ([1a5f380](https://github.com/mycelium-build/datalith-app/commit/1a5f380c2da428d5855ff34c0fd62399e0a91dfa))
+* **server:** expose the local API contract version ([35cbbe7](https://github.com/mycelium-build/datalith-app/commit/35cbbe716cfe09d503cd5693aaef5612a4b612e6))
+* **server:** keep the API version field in snake case ([d6046d5](https://github.com/mycelium-build/datalith-app/commit/d6046d5077eb4d6df053e5df9ba0cf0735126889))
+
 ## [1.1.0](https://github.com/mycelium-build/datalith-app/compare/v1.0.0...v1.1.0) (2026-11-07)
 
 
