@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-global-schema.json",
+  "platform": "github",
+  "repositories": [
+    "mycelium-build/datalith-app",
+    "mycelium-build/datalith",
+    "mycelium-build/datalith-clipper"
+  ],
+  "onboarding": false,
+  "requireConfig": "required",
+  "gitAuthor": "datalith-bot[bot] <311197260+datalith-bot[bot]@users.noreply.github.com>",
+  "binarySource": "global",
+  "allowedCommands": ["^scripts/renovate-post-upgrade\\.sh$"]
+}

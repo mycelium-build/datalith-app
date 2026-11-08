@@ -90,7 +90,7 @@ jobs:
             const body = [
               `\`cargo deny check advisories\` fails on main: ${process.env.RUN_URL}`,
               '',
-              'Update the affected crates (a Dependabot security update may already be open),',
+              'Update the affected crates (a Renovate "security updates" PR may already be open),',
               'or document an exception in `deny.toml`.',
               '',
               '<details><summary>cargo-deny output</summary>',

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared Renovate rules for the Datalith repositories: one PR per update type, security updates daily, everything else on Mondays. Each group sets its commit prefix explicitly (fix for what ships, chore for the rest).",
+  "extends": [
+    "config:recommended",
+    "customManagers:githubActionsVersions"
+  ],
+  "timezone": "Europe/Paris",
+  "schedule": [
+    "before 7am on monday"
+  ],
+  "minimumReleaseAge": "3 days",
+  "prHourlyLimit": 0,
+  "semanticCommits": "enabled",
+  "commitMessageAction": "update",
+  "dependencyDashboard": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 7am on monday"
+    ],
+    "commitMessagePrefix": "chore(deps):",
+    "commitMessageAction": "lock file maintenance"
+  },
+  "packageRules": [
+    {
+      "description": "Version updates ship in the app: fix(deps), one PR per update type.",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "patch dependencies",
+      "commitMessagePrefix": "fix(deps):"
+    },
+    {
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": "minor dependencies",
+      "commitMessagePrefix": "fix(deps):"
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "major dependencies",
+      "groupSlug": "dependencies",
+      "commitMessagePrefix": "fix(deps):"
+    },
+    {
+      "description": "Dev-only dependencies do not ship: chore(deps), no release.",
+      "matchDepTypes": [
+        "dev-dependencies",
+        "devDependencies"
+      ],
+      "groupName": "dev dependencies",
+      "commitMessagePrefix": "chore(deps):"
+    },
+    {
+      "description": "Build and CI tools (GitHub Actions, Rust toolchain, pinned tool versions): chore(deps), no release.",
+      "matchManagers": [
+        "github-actions",
+        "rust-toolchain",
+        "custom.regex"
+      ],
+      "groupName": "tools",
+      "separateMajorMinor": false,
+      "commitMessagePrefix": "chore(deps):"
+    },
+    {
+      "description": "The gpui crates pin each other to exact versions: they can only move together.",
+      "matchPackageNames": [
+        "gpui-kit",
+        "/^gpui-pre/"
+      ],
+      "groupName": "gpui",
+      "separateMajorMinor": false,
+      "commitMessagePrefix": "fix(deps):"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "description": "Security fixes: every day, without waiting, in one PR.",
+    "groupName": "security updates",
+    "schedule": [
+      "at any time"
+    ],
+    "minimumReleaseAge": null,
+    "labels": [
+      "security"
+    ],
+    "commitMessagePrefix": "fix(deps):"
+  },
+  "osvVulnerabilityAlerts": true
+}
