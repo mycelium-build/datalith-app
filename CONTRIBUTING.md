@@ -63,8 +63,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 - In Cargo updates, Renovate runs `scripts/renovate-post-upgrade.sh`, which regenerates `THIRD-PARTY-NOTICES.md` in the same PR.
 - The **Dependency Dashboard** issue lists pending and rate-limited updates; tick one there to get it now.
 - The **Advisories** workflow checks RustSec advisories on `main` daily.
-- Dependabot also bumps the Rust toolchain in `rust-toolchain.toml`; the workflows install the toolchain from that file.
-- Tools Dependabot cannot see (cargo-deny, cargo-about, cargo-packager, nFPM) are pinned once in `scripts/tool-versions.env`. The **Tool versions** workflow checks for new releases every Monday and opens one `chore(ci): bump tool versions` PR. After it is merged, run `scripts/install-dev-tools.sh` again.
+- The Rust toolchain is pinned only in `rust-toolchain.toml` (the workflows install it from there), and the tools no manifest declares (cargo-deny, cargo-about, cargo-packager, nFPM) only in `scripts/tool-versions.env`. Renovate bumps both in its `update tools` PR; after merging one, run `scripts/install-dev-tools.sh` again.
 
 ## Development Setup
 

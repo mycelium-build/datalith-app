@@ -5,7 +5,9 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-required="$(sed -n 's/^CARGO_ABOUT_VERSION="\(.*\)"$/\1/p' scripts/licenses/generate.sh)"
+# shellcheck source=tool-versions.env
+source scripts/tool-versions.env
+required="$CARGO_ABOUT_VERSION"
 installed="$(cargo about --version 2>/dev/null | awk '{print $NF}' || true)"
 if [[ "$installed" != "$required" ]]; then
     # cargo-about only builds its binary with the cli feature.

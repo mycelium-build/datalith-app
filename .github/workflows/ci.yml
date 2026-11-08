@@ -247,7 +247,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Installs the toolchain pinned in rust-toolchain.toml, which Dependabot bumps.
+      # Installs the toolchain pinned in rust-toolchain.toml, which Renovate bumps.
       - name: Install Rust toolchain
         shell: bash
         run: rustup toolchain install
