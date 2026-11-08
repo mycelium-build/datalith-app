@@ -8,15 +8,14 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
-      # Same command as CI's "Check formatting" step.
+      # Formats with cargo fmt and stages the result for the committed Rust files.
       - id: cargo-fmt
-        name: cargo fmt --check
+        name: cargo fmt
         language: system
-        entry: cargo fmt --all --check
+        entry: scripts/hooks/rustfmt.sh
         types: [rust]
-        pass_filenames: false
 
-      # The inputs of CI's license-compliance job. Regenerates stale notices in place.
+      # The inputs of CI's license-compliance job. Regenerates and stages stale notices.
       - id: license-compliance
         name: license compliance
         language: system
