@@ -55,8 +55,7 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 - [uv](https://docs.astral.sh/uv/), for Python tools and scripts
 - [prek](https://prek.j178.dev), to run the Git hooks
 - For changes to dependencies or license material: `cargo-deny` 0.20.2 and `cargo-about` 0.9.1.
-  The license hook runs the scripts with a Python 3.11+ from uv (they use `tomllib`, newer than
-  macOS's `python3`); to run them by hand, use `uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh`
+  The license scripts run with uv (see [Third-Party Notices](#third-party-notices)).
 
 ### Installation
 
