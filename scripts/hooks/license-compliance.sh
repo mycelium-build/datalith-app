@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # prek hook: runs scripts/licenses/check.sh when dependency or license files change.
+# Stale notices are regenerated and staged, so the commit goes through with them.
 # Advisories are skipped: they depend on the advisory database, not on this commit,
 # and CI still checks them.
 set -euo pipefail
@@ -18,10 +19,13 @@ fi
 
 # scripts/licenses/*.py use tomllib (Python 3.11+), newer than macOS's python3. uv puts a
 # matching python3 first on PATH for the whole script, downloading it if needed.
+generated=(THIRD-PARTY-NOTICES.md scripts/licenses/about.toml)
 if ! LICENSE_CHECK_SKIP_ADVISORIES=1 uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh; then
-    if ! git diff --quiet -- THIRD-PARTY-NOTICES.md scripts/licenses/about.toml; then
-        echo "License material was stale and has been regenerated." >&2
-        echo "Review it, then: git add THIRD-PARTY-NOTICES.md scripts/licenses/about.toml" >&2
+    # check.sh runs cargo-deny first and exits before regenerating when it fails, so changed
+    # notices mean cargo-deny passed and the only problem was stale generated material.
+    if git diff --quiet -- "${generated[@]}"; then
+        exit 1
     fi
-    exit 1
+    git add -- "${generated[@]}"
+    echo "License material was stale: regenerated and staged ${generated[*]}." >&2
 fi

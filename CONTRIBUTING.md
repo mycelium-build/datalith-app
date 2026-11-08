@@ -75,8 +75,8 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 
     | Hook | Runs when | Checks |
     |---|---|---|
-    | pre-commit | Rust files are staged | `cargo fmt --all --check` |
-    | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated in place, review and stage them |
+    | pre-commit | Rust files are staged | `cargo fmt --all`; the formatting of the committed files is staged, so the commit goes through formatted |
+    | pre-commit | dependency, license or `assets/` files are staged | `scripts/licenses/check.sh` without advisories (CI still checks them); stale notices are regenerated and staged, so the commit goes through with them. A real license or policy failure still stops the commit |
     | pre-push | the pushed commits touch Rust code or its build files | `cargo clippy --locked --all-targets` |
 
     The license hook needs the license tools:
@@ -84,6 +84,7 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
     cargo install --locked cargo-deny@0.20.2
     cargo install --locked --features cli cargo-about@0.9.1
     ```
+    The fixes only touch what you staged: prek sets unstaged changes aside while the hooks run. If formatting conflicts with unstaged changes in the same file, prek drops the fix and stops the commit; run `cargo fmt --all`, stage, and commit again.
     Run every pre-commit hook on the whole tree with `prek run --all-files`.
     Bypass a hook once with `--no-verify`.
 
