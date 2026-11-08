@@ -43,13 +43,14 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Tools pinned in scripts/tool-versions.env, each with a `# renovate:` comment above it.",
+      "description": "Tools pinned in scripts/tool-versions.env, each with a `# renovate:` comment above it. They are exact versions, not Cargo ranges, so they use semver versioning.",
       "managerFilePatterns": [
         "/^scripts/tool-versions\\.env$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\n[A-Z_]+=(?<currentValue>\\S+)"
-      ]
+      ],
+      "versioningTemplate": "semver"
     }
   ]
 }
