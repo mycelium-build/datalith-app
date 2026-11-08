@@ -455,13 +455,25 @@ jobs:
           CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.DATALITH_UPDATER_PRIVATE_KEY }}
         run: python scripts/updates/sign.py --target ${{ matrix.target }} --platform ${{ matrix.platform }}
 
+      # action-gh-release updates the release with its target_commitish before uploading,
+      # which GITHUB_TOKEN may not do from a run on main for an older tag (HTTP 403).
+      # Uploading assets alone does not touch the release.
       - name: Upload package to GitHub release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          fail_on_unmatched_files: true
-          draft: true
-          files: ${{ matrix.artifact }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ARTIFACT_PATTERNS: ${{ matrix.artifact }}
+        run: |
+          shopt -s nullglob
+          files=()
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            matches=($pattern)
+            [ "${#matches[@]}" -gt 0 ] || { echo "::error::No file matches $pattern"; exit 1; }
+            files+=("${matches[@]}")
+          done <<<"$ARTIFACT_PATTERNS"
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
 
   finalize:
     concurrency:
@@ -544,15 +556,17 @@ jobs:
           cp release-source/THIRD-PARTY-NOTICES.md release-artifacts/THIRD-PARTY-NOTICES.md
           cp "datalith-${VERSION}.spdx.json" release-artifacts/
 
+      # Uploads assets only, like the package job, so it also works from main.
       - name: Upload SBOM and legal documents
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          draft: true
-          files: |
-            release-artifacts/datalith-*.spdx.json
-            release-artifacts/LICENSE
-            release-artifacts/LICENSING.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" --clobber \
+            "release-artifacts/datalith-${VERSION}.spdx.json" \
+            release-artifacts/LICENSE \
+            release-artifacts/LICENSING.md \
             release-artifacts/THIRD-PARTY-NOTICES.md
 
       - name: Publish release
