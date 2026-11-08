@@ -18,8 +18,7 @@ if ((${#missing[@]})); then
     exit 1
 fi
 
-# scripts/licenses/*.py use tomllib (Python 3.11+), newer than macOS's python3. uv puts a
-# matching python3 first on PATH for the whole script, downloading it if needed.
+# The license scripts need Python 3.11+: uv provides it for the whole script.
 generated=(THIRD-PARTY-NOTICES.md scripts/licenses/about.toml)
 if ! LICENSE_CHECK_SKIP_ADVISORIES=1 uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh; then
     # check.sh runs cargo-deny first and exits before regenerating when it fails, so changed

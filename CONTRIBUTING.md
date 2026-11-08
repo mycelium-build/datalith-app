@@ -65,8 +65,7 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 - [prek](https://prek.j178.dev), to run the Git hooks
 - For changes to dependencies or license material: `cargo-deny` and `cargo-about` at the versions
   pinned in `scripts/tool-versions.env` (install them with `scripts/install-dev-tools.sh`).
-  The license hook runs the scripts with a Python 3.11+ from uv (they use `tomllib`, newer than
-  macOS's `python3`); to run them by hand, use `uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh`
+  The license scripts run with uv (see [Third-Party Notices](#third-party-notices)).
 
 ### Installation
 
