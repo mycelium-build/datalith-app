@@ -68,7 +68,7 @@ jobs:
 
       - name: Load tool versions
         shell: bash
-        run: scripts/tool-versions.sh >> "$GITHUB_ENV"
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
@@ -254,7 +254,7 @@ jobs:
 
       - name: Load tool versions
         shell: bash
-        run: scripts/tool-versions.sh >> "$GITHUB_ENV"
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-packager
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
