@@ -344,6 +344,17 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: cargo packager --config target/${{ matrix.target }}/release/packager.json --target ${{ matrix.target }} --formats ${{ matrix.format }}
 
+      # GitHub's macOS runners drop the HTTP/3 (UDP 443) connection that stapler
+      # uses to fetch tickets from CloudKit (NSURLErrorDomain -1005, Error 68).
+      # Blocking outbound UDP 443 makes it fall back to HTTPS over TCP.
+      # https://github.com/actions/runner-images/issues/14924
+      - name: Force stapler to use TCP
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "block return out quick proto udp from any to any port 443" | sudo pfctl -f -
+          sudo pfctl -E
+
       # cargo-packager signs the app (hardened runtime), notarizes and staples
       # it, then builds and signs the DMG around it.
       - name: Package, sign and notarize macOS application
