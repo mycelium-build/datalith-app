@@ -14,6 +14,8 @@
   "semanticCommits": "enabled",
   "commitMessageAction": "update",
   "dependencyDashboard": true,
+  "automerge": false,
+  "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
