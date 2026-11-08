@@ -70,7 +70,7 @@ fn app(token: Option<&str>, vaults: Vec<Vault>) -> impl poem::Endpoint + 'static
 }
 
 #[tokio::test]
-async fn ping_reports_app_and_version() {
+async fn ping_reports_app_and_api_versions() {
     let dir = TempVault::new("ping");
     let client = TestClient::new(app(None, vec![vault(&dir)]));
     let response = client.get("/ping").send().await;
@@ -78,7 +78,8 @@ async fn ping_reports_app_and_version() {
     response
         .assert_json(json!({
             "app": "datalith",
-            "version": env!("CARGO_PKG_VERSION")
+            "version": env!("CARGO_PKG_VERSION"),
+            "api_version": 1
         }))
         .await;
 }

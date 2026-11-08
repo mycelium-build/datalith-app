@@ -16,7 +16,7 @@ Changing the port takes effect immediately. If the port is already taken, a noti
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/ping` | Health check, returns the app name and version. |
+| `GET` | `/ping` | Health check, returns the app name, app version and API contract version. |
 | `GET` | `/api/vaults` | Lists your last used and recent vaults (name and path). |
 | `POST` | `/api/notes` | Saves a note, returns the vault-relative path it was written to. |
 | `GET` | `/openapi.json` | The generated OpenAPI spec describing the API. |
