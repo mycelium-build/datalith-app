@@ -13,6 +13,9 @@ repos:
         name: cargo fmt
         language: system
         entry: scripts/hooks/rustfmt.sh
+        # One process: parallel batches would each run cargo fmt --all and race on git add
+        # (.git/index.lock).
+        require_serial: true
         types: [rust]
 
       # The inputs of CI's license-compliance job. Regenerates and stages stale notices.
