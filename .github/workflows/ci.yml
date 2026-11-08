@@ -16,7 +16,8 @@ concurrency:
 jobs:
   # Decides what the other jobs must do, so nothing verifies the same inputs twice:
   # - a push to main whose tree was already verified on its PR skips the heavy jobs;
-  # - jobs whose inputs did not change are skipped (a skipped required check counts as passed);
+  # - jobs whose inputs did not change are skipped (a skipped required check counts as passed),
+  #   including ci when only files it never reads change (docs, contributor and release tooling);
   # - a release-please PR that only bumps the version runs a light check.
   plan:
     runs-on: ubuntu-24.04
@@ -67,7 +68,18 @@ jobs:
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
-          manifest="$(flag '^(scripts/|\.github/workflows/ci\.yml$)')"
+          # The update and release-preparation tests also read the packager configurations.
+          manifest="$(flag '^(scripts/(updates/|prepare-release\.py$|test_prepare_release\.py$)|packager\.(stable|preview)\.toml$|packaging/|assets/logo/|\.github/workflows/ci\.yml$)')"
+          # Files the ci job (fmt, clippy, tests) never reads: docs, contributor and release
+          # tooling, other workflows. docs/vault/ is embedded in the binary and read by tests, and
+          # ci.yml tests itself, so both count as code. Anything else counts as code too.
+          untested='^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|todo\.txt|renovate\.json|\.pre-commit-config\.yaml|release-please-config\.json|\.release-please-manifest\.json|deny\.toml|nfpm\.yaml|packager\.(stable|preview)\.toml|\.agents/|\.github/|docs/|packaging/|scripts/(hooks|licenses)/|scripts/tool-versions\.env$|scripts/[^/]+\.py$|scripts/updates/[^/]+\.py$)'
+          if [[ "$changed" == "*" ]] || grep -vE "$untested" <<<"$changed" | grep -q . \
+              || grep -qE '^(docs/vault/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            code=true
+          else
+            code=false
+          fi
           # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
           rust_deps="$(flag '^(Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/)')"
           mode=full
@@ -115,6 +127,11 @@ jobs:
               version_only=false
             fi
             if $version_only; then mode=light; fi
+          fi
+
+          if ! $code; then
+            mode=skip
+            echo "::notice::Only files the ci job never reads changed: skipping it."
           fi
 
           {
