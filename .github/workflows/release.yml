@@ -15,12 +15,20 @@ on:
       mode:
         description: >-
           build: build, package and publish the release, as a tag push does.
+          package: package, sign and publish the binaries an earlier run built
+          (see build_run), without compiling again.
           finalize: only run the finalize job, for a draft release that already
           contains all artifacts (e.g. after a failed or interrupted run).
         required: true
         default: finalize
         type: choice
-        options: [finalize, build]
+        options: [finalize, package, build]
+      build_run:
+        description: >-
+          package mode only: ID of the Release run whose built binaries to
+          package. Its artifacts expire 7 days after the build.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -222,12 +230,14 @@ jobs:
 
   # Packages, signs, notarizes and uploads the binary built by the build job. A target whose
   # build failed fails here at the download step; the other targets carry on.
+  # In package mode it reuses the binaries of the run given in build_run instead.
   package:
     if: >-
       !cancelled()
-      && (github.event_name == 'push' || inputs.mode == 'build')
-      && needs.release.result == 'success'
-      && needs.compliance.result == 'success'
+      && (((github.event_name == 'push' || inputs.mode == 'build')
+          && needs.release.result == 'success'
+          && needs.compliance.result == 'success')
+        || (github.event_name == 'workflow_dispatch' && inputs.mode == 'package'))
     needs: [release, compliance, build]
     name: ${{ matrix.name }}
     strategy:
@@ -236,6 +246,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     permissions:
+      actions: read
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -291,11 +302,21 @@ jobs:
         shell: bash
         run: python scripts/prepare-release.py --tag "$RELEASE_TAG"
 
+      - name: Check build run
+        if: inputs.mode == 'package'
+        env:
+          BUILD_RUN: ${{ inputs.build_run }}
+        shell: bash
+        run: |
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ ]] || { echo "::error::package mode needs the build_run ID of a Release run"; exit 1; }
+
       - name: Download built binary
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: binary-${{ matrix.target }}
           path: target/${{ matrix.target }}/release
+          run-id: ${{ inputs.mode == 'package' && inputs.build_run || github.run_id }}
+          github-token: ${{ inputs.mode == 'package' && github.token || '' }}
 
       # Artifacts do not keep the executable bit.
       - name: Restore executable bit
@@ -343,6 +364,17 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: cargo packager --config target/${{ matrix.target }}/release/packager.json --target ${{ matrix.target }} --formats ${{ matrix.format }}
+
+      # GitHub's macOS runners drop the HTTP/3 (UDP 443) connection that stapler
+      # uses to fetch tickets from CloudKit (NSURLErrorDomain -1005, Error 68).
+      # Blocking outbound UDP 443 makes it fall back to HTTPS over TCP.
+      # https://github.com/actions/runner-images/issues/14924
+      - name: Force stapler to use TCP
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "block return out quick proto udp from any to any port 443" | sudo pfctl -f -
+          sudo pfctl -E
 
       # cargo-packager signs the app (hardened runtime), notarizes and staples
       # it, then builds and signs the DMG around it.
@@ -443,6 +475,9 @@ jobs:
       && (((github.event_name == 'push' || inputs.mode == 'build')
           && needs.package.result == 'success'
           && needs.source.result == 'success')
+        || (github.event_name == 'workflow_dispatch' && inputs.mode == 'package'
+          && needs.package.result == 'success'
+          && needs.source.result == 'skipped')
         || (github.event_name == 'workflow_dispatch' && inputs.mode == 'finalize'
           && needs.package.result == 'skipped'
           && needs.source.result == 'skipped'))
