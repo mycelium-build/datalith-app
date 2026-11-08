@@ -9,8 +9,9 @@ cd "$REPO_ROOT"
 
 SCRIPTS_DIR="$REPO_ROOT/scripts/licenses"
 
-# Pinned tool versions: [package.metadata.tools] in Cargo.toml.
-eval "$("$REPO_ROOT/scripts/tool-versions.sh")"
+# Installs the pinned tool versions (scripts/tool-versions.env) when missing.
+# shellcheck source=../lib/tools.sh
+source "$REPO_ROOT/scripts/lib/tools.sh"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -22,11 +23,9 @@ fail() {
 
 command -v cargo >/dev/null 2>&1 || fail "cargo not found on PATH"
 
-# 1. Verify the pinned tool version.
-about_version="$(cargo about --version 2>/dev/null | awk '{print $NF}')"
-if [[ "$about_version" != "$CARGO_ABOUT_VERSION" ]]; then
-    fail "cargo-about $CARGO_ABOUT_VERSION required, found '${about_version:-none}'"
-fi
+# 1. Use the pinned tool version. cargo-about only builds its binary with the cli feature.
+ensure_cargo_tool cargo-about "$CARGO_ABOUT_VERSION" --features cli \
+    || fail "cannot install cargo-about $CARGO_ABOUT_VERSION"
 
 # 2. Validate the asset manifest.
 python3 "$SCRIPTS_DIR/check_assets.py"

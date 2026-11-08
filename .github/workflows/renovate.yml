@@ -43,7 +43,7 @@ jobs:
 
       - name: Load tool versions
         shell: bash
-        run: scripts/tool-versions.sh >> "$GITHUB_ENV"
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       # For scripts/renovate-post-upgrade.sh, which regenerates the notices in Cargo updates.
       - name: Install cargo-about

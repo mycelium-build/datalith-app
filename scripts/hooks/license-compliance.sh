@@ -7,14 +7,10 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-missing=()
-if ! command -v cargo-deny >/dev/null 2>&1 || ! command -v cargo-about >/dev/null 2>&1; then
-    missing+=("scripts/install-dev-tools.sh (cargo-deny and cargo-about at the pinned versions)")
-fi
-command -v uv >/dev/null 2>&1 || missing+=("uv: https://docs.astral.sh/uv/getting-started/installation/")
-if ((${#missing[@]})); then
-    echo "Dependency or license files changed, but the license tools are missing. Install with:" >&2
-    printf '  %s\n' "${missing[@]}" >&2
+# The license scripts install the pinned cargo-deny and cargo-about themselves; they need uv for
+# Python.
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Dependency or license files changed: the license check needs uv (https://docs.astral.sh/uv/)." >&2
     exit 1
 fi
 
