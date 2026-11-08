@@ -16,7 +16,7 @@ Changing the port takes effect immediately. If the port is already taken, a noti
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/ping` | Health check, returns the app name and version. |
+| `GET` | `/ping` | Health check, returns the app name, app version and API contract version. |
 | `GET` | `/api/vaults` | Lists your last used and recent vaults (name and path). |
 | `POST` | `/api/notes` | Saves a note, returns the vault-relative path it was written to. |
 | `GET` | `/openapi.json` | The generated OpenAPI spec describing the API. |
@@ -46,3 +46,9 @@ Datalith also registers the `datalith://` scheme, which works even when the app 
 
 - `datalith://launch` opens the app.
 - `datalith://open?vault=Notes&path=Clips/My%20Note.md` opens a vault-relative note in the named vault, matched by name or full path, switching to it if needed.
+
+## API compatibility
+
+`GET /ping` returns `app: "datalith"`, the app release in `version`, and `apiVersion: 1`. The API contract version is independent of the app release and its Stable or Preview channel. Clients should check it before listing vaults or saving notes. Apps predating this field do not declare their API compatibility.
+
+API 1 covers the vault listing and note creation endpoints described above. Compatible additions (such as optional response fields) keep the same API version; clients must tolerate unknown response fields. Breaking changes to existing requests or response meanings require a new API version and matching client support. The app release number alone is not a compatibility guarantee.

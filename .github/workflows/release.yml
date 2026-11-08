@@ -525,14 +525,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "$RELEASE_TAG" --draft=false
 
-      - name: Create website and clipper token
+      - name: Create website deployment token
         id: website-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
           owner: mycelium-build
-          repositories: datalith,datalith-clipper
+          repositories: datalith
           permission-actions: write
 
       - name: Trigger website deployment
@@ -547,26 +547,6 @@ jobs:
               ref: 'main',
               inputs: {
                 source_ref: process.env.RELEASE_TAG,
-              },
-            })
-
-      # The clipper copies assets from datalith-app at a pinned tag. On a stable release, its
-      # bump-datalith-source workflow opens a PR to move the pin, which its CI then tests.
-      # The release is already published here, so a failure only warns.
-      - name: Propose the new tag to the clipper
-        if: ${{ !contains(env.RELEASE_TAG, '-') }}
-        continue-on-error: true
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          github-token: ${{ steps.website-token.outputs.token }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: 'mycelium-build',
-              repo: 'datalith-clipper',
-              workflow_id: 'bump-datalith-source.yml',
-              ref: 'main',
-              inputs: {
-                tag: process.env.RELEASE_TAG,
               },
             })
 

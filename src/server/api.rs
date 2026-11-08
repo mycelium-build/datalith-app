@@ -34,6 +34,9 @@ struct PingResponse {
     app: String,
     /// The app's package version.
     version: String,
+    /// Local API contract version, independent of the app release.
+    #[oai(rename = "apiVersion")]
+    api_version: u32,
 }
 
 #[derive(Object)]
@@ -78,6 +81,7 @@ impl Api {
         Ok(Json(PingResponse {
             app: "datalith".to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
+            api_version: 1,
         }))
     }
 
