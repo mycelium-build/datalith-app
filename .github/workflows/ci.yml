@@ -25,13 +25,11 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
-      actions: read
     outputs:
       ci-mode: ${{ steps.plan.outputs.ci-mode }}
       licenses: ${{ steps.plan.outputs.licenses }}
       advisories: ${{ steps.plan.outputs.advisories }}
       manifest: ${{ steps.plan.outputs.manifest }}
-      license-cache-key: ${{ steps.plan.outputs.license-cache-key }}
     steps:
       # Blobless, not shallow: the diff needs history but only trees.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,8 +70,6 @@ jobs:
           manifest="$(flag '^(scripts/|\.github/workflows/ci\.yml$)')"
           # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
           rust_deps="$(flag '^(Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/)')"
-          # The Cargo registry license-compliance needs depends only on Cargo.lock.
-          license_cache_key="license-registry-$(sha256sum Cargo.lock | cut -c1-16)"
           mode=full
 
           if [[ "$EVENT" == push ]]; then
@@ -100,16 +96,7 @@ jobs:
             if $verified; then
               # Only refresh main's caches, and only when their keys change.
               if $rust_deps; then mode=warm; else mode=skip; fi
-              licenses="$(flag '^Cargo\.lock$')"
-              # Also run it when main has no registry cache for this Cargo.lock yet: only
-              # pushes to main save it, and verified pushes skip license-compliance otherwise.
-              if ! $licenses; then
-                cached="$(gh api "repos/$REPO/actions/caches?key=$license_cache_key&ref=refs/heads/main" --jq '.total_count')"
-                if [[ "$cached" == 0 ]]; then
-                  licenses=true
-                  echo "::notice::No $license_cache_key cache on main: running license-compliance to save it."
-                fi
-              fi
+              licenses=false
               advisories=false
               manifest=false
             fi
@@ -135,7 +122,6 @@ jobs:
             echo "licenses=$licenses"
             echo "advisories=$advisories"
             echo "manifest=$manifest"
-            echo "license-cache-key=$license_cache_key"
           } >> "$GITHUB_OUTPUT"
           echo "ci-mode=$mode licenses=$licenses advisories=$advisories manifest=$manifest"
 
@@ -252,19 +238,6 @@ jobs:
         with:
           toolchain: 1.97.1
 
-      # cargo-about reads the license files of every crate: restore the Cargo registry instead
-      # of downloading ~1,000 crates. Main saves it once per Cargo.lock (see the plan job).
-      - name: Restore Cargo registry
-        id: registry
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ needs.plan.outputs.license-cache-key }}
-          restore-keys: license-registry-
-
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
@@ -272,13 +245,3 @@ jobs:
 
       - name: Run license-compliance checks
         run: scripts/licenses/check.sh
-
-      - name: Save Cargo registry
-        if: github.event_name == 'push' && steps.registry.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ needs.plan.outputs.license-cache-key }}
