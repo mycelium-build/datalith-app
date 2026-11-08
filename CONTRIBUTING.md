@@ -48,9 +48,20 @@ uv run --no-project --python '>=3.11' -- scripts/licenses/check.sh
 
 ## Dependency Updates
 
-- Dependabot opens grouped PRs every Monday (`patch`, `minor`, `major`, titled `fix(deps): …`), plus one PR per security advisory. They are reviewed and merged by hand.
-- On Dependabot Cargo PRs, the **Dependency notices** workflow regenerates `THIRD-PARTY-NOTICES.md` and pushes it, so `license-compliance` passes on the rerun.
-- The **Cargo.lock refresh** workflow opens one `chore(deps): refresh Cargo.lock` PR each Monday for transitive crates, which Dependabot only updates for security fixes.
+Renovate updates the dependencies of datalith-app, the website and the clipper. It runs in the **Renovate** workflow of this repository as the `datalith-bot` App, with the global settings in `.github/renovate/global.json` and the shared rules in `.github/renovate/preset.json`; each repository opts in with its `renovate.json`.
+
+| PR | When | Commit type |
+|---|---|---|
+| `update patch dependencies`, `update minor dependencies`, `update major dependencies` | Mondays | `fix(deps)`: ships in the app |
+| `update gpui` (the gpui crates pin each other, so they move together) | Mondays | `fix(deps)` |
+| `update dev dependencies` | Mondays | `chore(deps)`: does not ship |
+| `update tools` (GitHub Actions, Rust toolchain, Renovate itself) | Mondays | `chore(deps)` |
+| `lock file maintenance` (transitive crates) | Mondays | `chore(deps)` |
+| `security updates` | daily, without waiting | `fix(deps)` |
+
+- Releases younger than 3 days wait (security updates excepted).
+- In Cargo updates, Renovate runs `scripts/renovate-post-upgrade.sh`, which regenerates `THIRD-PARTY-NOTICES.md` in the same PR.
+- The **Dependency Dashboard** issue lists pending and rate-limited updates; tick one there to get it now.
 - The **Advisories** workflow checks RustSec advisories on `main` daily.
 
 ## Development Setup

@@ -1,0 +1,67 @@
+name: Renovate
+
+# Self-hosted Renovate for the three Datalith repositories, acting as the datalith-bot App.
+# Global settings: .github/renovate/global.json. Shared rules: .github/renovate/preset.json.
+# Each repository opts in with its own renovate.json.
+# Runs daily so security updates land the same day; other updates are scheduled for Mondays
+# by the shared rules.
+on:
+  schedule:
+    # 03:00 UTC stays before 7am in Paris all year.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: ubuntu-24.04
+    # App installation tokens expire after one hour.
+    timeout-minutes: 50
+    env:
+      # renovate: datasource=npm depName=renovate
+      RENOVATE_VERSION: 44.181.5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Renovate itself, and the npm projects it updates.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # Renovate runs with binarySource=global: it uses the cargo, npm and tools on PATH.
+      - name: Install Rust toolchain
+        shell: bash
+        run: rustup toolchain install
+
+      - name: Read the pinned cargo-about version
+        run: echo "CARGO_ABOUT_VERSION=$(sed -n 's/^CARGO_ABOUT_VERSION="\(.*\)"$/\1/p' scripts/licenses/generate.sh)" >> "$GITHUB_ENV"
+
+      # For scripts/renovate-post-upgrade.sh, which regenerates the notices in Cargo updates.
+      - name: Install cargo-about
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        with:
+          tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }}
+
+      - name: Create automation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          owner: mycelium-build
+          repositories: datalith-app,datalith,datalith-clipper
+
+      - name: Run Renovate
+        env:
+          RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
+          RENOVATE_CONFIG_FILE: .github/renovate/global.json
+          LOG_LEVEL: info
+        run: npx --yes "renovate@${RENOVATE_VERSION}"
