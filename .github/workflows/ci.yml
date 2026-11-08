@@ -142,9 +142,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "ci-mode=$mode licenses=$licenses advisories=$advisories manifest=$manifest"
 
+  # Every job below runs in full unless plan explicitly says it may be skipped: if plan fails
+  # or gives no answer, a skipped required check would count as passed.
   update-manifest:
     needs: plan
-    if: needs.plan.outputs.manifest == 'true'
+    if: ${{ !cancelled() && needs.plan.outputs.manifest != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,13 +163,13 @@ jobs:
   # warm (clippy only, to refresh main's Rust cache after an already-verified merge).
   ci:
     needs: plan
-    if: needs.plan.outputs.ci-mode != 'skip'
+    if: ${{ !cancelled() && needs.plan.outputs.ci-mode != 'skip' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
-      MODE: ${{ needs.plan.outputs.ci-mode }}
+      MODE: ${{ needs.plan.outputs.ci-mode || 'full' }}
       INTERNAL_PR: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,11 +242,11 @@ jobs:
 
   license-compliance:
     needs: plan
-    if: needs.plan.outputs.licenses == 'true'
+    if: ${{ !cancelled() && needs.plan.outputs.licenses != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'true' && '0' || '1' }}
+      LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'false' && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
