@@ -14,7 +14,120 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides what the other jobs must do, so nothing verifies the same inputs twice:
+  # - a push to main whose tree was already verified on its PR skips the heavy jobs;
+  # - jobs whose inputs did not change are skipped (a skipped required check counts as passed);
+  # - a release-please PR that only bumps the version runs a light check.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      ci-mode: ${{ steps.plan.outputs.ci-mode }}
+      licenses: ${{ steps.plan.outputs.licenses }}
+      advisories: ${{ steps.plan.outputs.advisories }}
+      manifest: ${{ steps.plan.outputs.manifest }}
+    steps:
+      # Blobless, not shallow: the diff needs history but only trees.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Plan jobs
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_REF: ${{ github.head_ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+
+          # On a PR, HEAD is the merge ref and its first parent is the base it merged with.
+          if [[ "$EVENT" == pull_request ]]; then base="$(git rev-parse HEAD^1)"; else base="$BEFORE"; fi
+          if [[ -n "$base" ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "$base" HEAD)"
+          else
+            changed="*" # unknown base: treat everything as changed
+            base=""
+          fi
+          has() { [[ "$changed" == "*" ]] || grep -qE "$1" <<<"$changed"; }
+          flag() { if has "$1"; then echo true; else echo false; fi; }
+
+          # check_assets.py checks every tracked file under assets/ against assets/licenses.toml.
+          licenses="$(flag '^(Cargo\.(toml|lock)|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|\.github/workflows/ci\.yml$)')"
+          # Advisories depend on the advisory database; the daily Advisories workflow covers
+          # main. Here they only run when the dependency set changes.
+          advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
+          manifest="$(flag '^(scripts/|\.github/workflows/ci\.yml$)')"
+          # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
+          rust_deps="$(flag '^(Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/)')"
+          mode=full
+
+          if [[ "$EVENT" == push ]]; then
+            tree="$(git rev-parse HEAD^{tree})"
+            verified=false
+            for pr in $(gh api "repos/$REPO/commits/$SHA/pulls" \
+                --jq '.[] | select(.merged_at != null and .base.ref == "main") | .number'); do
+              head="$(gh api "repos/$REPO/pulls/$pr" --jq .head.sha)"
+              head_tree="$(gh api "repos/$REPO/git/commits/$head" --jq .tree.sha)"
+              [[ "$head_tree" == "$tree" ]] || continue
+              # Latest check run per name, from this workflow's jobs only.
+              passed="$(gh api "repos/$REPO/commits/$head/check-runs?filter=latest&per_page=100" --jq '
+                [.check_runs[]
+                 | select(.app.slug == "github-actions")
+                 | select(.name == "ci" or .name == "license-compliance")
+                 | select(.conclusion == "success" or .conclusion == "skipped")
+                 | .name] | unique | length')"
+              if [[ "$passed" == 2 ]]; then
+                verified=true
+                echo "::notice::Tree $tree was already verified on #$pr at $head: skipping the duplicate run."
+                break
+              fi
+            done
+            if $verified; then
+              # Only refresh main's caches, and only when their keys change.
+              if $rust_deps; then mode=warm; else mode=skip; fi
+              licenses="$(flag '^Cargo\.lock$')"
+              advisories=false
+              manifest=false
+            fi
+          fi
+
+          # A release-please PR is main (already verified) plus a version bump.
+          if [[ "$EVENT" == pull_request && "$SAME_REPO" == true && -n "$base" \
+                && "$HEAD_REF" == release-please--branches--main* ]]; then
+            version_only=true
+            if grep -qvE '^(Cargo\.(toml|lock)|CHANGELOG\.md|THIRD-PARTY-NOTICES\.md|\.release-please-manifest\.json)$' <<<"$changed"; then
+              version_only=false
+            fi
+            # In the manifests, only `version = ...` lines may change.
+            if git diff --unified=0 "$base" HEAD -- Cargo.toml Cargo.lock \
+                | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' | grep -qvE '^[-+]version = '; then
+              version_only=false
+            fi
+            if $version_only; then mode=light; fi
+          fi
+
+          {
+            echo "ci-mode=$mode"
+            echo "licenses=$licenses"
+            echo "advisories=$advisories"
+            echo "manifest=$manifest"
+          } >> "$GITHUB_OUTPUT"
+          echo "ci-mode=$mode licenses=$licenses advisories=$advisories manifest=$manifest"
+
   update-manifest:
+    needs: plan
+    if: needs.plan.outputs.manifest == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,12 +140,17 @@ jobs:
           python3 -B -m unittest discover -s scripts/updates -v
           python3 -B -m unittest discover -s scripts -p test_prepare_release.py -v
 
+  # Modes: full (fmt, clippy, tests), light (cargo check, for version-bump-only release PRs),
+  # warm (clippy only, to refresh main's Rust cache after an already-verified merge).
   ci:
+    needs: plan
+    if: needs.plan.outputs.ci-mode != 'skip'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
+      MODE: ${{ needs.plan.outputs.ci-mode }}
       INTERNAL_PR: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,22 +166,37 @@ jobs:
           save-if: ${{ github.event_name == 'push' }}
 
       - name: Apply formatting
-        if: env.INTERNAL_PR == 'true'
-        run: cargo fmt --all
+        id: fmt
+        if: env.INTERNAL_PR == 'true' && env.MODE == 'full'
+        run: |
+          cargo fmt --all
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Formatting changed: committing it and stopping here. The run on the formatted commit runs clippy and the tests."
+          fi
 
       - name: Check formatting
-        if: env.INTERNAL_PR != 'true'
+        if: env.INTERNAL_PR != 'true' && env.MODE == 'full'
         run: cargo fmt --all --check
 
+      # Skipped when formatting changed: this tree will never be merged.
       - name: Run clippy
+        if: (env.MODE == 'full' || env.MODE == 'warm') && steps.fmt.outputs.changed != 'true'
         run: cargo clippy --locked --all-targets
 
+      - name: Check the version bump compiles
+        if: env.MODE == 'light'
+        run: cargo check --locked --all-targets
+
       - name: Run tests
+        if: env.MODE == 'full' && steps.fmt.outputs.changed != 'true'
         run: cargo test --locked
 
       # Mint the write token only after project code has finished running.
       - name: Create formatter token
-        if: env.INTERNAL_PR == 'true'
+        if: steps.fmt.outputs.changed == 'true'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -72,13 +205,13 @@ jobs:
           permission-contents: write
 
       - name: Authenticate formatter push
-        if: env.INTERNAL_PR == 'true'
+        if: steps.fmt.outputs.changed == 'true'
         env:
           TOKEN: ${{ steps.app-token.outputs.token }}
         run: git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git"
 
       - name: Commit formatting
-        if: env.INTERNAL_PR == 'true'
+        if: steps.fmt.outputs.changed == 'true'
         uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
         with:
           branch: ${{ github.event.pull_request.head.ref }}
@@ -89,8 +222,12 @@ jobs:
           disable_globbing: true
 
   license-compliance:
+    needs: plan
+    if: needs.plan.outputs.licenses == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'true' && '0' || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,6 +237,13 @@ jobs:
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.97.1
+
+      # cargo-about reads every crate's license files: keep the registry between runs.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          shared-key: license-compliance
+          cache-targets: false
+          save-if: ${{ github.event_name == 'push' }}
 
       - name: Install cargo-about and cargo-deny
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
