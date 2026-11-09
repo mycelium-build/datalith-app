@@ -7,7 +7,6 @@ description = "A fast, local-first knowledge workspace."
 homepage = "https://github.com/mycelium-build/datalith-app"
 category = "Productivity"
 icons = ["assets/logo/preview/datalith.png", "assets/logo/preview/datalith.icns"]
-license-file = "LICENSING.md"
 resources = [
   { src = "LICENSE", target = "Licenses/LICENSE" },
   { src = "LICENSING.md", target = "Licenses/LICENSING.md" },

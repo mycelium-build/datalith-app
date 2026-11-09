@@ -96,3 +96,18 @@ If packaging or signing fails for a target, run **Re-run failed jobs** on the sa
 For a finalization retry, select `main` as the workflow branch to use corrected finalization scripts, enter the existing release tag in the `tag` input and keep the `finalize` mode. This skips all build jobs and reuses the uploaded assets. The SBOM and legal documents are taken from the release tag's source, even when the workflow runs from `main`. Explicit tag validation includes draft releases.
 
 Bundle signatures authenticate update bytes; they are not Apple notarization or Windows Authenticode. The HTTPS manifest itself is unsigned: tampering can disrupt discovery, but cannot authorize an unsigned payload.
+
+## Homebrew macOS tap
+
+`mycelium-build/homebrew-tap` maintains the `datalith` and `datalith@preview` casks
+from the published Apple Silicon and Intel DMGs. Both retain the integrated updater.
+
+After deploying update manifests, **Release** dispatches the tap's `update.yml`
+workflow on `main` with the published tag. Publish the tap first and install the
+existing automation GitHub App on it with **Actions: write**. The existing app
+secrets are reused; the tap commits updates with its own `GITHUB_TOKEN`.
+
+The tap validates the artifacts before updating a channel and rejects version
+downgrades. Dispatch does not wait for completion: inspect the tap's workflow run.
+To retry, run `update.yml` there with the tag, or leave it empty to refresh both
+channels. A tap failure does not unpublish the app release.
