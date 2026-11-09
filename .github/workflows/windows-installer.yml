@@ -1,0 +1,48 @@
+name: Validate published Windows installers
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable release tag
+        required: true
+        default: v1.1.1
+permissions:
+  contents: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            architecture: x64
+          - os: windows-11-arm
+            architecture: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and test published installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'Expected a stable upstream release tag'
+          }
+          $release = gh api "repos/mycelium-build/datalith-app/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.draft -or $release.prerelease) { throw 'Not a published stable release' }
+          $version = $env:RELEASE_TAG.Substring(1)
+          $name = "datalith_${version}_$env:ARCHITECTURE-setup.exe"
+          $asset = @($release.assets | Where-Object name -CEQ $name)
+          if ($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Missing asset or digest' }
+          gh release download $env:RELEASE_TAG --repo mycelium-build/datalith-app --pattern $name
+          if ($LASTEXITCODE -ne 0) { throw 'Download failed' }
+          $digest = (Get-FileHash $name -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ("sha256:$digest" -cne $asset[0].digest) { throw 'Release digest mismatch' }
+          Get-AuthenticodeSignature $name | Select-Object Status, StatusMessage
+          ./scripts/windows/test-installer.ps1 -Installer $name -Version $version -Architecture $env:ARCHITECTURE
