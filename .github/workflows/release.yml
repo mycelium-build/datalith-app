@@ -475,6 +475,51 @@ jobs:
           done <<<"$ARTIFACT_PATTERNS"
           gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
 
+  publish-winget:
+    needs: finalize
+    if: >-
+      always() && needs.finalize.result == 'success'
+      && !contains(inputs.tag || github.ref_name, '-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/tool-versions.env
+          sparse-checkout-cone-mode: false
+
+      - name: Load tool versions
+        run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
+
+      - name: Install Komac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          archive="komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          gh release download "v${KOMAC_VERSION}" --repo russellbanks/Komac --pattern "$archive"
+          mkdir -p "$RUNNER_TEMP/komac"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/komac"
+          komac="$(find "$RUNNER_TEMP/komac" -type f -name komac | head -n 1)"
+          [ -n "$komac" ] || { echo "::error::komac binary not found in $archive"; exit 1; }
+          chmod +x "$komac"
+          dirname "$komac" >> "$GITHUB_PATH"
+
+      # Opens a pull request on microsoft/winget-pkgs from the fork owned by the
+      # WINGET_TOKEN account (classic token with the public_repo scope).
+      - name: Submit winget update
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::WINGET_TOKEN is not set"; exit 1; }
+          version="${RELEASE_TAG#v}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+          komac update MyceliumBuild.Datalith \
+            --version "$version" \
+            --urls "${base}/datalith_${version}_x64-setup.exe" "${base}/datalith_${version}_arm64-setup.exe" \
+            --release-notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
+            --submit
+
   notify-linux-packages:
     needs: finalize
     if: >-
