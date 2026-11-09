@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug Fixes
 
 * **server:** expose the local API contract version ([1a5f380](https://github.com/mycelium-build/datalith-app/commit/1a5f380c2da428d5855ff34c0fd62399e0a91dfa))
-* **server:** expose the local API contract version ([35cbbe7](https://github.com/mycelium-build/datalith-app/commit/35cbbe716cfe09d503cd5693aaef5612a4b612e6))
 * **server:** keep the API version field in snake case ([d6046d5](https://github.com/mycelium-build/datalith-app/commit/d6046d5077eb4d6df053e5df9ba0cf0735126889))
 
 ## [1.1.0](https://github.com/mycelium-build/datalith-app/compare/v1.0.0...v1.1.0) (2026-11-07)
@@ -22,15 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **linux:** give cargo run Dev builds their green icon ([1ed85d5](https://github.com/mycelium-build/datalith-app/commit/1ed85d50690ba7d1c7b8f6d80c290907d2c33438))
 * **macos:** show the channel icon in the Dock for unbundled runs ([d164178](https://github.com/mycelium-build/datalith-app/commit/d164178c3ca038997ce07adbb0234bf3024226a8))
 * move website and update endpoints to datalith.work ([a5d2d10](https://github.com/mycelium-build/datalith-app/commit/a5d2d10a5d5b896187c314a2be851ddc9d4ac69b))
-* move website and update endpoints to datalith.work ([504f5e4](https://github.com/mycelium-build/datalith-app/commit/504f5e4697210422e896ed87c8c6faad1149e9ff))
 * **packaging:** brand the macOS DMG window ([452f1bf](https://github.com/mycelium-build/datalith-app/commit/452f1bfc9757646d1490c126e3f233a5d1ec8f32))
-* **packaging:** brand the macOS DMG window ([1d7f88d](https://github.com/mycelium-build/datalith-app/commit/1d7f88df748c1e567eb75bbf8317daf9743f84b7))
 * **packaging:** build the macOS icons with Icon Composer ([01076d5](https://github.com/mycelium-build/datalith-app/commit/01076d58860e570bd8873c4d3c03bd8f177e91d5))
 * **packaging:** enlarge the macOS monolith to 94% of the icon height ([7114597](https://github.com/mycelium-build/datalith-app/commit/7114597c77c3e36f3bee1b59b419ade41e96adcb))
 * **packaging:** keep one monolith row of margin in the macOS icon ([7b6b656](https://github.com/mycelium-build/datalith-app/commit/7b6b6562de2cd1bb05c5ba2f1f57830566ffd01c))
 * **packaging:** layered Liquid Glass macOS icons built with Icon Composer ([2658355](https://github.com/mycelium-build/datalith-app/commit/2658355e4b1e9233c141a79944e1029252a784f5))
 * **release:** sign and notarize macOS builds ([5ed126a](https://github.com/mycelium-build/datalith-app/commit/5ed126a82e2e2a4075c3eb89fb6940efb6e4eed1))
-* **release:** sign and notarize macOS builds ([3b681cf](https://github.com/mycelium-build/datalith-app/commit/3b681cf2b4c18fa850449932c02a3202d4bd0fbd))
 
 
 ### Bug Fixes
@@ -39,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **macos:** pad the unbundled Dock icon and embed only the current channel's ([0b85845](https://github.com/mycelium-build/datalith-app/commit/0b85845c5382eaa3d40b2c94ad95832c614062a2))
 * **packaging:** keep the DMG's hidden files out of view ([3c0fcfd](https://github.com/mycelium-build/datalith-app/commit/3c0fcfd1bfd54fc2a809c289eb15ae890f0d0d31))
 * **release:** tag drafts and release without waiting for CI ([e314d8a](https://github.com/mycelium-build/datalith-app/commit/e314d8aa1d2bc6e15dbf7d9f6323ea388e5120d6))
-* **release:** tag drafts and release without waiting for CI ([25949d9](https://github.com/mycelium-build/datalith-app/commit/25949d93274a3a4b265e60be5729e413a316634c))
 
 ## [1.0.0](https://github.com/mycelium-build/datalith-app/compare/v0.1.0...v1.0.0) (2026-10-29)
 
@@ -82,7 +77,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **base:** remove useless let _ ([6e11537](https://github.com/mycelium-build/datalith-app/commit/6e11537b6b4eb5dce7ab7e551b8d173d576a7c75))
 * **base:** render special cell ([6a24ea9](https://github.com/mycelium-build/datalith-app/commit/6a24ea940515ab67f462fe2b05d30fe80958ce59))
 * **bases:** add Bases support ([b8d1771](https://github.com/mycelium-build/datalith-app/commit/b8d177147bfa9177deaee197e57d0e1360517b2d))
-* **base:** save if link embed and time file created ([53d7e44](https://github.com/mycelium-build/datalith-app/commit/53d7e44dc2a47b13841cd2ee7f456f22e896f7cb))
 * **bases:** base icon ([436d126](https://github.com/mycelium-build/datalith-app/commit/436d1269e16fe7d2f8b2fa1917faf06677497b13))
 * **bases:** card display image ([0c33667](https://github.com/mycelium-build/datalith-app/commit/0c3366747d0a1870822ff30592d57846e5d89245))
 * **bases:** card doc ([50758a0](https://github.com/mycelium-build/datalith-app/commit/50758a0f39b3d4b5845c6898b0635179b59fe34d))
@@ -143,10 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **filter:** use expr ([f8867af](https://github.com/mycelium-build/datalith-app/commit/f8867af302c9458c45601a1acfaef4d323e76083))
 * glue server and deeplink into app ([f84df93](https://github.com/mycelium-build/datalith-app/commit/f84df932420b0c717277f4795ca42c89a5844508))
 * **gpui:** migrate to gpui-kit ([80b1206](https://github.com/mycelium-build/datalith-app/commit/80b12064271448b794a10dab4ca398592931bead))
-* **gpui:** migrate to gpui-kit ([ab7d05e](https://github.com/mycelium-build/datalith-app/commit/ab7d05e80ef4c69866de2031d5aad7940eb38e08))
 * **graph:** filter can surface error ([26fdf35](https://github.com/mycelium-build/datalith-app/commit/26fdf35dd2e75fbf96d099bf09b1dd8c49f29234))
 * **graph:** remove editor now included in base ([57c45d4](https://github.com/mycelium-build/datalith-app/commit/57c45d446eece3dfe51517c38b7af3cc2083f8b0))
-* **graph:** remove graph file from register ([aa1ac82](https://github.com/mycelium-build/datalith-app/commit/aa1ac827698a022ad5c3b4045a727b779c1d09f0))
 * **graph:** remove open viewer logic ([b8462af](https://github.com/mycelium-build/datalith-app/commit/b8462afcb615e166036666fd387672d75e50adbc))
 * **graph:** use new filter API ([fb49102](https://github.com/mycelium-build/datalith-app/commit/fb4910298877afc6520313484488aa4804fc3519))
 * **icons:** add pixel contrast and ellipsis icons ([4ab62e6](https://github.com/mycelium-build/datalith-app/commit/4ab62e6e0974c66d74adce38edf3ab3e8e94a000))
@@ -193,7 +185,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **updater:** implement automatic update module ([573b511](https://github.com/mycelium-build/datalith-app/commit/573b511e3526f5bc56c4680afcef9ed20616fbbc))
 * **updater:** integrate update controls and local testing ([081818d](https://github.com/mycelium-build/datalith-app/commit/081818d6b936e4e500d35df944916051f3ba5617))
 * **updater:** publish independent Stable and Preview update streams ([dc398c5](https://github.com/mycelium-build/datalith-app/commit/dc398c538df7ca073d0f07a1b2a8d1807c797906))
-* **vault/catalog/database:** label and path key, optimize wikilinks ([543c1ae](https://github.com/mycelium-build/datalith-app/commit/543c1aef1025ca874d7d553eddf7de9a01c74e0a))
 * **vault/catalog:** log wikilink suggestion error ([f834f12](https://github.com/mycelium-build/datalith-app/commit/f834f122c7552c611a66ddf36ee0d9528e1cf44f))
 * **vault/catalog:** suggest wiki links ([5c5dde2](https://github.com/mycelium-build/datalith-app/commit/5c5dde210ae49fb771e6837c3492ac2633a6ec30))
 * **vault/search:** boost exact match, decrease edits match ([9920aed](https://github.com/mycelium-build/datalith-app/commit/9920aed0a7fdf12b8a5255b59bd10248db3c3029))
