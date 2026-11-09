@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2](https://github.com/mycelium-build/datalith-app/compare/v1.1.1...v1.1.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **packaging:** notify Homebrew and remove installer license prompts ([#65](https://github.com/mycelium-build/datalith-app/issues/65)) ([22eec3e](https://github.com/mycelium-build/datalith-app/commit/22eec3eb1bebd0bc53f400272f1de7d0bdcce641))
+* **packaging:** notify Linux packaging after stable releases ([#66](https://github.com/mycelium-build/datalith-app/issues/66)) ([7ba82db](https://github.com/mycelium-build/datalith-app/commit/7ba82db36253a1f4ada1eeca12d27c93a6eb962a))
+* **packaging:** use shared Datalith contact email ([#63](https://github.com/mycelium-build/datalith-app/issues/63)) ([178907a](https://github.com/mycelium-build/datalith-app/commit/178907a6d9528fe326691eb8ade5ada71ffe28e1))
+* **windows:** link the C runtime statically ([318f9ce](https://github.com/mycelium-build/datalith-app/commit/318f9ce505310f2382d646468ab08ff2b7b8745e))
+* **windows:** link the C runtime statically ([9640e74](https://github.com/mycelium-build/datalith-app/commit/9640e744a0f7b46cc02c24deffe59cb8bcbdab9c))
+
 ## [1.1.1](https://github.com/mycelium-build/datalith-app/compare/v1.1.0...v1.1.1) (2026-11-08)
 
 
