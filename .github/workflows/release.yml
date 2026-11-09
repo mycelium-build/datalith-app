@@ -475,6 +475,41 @@ jobs:
           done <<<"$ARTIFACT_PATTERNS"
           gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
 
+  notify-linux-packages:
+    needs: finalize
+    if: >-
+      always() && needs.finalize.result == 'success'
+      && !contains(inputs.tag || github.ref_name, '-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create Linux packages notification token
+        id: linux-packages-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          owner: mycelium-build
+          repositories: linux-packages
+          permission-actions: write
+
+      - name: Notify Linux packages
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.linux-packages-token.outputs.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'mycelium-build',
+              repo: 'linux-packages',
+              workflow_id: 'distribute.yml',
+              ref: 'main',
+              inputs: {
+                app: 'datalith',
+                tag: process.env.RELEASE_TAG,
+                publish: 'true',
+              },
+            })
+
   finalize:
     concurrency:
       group: publish-updates
