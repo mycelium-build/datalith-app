@@ -118,8 +118,5 @@ overrides:
       - libglvnd
       - vulkan-icd-loader
 
-rpm:
-  packager: Datalith Maintainers <contact@datalith.work>
-
 archlinux:
   packager: Datalith Maintainers <contact@datalith.work>
