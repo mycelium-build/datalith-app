@@ -23,6 +23,16 @@ Each target is compiled by a **Build** job and packaged by a separate job named 
 
 **Build** keeps a Rust dependency cache per target. Its key follows the toolchain, `Cargo.toml` and `Cargo.lock`, so all RCs of a version and their stable release share it. GitHub isolates caches by tag, so `vX.Y.Z-rc.2` could never read the cache of `vX.Y.Z-rc.1`; every run can, however, read the caches saved on `main`. RC builds therefore run from `main` and save the cache there, even when a later step fails, and later RCs and the stable release restore it. Stable tag runs only restore it. GitHub evicts cache entries unused for 7 days.
 
+## Linux distribution notification
+
+After a stable release is finalized, **Release** triggers `distribute.yml` in
+[`mycelium-build/linux-packages`](https://github.com/mycelium-build/linux-packages).
+That repository records the release assets and checksums, then publishes signed pacman, APT and RPM repositories using the existing packages. Release candidates are excluded.
+
+To retry, run **Publish Linux packages** in that repository on `main`, with
+`app=datalith`, the published tag (`vX.Y.Z`), and `publish=true`. Check its Actions for
+the result. Publication runs independently in that repository; it does not recompile or test Datalith.
+
 ## Build channels
 
 `CHANNEL` defaults to `dev`. Release CI stamps `stable` for `vX.Y.Z` tags and `preview` for `vX.Y.Z-rc.N`, then builds the same Rust target. Before packaging, `scripts/prepare-release.py` checks `--print-build-identity` against the selected `packager.stable.toml` or `packager.preview.toml` and prepares the named binary and versioned packaging configuration.
