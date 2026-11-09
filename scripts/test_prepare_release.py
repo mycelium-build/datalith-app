@@ -36,6 +36,8 @@ class ReleaseIdentityTests(unittest.TestCase):
                     release.prepare(f"v{version}", temporary)
                 config = json.loads((directory / "packager.json").read_text())
                 self.assertEqual(config["version"], version)
+                self.assertNotIn("license-file", config)
+                self.assertTrue(any(r["target"] == "Licenses/LICENSING.md" for r in config["resources"]))
                 self.assertEqual(config["binaries"][0]["path"], stem)
                 self.assertEqual((directory / f"{stem}{suffix}").read_bytes(), b"binary")
                 self.assertTrue(all(Path(icon).is_file() for icon in config["icons"]))
@@ -51,7 +53,9 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_macos_signing_identity_applies_only_to_apple_targets(self):
         identity_name = "Developer ID Application: Example (TEAMID1234)"
         for triple, expected in (("aarch64-apple-darwin", identity_name),
-                                 ("x86_64-unknown-linux-gnu", None)):
+                                 ("x86_64-apple-darwin", identity_name),
+                                 ("x86_64-unknown-linux-gnu", None),
+                                 ("x86_64-pc-windows-msvc", None)):
             with self.subTest(target=triple), tempfile.TemporaryDirectory() as temporary:
                 # An absolute target replaces the "target" prefix, as in the test above.
                 target = str(Path(temporary) / triple)
@@ -68,6 +72,8 @@ class ReleaseIdentityTests(unittest.TestCase):
                     release.prepare("v1.2.3", target)
                 config = json.loads((directory / "packager.json").read_text())
                 self.assertEqual(config.get("macos", {}).get("signing-identity"), expected)
+                self.assertNotIn("license-file", config)
+                self.assertTrue(any(r["target"] == "Licenses/LICENSING.md" for r in config["resources"]))
 
     def test_liquid_glass_icon_applies_only_to_apple_targets(self):
         for triple, apple in (("aarch64-apple-darwin", True), ("x86_64-unknown-linux-gnu", False)):
