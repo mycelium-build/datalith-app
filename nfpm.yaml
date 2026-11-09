@@ -6,7 +6,7 @@ version: ${PACKAGE_VERSION}
 release: "1"
 section: utils
 priority: optional
-maintainer: lmandrelli <luca.mandrelli@icloud.com>
+maintainer: Datalith Maintainers <contact@datalith.work>
 description: A fast, local-first knowledge workspace.
 vendor: Mycelium Build
 homepage: https://github.com/mycelium-build/datalith-app
@@ -118,12 +118,8 @@ overrides:
       - libglvnd
       - vulkan-icd-loader
 
-deb:
-  fields:
-    Uploaders: rom100main <rom100main@proton.me>
-
 rpm:
-  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>
+  packager: Datalith Maintainers <contact@datalith.work>
 
 archlinux:
-  packager: lmandrelli <luca.mandrelli@icloud.com>, rom100main <rom100main@proton.me>
+  packager: Datalith Maintainers <contact@datalith.work>
