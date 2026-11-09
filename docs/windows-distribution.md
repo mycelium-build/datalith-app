@@ -27,6 +27,32 @@ data preservation, interactive installation, and startup on supported Windows.
 Same-version reinstall is not proof of cross-version upgrade. Capture runner logs
 and actual registry metadata before finalizing manifests.
 
+## Windows host observations (2026-11-09)
+
+Read-only checks on a Windows 11 25H2 x64 workstation (build 26200, WinGet
+1.29.380) with stable 1.1.1 and Preview 1.1.0-rc.2 already installed. The
+validation script was **not** run: the host is not disposable and Windows
+Sandbox is not enabled. Install, reinstall, upgrade, uninstall, ARM64, WinGet
+local manifests and SmartScreen remain untested.
+
+- Release v1.1.1 is published, not draft/prerelease. Both
+  `datalith_1.1.1_x64-setup.exe` (`44cd8ee2…8d556b`) and
+  `datalith_1.1.1_arm64-setup.exe` (`244b6485…415df9`) match GitHub's SHA-256
+  digest. Both installers are 32-bit (x86, `0x14c`) NSIS stubs and `NotSigned`.
+- Installed `datalith.exe` is x64 (`0x8664`), GUI subsystem, `NotSigned`.
+  `--print-build-identity` piped to `ConvertFrom-Json` returns
+  `{"channel":"stable","version":"1.1.1",…}` with exit code 0 (stable over
+  repeated runs). Without a pipe the GUI binary yields no captured output, so the
+  script must keep the pipeline form.
+- HKCU key `Datalith`: DisplayName `Datalith`, Publisher `Mycelium Build`,
+  DisplayVersion `1.1.1`, InstallLocation `"%LOCALAPPDATA%\Datalith"` (stored
+  **with literal quotes**), UninstallString `"…\uninstall.exe"`, no
+  QuietUninstallString, NoModify/NoRepair `1`. This confirms `ProductCode:
+  Datalith`, `Scope: user` and the explicit nullsoft silent uninstall switch.
+- Preview registers a separate key `Datalith Preview` under
+  `%LOCALAPPDATA%\Datalith Preview` (`datalith-preview.exe`), so it does not
+  collide with the stable ProductCode. No machine-scope (HKLM) entry exists.
+
 ## Requirements and signing
 
 Official sources checked on the audit date:

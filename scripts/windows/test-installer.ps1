@@ -11,6 +11,7 @@ $directory = Join-Path $env:LOCALAPPDATA 'Datalith'
 if (Test-Path $directory) { throw "Existing directory: $directory" }
 function Invoke-Installer {
     $process = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru
+    $null = $process.Handle # keep a handle so ExitCode stays readable
     if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Installation timed out' }
     if ($process.ExitCode -ne 0) { throw "Installer exit code: $($process.ExitCode)" }
     $entry = Get-ItemProperty $key
@@ -32,6 +33,7 @@ Invoke-Installer
 Invoke-Installer
 $uninstaller = Join-Path $directory 'uninstall.exe'
 $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru
+$null = $process.Handle
 if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Uninstallation timed out' }
 if ($process.ExitCode -ne 0) { throw "Uninstaller exit code: $($process.ExitCode)" }
 $deadline = [DateTime]::UtcNow.AddSeconds(60)
