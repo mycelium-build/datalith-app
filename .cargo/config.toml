@@ -2,3 +2,8 @@
 # so the window gets its icon; every binary still runs unchanged. See scripts/dev-runner-linux.sh.
 [target.'cfg(target_os = "linux")']
 runner = "scripts/dev-runner-linux.sh"
+
+# Windows: link the C runtime statically so datalith.exe starts on a clean install without the
+# Visual C++ Redistributable (otherwise VCRUNTIME140.dll is missing, STATUS_DLL_NOT_FOUND).
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
