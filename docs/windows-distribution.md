@@ -53,6 +53,30 @@ local manifests and SmartScreen remain untested.
   `%LOCALAPPDATA%\Datalith Preview` (`datalith-preview.exe`), so it does not
   collide with the stable ProductCode. No machine-scope (HKLM) entry exists.
 
+### Windows Sandbox run (x64, 2026-11-09)
+
+Disposable Windows Sandbox (Windows 11 26100 x64, Windows PowerShell 5.1,
+networking disabled, **no Visual C++ Redistributable**), published v1.1.0 and
+v1.1.1 x64 installers with verified digests:
+
+- **Blocking defect:** installed `datalith.exe` 1.1.0 and 1.1.1 do not start.
+  They import `VCRUNTIME140.dll`; Windows shows "VCRUNTIME140.dll was not found"
+  and the process exits `-1073741515` (`0xC0000135`, `STATUS_DLL_NOT_FOUND`).
+  `test-installer.ps1` correctly fails at the build identity check. Fix proposed
+  in [#68](https://github.com/mycelium-build/datalith-app/pull/68) (`+crt-static`);
+  a binary built from it starts in the same sandbox. Published v1.1.1 must not be
+  submitted to WinGet: wait for a release containing the fix (1.1.2 envisaged).
+- Installer behaviour is otherwise correct: `/S` install, upgrade 1.1.0 → 1.1.1,
+  `/P` reinstall and `/S` uninstall all exit 0 within 2 s; one Add/Remove entry
+  throughout, DisplayVersion follows the installed version, Start Menu and
+  Desktop `Datalith.lnk` created then removed, install directory removed.
+- Silent install does not launch the app.
+- A marker in `%APPDATA%\datalith` survives upgrade, uninstall and reinstall.
+- Upgrade with the app running is **inconclusive**: the app could not start
+  (see defect); retest once a fixed release exists.
+- Not tested: ARM64, WinGet local manifests (Sandbox has no WinGet), interactive
+  GUI install, SmartScreen.
+
 ## Requirements and signing
 
 Official sources checked on the audit date:
