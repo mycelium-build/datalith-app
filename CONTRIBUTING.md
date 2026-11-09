@@ -134,3 +134,8 @@ We allow PR made with AI, but you are responsible for your code. This implies th
 ## License
 
 By contributing to this project, you agree that your contributions will be licensed under the MIT License.
+
+## Windows distribution validation
+
+See the [Windows handoff](docs/windows-handoff.md) for published-installer tests,
+WinGet readiness and SmartScreen evidence collection.

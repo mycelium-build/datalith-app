@@ -46,16 +46,31 @@ Official sources checked on the audit date:
   is separate from manifest acceptance. Signing does not guarantee immediate
   reputation; even EV no longer grants automatic reputation.
 
-No paid certificate is established as a prerequisite for this NSIS WinGet plan.
-For signing, first establish the publisher's legal identity and country. Microsoft
-lists Azure Artifact Signing at approximately USD 9.99/month, available to
-organizations in the EU/UK/US/Canada and individuals in US/Canada. A French
-individual should not be assumed eligible. If eligible, this is a practical CI
-option; otherwise obtain an appropriate CA quote including token/cloud signing
-costs. Microsoft estimates OV at USD 150–300/year; this is not a vendor quote.
-Do not buy or create identities/certificates without approval. Future signing
-must happen upstream before hashing and updater signing, covering app,
-uninstaller and installer; never replace existing published release assets.
+Signing budget: **zero** (user decision, 2026-11-09). Paid certificates and
+Azure Artifact Signing are excluded. The objective is fewer SmartScreen warnings,
+not merely a valid signature; neither signing nor WinGet acceptance guarantees
+that an unknown download will stop triggering warnings.
+
+The free candidate for existing NSIS releases is
+[SignPath Foundation](https://signpath.org/terms.html), subject to acceptance.
+Its conditions include OSI-licensed components without commercial dual licensing,
+verifiable builds, MFA, documented signing roles/policy and manual release
+approval. The certificate publisher is SignPath Foundation. Datalith's MIT
+license alone does not establish eligibility: audit bundled dependencies/assets,
+especially the custom Twilight license recorded in LICENSING.md, and project
+reputation requirements. No application or enrollment has been submitted.
+
+Self-signing does not establish public SmartScreen trust. Microsoft Store MSIX
+signing is free and Store delivery avoids the usual SmartScreen download warning,
+but requires a different packaging/distribution path; it does not sign the NSIS
+assets downloaded from GitHub. Keep this as a separate option requiring review.
+If no free service accepts the project, retain unsigned NSIS distribution and
+report that the SmartScreen objective remains unresolved; do not buy a fallback.
+
+Future signing must happen upstream before hashing and updater signing, covering
+app, uninstaller and installer; never replace existing published release assets.
+No identity/certificate creation or service enrollment without user approval.
+See the [Windows handoff](windows-handoff.md) for reproducible validation steps.
 
 ## Separate distribution repository
 
