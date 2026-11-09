@@ -603,3 +603,26 @@ jobs:
         uses: ./.github/actions/publish-updates
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Homebrew tap notification token
+        id: homebrew-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          owner: mycelium-build
+          repositories: homebrew-tap
+          permission-actions: write
+
+      - name: Notify Homebrew tap
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.homebrew-token.outputs.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'mycelium-build',
+              repo: 'homebrew-tap',
+              workflow_id: 'update.yml',
+              ref: 'main',
+              inputs: { tag: process.env.RELEASE_TAG, publish: 'true' },
+            })
