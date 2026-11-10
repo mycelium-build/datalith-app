@@ -33,6 +33,8 @@ To retry, run **Publish Linux packages** in that repository on `main`, with
 `app=datalith` (stable) or `app=datalith-preview` (release candidate), the published tag (`vX.Y.Z` or `vX.Y.Z-rc.N`), and `publish=true`. Check its Actions for
 the result. Publication runs independently in that repository; it does not recompile or test Datalith.
 
+Preview pacman packages carry epoch 1 (`1:X.Y.Zrc.N-1`): without an epoch, nFPM drops the prerelease from `pkgver`, as in Datalith Preview 1.1.0-rc.2 (`pkgver = 1.1.0-1`). Never remove it; pacman then upgrades that version to the next preview.
+
 ## Build channels
 
 `CHANNEL` defaults to `dev`. Release CI stamps `stable` for `vX.Y.Z` tags and `preview` for `vX.Y.Z-rc.N`, then builds the same Rust target. Before packaging, `scripts/prepare-release.py` checks `--print-build-identity` against the selected `packager.stable.toml` or `packager.preview.toml` and prepares the named binary and versioned packaging configuration.
