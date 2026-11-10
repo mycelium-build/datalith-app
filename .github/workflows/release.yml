@@ -443,8 +443,13 @@ jobs:
           export PACKAGE_CHANNEL="$(cat CHANNEL)"
           export PACKAGE_STEM="$(python -c 'import json, os; print(json.load(open("target/" + os.environ["PACKAGE_TARGET"] + "/release/packager.json"))["name"])')"
           for packager in deb rpm archlinux; do
-            nfpm package \
-              --config nfpm.yaml \
+            # nFPM needs an epoch to retain the pacman prerelease; it does not expand epoch variables.
+            # Keep preview epoch 1 permanently so installed previews continue to upgrade.
+            {
+              cat nfpm.yaml
+              if [ "$PACKAGE_CHANNEL" = preview ] && [ "$packager" = archlinux ]; then echo 'epoch: "1"'; fi
+            } | nfpm package \
+              --config - \
               --packager "$packager" \
               --target "target/${PACKAGE_TARGET}/release/"
           done
