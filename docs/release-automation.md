@@ -25,12 +25,12 @@ Each target is compiled by a **Build** job and packaged by a separate job named 
 
 ## Linux distribution notification
 
-After a stable release is finalized, **Release** triggers `distribute.yml` in
+After a stable release or release candidate is finalized, **Release** triggers `distribute.yml` in
 [`mycelium-build/linux-packages`](https://github.com/mycelium-build/linux-packages).
-That repository records the release assets and checksums, then publishes signed pacman, APT and RPM repositories using the existing packages. Release candidates are excluded.
+That repository records the release assets and checksums, then publishes signed pacman, APT and RPM repositories using the existing packages. Release candidates are distributed as the separate `datalith-preview` package.
 
 To retry, run **Publish Linux packages** in that repository on `main`, with
-`app=datalith`, the published tag (`vX.Y.Z`), and `publish=true`. Check its Actions for
+`app=datalith` (stable) or `app=datalith-preview` (release candidate), the published tag (`vX.Y.Z` or `vX.Y.Z-rc.N`), and `publish=true`. Check its Actions for
 the result. Publication runs independently in that repository; it does not recompile or test Datalith.
 
 ## Build channels

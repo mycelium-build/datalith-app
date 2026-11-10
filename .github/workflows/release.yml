@@ -507,9 +507,7 @@ jobs:
 
   notify-linux-packages:
     needs: finalize
-    if: >-
-      always() && needs.finalize.result == 'success'
-      && !contains(inputs.tag || github.ref_name, '-')
+    if: always() && needs.finalize.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -534,7 +532,7 @@ jobs:
               workflow_id: 'distribute.yml',
               ref: 'main',
               inputs: {
-                app: 'datalith',
+                app: process.env.RELEASE_TAG.includes('-rc.') ? 'datalith-preview' : 'datalith',
                 tag: process.env.RELEASE_TAG,
                 publish: 'true',
               },
