@@ -1,13 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Shared Renovate rules for the Datalith repositories: one PR per update type, security updates daily, everything else on Mondays. Each group sets its commit prefix explicitly (fix for what ships, chore for the rest).",
+  "description": "Shared Renovate rules for the Datalith repositories: one PR per update type, security updates daily, everything else on Tuesdays. Each group sets its commit prefix explicitly (fix for what ships, chore for the rest).",
   "extends": [
     "config:recommended",
     "customManagers:githubActionsVersions"
   ],
   "timezone": "Europe/Paris",
   "schedule": [
-    "before 7am on monday"
+    "* * * * 2"
   ],
   "minimumReleaseAge": "3 days",
   "prHourlyLimit": 0,
@@ -19,7 +19,7 @@
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
-      "before 7am on monday"
+      "* * * * 2"
     ],
     "commitMessagePrefix": "chore(deps):",
     "commitMessageAction": "lock file maintenance"

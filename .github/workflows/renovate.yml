@@ -3,11 +3,11 @@ name: Renovate
 # Self-hosted Renovate for the three Datalith repositories, acting as the datalith-bot App.
 # Global settings: .github/renovate/global.json. Shared rules: .github/renovate/preset.json.
 # Each repository opts in with its own renovate.json.
-# Runs daily so security updates land the same day; other updates are scheduled for Mondays
+# Runs daily so security updates land the same day; other updates are scheduled for Tuesdays
 # by the shared rules.
 on:
   schedule:
-    # 03:00 UTC stays before 7am in Paris all year.
+    # Run daily for security updates; ordinary updates are allowed all Tuesday (Europe/Paris).
     - cron: "0 3 * * *"
   workflow_dispatch:
 

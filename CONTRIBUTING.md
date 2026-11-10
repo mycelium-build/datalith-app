@@ -52,11 +52,11 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 
 | PR | When | Commit type |
 |---|---|---|
-| `update patch dependencies`, `update minor dependencies`, `update major dependencies` | Mondays | `fix(deps)`: ships in the app |
-| `update gpui` (the gpui crates pin each other, so they move together) | Mondays | `fix(deps)` |
-| `update dev dependencies` | Mondays | `chore(deps)`: does not ship |
-| `update tools` (GitHub Actions, Rust toolchain, Renovate itself) | Mondays | `chore(deps)` |
-| `lock file maintenance` (transitive crates) | Mondays | `chore(deps)` |
+| `update patch dependencies`, `update minor dependencies`, `update major dependencies` | Tuesdays (Europe/Paris) | `fix(deps)`: ships in the app |
+| `update gpui` (the gpui crates pin each other, so they move together) | Tuesdays (Europe/Paris) | `fix(deps)` |
+| `update dev dependencies` | Tuesdays (Europe/Paris) | `chore(deps)`: does not ship |
+| `update tools` (GitHub Actions, Rust toolchain, Renovate itself) | Tuesdays (Europe/Paris) | `chore(deps)` |
+| `lock file maintenance` (transitive crates) | Tuesdays (Europe/Paris) | `chore(deps)` |
 | `security updates` | daily, without waiting | `fix(deps)` |
 
 - Releases younger than 3 days wait (security updates excepted).
