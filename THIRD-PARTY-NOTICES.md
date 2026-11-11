@@ -19088,15 +19088,15 @@ Used by:
 - `tantivy-tokenizer-api` 0.7.0 — `MIT` — <https://github.com/quickwit-oss/tantivy>
 - `tree-sitter-json` 0.24.8 — `MIT` — <https://github.com/tree-sitter/tree-sitter-json>
 - `tree-sitter-md` 0.5.4 — `MIT` — <https://github.com/tree-sitter-grammars/tree-sitter-markdown>
-- `turso` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_core` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_ext` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_macros` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_parser` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sdk_kit` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sdk_kit_macros` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sync_engine` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sync_sdk_kit` 0.7.2 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_core` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_ext` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_macros` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_parser` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sdk_kit` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sdk_kit_macros` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sync_engine` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sync_sdk_kit` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
 - `xim-ctext` 0.3.0 — `MIT` — <https://github.com/Riey/xim-rs>
 - `xim-parser` 0.2.2 — `MIT` — <https://github.com/Riey/xim-rs>
 ```
