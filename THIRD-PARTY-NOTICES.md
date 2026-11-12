@@ -4080,7 +4080,6 @@ Used by:
 - `windows-sys` 0.48.0 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
 - `windows-sys` 0.52.0 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
 - `windows-sys` 0.59.0 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
-- `windows-sys` 0.60.2 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
 - `windows-sys` 0.61.2 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
 - `windows-targets` 0.48.5 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
 - `windows-targets` 0.52.6 — `MIT OR Apache-2.0` — <https://github.com/microsoft/windows-rs>
@@ -14686,6 +14685,7 @@ Used by:
 - `objc2-core-graphics` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-core-image` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-core-location` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
+- `objc2-core-services` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-core-text` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-core-video` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-metal` 0.3.2 — `Zlib OR Apache-2.0 OR MIT` — <https://github.com/madsmtm/objc2>
@@ -14705,7 +14705,7 @@ Used by:
 - `profiling-procmacros` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `profiling` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `quote` 1.0.47 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/quote>
-- `rand` 0.10.2 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
+- `rand` 0.10.3 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.8.7 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.9.5 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand_chacha` 0.9.0 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
@@ -14726,7 +14726,7 @@ Used by:
 - `serde_core` 1.0.229 — `MIT OR Apache-2.0` — <https://github.com/serde-rs/serde>
 - `serde_derive` 1.0.229 — `MIT OR Apache-2.0` — <https://github.com/serde-rs/serde>
 - `serde_derive_internals` 0.30.0 — `MIT OR Apache-2.0` — <https://github.com/serde-rs/serde>
-- `serde_json` 1.0.151 — `MIT OR Apache-2.0` — <https://github.com/serde-rs/json>
+- `serde_json` 1.0.154 — `MIT OR Apache-2.0` — <https://github.com/serde-rs/json>
 - `serde_repr` 0.1.21 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/serde-repr>
 - `serde_urlencoded` 0.7.1 — `MIT OR Apache-2.0` — <https://github.com/nox/serde_urlencoded>
 - `serde_yaml` 0.9.34+deprecated — `MIT OR Apache-2.0` — <https://github.com/dtolnay/serde-yaml>
@@ -16263,7 +16263,7 @@ SPDX identifier: `CC0-1.0`
 Used by:
 
 - `notify` 7.0.0 — `CC0-1.0` — <https://github.com/notify-rs/notify.git>
-- `notify` 8.2.0 — `CC0-1.0` — <https://github.com/notify-rs/notify.git>
+- `notify` 8.2.2 — `CC0-1.0` — <https://github.com/notify-rs/notify.git>
 ```
 Creative Commons CC0 1.0 Universal
 
@@ -17071,7 +17071,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `winreg` 0.55.0 — `MIT` — <https://github.com/gentoo90/winreg-rs>
+- `winreg` 0.56.0 — `MIT` — <https://github.com/gentoo90/winreg-rs>
 ```
 Copyright (c) 2015 Igor Shaula
 
@@ -19045,7 +19045,7 @@ Used by:
 - `objc2-foundation` 0.2.2 — `MIT` — <https://github.com/madsmtm/objc2>
 - `objc2-foundation` 0.3.2 — `MIT` — <https://github.com/madsmtm/objc2>
 - `objc2` 0.5.2 — `MIT` — <https://github.com/madsmtm/objc2>
-- `objc2` 0.6.4 — `MIT` — <https://github.com/madsmtm/objc2>
+- `objc2` 0.6.5 — `MIT` — <https://github.com/madsmtm/objc2>
 - `ownedbytes` 0.9.0 — `MIT` — <https://github.com/quickwit-oss/tantivy>
 - `pulp-wasm-simd-flag` 0.1.1 — `MIT` — <https://github.com/sarah-quinones/pulp/>
 - `rust-i18n-macro` 4.2.1 — `MIT` — <https://github.com/longbridge/rust-i18n>
@@ -19981,7 +19981,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `embed-resource` 3.0.11 — `MIT` — <https://github.com/nabijaczleweli/rust-embed-resource>
+- `embed-resource` 3.0.12 — `MIT` — <https://github.com/nabijaczleweli/rust-embed-resource>
 ```
 The MIT License (MIT)
 
