@@ -41,8 +41,7 @@ pub(super) fn render_property_cell(
     if property.source == "file.links" {
         let targets = value
             .as_str()
-            .map(|text| text.split(", ").map(str::to_string).collect::<Vec<_>>())
-            .unwrap_or_default();
+            .map_or_default(|text| text.split(", ").map(str::to_string).collect::<Vec<_>>());
         let links = targets.iter().enumerate().map(|(index, target)| {
             render_link(
                 ElementId::NamedInteger(

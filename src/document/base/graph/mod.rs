@@ -248,7 +248,7 @@ views:
         let crate::document::base::ViewKind::Graph(config) = &definition.views[0].kind else {
             panic!("expected graph kind");
         };
-        assert!(config.classes.is_empty());
+        assert_eq!(config.classes, Vec::new());
         assert!(config.display.orphan.show);
         assert!((config.physics.center.strength - DEFAULT_CENTER_STRENGTH).abs() < f32::EPSILON);
     }

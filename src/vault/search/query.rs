@@ -290,6 +290,6 @@ mod tests {
     #[test]
     fn short_words_do_not_tolerate_typos() {
         let results = scored_docs(&[("alpha", "gist")], "go");
-        assert!(results.is_empty());
+        assert_eq!(results, Vec::new());
     }
 }

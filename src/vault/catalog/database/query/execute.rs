@@ -272,8 +272,7 @@ const fn direction_sql(direction: SortDirection) -> &'static str {
 fn frozen_now() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(0))
-        .unwrap_or_default();
+        .map_or_default(|duration| i64::try_from(duration.as_secs()).unwrap_or(0));
     time::OffsetDateTime::from_unix_timestamp(seconds).map_or_else(
         |_| "1970-01-01 00:00:00".to_string(),
         |datetime| {

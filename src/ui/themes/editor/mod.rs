@@ -417,22 +417,19 @@ impl ThemeEditor {
     fn refresh_variant_appearances(&mut self, cx: &mut App) {
         let library = cx.global::<ThemeLibrary>();
         let catalog = cx.global::<FontCatalog>();
-        let appearances: Vec<_> = library
-            .family(self.family_id)
-            .map(|family| {
-                family
-                    .variants()
-                    .iter()
-                    .filter_map(|variant| {
-                        let id = variant.id();
-                        library
-                            .resolved(id, catalog)
-                            .ok()
-                            .map(|appearance| (id, Rc::new(appearance)))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let appearances: Vec<_> = library.family(self.family_id).map_or_default(|family| {
+            family
+                .variants()
+                .iter()
+                .filter_map(|variant| {
+                    let id = variant.id();
+                    library
+                        .resolved(id, catalog)
+                        .ok()
+                        .map(|appearance| (id, Rc::new(appearance)))
+                })
+                .collect()
+        });
         self.variant_miniatures
             .retain(|id, _| appearances.iter().any(|(variant, _)| variant == id));
         for (id, appearance) in appearances {

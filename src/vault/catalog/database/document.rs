@@ -69,7 +69,7 @@ impl TrackedDocument {
         let document_links = content
             .as_deref()
             .filter(|_| capabilities.wiki_links)
-            .map(|content| {
+            .map_or_default(|content| {
                 links::occurrences(content)
                     .into_iter()
                     .map(|occurrence| LinkTarget {
@@ -77,26 +77,22 @@ impl TrackedDocument {
                         is_embed: occurrence.is_embed,
                     })
                     .collect()
-            })
-            .unwrap_or_default();
+            });
         let extension = relative.extension()?.to_str()?.to_lowercase();
         let folder = relative
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
-            .map(|parent| parent.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
+            .map_or_default(|parent| parent.to_string_lossy().replace('\\', "/"));
         let modified_ns = metadata
             .as_ref()
             .and_then(|metadata| metadata.modified().ok())
             .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
-            .unwrap_or_default();
+            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
         let created_ns = metadata
             .as_ref()
             .and_then(|metadata| metadata.created().ok())
             .and_then(|created| created.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
-            .unwrap_or_default();
+            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
         let size_bytes = match (&embedded_bytes, &metadata) {
             (Some(bytes), _) => i64::try_from(bytes.len()).unwrap_or(i64::MAX),
             (_, Some(metadata)) => i64::try_from(metadata.len()).unwrap_or(i64::MAX),
@@ -128,8 +124,7 @@ impl TrackedDocument {
             .modified()
             .ok()
             .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
-            .unwrap_or_default();
+            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
         let size_bytes = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
         Some((size_bytes, modified_ns))
     }
@@ -318,8 +313,7 @@ fn reconstruct_unchanged(
         let folder = relative
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
+            .map_or_default(|p| p.to_string_lossy().replace('\\', "/"));
         documents.push(TrackedDocument {
             path: relative.to_path_buf(),
             extension,
@@ -709,7 +703,7 @@ mod tests {
                 .synchronize(&[], &[source.clone(), target.clone()], &file_types)
                 .await
                 .unwrap();
-            assert!(result.changed.is_empty());
+            assert_eq!(result.changed, Vec::<PathBuf>::new());
             assert_eq!(result.all.len(), 2);
 
             let connection = database.connection().await.unwrap();

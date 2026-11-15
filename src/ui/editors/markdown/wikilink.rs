@@ -290,15 +290,13 @@ impl Render for WikiLinkAutocomplete {
             };
             let selected = index == self.selected;
             let label_highlights = highlight_in(&item.label, name_query)
-                .map(|range| vec![(range, highlight_style(highlight_color))])
-                .unwrap_or_default();
+                .map_or_default(|range| vec![(range, highlight_style(highlight_color))]);
             let detail_highlights = item
                 .detail
                 .as_deref()
                 .zip(folder_query)
                 .and_then(|(detail, query)| highlight_in(detail, query))
-                .map(|range| vec![(range, highlight_style(highlight_color))])
-                .unwrap_or_default();
+                .map_or_default(|range| vec![(range, highlight_style(highlight_color))]);
 
             rows.push(
                 div()
@@ -555,7 +553,7 @@ mod tests {
         assert_eq!(suggestions[0].path, "alpha/Note.md");
 
         let suggestions = catalog.suggest_wiki_links("sour", Some(&source), MAX_SUGGESTIONS);
-        assert!(suggestions.is_empty());
+        assert_eq!(suggestions, Vec::new());
     }
 
     #[test]

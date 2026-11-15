@@ -484,7 +484,7 @@ fn card_body_height(view: &BaseView) -> f32 {
     (property_count - 1.0)
         .mul_add(
             4.0,
-            CARD_BODY_PADDING + property_count * CARD_PROPERTY_HEIGHT,
+            f32::mul_add(property_count, CARD_PROPERTY_HEIGHT, CARD_BODY_PADDING),
         )
         .max(CARD_BODY_MIN_HEIGHT)
 }
