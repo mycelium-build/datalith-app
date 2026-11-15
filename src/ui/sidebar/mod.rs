@@ -14,7 +14,7 @@ use gpui_kit::component::{
     menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem},
 };
 use gpui_kit::{
-    AppContext, Context, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseDownEvent,
+    AppContext, Context, Focusable, InteractiveElement, IntoElement, MouseDownEvent,
     MouseMoveEvent, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement,
     Styled, Window, div, prelude::FluentBuilder, px,
 };
@@ -26,6 +26,7 @@ use crate::vault::file_ops;
 use crate::vault::path::{display_name, unique_path};
 
 use super::DatalithView;
+pub use navigation::bind_keys;
 
 const BORDER_WIDTH: f32 = 2.0;
 const VAULT_MENU_WIDTH_REMS: f32 = 24.0;
@@ -366,6 +367,7 @@ impl DatalithView {
             .border_r(px(BORDER_WIDTH))
             .border_color(cx.theme().sidebar_border)
             .track_focus(&self.sidebar_focus_handle)
+            .map(|element| Self::with_file_tree_actions(element, cx))
             .on_mouse_down(
                 gpui_kit::MouseButton::Left,
                 cx.listener(|this, _event: &MouseDownEvent, window, cx| {
@@ -373,9 +375,6 @@ impl DatalithView {
                     cx.stop_propagation();
                 }),
             )
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                this.on_sidebar_key_down(event, window, cx);
-            }))
             .on_mouse_move(cx.listener(|this, _event: &MouseMoveEvent, _window, cx| {
                 // Rows stop propagation when the pointer is over a folder subtree;
                 // reaching this handler means the pointer is above empty space,

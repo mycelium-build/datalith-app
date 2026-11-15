@@ -42,6 +42,7 @@ fn main() {
 
         cx.set_global(app::AppState::default());
         app::actions::register(cx);
+        ui::sidebar::bind_keys(cx);
         app::keymap::register(cx);
         app::menus::install(cx);
 

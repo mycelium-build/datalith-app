@@ -1,44 +1,115 @@
 use std::path::Path;
 
+use gpui_kit::base::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
 use gpui_kit::component::tree::TreeItem;
-use gpui_kit::{Context, KeyDownEvent, ScrollStrategy, SharedString, Window};
+use gpui_kit::{
+    App, Context, Div, InteractiveElement as _, KeyBinding, KeyBindingContextPredicate,
+    ScrollStrategy, SharedString, Window, actions,
+};
 
 use crate::vault::path::display_name;
 
 use super::DatalithView;
 
+const FILE_TREE_CONTEXT: &str = "FileTree";
+
+actions!(
+    file_tree,
+    [
+        /// Restores the last deleted file or folder.
+        #[derive(Eq)]
+        UndoDelete
+    ]
+);
+
+/// Binds the file tree's navigation keys, which aren't customizable.
+pub fn bind_keys(cx: &mut App) {
+    let predicate = KeyBindingContextPredicate::parse(FILE_TREE_CONTEXT)
+        .ok()
+        .map(std::rc::Rc::new);
+    let bindings: [(&str, Box<dyn gpui_kit::Action>); 8] = [
+        ("up", Box::new(SelectUp)),
+        ("down", Box::new(SelectDown)),
+        ("left", Box::new(SelectLeft)),
+        ("right", Box::new(SelectRight)),
+        ("enter", Box::new(Confirm { secondary: false })),
+        ("secondary-enter", Box::new(Confirm { secondary: true })),
+        ("escape", Box::new(Cancel)),
+        ("secondary-z", Box::new(UndoDelete)),
+    ];
+    let bindings = bindings
+        .into_iter()
+        .filter_map(|(keys, action)| {
+            KeyBinding::load(keys, action, predicate.clone(), false, None, cx).ok()
+        })
+        .collect::<Vec<_>>();
+    cx.bind_keys(bindings);
+}
+
 impl DatalithView {
-    pub(crate) fn on_sidebar_key_down(
+    pub(crate) fn with_file_tree_actions(element: Div, cx: &Context<Self>) -> Div {
+        element
+            .key_context(FILE_TREE_CONTEXT)
+            .on_action(cx.listener(Self::on_file_tree_up))
+            .on_action(cx.listener(Self::on_file_tree_down))
+            .on_action(cx.listener(Self::on_file_tree_left))
+            .on_action(cx.listener(Self::on_file_tree_right))
+            .on_action(cx.listener(Self::on_file_tree_confirm))
+            .on_action(cx.listener(Self::on_file_tree_cancel))
+            .on_action(cx.listener(Self::on_file_tree_undo_delete))
+    }
+
+    fn on_file_tree_undo_delete(
         &mut self,
-        event: &KeyDownEvent,
+        _: &UndoDelete,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let modifiers = event.keystroke.modifiers;
-        match event.keystroke.key.as_str() {
-            "z" if modifiers.secondary(cx)
-                && !modifiers.shift
-                && !modifiers.alt
-                && self.rename_target.is_none() =>
-            {
-                self.undo_delete(None, window, cx);
-            }
-            "escape" if self.rename_target.is_some() => self.cancel_rename(cx),
-            "enter" if self.rename_target.is_none() => self.handle_enter_key(event, window, cx),
-            "up" => self.navigate_tree_up(cx),
-            "down" => self.navigate_tree_down(cx),
-            "left" => self.navigate_tree_left(cx),
-            "right" => self.navigate_tree_right(cx),
-            _ => cx.propagate(),
+        if self.rename_target.is_none() {
+            self.undo_delete(None, window, cx);
+        } else {
+            cx.propagate();
         }
     }
 
-    fn handle_enter_key(
+    fn on_file_tree_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        if self.rename_target.is_some() {
+            self.cancel_rename(cx);
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn on_file_tree_confirm(
         &mut self,
-        event: &KeyDownEvent,
+        confirm: &Confirm,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.rename_target.is_none() {
+            self.handle_enter_key(confirm.secondary, window, cx);
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn on_file_tree_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_tree_up(cx);
+    }
+
+    fn on_file_tree_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_tree_down(cx);
+    }
+
+    fn on_file_tree_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_tree_left(cx);
+    }
+
+    fn on_file_tree_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_tree_right(cx);
+    }
+
+    fn handle_enter_key(&mut self, new_tab: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some((is_folder, id, path)) = ({
             let ts = self.tree_state.read(cx);
             ts.selected_entry().map(|e| {
@@ -63,7 +134,6 @@ impl DatalithView {
                 self.expand_tree_item(&id, cx);
             }
         } else {
-            let new_tab = event.keystroke.modifiers.secondary(cx);
             self.open_file(path, new_tab, window, cx);
         }
     }
