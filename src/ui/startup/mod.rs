@@ -2,8 +2,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::{
-    Context, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    Render, StatefulInteractiveElement, Styled, Window, div,
+    Context, FocusHandle, Hsla, InteractiveElement, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Subscription, Window, div,
 };
 
 mod paint;
@@ -138,11 +138,25 @@ pub struct StartupAnimation {
     progress: f32,
     elapsed: f32,
     timing: StartupTiming,
+    _dismiss_subscription: Subscription,
 }
 
 impl StartupAnimation {
-    pub fn new(kind: StartupType, cx: &Context<Self>) -> Self {
+    pub fn new(kind: StartupType, cx: &mut Context<Self>) -> Self {
         let timing = kind.timing();
+        // Intercept rather than listen for key down, so the dismissing key
+        // doesn't also run a shortcut.
+        let weak_view = cx.weak_entity();
+        let dismiss_subscription = cx.intercept_keystrokes(move |_, _, cx| {
+            if let Some(view) = weak_view.upgrade() {
+                view.update(cx, |view, cx| {
+                    if !view.finished {
+                        view.finish(cx);
+                        cx.stop_propagation();
+                    }
+                });
+            }
+        });
         Self {
             started_at: Instant::now(),
             finished: false,
@@ -153,6 +167,7 @@ impl StartupAnimation {
             progress: 0.0,
             elapsed: 0.0,
             timing,
+            _dismiss_subscription: dismiss_subscription,
         }
     }
 
@@ -207,7 +222,6 @@ impl Render for StartupAnimation {
             .id("startup-overlay")
             .track_focus(&self.focus_handle)
             .on_click(cx.listener(|this, _, _, cx| this.finish(cx)))
-            .on_key_down(cx.listener(|this, _: &KeyDownEvent, _, cx| this.finish(cx)))
             .child(element)
     }
 }
