@@ -14,13 +14,14 @@ impl CatalogDatabase {
             .await?
             .next()
             .await?;
-        let mut rows = connection.query("PRAGMA user_version", ()).await?;
-        let version = rows
-            .next()
-            .await?
-            .map(|row| row.get::<i64>(0))
-            .transpose()?
-            .unwrap_or_default();
+        let version = {
+            let mut rows = connection.query("PRAGMA user_version", ()).await?;
+            rows.next()
+                .await?
+                .map(|row| row.get::<i64>(0))
+                .transpose()?
+                .unwrap_or_default()
+        };
         if version != 0 && version != SCHEMA_VERSION {
             connection
                 .execute_batch(
