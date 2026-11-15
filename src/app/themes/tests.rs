@@ -1011,7 +1011,7 @@ fn every_highlight_color_can_be_set_from_unset_reset_and_serialized() {
     );
     assert!(
         document
-            .set_highlight("created", Some("#123456".into()))
+            .set_highlight("not_a_token", Some("#123456".into()))
             .is_err()
     );
 }

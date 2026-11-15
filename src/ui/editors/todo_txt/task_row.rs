@@ -241,7 +241,7 @@ impl TodoTxtState {
                     "backspace"
                         if !this.workspace.is_read_only()
                             && event.keystroke.modifiers.shift
-                            && event.keystroke.modifiers.secondary() =>
+                            && event.keystroke.modifiers.secondary(cx) =>
                     {
                         this.delete_task(fi, window, cx);
                     }

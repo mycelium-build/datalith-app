@@ -341,7 +341,7 @@ impl StoredSettings {
                     match binding {
                         Some(binding)
                             if !binding.contains(char::is_whitespace)
-                                && gpui_kit::Keystroke::parse(&binding).is_ok() =>
+                                && super::keymap::parse_keystroke(&binding).is_ok() =>
                         {
                             Some((id, Some(binding)))
                         }

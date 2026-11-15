@@ -370,7 +370,7 @@ impl DatalithView {
                     this.refresh_tree(cx);
                 } else {
                     this.last_sidebar_selection = Some(path.clone());
-                    let new_tab = event.modifiers().secondary();
+                    let new_tab = event.modifiers().secondary(cx);
                     this.open_file(path.clone(), new_tab, window, cx);
                 }
             }
