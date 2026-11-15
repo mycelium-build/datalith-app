@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 
 use crate::vault::path::{parent_dir, unique_path};
 use crate::vault::{VaultCatalog, links, source};
@@ -34,6 +35,130 @@ pub fn update(path: &Path, content: &str) -> Result<()> {
     source::ensure_writable(path)?;
 
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
+}
+
+const FRONTMATTER_SCAN_CAP_BYTES: usize = 1024 * 1024;
+
+/// Sets one frontmatter key to `value`, or removes it when `value` is `None`.
+/// A note without frontmatter gains a fresh block on set,
+/// deleting the last key removes the block entirely.
+/// The file is replaced atomically via temp file + rename.
+pub fn update_frontmatter(path: &Path, key: &str, value: Option<&str>) -> Result<()> {
+    source::ensure_writable(path)?;
+
+    let mut file =
+        fs::File::open(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    // Read only the scan prefix (at most 1 MiB) to locate the closing `\n---`.
+    let mut prefix = Vec::with_capacity(FRONTMATTER_SCAN_CAP_BYTES);
+    let scanned = std::io::Read::take(
+        &mut file,
+        u64::try_from(FRONTMATTER_SCAN_CAP_BYTES).unwrap_or(u64::MAX),
+    )
+    .read_to_end(&mut prefix)
+    .with_context(|| format!("Failed to read {}", path.display()))?;
+    prefix.truncate(scanned);
+
+    let (frontmatter_range, body_offset) = locate_frontmatter(&prefix);
+
+    let mut mapping: Vec<(yaml_serde::Value, yaml_serde::Value)> =
+        if let Some(range) = frontmatter_range {
+            let content = String::from_utf8_lossy(prefix.get(range.0..range.1).unwrap_or(&[]))
+                .trim()
+                .to_string();
+            match yaml_serde::from_str::<yaml_serde::Value>(&content) {
+                Ok(yaml_serde::Value::Mapping(entries)) => entries.into_iter().collect(),
+                _ => bail!("Invalid YAML frontmatter in {}", path.display()),
+            }
+        } else {
+            Vec::new()
+        };
+
+    mapping.retain(|(k, _)| k.as_str() != Some(key));
+    if let Some(value) = value {
+        mapping.push((
+            yaml_serde::Value::String(key.to_string()),
+            yaml_serde::Value::String(value.to_string()),
+        ));
+    }
+
+    let new_prefix: Vec<u8> = if mapping.is_empty() {
+        Vec::new()
+    } else {
+        let mut new_mapping = yaml_serde::Mapping::new();
+        for (k, v) in mapping {
+            new_mapping.insert(k, v);
+        }
+        let dumped = yaml_serde::to_string(&yaml_serde::Value::Mapping(new_mapping))
+            .with_context(|| format!("Failed to serialize frontmatter for {}", path.display()))?;
+        let mut block = String::from("---\n");
+        block.push_str(dumped.trim());
+        block.push_str("\n---\n");
+        block.into_bytes()
+    };
+
+    // Write to a temp sibling, then atomically replace.
+    let temp_name = format!(
+        ".{}.datalith-tmp-{:016x}",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("note"),
+        rand::random::<u64>()
+    );
+    let temp_path = path.with_file_name(temp_name);
+    {
+        let mut tmp = fs::File::create(&temp_path)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        tmp.write_all(&new_prefix)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        file.seek(SeekFrom::Start(
+            u64::try_from(body_offset).unwrap_or(u64::MAX),
+        ))?;
+        if frontmatter_range.is_some() {
+            let mut head = [0u8; 2];
+            let read = file
+                .read(&mut head)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            if read == 2 && head.as_slice() == b"\r\n" {
+                // consumed the CRLF
+            } else if read >= 1 && head.first() == Some(&b'\n') {
+                file.seek(SeekFrom::Current(-1))?;
+            } else if read > 0 {
+                file.seek(SeekFrom::Start(
+                    u64::try_from(body_offset).unwrap_or(u64::MAX),
+                ))?;
+            }
+        }
+        std::io::copy(&mut file, &mut tmp)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        tmp.sync_all()
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+    }
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error).with_context(|| format!("Failed to write {}", path.display()));
+    }
+    Ok(())
+}
+
+/// Returns `((frontmatter_content_start, closing_newline_index), body_offset)`
+/// matching `extract_frontmatter`: leading `---`, closing `\n---`.
+fn locate_frontmatter(prefix: &[u8]) -> (Option<(usize, usize)>, usize) {
+    if !prefix.starts_with(b"---") {
+        return (None, 0);
+    }
+    if prefix.len() < 4 {
+        return (None, 0);
+    }
+    // Search for b"\n---" starting after the opening delimiter.
+    let needle = b"\n---";
+    for (i, window) in prefix.windows(4).enumerate() {
+        if i < 3 {
+            continue;
+        }
+        if window == needle {
+            let body_offset = i.saturating_add(4);
+            return (Some((3, i)), body_offset);
+        }
+    }
+    (None, 0)
 }
 
 pub struct RenameResult {
@@ -457,5 +582,98 @@ mod tests {
         assert_eq!(path, root.join("New Note.md"));
         assert!(path.exists());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn frontmatter_edit_updates_one_key_and_preserves_body() {
+        let root = temp_vault("frontmatter-update");
+        let note = root.join("Note.md");
+        fs::write(
+            &note,
+            "---\ntitle: Old\nstatus: open\n---\n\n# Hello\n\nBody — unicode ✓\n",
+        )
+        .unwrap();
+
+        update_frontmatter(&note, "status", Some("done")).unwrap();
+
+        let result = fs::read_to_string(&note).unwrap();
+        assert!(result.contains("title: Old"));
+        assert!(result.contains("status: done"));
+        assert!(result.contains("# Hello"));
+        assert!(result.contains("Body — unicode ✓"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn frontmatter_delete_removes_the_key_and_last_key_removes_the_block() {
+        let root = temp_vault("frontmatter-delete");
+        let note = root.join("Note.md");
+        fs::write(&note, "---\ntitle: Only\n---\n\nBody\n").unwrap();
+
+        update_frontmatter(&note, "title", None).unwrap();
+
+        let result = fs::read_to_string(&note).unwrap();
+        assert!(!result.starts_with("---"));
+        assert!(result.contains("Body"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn frontmatter_set_adds_a_block_to_a_note_without_one() {
+        let root = temp_vault("frontmatter-add");
+        let note = root.join("Note.md");
+        fs::write(&note, "# No frontmatter\nBody\n").unwrap();
+
+        update_frontmatter(&note, "status", Some("new")).unwrap();
+
+        let result = fs::read_to_string(&note).unwrap();
+        assert!(result.starts_with("---\n"));
+        assert!(result.contains("Body"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn frontmatter_unclosed_separator_is_treated_as_no_frontmatter() {
+        let root = temp_vault("frontmatter-unclosed");
+        let note = root.join("Note.md");
+        fs::write(&note, "---\nthis never closes\n").unwrap();
+
+        update_frontmatter(&note, "status", Some("new")).unwrap();
+
+        let result = fs::read_to_string(&note).unwrap();
+        assert!(result.contains("status: new"));
+        assert!(result.contains("this never closes"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn frontmatter_invalid_yaml_fails_without_touching_the_file() {
+        let root = temp_vault("frontmatter-invalid");
+        let note = root.join("Note.md");
+        let original = "---\n: bad: [\n---\n\nBody\n";
+        fs::write(&note, original).unwrap();
+
+        let result = update_frontmatter(&note, "status", Some("x"));
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&note).unwrap(), original);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn frontmatter_large_body_is_preserved_byte_for_byte() {
+        let root = temp_vault("frontmatter-large");
+        let note = root.join("Note.md");
+        let mut original = String::from("---\ntitle: T\n---\n\n");
+        for i in 0..5000 {
+            original.push_str(&format!("line {i} — some body text ✓\n"));
+        }
+        fs::write(&note, &original).unwrap();
+
+        update_frontmatter(&note, "title", Some("Renamed")).unwrap();
+
+        let result = fs::read_to_string(&note).unwrap();
+        assert!(result.contains("title: Renamed"));
+        assert!(result.contains("line 4999"));
+        fs::remove_dir_all(root).unwrap();
     }
 }
