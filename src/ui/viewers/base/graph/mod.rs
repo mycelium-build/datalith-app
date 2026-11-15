@@ -257,7 +257,7 @@ impl GraphState {
             && !interaction.moved
             && let Some(target) = target
         {
-            let new_tab = event.modifiers.platform;
+            let new_tab = event.modifiers.secondary(cx);
             if let Err(error) = self.handler.update(cx, |_handler, cx| {
                 cx.emit(FileHandlerEvent::LinkClicked(target, new_tab));
             }) {
