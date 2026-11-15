@@ -10,12 +10,13 @@ use gpui_kit::component::select::Select;
 use gpui_kit::component::{ActiveTheme, Icon, IconName, IndexPath, h_flex, v_flex, v_virtual_list};
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DismissEvent, Element, ElementId, Entity, Focusable,
-    InteractiveElement, IntoElement, KeyDownEvent, ListSizingBehavior, ParentElement, Render,
-    RenderOnce, Styled, Window, div, px, relative,
+    InteractiveElement, IntoElement, ListSizingBehavior, ParentElement, Render, RenderOnce, Styled,
+    Window, div, px, relative,
 };
 
 use conv::ConvAsUtil;
 
+use crate::app::actions::{NextTask, PreviousTask, SearchTasks};
 use crate::ui::icons::DatalithIcon;
 
 use super::TodoTxtState;
@@ -88,6 +89,9 @@ impl Render for TodoTxtState {
             .min_h_0()
             .overflow_hidden()
             .track_focus(&self.editor_focus)
+            .on_action(cx.listener(|this, _: &SearchTasks, window, cx| {
+                this.search_input.focus_handle(cx).focus(window, cx);
+            }))
             .child(header)
             .child(
                 div()
@@ -141,16 +145,14 @@ impl TodoTxtState {
                     .flex_1()
                     .min_w(px(100.0))
                     .child(search)
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                        if event.keystroke.key == "down" {
-                            let visible = this.workspace.visible_tasks();
-                            if let Some(&(first_fi, _)) = visible.first() {
-                                if let Some(e) = this.desc_inputs.get(&first_fi) {
-                                    e.focus_handle(cx).focus(window, cx);
-                                }
-                            } else if !this.workspace.is_read_only() {
-                                this.new_task_input.focus_handle(cx).focus(window, cx);
+                    .on_action(cx.listener(|this, _: &NextTask, window, cx| {
+                        let visible = this.workspace.visible_tasks();
+                        if let Some(&(first_fi, _)) = visible.first() {
+                            if let Some(e) = this.desc_inputs.get(&first_fi) {
+                                e.focus_handle(cx).focus(window, cx);
                             }
+                        } else if !this.workspace.is_read_only() {
+                            this.new_task_input.focus_handle(cx).focus(window, cx);
                         }
                     })),
             )
@@ -343,22 +345,15 @@ impl TodoTxtState {
                             .text_color(cx.theme().foreground)
                             .appearance(false),
                     )
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                        match event.keystroke.key.as_str() {
-                            "enter" if !event.keystroke.modifiers.secondary(cx) => {
-                                this.add_task(window, cx);
+                    // Enter adds the task through the input's PressEnter event.
+                    .on_action(cx.listener(|this, _: &PreviousTask, window, cx| {
+                        let visible = this.workspace.visible_tasks();
+                        if let Some(&(last_fi, _)) = visible.last() {
+                            if let Some(e) = this.desc_inputs.get(&last_fi) {
+                                e.focus_handle(cx).focus(window, cx);
                             }
-                            "up" => {
-                                let visible = this.workspace.visible_tasks();
-                                if let Some(&(last_fi, _)) = visible.last() {
-                                    if let Some(e) = this.desc_inputs.get(&last_fi) {
-                                        e.focus_handle(cx).focus(window, cx);
-                                    }
-                                } else {
-                                    this.search_input.focus_handle(cx).focus(window, cx);
-                                }
-                            }
-                            _ => {}
+                        } else {
+                            this.search_input.focus_handle(cx).focus(window, cx);
                         }
                     })),
             )
