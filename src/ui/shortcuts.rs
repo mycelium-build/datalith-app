@@ -1,5 +1,8 @@
 //! Shortcut reference and remapping controls in a dedicated workspace tab.
 
+use gpui_kit::base::actions::{
+    SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
+};
 use gpui_kit::component::{
     ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -13,7 +16,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement,
-    KeyDownEvent, Keystroke, KeystrokeEvent, ParentElement, Render, RenderOnce, ScrollHandle,
+    KeyBinding, Keystroke, KeystrokeEvent, ParentElement, Render, RenderOnce, ScrollHandle,
     SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, point, px,
     rems,
 };
@@ -54,6 +57,31 @@ impl RenderOnce for ShortcutRow {
             .w_full()
             .child(self.row)
     }
+}
+
+const SHORTCUTS_TAB_CONTEXT: &str = "ShortcutsTab";
+
+/// Binds the tab's scrolling keys, which aren't customizable.
+pub fn bind_keys(cx: &mut App) {
+    let context = Some(SHORTCUTS_TAB_CONTEXT);
+    cx.bind_keys([
+        KeyBinding::new("down", SelectDown, context),
+        KeyBinding::new("up", SelectUp, context),
+        KeyBinding::new("pagedown", SelectPageDown, context),
+        KeyBinding::new("pageup", SelectPageUp, context),
+        KeyBinding::new("home", SelectFirst, context),
+        KeyBinding::new("end", SelectLast, context),
+    ]);
+}
+
+#[derive(Clone, Copy)]
+enum ScrollStep {
+    LineDown,
+    LineUp,
+    PageDown,
+    PageUp,
+    Top,
+    Bottom,
 }
 
 struct ShortcutCapture {
@@ -108,27 +136,21 @@ impl ShortcutsView {
         clippy::arithmetic_side_effects,
         reason = "floating-point pixel arithmetic; scroll offsets are clamped to bounds"
     )]
-    fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.modifiers != gpui_kit::Modifiers::none() {
-            return;
-        }
-
+    fn scroll(&self, step: ScrollStep, window: &Window, cx: &mut Context<Self>) {
         let current = self.scroll.offset();
         let max = self.scroll.max_offset().y;
         let line = window.rem_size() * 2.0;
         let page = self.scroll.bounds().size.height * 0.85;
-        let next = match event.keystroke.key.as_str() {
-            "down" => current.y - line,
-            "up" => current.y + line,
-            "pagedown" => current.y - page,
-            "pageup" => current.y + page,
-            "home" => px(0.),
-            "end" => -max,
-            _ => return,
+        let next = match step {
+            ScrollStep::LineDown => current.y - line,
+            ScrollStep::LineUp => current.y + line,
+            ScrollStep::PageDown => current.y - page,
+            ScrollStep::PageUp => current.y + page,
+            ScrollStep::Top => px(0.),
+            ScrollStep::Bottom => -max,
         };
         self.scroll
             .set_offset(point(current.x, next.clamp(-max, px(0.))));
-        cx.stop_propagation();
         cx.notify();
     }
 
@@ -588,7 +610,25 @@ impl Render for ShortcutsView {
         v_flex()
             .id("shortcuts-editor")
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::on_key_down))
+            .key_context(SHORTCUTS_TAB_CONTEXT)
+            .on_action(cx.listener(|this, _: &SelectDown, window, cx| {
+                this.scroll(ScrollStep::LineDown, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectUp, window, cx| {
+                this.scroll(ScrollStep::LineUp, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectPageDown, window, cx| {
+                this.scroll(ScrollStep::PageDown, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectPageUp, window, cx| {
+                this.scroll(ScrollStep::PageUp, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectFirst, window, cx| {
+                this.scroll(ScrollStep::Top, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectLast, window, cx| {
+                this.scroll(ScrollStep::Bottom, window, cx);
+            }))
             .size_full()
             .min_h_0()
             .bg(cx.theme().background)
