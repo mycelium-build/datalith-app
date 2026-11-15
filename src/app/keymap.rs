@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use gpui_kit::{
-    App, InvalidKeystrokeError, KeyBinding, KeyBindingContextPredicate, Keystroke, Modifiers,
-    OperatingSystem,
+    App, InvalidKeystrokeError, KeyBinding, KeyBindingContextPredicate, KeyContext, Keystroke,
+    Modifiers, OperatingSystem,
 };
 
 pub const fn host_os() -> OperatingSystem {
@@ -113,6 +113,14 @@ use super::actions::{
     SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5, SelectTab6, SelectTab7, SelectTab8,
     ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
+
+/// Representative context stacks, to find where another binding takes a
+/// shortcut's keys: a text field's own keys, or a more specific zone.
+const PLACES: &[(&str, &[&str])] = &[
+    ("while typing", &[WORKSPACE_CONTEXT, NOTE_CONTEXT, "Input"]),
+    ("in notes", &[WORKSPACE_CONTEXT, NOTE_CONTEXT]),
+    ("in bases", &[WORKSPACE_CONTEXT, BASE_CONTEXT]),
+];
 
 /// Shortcuts whose default keys take precedence over a focused text field,
 /// e.g. Open link over the editor's own Cmd/Ctrl+Enter.
@@ -251,6 +259,46 @@ impl ShortcutRegistry {
         let keys = normalize_binding(binding)
             .ok_or_else(|| anyhow::anyhow!("That key combination is not supported."))?;
         self.update_one(id, |binding| binding.keys = Some(keys), cx)
+    }
+
+    /// Where the shortcut `id` would apply but another binding wins its keys.
+    pub(crate) fn shadowed_places(&self, id: &str, cx: &App) -> Vec<&'static str> {
+        let Some((definition, binding)) = SHORTCUTS
+            .iter()
+            .zip(&self.bindings)
+            .find(|(definition, _)| definition.id == id)
+        else {
+            return Vec::new();
+        };
+        let (Some(keys), Some(predicate)) =
+            (binding.keys.as_deref(), definition.predicate(binding))
+        else {
+            return Vec::new();
+        };
+        let (Ok(keystroke), Ok(predicate)) = (
+            parse_keystroke(keys),
+            KeyBindingContextPredicate::parse(&predicate),
+        ) else {
+            return Vec::new();
+        };
+        let keymap = cx.key_bindings();
+        let keymap = keymap.borrow();
+        PLACES
+            .iter()
+            .filter(|(_, stack)| {
+                let stack = stack
+                    .iter()
+                    .filter_map(|context| KeyContext::parse(context).ok())
+                    .collect::<Vec<_>>();
+                predicate.depth_of(&stack).is_some()
+                    && keymap
+                        .bindings_for_input(std::slice::from_ref(&keystroke), &stack)
+                        .0
+                        .first()
+                        .is_none_or(|winner| winner.action().name() != definition.action_name)
+            })
+            .map(|(place, _)| *place)
+            .collect()
     }
 
     pub(crate) fn set_zone(
