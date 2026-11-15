@@ -48,6 +48,28 @@ fn render_pill(label: &str, color: Hsla) -> AnyElement {
         .into_any_element()
 }
 
+/// Binds the priority and date keys, which aren't customizable. They sit
+/// above the task fields, which let these keys through.
+pub fn bind_keys(cx: &mut gpui_kit::App) {
+    cx.bind_keys([
+        gpui_kit::KeyBinding::new(
+            "up",
+            gpui_kit::base::actions::SelectUp,
+            Some(priority::PRIORITY_CONTEXT),
+        ),
+        gpui_kit::KeyBinding::new(
+            "down",
+            gpui_kit::base::actions::SelectDown,
+            Some(priority::PRIORITY_CONTEXT),
+        ),
+        gpui_kit::KeyBinding::new(
+            "escape",
+            gpui_kit::base::actions::Cancel,
+            Some(task_row::DATE_CONTEXT),
+        ),
+    ]);
+}
+
 pub fn reload_todo_txt(
     _path: &Path,
     handler: &mut FileHandler,

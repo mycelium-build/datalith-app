@@ -1,5 +1,6 @@
 use std::ops::{Add, Mul};
 
+use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
@@ -8,7 +9,7 @@ use gpui_kit::component::{ActiveTheme, Disableable, Icon, IconName, Sizable, h_f
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Element, ElementId, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window, div, px,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
@@ -22,6 +23,8 @@ use super::constants::{
     TODO_COL_DATE, TODO_COL_EXPAND, TODO_COL_PRIORITY, TODO_INDENT_PX, TODO_ROW_HEIGHT,
 };
 use super::priority::{PRIORITY_VALUES, PriorityTrigger};
+
+pub(super) const DATE_CONTEXT: &str = "TodoDate";
 
 fn element_id(name: &'static str, index: usize) -> ElementId {
     ElementId::NamedInteger(name.into(), u64::value_from(index).unwrap_or_saturate())
@@ -191,10 +194,9 @@ impl TodoTxtState {
             .items_center()
             .text_sm()
             .child(date_input)
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key == "escape"
-                    && let Some(e) = this.date_inputs.get(&fi)
-                {
+            .key_context(DATE_CONTEXT)
+            .on_action(cx.listener(move |this, _: &Cancel, window, cx| {
+                if let Some(e) = this.date_inputs.get(&fi) {
                     let original = this
                         .workspace
                         .task(fi)
