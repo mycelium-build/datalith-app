@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::handler::ViewMode;
 
-const CURRENT_SCHEMA_VERSION: u32 = 4;
+const CURRENT_SCHEMA_VERSION: u32 = 5;
 const MAX_RECENT_VAULTS: usize = 10;
 pub const DEFAULT_FONT_SCALE: f64 = 1.0;
 pub const MIN_FONT_SCALE: f64 = 0.5;
@@ -218,7 +218,33 @@ pub struct ApplicationSettings {
     pub server: ServerSettings,
     pub automatic_updates: bool,
     pub(crate) open_new_tab_mode: ViewMode,
-    pub(crate) shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
+    pub(crate) shortcut_overrides: std::collections::BTreeMap<String, ShortcutOverride>,
+}
+
+/// A user change to a shortcut. `keys` is `None` when the shortcut was
+/// removed, and `zone` is `None` for the action's default zone.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ShortcutOverride {
+    pub(crate) keys: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) zone: Option<String>,
+}
+
+/// A stored override: schema 4 and earlier saved the keys alone.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+enum StoredShortcutOverride {
+    Legacy(Option<String>),
+    Current(ShortcutOverride),
+}
+
+impl From<StoredShortcutOverride> for ShortcutOverride {
+    fn from(stored: StoredShortcutOverride) -> Self {
+        match stored {
+            StoredShortcutOverride::Legacy(keys) => Self { keys, zone: None },
+            StoredShortcutOverride::Current(shortcut) => shortcut,
+        }
+    }
 }
 
 impl Default for ApplicationSettings {
@@ -281,7 +307,7 @@ struct StoredSettings {
     #[serde(default)]
     open_new_tab_mode: Option<String>,
     #[serde(default)]
-    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
+    shortcut_overrides: std::collections::BTreeMap<String, StoredShortcutOverride>,
 }
 
 const fn schema_version() -> u32 {
@@ -334,20 +360,13 @@ impl StoredSettings {
             shortcut_overrides: self
                 .shortcut_overrides
                 .into_iter()
-                .filter_map(|(id, binding)| {
-                    if id.is_empty() {
-                        return None;
-                    }
-                    match binding {
-                        Some(binding)
-                            if !binding.contains(char::is_whitespace)
-                                && super::keymap::parse_keystroke(&binding).is_ok() =>
-                        {
-                            Some((id, Some(binding)))
-                        }
-                        Some(_) => None,
-                        None => Some((id, None)),
-                    }
+                .filter_map(|(id, stored)| {
+                    let shortcut = ShortcutOverride::from(stored);
+                    let valid_keys = shortcut.keys.as_deref().is_none_or(|keys| {
+                        !keys.contains(char::is_whitespace)
+                            && super::keymap::parse_keystroke(keys).is_ok()
+                    });
+                    (!id.is_empty() && valid_keys).then_some((id, shortcut))
                 })
                 .collect(),
         }
@@ -383,7 +402,16 @@ impl StoredSettings {
                 }
                 .to_owned(),
             ),
-            shortcut_overrides: settings.shortcut_overrides.clone(),
+            shortcut_overrides: settings
+                .shortcut_overrides
+                .iter()
+                .map(|(id, shortcut)| {
+                    (
+                        id.clone(),
+                        StoredShortcutOverride::Current(shortcut.clone()),
+                    )
+                })
+                .collect(),
         }
     }
 }
@@ -483,7 +511,7 @@ fn update(update: impl FnOnce(&mut ApplicationSettings)) -> Result<()> {
 }
 
 pub fn set_shortcut_overrides(
-    shortcut_overrides: std::collections::BTreeMap<String, Option<String>>,
+    shortcut_overrides: std::collections::BTreeMap<String, ShortcutOverride>,
 ) -> Result<()> {
     update(|settings| settings.shortcut_overrides = shortcut_overrides)
 }
@@ -610,6 +638,18 @@ mod tests {
         let settings = stored.normalized();
         assert_eq!(settings.theme_preference, ThemePreference::Dark);
         assert!((settings.font_scale - 1.2).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn schema_4_shortcut_overrides_keep_their_keys_in_the_default_zone() {
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"schema_version":4,"shortcut_overrides":{"new-note":"secondary-x","close-tab":null}}"#,
+        )
+        .unwrap();
+        let overrides = stored.normalized().shortcut_overrides;
+        assert_eq!(overrides["new-note"].keys.as_deref(), Some("secondary-x"));
+        assert_eq!(overrides["new-note"].zone, None);
+        assert_eq!(overrides["close-tab"], ShortcutOverride::default());
     }
 
     #[test]
@@ -742,8 +782,14 @@ mod tests {
         let file = temp_settings_file("shortcut-overrides");
         let mut store = SettingsStore::new(file.clone());
         let overrides = std::collections::BTreeMap::from([
-            ("new-note".to_owned(), Some("secondary-x".to_owned())),
-            ("close-tab".to_owned(), None),
+            (
+                "new-note".to_owned(),
+                ShortcutOverride {
+                    keys: Some("x".to_owned()),
+                    zone: Some("interface".to_owned()),
+                },
+            ),
+            ("close-tab".to_owned(), ShortcutOverride::default()),
         ]);
 
         store
