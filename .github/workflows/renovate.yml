@@ -26,6 +26,8 @@ jobs:
     env:
       # renovate: datasource=npm depName=renovate
       RENOVATE_VERSION: 44.239.1
+      # renovate: datasource=npm depName=npm
+      NPM_VERSION: 11.19.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,6 +37,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
+
+      # npm >=11.10 enforces min-release-age without Renovate's --before retry.
+      # npm 11 satisfies both Node repositories' devEngines constraints.
+      - name: Install npm
+        run: npm install --global "npm@${NPM_VERSION}"
 
       # Renovate runs with binarySource=global: it uses the cargo, npm and tools on PATH.
       - name: Install Rust toolchain
