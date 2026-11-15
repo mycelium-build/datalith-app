@@ -50,6 +50,7 @@ pub fn bind_keys(cx: &mut gpui_kit::App) {
     sidebar::bind_keys(cx);
     palette::bind_keys(cx);
     modal::bind_keys(cx);
+    shortcuts::bind_keys(cx);
 }
 
 // The view tracks several independent one-shot UI flags (focus requests, refresh notifications) that are read and cleared during rendering;
