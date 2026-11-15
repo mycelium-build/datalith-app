@@ -57,6 +57,12 @@ actions!(
         GoForward,
         OpenLink,
         Quit,
+        ToggleTask,
+        AddSubtask,
+        DeleteTask,
+        PreviousTask,
+        NextTask,
+        SearchTasks,
     ]
 );
 

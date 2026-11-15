@@ -34,6 +34,8 @@ pub enum ShortcutZone {
     Interface,
     /// In a note, in edit and view modes.
     Note,
+    /// In a todo list.
+    TodoList,
     /// In a base, in edit and view modes.
     Base,
 }
@@ -47,6 +49,7 @@ impl ShortcutZone {
             Self::Global => WORKSPACE_CONTEXT,
             Self::Interface => "Workspace && !Input",
             Self::Note => NOTE_CONTEXT,
+            Self::TodoList => TODO_LIST_CONTEXT,
             Self::Base => BASE_CONTEXT,
         }
     }
@@ -57,6 +60,7 @@ impl ShortcutZone {
             Self::Global => "global",
             Self::Interface => "interface",
             Self::Note => "note",
+            Self::TodoList => "todo-list",
             Self::Base => "base",
         }
     }
@@ -67,15 +71,16 @@ impl ShortcutZone {
             Self::Global => "Everywhere",
             Self::Interface => "Outside text fields",
             Self::Note => "Notes",
+            Self::TodoList => "Todo lists",
             Self::Base => "Bases",
         }
     }
 
     /// Whether `keys` can act in this zone. Focus is almost always in a text
-    /// field of a note, so a key needs a modifier there, or must be a
-    /// function key.
+    /// field of a note or a todo list, so a key needs a modifier there, or
+    /// must be a function key.
     pub(crate) fn accepts(self, keys: &str) -> bool {
-        if self != Self::Note {
+        if !matches!(self, Self::Note | Self::TodoList) {
             return true;
         }
         let Ok(keystroke) = parse_keystroke(keys) else {
@@ -86,9 +91,15 @@ impl ShortcutZone {
     }
 
     fn from_id(id: &str) -> Option<Self> {
-        [Self::Global, Self::Interface, Self::Note, Self::Base]
-            .into_iter()
-            .find(|zone| zone.id() == id)
+        [
+            Self::Global,
+            Self::Interface,
+            Self::Note,
+            Self::TodoList,
+            Self::Base,
+        ]
+        .into_iter()
+        .find(|zone| zone.id() == id)
     }
 }
 
@@ -107,6 +118,7 @@ fn is_secondary(modifiers: Modifiers) -> bool {
 
 use super::settings::ShortcutOverride;
 
+use super::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, SearchTasks, ToggleTask};
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
     NewTab, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts, Quit, Rename, SelectLastTab,
@@ -119,12 +131,24 @@ use super::actions::{
 const PLACES: &[(&str, &[&str])] = &[
     ("while typing", &[WORKSPACE_CONTEXT, NOTE_CONTEXT, "Input"]),
     ("in notes", &[WORKSPACE_CONTEXT, NOTE_CONTEXT]),
+    (
+        "in todo lists",
+        &[WORKSPACE_CONTEXT, TODO_LIST_CONTEXT, "Input"],
+    ),
     ("in bases", &[WORKSPACE_CONTEXT, BASE_CONTEXT]),
 ];
 
 /// Shortcuts whose default keys take precedence over a focused text field,
 /// e.g. Open link over the editor's own Cmd/Ctrl+Enter.
-const DEFAULTS_OVER_FIELDS: &[&str] = &["open-link"];
+const DEFAULTS_OVER_FIELDS: &[&str] = &[
+    "open-link",
+    "toggle-task",
+    "add-subtask",
+    "delete-task",
+    "previous-task",
+    "next-task",
+    "search-tasks",
+];
 
 /// Static shortcut metadata, default binding, and action constructors.
 #[derive(Clone, Copy)]
@@ -621,6 +645,55 @@ shortcuts!(
         [Global],
         "Show shortcuts",
         OpenShortcuts
+    ),
+    // Todo list
+    (
+        "toggle-task",
+        "Todo list",
+        "enter",
+        [TodoList],
+        "Complete task",
+        ToggleTask
+    ),
+    (
+        "add-subtask",
+        "Todo list",
+        "shift-enter",
+        [TodoList],
+        "Add subtask",
+        AddSubtask
+    ),
+    (
+        "delete-task",
+        "Todo list",
+        "secondary-shift-backspace",
+        [TodoList],
+        "Delete task",
+        DeleteTask
+    ),
+    (
+        "previous-task",
+        "Todo list",
+        "up",
+        [TodoList],
+        "Previous task",
+        PreviousTask
+    ),
+    (
+        "next-task",
+        "Todo list",
+        "down",
+        [TodoList],
+        "Next task",
+        NextTask
+    ),
+    (
+        "search-tasks",
+        "Todo list",
+        "secondary-f",
+        [TodoList],
+        "Search tasks",
+        SearchTasks
     ),
 );
 

@@ -14,6 +14,7 @@ use gpui_kit::{
 use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
 use txtodo::{Priority, Task};
 
+use crate::app::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, ToggleTask};
 use crate::document::todo_txt::parse_date;
 
 use super::TodoTxtState;
@@ -228,27 +229,32 @@ impl TodoTxtState {
             .flex_1()
             .items_center()
             .child(desc_input)
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                match event.keystroke.key.as_str() {
-                    "enter"
-                        if !this.workspace.is_read_only() && event.keystroke.modifiers.shift =>
-                    {
-                        this.add_subtask(fi, cx);
-                    }
-                    "enter" if !this.workspace.is_read_only() => {
-                        this.toggle_complete(fi, window, cx);
-                    }
-                    "backspace"
-                        if !this.workspace.is_read_only()
-                            && event.keystroke.modifiers.shift
-                            && event.keystroke.modifiers.secondary(cx) =>
-                    {
-                        this.delete_task(fi, window, cx);
-                    }
-                    "up" => this.focus_previous_task(fi, window, cx),
-                    "down" => this.focus_next_task(fi, window, cx),
-                    _ => {}
+            .on_action(cx.listener(move |this, _: &AddSubtask, _, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.add_subtask(fi, cx);
                 }
+            }))
+            .on_action(cx.listener(move |this, _: &ToggleTask, window, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.toggle_complete(fi, window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &DeleteTask, window, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.delete_task(fi, window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &PreviousTask, window, cx| {
+                this.focus_previous_task(fi, window, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &NextTask, window, cx| {
+                this.focus_next_task(fi, window, cx);
             }))
             .into_any_element()
     }

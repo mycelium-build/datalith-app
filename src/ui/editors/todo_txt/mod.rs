@@ -134,7 +134,6 @@ impl TodoTxtEditor {
                 &filter_select,
                 &sort_select,
                 &new_task_input,
-                &editor_focus,
                 window,
                 cx,
             );
@@ -166,7 +165,6 @@ impl TodoTxtEditor {
         filter_select: &Entity<SelectState<Vec<String>>>,
         sort_select: &Entity<SelectState<Vec<String>>>,
         new_task_input: &Entity<InputState>,
-        editor_focus: &FocusHandle,
         window: &Window,
         cx: &mut Context<TodoTxtState>,
     ) -> Vec<Subscription> {
@@ -220,22 +218,6 @@ impl TodoTxtEditor {
                 }
             },
         ));
-
-        let entity = cx.entity();
-        let ef = editor_focus.clone();
-        subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
-            if event.keystroke.key.as_str() == "f"
-                && event.keystroke.modifiers.secondary(cx)
-                && !event.keystroke.modifiers.shift
-                && !event.keystroke.modifiers.alt
-                && ef.contains_focused(window, cx)
-            {
-                entity.update(cx, |this, cx| {
-                    this.search_input.focus_handle(cx).focus(window, cx);
-                });
-                cx.stop_propagation();
-            }
-        }));
 
         subscriptions
     }
