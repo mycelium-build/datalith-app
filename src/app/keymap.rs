@@ -89,10 +89,13 @@ impl ShortcutDefinition {
     /// The context predicate for `keys`. Datalith's own defaults may also
     /// match inside a text field of the zone, at the field's depth, where
     /// they win because they're registered after the component bindings.
+    /// Keys that type a character never match inside a text field.
     fn predicate(&self, keys: &str) -> String {
         let zone = self.zone.predicate();
         if DEFAULTS_OVER_FIELDS.contains(&self.id) && same_binding(keys, self.binding) {
             format!("{zone} > Input || {zone}")
+        } else if types_character(keys) && self.zone != ShortcutZone::Interface {
+            format!("{zone} && !Input")
         } else {
             zone.to_owned()
         }
@@ -545,6 +548,22 @@ fn assign(bindings: &mut [Option<String>], index: usize, binding: Option<String>
     }
 }
 
+/// Whether `keys` would type a character in a text field: a printable key
+/// alone or with Shift, or on macOS with Option but neither Cmd nor Ctrl.
+fn types_character(keys: &str) -> bool {
+    let Ok(keystroke) = parse_keystroke(keys) else {
+        return false;
+    };
+    let modifiers = keystroke.modifiers;
+    if modifiers.control || modifiers.platform || modifiers.function {
+        return false;
+    }
+    if modifiers.alt && host_os() != OperatingSystem::Mac {
+        return false;
+    }
+    keystroke.key == "space" || keystroke.key.chars().count() == 1
+}
+
 fn same_binding(first: &str, second: &str) -> bool {
     matches!(
         (parse_keystroke(first), parse_keystroke(second)),
@@ -728,6 +747,23 @@ mod tests {
                 .0
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn character_keys_are_kept_out_of_text_fields() {
+        for keys in ["a", "shift-a", "1", "space", "["] {
+            assert!(super::types_character(keys), "{keys}");
+        }
+        for keys in [
+            "f2",
+            "secondary-a",
+            "enter",
+            "shift-up",
+            "secondary-shift-5",
+        ] {
+            assert!(!super::types_character(keys), "{keys}");
+        }
+        assert_eq!(super::types_character("alt-5"), cfg!(target_os = "macos"));
     }
 
     #[test]
