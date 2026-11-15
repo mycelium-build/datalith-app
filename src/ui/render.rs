@@ -1,6 +1,6 @@
 use super::{DatalithView, PendingOpen};
 use gpui_kit::component::{
-    ActiveTheme, Icon, IconName, Root, Sizable, WindowExt,
+    ActiveTheme, Icon, IconName, Sizable, WindowExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     resizable::{h_resizable, resizable_panel},
@@ -122,12 +122,7 @@ impl Render for DatalithView {
                 window,
                 cx,
             ))
-            .child(
-                layout
-                    .children(Root::render_notification_layer(window, cx))
-                    .children(self.startup.clone()),
-            )
-            .children(Root::render_dialog_layer(window, cx))
+            .child(layout.children(self.startup.clone()))
     }
 }
 

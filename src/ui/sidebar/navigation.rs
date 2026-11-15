@@ -16,7 +16,7 @@ impl DatalithView {
     ) {
         let modifiers = event.keystroke.modifiers;
         match event.keystroke.key.as_str() {
-            "z" if modifiers.secondary()
+            "z" if modifiers.secondary(cx)
                 && !modifiers.shift
                 && !modifiers.alt
                 && self.rename_target.is_none() =>

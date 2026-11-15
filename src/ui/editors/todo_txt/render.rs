@@ -345,7 +345,7 @@ impl TodoTxtState {
                     )
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                         match event.keystroke.key.as_str() {
-                            "enter" if !event.keystroke.modifiers.secondary() => {
+                            "enter" if !event.keystroke.modifiers.secondary(cx) => {
                                 this.add_task(window, cx);
                             }
                             "up" => {

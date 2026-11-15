@@ -12,7 +12,7 @@ use gpui_kit::component::{ActiveTheme, ElementExt, Theme, WindowExt, h_flex};
 use gpui_kit::{
     AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    ScrollDelta, ScrollWheelEvent, Styled, WeakEntity, Window, div, point, px,
+    ScrollDelta, ScrollEvent, Styled, WeakEntity, Window, div, point, px,
 };
 
 use crate::document::base::GraphConfig;
@@ -267,12 +267,7 @@ impl GraphState {
         cx.notify();
     }
 
-    fn handle_scroll(
-        &mut self,
-        event: &ScrollWheelEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn handle_scroll(&mut self, event: &ScrollEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(local) = self.local_position(event.position) else {
             return;
         };
@@ -329,7 +324,7 @@ impl GraphState {
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
             .on_mouse_move(cx.listener(Self::handle_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
-            .on_scroll_wheel(cx.listener(Self::handle_scroll))
+            .on_scroll(cx.listener(Self::handle_scroll))
             .on_prepaint(move |bounds, _window, cx| update_canvas_bounds(&entity, bounds, cx))
             .child(
                 gpui_kit::canvas(

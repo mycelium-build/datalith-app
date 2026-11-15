@@ -286,7 +286,7 @@ impl MarkdownViewer {
                                     Self::emit_link_clicked(
                                         &handler,
                                         link_url.clone(),
-                                        event.modifiers().secondary(),
+                                        event.modifiers().secondary(cx),
                                         cx,
                                     );
                                 })

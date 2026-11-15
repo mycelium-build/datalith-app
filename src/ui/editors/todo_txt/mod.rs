@@ -225,7 +225,7 @@ impl TodoTxtEditor {
         let ef = editor_focus.clone();
         subscriptions.push(cx.intercept_keystrokes(move |event, window, cx| {
             if event.keystroke.key.as_str() == "f"
-                && event.keystroke.modifiers.secondary()
+                && event.keystroke.modifiers.secondary(cx)
                 && ef.contains_focused(window, cx)
             {
                 entity.update(cx, |this, cx| {

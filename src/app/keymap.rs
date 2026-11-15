@@ -1,6 +1,32 @@
 use std::collections::BTreeMap;
 
-use gpui_kit::{App, KeyBinding, Keystroke, Unbind};
+use gpui_kit::{
+    App, InvalidKeystrokeError, KeyBinding, Keystroke, Modifiers, OperatingSystem, Unbind,
+};
+
+pub const fn host_os() -> OperatingSystem {
+    std::cfg_select! {
+        target_os = "macos" => OperatingSystem::Mac,
+        target_os = "windows" => OperatingSystem::Windows,
+        target_os = "freebsd" => OperatingSystem::FreeBsd,
+        target_os = "ios" => OperatingSystem::Ios,
+        target_os = "android" => OperatingSystem::Android,
+        _ => OperatingSystem::Linux,
+    }
+}
+
+/// Parse a (possibly `secondary-` prefixed) keystroke for the host OS.
+pub fn parse_keystroke(source: &str) -> Result<Keystroke, InvalidKeystrokeError> {
+    Keystroke::parse_with_os(source, host_os())
+}
+
+fn is_secondary(modifiers: Modifiers) -> bool {
+    if host_os() == OperatingSystem::Mac {
+        modifiers.platform
+    } else {
+        modifiers.control
+    }
+}
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -16,8 +42,8 @@ struct ShortcutDefinition {
     category: &'static str,
     binding: &'static str, // a string because GPUI represents it like this
     description: &'static str,
-    make_binding: fn(&str) -> KeyBinding,
-    make_unbind: fn(&str) -> KeyBinding,
+    make_binding: fn(&str, &App) -> KeyBinding,
+    make_unbind: fn(&str, &App) -> KeyBinding,
 }
 
 /// A shortcut with its effective binding after applying user overrides.
@@ -119,7 +145,8 @@ impl ShortcutRegistry {
     fn replace(&mut self, next: Vec<Option<String>>, cx: &mut App) -> anyhow::Result<()> {
         let previous = std::mem::replace(&mut self.bindings, next);
         let persistence = super::settings::set_shortcut_overrides(overrides_for(&self.bindings));
-        cx.bind_keys(binding_operations(&previous, &self.bindings));
+        let operations = binding_operations(&previous, &self.bindings, cx);
+        cx.bind_keys(operations);
         super::menus::install(cx);
         persistence
     }
@@ -133,9 +160,20 @@ macro_rules! shortcuts {
                 category: $category,
                 binding: $keys,
                 description: $description,
-                make_binding: |keys| KeyBinding::new(keys, $action, None),
-                make_unbind: |keys| {
-                    KeyBinding::new(keys, Unbind(concat!("datalith::", stringify!($action)).into()), None)
+                make_binding: |keys, cx| {
+                    KeyBinding::load(keys, Box::new($action), None, false, None, cx)
+                        .expect("shortcut binding should parse")
+                },
+                make_unbind: |keys, cx| {
+                    KeyBinding::load(
+                        keys,
+                        Box::new(Unbind(concat!("datalith::", stringify!($action)).into())),
+                        None,
+                        false,
+                        None,
+                        cx,
+                    )
+                    .expect("shortcut binding should parse")
                 },
             }),*
         ];
@@ -307,7 +345,10 @@ shortcuts!(
 );
 
 pub fn display_binding(binding: &str) -> String {
-    Keystroke::parse(binding).map_or_else(|_| binding.to_owned(), |keystroke| keystroke.to_string())
+    parse_keystroke(binding).map_or_else(
+        |_| binding.to_owned(),
+        |keystroke| keystroke.display(host_os()).to_string(),
+    )
 }
 
 /// The display label for an optional binding.
@@ -321,21 +362,28 @@ pub fn register(cx: &mut App) {
         .bindings
         .into_iter()
         .zip(SHORTCUTS)
-        .filter_map(|(binding, definition)| binding.map(|keys| (definition.make_binding)(&keys)));
+        .filter_map(|(binding, definition)| {
+            binding.map(|keys| (definition.make_binding)(&keys, cx))
+        })
+        .collect::<Vec<_>>();
     cx.bind_keys(bindings);
 }
 
 /// Replaces just Datalith-owned bindings, leaving component and GPUI bindings intact.
-fn binding_operations(previous: &[Option<String>], next: &[Option<String>]) -> Vec<KeyBinding> {
+fn binding_operations(
+    previous: &[Option<String>],
+    next: &[Option<String>],
+    cx: &App,
+) -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
     for (definition, binding) in SHORTCUTS.iter().zip(previous) {
         if let Some(binding) = binding {
-            bindings.push((definition.make_unbind)(binding));
+            bindings.push((definition.make_unbind)(binding, cx));
         }
     }
     for (definition, binding) in SHORTCUTS.iter().zip(next) {
         if let Some(binding) = binding {
-            bindings.push((definition.make_binding)(binding));
+            bindings.push((definition.make_binding)(binding, cx));
         }
     }
     bindings
@@ -397,11 +445,14 @@ fn assign(bindings: &mut [Option<String>], index: usize, binding: Option<String>
 }
 
 fn same_binding(first: &str, second: &str) -> bool {
-    matches!((Keystroke::parse(first), Keystroke::parse(second)), (Ok(first), Ok(second)) if first == second)
+    matches!(
+        (parse_keystroke(first), parse_keystroke(second)),
+        (Ok(first), Ok(second)) if first == second
+    )
 }
 
 pub fn normalize_binding(binding: &str) -> Option<String> {
-    let keystroke = Keystroke::parse(binding).ok()?;
+    let keystroke = parse_keystroke(binding).ok()?;
     if keystroke.key.is_empty() {
         return None;
     }
@@ -417,7 +468,7 @@ pub fn normalize_binding(binding: &str) -> Option<String> {
 fn serialize_keystroke(keystroke: &Keystroke) -> String {
     let modifiers = &keystroke.modifiers;
     let mut parts = Vec::new();
-    if modifiers.secondary() {
+    if is_secondary(*modifiers) {
         parts.push("secondary".to_owned());
     }
     if cfg!(target_os = "macos") {
@@ -449,9 +500,11 @@ pub fn captured_binding(keystroke: &Keystroke) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_bindings, display_binding, effective_bindings, overrides_for};
+    use super::{
+        default_bindings, display_binding, effective_bindings, overrides_for, parse_keystroke,
+    };
     use crate::app::actions::Quit;
-    use gpui_kit::{KeyBinding, KeyContext, Keymap, Keystroke, actions};
+    use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, Unbind, actions};
     use std::collections::BTreeMap;
 
     actions!(
@@ -461,6 +514,33 @@ mod tests {
             ComponentAction
         ]
     );
+
+    #[cfg(target_os = "macos")]
+    const SECONDARY_PREFIX: &str = "cmd";
+    #[cfg(not(target_os = "macos"))]
+    const SECONDARY_PREFIX: &str = "ctrl";
+
+    fn secondary_keys(suffix: &str) -> &'static str {
+        match (SECONDARY_PREFIX, suffix) {
+            ("cmd", "q") => "cmd-q",
+            ("ctrl", "q") => "ctrl-q",
+            ("cmd", "x") => "cmd-x",
+            ("ctrl", "x") => "ctrl-x",
+            _ => unreachable!("test keys are only q and x"),
+        }
+    }
+
+    fn binding<A: Action>(suffix: &str, action: A) -> KeyBinding {
+        KeyBinding::new(secondary_keys(suffix), action, None)
+    }
+
+    fn quit_binding(suffix: &str) -> KeyBinding {
+        binding(suffix, Quit)
+    }
+
+    fn quit_unbind(suffix: &str) -> KeyBinding {
+        binding(suffix, Unbind("datalith::Quit".into()))
+    }
 
     #[test]
     fn displays_secondary_with_platform_conventions() {
@@ -520,18 +600,11 @@ mod tests {
 
     #[test]
     fn replacing_a_datalith_binding_preserves_other_actions() {
-        let previous = default_bindings();
-        let mut next = previous.clone();
-        next[0] = Some("secondary-x".into());
-
-        let mut keymap = Keymap::new(vec![
-            KeyBinding::new("secondary-q", Quit, None),
-            KeyBinding::new("secondary-q", ComponentAction, None),
-        ]);
-        keymap.add_bindings(super::binding_operations(&previous, &next));
+        let mut keymap = Keymap::new(vec![quit_binding("q"), binding("q", ComponentAction)]);
+        keymap.add_bindings(vec![quit_unbind("q"), quit_binding("x")]);
 
         let (old_key, _) = keymap.bindings_for_input(
-            &[Keystroke::parse("secondary-q").expect("valid key")],
+            &[parse_keystroke("secondary-q").expect("valid key")],
             &[KeyContext::default()],
         );
         assert!(
@@ -546,7 +619,7 @@ mod tests {
         );
 
         let (new_key, _) = keymap.bindings_for_input(
-            &[Keystroke::parse("secondary-x").expect("valid key")],
+            &[parse_keystroke("secondary-x").expect("valid key")],
             &[KeyContext::default()],
         );
         assert!(
@@ -558,17 +631,11 @@ mod tests {
 
     #[test]
     fn replacing_bindings_does_not_restore_a_default_after_multiple_edits() {
-        let first = default_bindings();
-        let mut second = first.clone();
-        second[0] = Some("secondary-x".into());
-        let mut third = second.clone();
-        third[0] = None;
-
-        let mut keymap = Keymap::new(vec![KeyBinding::new("secondary-q", Quit, None)]);
-        keymap.add_bindings(super::binding_operations(&first, &second));
-        keymap.add_bindings(super::binding_operations(&second, &third));
+        let mut keymap = Keymap::new(vec![quit_binding("q")]);
+        keymap.add_bindings(vec![quit_unbind("q"), quit_binding("x")]);
+        keymap.add_bindings(vec![quit_unbind("x")]);
         let (old_key, _) = keymap.bindings_for_input(
-            &[Keystroke::parse("secondary-q").expect("valid key")],
+            &[parse_keystroke("secondary-q").expect("valid key")],
             &[KeyContext::default()],
         );
         assert!(
