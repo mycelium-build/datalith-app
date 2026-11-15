@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
-use gpui_kit::{App, InvalidKeystrokeError, KeyBinding, Keystroke, Modifiers, OperatingSystem};
+use gpui_kit::{
+    App, InvalidKeystrokeError, KeyBinding, KeyBindingContextPredicate, Keystroke, Modifiers,
+    OperatingSystem,
+};
 
 pub const fn host_os() -> OperatingSystem {
     std::cfg_select! {
@@ -20,6 +24,30 @@ pub const WORKSPACE_CONTEXT: &str = "Workspace";
 pub const NOTE_CONTEXT: &str = "Note";
 pub const TODO_LIST_CONTEXT: &str = "TodoList";
 pub const BASE_CONTEXT: &str = "Base";
+
+/// Where a shortcut applies.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutZone {
+    /// Everywhere in the workspace.
+    Global,
+    /// In the workspace, except while a text field has focus.
+    Interface,
+    /// In a note, in edit and view modes.
+    Note,
+}
+
+impl ShortcutZone {
+    /// The key context predicate that enables a shortcut in this zone.
+    /// Every zone sits above a text field in the context stack, so the
+    /// field's own bindings win on a conflict.
+    const fn predicate(self) -> &'static str {
+        match self {
+            Self::Global => WORKSPACE_CONTEXT,
+            Self::Interface => "Workspace && !Input",
+            Self::Note => NOTE_CONTEXT,
+        }
+    }
+}
 
 /// Parse a (possibly `secondary-` prefixed) keystroke for the host OS.
 pub fn parse_keystroke(source: &str) -> Result<Keystroke, InvalidKeystrokeError> {
@@ -41,15 +69,34 @@ use super::actions::{
     ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
+/// Shortcuts whose default keys take precedence over a focused text field,
+/// e.g. Open link over the editor's own Cmd/Ctrl+Enter.
+const DEFAULTS_OVER_FIELDS: &[&str] = &["open-link"];
+
 /// Static shortcut metadata, default binding, and action constructors.
 #[derive(Clone, Copy)]
 struct ShortcutDefinition {
     id: &'static str,
     category: &'static str,
     binding: &'static str, // a string because GPUI represents it like this
+    zone: ShortcutZone,
     description: &'static str,
     action_name: &'static str,
-    make_binding: fn(&str, &App) -> Option<KeyBinding>,
+    make_binding: fn(&str, &str, &App) -> Option<KeyBinding>,
+}
+
+impl ShortcutDefinition {
+    /// The context predicate for `keys`. Datalith's own defaults may also
+    /// match inside a text field of the zone, at the field's depth, where
+    /// they win because they're registered after the component bindings.
+    fn predicate(&self, keys: &str) -> String {
+        let zone = self.zone.predicate();
+        if DEFAULTS_OVER_FIELDS.contains(&self.id) && same_binding(keys, self.binding) {
+            format!("{zone} > Input || {zone}")
+        } else {
+            zone.to_owned()
+        }
+    }
 }
 
 /// A shortcut with its effective binding after applying user overrides.
@@ -164,9 +211,9 @@ impl ShortcutRegistry {
             .iter()
             .zip(&self.bindings)
             .filter_map(|(definition, binding)| {
-                binding
-                    .as_deref()
-                    .and_then(|keys| (definition.make_binding)(keys, cx))
+                binding.as_deref().and_then(|keys| {
+                    (definition.make_binding)(keys, &definition.predicate(keys), cx)
+                })
             })
             .collect::<Vec<_>>();
         let others = other_bindings(cx.key_bindings().borrow().bindings());
@@ -176,16 +223,18 @@ impl ShortcutRegistry {
 }
 
 macro_rules! shortcuts {
-    ($(($id:literal, $category:literal, $keys:literal, $description:literal, $action:ident)),* $(,)?) => {
+    ($(($id:literal, $category:literal, $keys:literal, $zone:ident, $description:literal, $action:ident)),* $(,)?) => {
         const SHORTCUTS: &[ShortcutDefinition] = &[
             $(ShortcutDefinition {
                 id: $id,
                 category: $category,
                 binding: $keys,
+                zone: ShortcutZone::$zone,
                 description: $description,
                 action_name: concat!("datalith::", stringify!($action)),
-                make_binding: |keys, cx| {
-                    KeyBinding::load(keys, Box::new($action), None, false, None, cx).ok()
+                make_binding: |keys, predicate, cx| {
+                    let predicate = KeyBindingContextPredicate::parse(predicate).ok()?;
+                    KeyBinding::load(keys, Box::new($action), Some(Rc::new(predicate)), false, None, cx).ok()
                 },
             }),*
         ];
@@ -195,31 +244,62 @@ macro_rules! shortcuts {
 shortcuts!(
     // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
     // File
-    ("quit", "File", "secondary-q", "Quit", Quit),
-    ("new-note", "File", "secondary-n", "New note", NewFile),
+    ("quit", "File", "secondary-q", Global, "Quit", Quit),
+    (
+        "new-note",
+        "File",
+        "secondary-n",
+        Global,
+        "New note",
+        NewFile
+    ),
     (
         "new-folder",
         "File",
         "secondary-shift-n",
+        Global,
         "New folder",
         NewFolder
     ),
-    ("rename", "File", "f2", "Rename", Rename),
-    ("delete", "File", "secondary-backspace", "Delete", Delete),
-    ("duplicate", "File", "secondary-d", "Duplicate", Duplicate),
+    ("rename", "File", "f2", Global, "Rename", Rename),
+    (
+        "delete",
+        "File",
+        "secondary-backspace",
+        Interface,
+        "Delete",
+        Delete
+    ),
+    (
+        "duplicate",
+        "File",
+        "secondary-d",
+        Global,
+        "Duplicate",
+        Duplicate
+    ),
     (
         "open-in-explorer",
         "File",
         "secondary-shift-e",
+        Global,
         "Open in Explorer",
         OpenInExplorer
     ),
-    ("copy-path", "File", "secondary-l", "Copy path", CopyPath),
+    (
+        "copy-path",
+        "File",
+        "secondary-l",
+        Global,
+        "Copy path",
+        CopyPath
+    ),
     // Navigation
     (
         "quick-switcher",
         "Navigation",
         "secondary-p",
+        Global,
         "Quick switcher",
         ToggleQuickSwitcher
     ),
@@ -227,6 +307,7 @@ shortcuts!(
         "focus-sidebar",
         "Navigation",
         "secondary-0",
+        Global,
         "Focus sidebar",
         FocusSidebar
     ),
@@ -234,6 +315,7 @@ shortcuts!(
         "navigate-back",
         "Navigation",
         "secondary-[",
+        Global,
         "Navigate back",
         GoBack
     ),
@@ -241,6 +323,7 @@ shortcuts!(
         "navigate-forward",
         "Navigation",
         "secondary-]",
+        Global,
         "Navigate forward",
         GoForward
     ),
@@ -248,16 +331,25 @@ shortcuts!(
         "open-link",
         "Navigation",
         "secondary-enter",
+        Note,
         "Open link",
         OpenLink
     ),
     // Tabs
-    ("new-tab", "Tabs", "secondary-t", "New tab", NewTab),
-    ("close-tab", "Tabs", "secondary-w", "Close tab", CloseTab),
+    ("new-tab", "Tabs", "secondary-t", Global, "New tab", NewTab),
+    (
+        "close-tab",
+        "Tabs",
+        "secondary-w",
+        Global,
+        "Close tab",
+        CloseTab
+    ),
     (
         "select-tab-1",
         "Tabs",
         "secondary-1",
+        Global,
         "Select tab 1",
         SelectTab1
     ),
@@ -265,6 +357,7 @@ shortcuts!(
         "select-tab-2",
         "Tabs",
         "secondary-2",
+        Global,
         "Select tab 2",
         SelectTab2
     ),
@@ -272,6 +365,7 @@ shortcuts!(
         "select-tab-3",
         "Tabs",
         "secondary-3",
+        Global,
         "Select tab 3",
         SelectTab3
     ),
@@ -279,6 +373,7 @@ shortcuts!(
         "select-tab-4",
         "Tabs",
         "secondary-4",
+        Global,
         "Select tab 4",
         SelectTab4
     ),
@@ -286,6 +381,7 @@ shortcuts!(
         "select-tab-5",
         "Tabs",
         "secondary-5",
+        Global,
         "Select tab 5",
         SelectTab5
     ),
@@ -293,6 +389,7 @@ shortcuts!(
         "select-tab-6",
         "Tabs",
         "secondary-6",
+        Global,
         "Select tab 6",
         SelectTab6
     ),
@@ -300,6 +397,7 @@ shortcuts!(
         "select-tab-7",
         "Tabs",
         "secondary-7",
+        Global,
         "Select tab 7",
         SelectTab7
     ),
@@ -307,6 +405,7 @@ shortcuts!(
         "select-tab-8",
         "Tabs",
         "secondary-8",
+        Global,
         "Select tab 8",
         SelectTab8
     ),
@@ -314,6 +413,7 @@ shortcuts!(
         "select-last-tab",
         "Tabs",
         "secondary-9",
+        Global,
         "Select last tab",
         SelectLastTab
     ),
@@ -322,6 +422,7 @@ shortcuts!(
         "search-files",
         "View",
         "secondary-shift-f",
+        Global,
         "Search files",
         ToggleSearch
     ),
@@ -329,6 +430,7 @@ shortcuts!(
         "toggle-editor-mode",
         "View",
         "secondary-e",
+        Global,
         "Toggle edit / view",
         ToggleEditorMode
     ),
@@ -336,6 +438,7 @@ shortcuts!(
         "toggle-theme",
         "View",
         "secondary-shift-d",
+        Global,
         "Toggle theme",
         ToggleTheme
     ),
@@ -343,6 +446,7 @@ shortcuts!(
         "open-settings",
         "View",
         "secondary-,",
+        Global,
         "Open settings",
         OpenSettings
     ),
@@ -351,6 +455,7 @@ shortcuts!(
         "show-shortcuts",
         "Help",
         "secondary-/",
+        Global,
         "Show shortcuts",
         OpenShortcuts
     ),
@@ -497,7 +602,8 @@ pub fn captured_binding(keystroke: &Keystroke) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_bindings, display_binding, effective_bindings, overrides_for, parse_keystroke,
+        SHORTCUTS, ShortcutZone, default_bindings, display_binding, effective_bindings,
+        overrides_for, parse_keystroke,
     };
     use crate::app::actions::Quit;
     use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, actions};
@@ -588,6 +694,60 @@ mod tests {
         let effective = effective_bindings(&overrides);
         assert_eq!(effective[1], None);
         assert_eq!(effective[2].as_deref(), Some("secondary-x"));
+    }
+
+    #[test]
+    fn zones_yield_to_text_field_bindings() {
+        let ctrl_backspace = [parse_keystroke("ctrl-backspace").expect("valid key")];
+        let ctrl_k = [parse_keystroke("ctrl-k").expect("valid key")];
+        let keymap = Keymap::new(vec![
+            KeyBinding::new("ctrl-backspace", ComponentAction, Some("Input")),
+            KeyBinding::new(
+                "ctrl-backspace",
+                Quit,
+                Some(ShortcutZone::Global.predicate()),
+            ),
+            KeyBinding::new("ctrl-k", Quit, Some(ShortcutZone::Interface.predicate())),
+        ]);
+        let workspace = KeyContext::parse("Workspace").expect("valid context");
+        let input = KeyContext::parse("Input").expect("valid context");
+        let typing = [workspace.clone(), input];
+        let outside_fields = [workspace];
+
+        let in_field = keymap.bindings_for_input(&ctrl_backspace, &typing).0;
+        assert!(in_field[0].action().partial_eq(&ComponentAction));
+        let outside = keymap
+            .bindings_for_input(&ctrl_backspace, &outside_fields)
+            .0;
+        assert!(outside[0].action().partial_eq(&Quit));
+
+        assert!(keymap.bindings_for_input(&ctrl_k, &typing).0.is_empty());
+        assert!(
+            !keymap
+                .bindings_for_input(&ctrl_k, &outside_fields)
+                .0
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn default_over_fields_beats_the_field_binding() {
+        let open_link = SHORTCUTS
+            .iter()
+            .find(|definition| definition.id == "open-link")
+            .expect("open-link is a shortcut");
+        let predicate = open_link.predicate(open_link.binding);
+        let keymap = Keymap::new(vec![
+            KeyBinding::new("ctrl-enter", ComponentAction, Some("Input")),
+            KeyBinding::new("ctrl-enter", Quit, Some(&predicate)),
+        ]);
+        let stack = ["Workspace", "Note", "Input"]
+            .map(|context| KeyContext::parse(context).expect("valid context"));
+
+        let ctrl_enter = [parse_keystroke("ctrl-enter").expect("valid key")];
+        let matched = keymap.bindings_for_input(&ctrl_enter, &stack).0;
+        assert!(matched[0].action().partial_eq(&Quit));
+        assert_ne!(open_link.predicate("secondary-o"), predicate);
     }
 
     #[test]
