@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
+use gpui_kit::base::actions::{Cancel, SelectDown, SelectUp};
 use gpui_kit::component::{
     ActiveTheme, Icon, VirtualListScrollHandle, h_flex,
     input::{Input, InputEvent, InputState},
     v_flex, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, AppContext, Context, ElementId, Entity, Focusable, FontWeight, HighlightStyle,
-    Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, ScrollStrategy,
+    AnyElement, App, AppContext, Context, ElementId, Entity, Focusable, FontWeight, HighlightStyle,
+    Hsla, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, ScrollStrategy,
     SharedString, Size, StatefulInteractiveElement, Styled, StyledText, Subscription, Window, div,
     px, size,
 };
@@ -17,6 +18,7 @@ use crate::vault::VaultCatalog;
 use crate::vault::path::display_name;
 use crate::vault::search::{SearchHit, picker};
 
+const PALETTE_CONTEXT: &str = "Palette";
 const BORDER_WIDTH: f32 = 2.0;
 const MIN_SEARCH_QUERY_LENGTH: usize = 3;
 const PALETTE_WIDTH: f32 = 600.0;
@@ -154,7 +156,30 @@ fn render_search_hit(
         .into_any_element()
 }
 
+/// Binds the palette's navigation keys, which aren't customizable. They sit
+/// above its text field, which lets these keys through.
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("up", SelectUp, Some(PALETTE_CONTEXT)),
+        KeyBinding::new("down", SelectDown, Some(PALETTE_CONTEXT)),
+        KeyBinding::new("escape", Cancel, Some(PALETTE_CONTEXT)),
+    ]);
+}
+
 impl Palette {
+    fn move_selection(&mut self, down: bool) {
+        let count = match self.kind {
+            PaletteKind::Search => self.search_results.len(),
+            PaletteKind::QuickSwitcher => self.quick_switcher_entries.len(),
+        };
+        if count > 0
+            && let Some(next) = picker::nav_idx(down, self.selected, count)
+        {
+            self.selected = Some(next);
+            self.scroll_to(next);
+        }
+    }
+
     #[must_use]
     pub(crate) fn new(window: &mut Window, cx: &mut Context<DatalithView>) -> Self {
         Self {
@@ -320,38 +345,19 @@ impl Palette {
                 .child(
                     v_flex()
                         .overflow_hidden()
-                        .on_key_down(cx.listener(
-                            |view: &mut DatalithView,
-                             event: &KeyDownEvent,
-                             _: &mut Window,
-                             cx: &mut Context<DatalithView>| {
-                                let key = event.keystroke.key.as_str();
-                                if key == "escape" {
-                                    view.palette.close();
-                                    cx.notify();
-                                    return;
-                                }
-                                if key == "up" || key == "down" {
-                                    let count = match view.palette.kind {
-                                        PaletteKind::Search => view.palette.search_results.len(),
-                                        PaletteKind::QuickSwitcher => {
-                                            view.palette.quick_switcher_entries.len()
-                                        }
-                                    };
-                                    if count > 0
-                                        && let Some(next) = picker::nav_idx(
-                                            key == "down",
-                                            view.palette.selected,
-                                            count,
-                                        )
-                                    {
-                                        view.palette.selected = Some(next);
-                                        view.palette.scroll_to(next);
-                                    }
-                                    cx.notify();
-                                }
-                            },
-                        ))
+                        .key_context(PALETTE_CONTEXT)
+                        .on_action(cx.listener(|view, _: &SelectUp, _, cx| {
+                            view.palette.move_selection(false);
+                            cx.notify();
+                        }))
+                        .on_action(cx.listener(|view, _: &SelectDown, _, cx| {
+                            view.palette.move_selection(true);
+                            cx.notify();
+                        }))
+                        .on_action(cx.listener(|view, _: &Cancel, _, cx| {
+                            view.palette.close();
+                            cx.notify();
+                        }))
                         .child(
                             div()
                                 .border_b(px(BORDER_WIDTH))
