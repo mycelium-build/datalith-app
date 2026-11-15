@@ -114,6 +114,7 @@ impl Render for DatalithView {
         }
 
         v_flex()
+            .key_context(keymap::WORKSPACE_CONTEXT)
             .size_full()
             .relative()
             .child(super::title_bar::render(

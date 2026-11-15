@@ -15,6 +15,14 @@ pub const fn host_os() -> OperatingSystem {
     }
 }
 
+/// Key context of the main view. Shortcuts anchored here rank below the
+/// bindings of a focused text field, so the field keeps its keys.
+pub const WORKSPACE_CONTEXT: &str = "Workspace";
+/// Key contexts of the document views, set by their file handler.
+pub const NOTE_CONTEXT: &str = "Note";
+pub const TODO_LIST_CONTEXT: &str = "TodoList";
+pub const BASE_CONTEXT: &str = "Base";
+
 /// Parse a (possibly `secondary-` prefixed) keystroke for the host OS.
 pub fn parse_keystroke(source: &str) -> Result<Keystroke, InvalidKeystrokeError> {
     Keystroke::parse_with_os(source, host_os())

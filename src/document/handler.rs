@@ -2,11 +2,12 @@ use std::path::Path;
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window, div,
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
+    IntoElement, ParentElement, Render, Styled, Window, div, prelude::FluentBuilder as _,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::app::keymap::{BASE_CONTEXT, NOTE_CONTEXT, TODO_LIST_CONTEXT};
 use crate::ui::editors::EditorKind;
 use crate::ui::viewers::ViewerKind;
 use crate::vault::VaultCatalog;
@@ -141,6 +142,17 @@ impl FileHandler {
         }
     }
 
+    /// The shortcut zone of this document, in both modes.
+    const fn key_context(&self) -> Option<&'static str> {
+        match (&self.editor, &self.viewer) {
+            (Some(EditorKind::TodoTxt(_)), _) => Some(TODO_LIST_CONTEXT),
+            (Some(EditorKind::Base(_)), _) | (_, Some(ViewerKind::Base(_))) => Some(BASE_CONTEXT),
+            (Some(EditorKind::Markdown(_) | EditorKind::PlainText(_)), _)
+            | (_, Some(ViewerKind::Markdown(_))) => Some(NOTE_CONTEXT),
+            _ => None,
+        }
+    }
+
     pub(crate) fn input(&self) -> Option<&Entity<EditorState>> {
         self.editor.as_ref().and_then(|e| e.input())
     }
@@ -192,6 +204,13 @@ impl Render for FileHandler {
             }
         };
 
-        div().size_full().min_h_0().overflow_hidden().child(content)
+        div()
+            .when_some(self.key_context(), |element, context| {
+                element.key_context(context)
+            })
+            .size_full()
+            .min_h_0()
+            .overflow_hidden()
+            .child(content)
     }
 }
