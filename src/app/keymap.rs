@@ -61,6 +61,30 @@ impl ShortcutZone {
         }
     }
 
+    /// The name shown in the Shortcuts tab.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Global => "Everywhere",
+            Self::Interface => "Outside text fields",
+            Self::Note => "Notes",
+            Self::Base => "Bases",
+        }
+    }
+
+    /// Whether `keys` can act in this zone. Focus is almost always in a text
+    /// field of a note, so a key needs a modifier there, or must be a
+    /// function key.
+    pub(crate) fn accepts(self, keys: &str) -> bool {
+        if self != Self::Note {
+            return true;
+        }
+        let Ok(keystroke) = parse_keystroke(keys) else {
+            return false;
+        };
+        let modifiers = keystroke.modifiers;
+        !types_character(keys) && (modifiers.modified() || is_function_key(&keystroke.key))
+    }
+
     fn from_id(id: &str) -> Option<Self> {
         [Self::Global, Self::Interface, Self::Note, Self::Base]
             .into_iter()
@@ -157,9 +181,20 @@ pub struct Shortcut {
     category: &'static str,
     description: &'static str,
     binding: Option<String>,
+    zone: ShortcutZone,
+    zones: &'static [ShortcutZone],
 }
 
 impl Shortcut {
+    pub(crate) const fn zone(&self) -> ShortcutZone {
+        self.zone
+    }
+
+    /// The zones the user can choose from, starting with the default.
+    pub(crate) const fn zones(&self) -> &'static [ShortcutZone] {
+        self.zones
+    }
+
     pub(crate) const fn id(&self) -> &'static str {
         self.id
     }
@@ -198,6 +233,8 @@ impl ShortcutRegistry {
                 category: definition.category,
                 description: definition.description,
                 binding: binding.keys.clone(),
+                zone: binding.zone,
+                zones: definition.zones,
             })
             .collect()
     }
@@ -214,6 +251,15 @@ impl ShortcutRegistry {
         let keys = normalize_binding(binding)
             .ok_or_else(|| anyhow::anyhow!("That key combination is not supported."))?;
         self.update_one(id, |binding| binding.keys = Some(keys), cx)
+    }
+
+    pub(crate) fn set_zone(
+        &mut self,
+        id: &str,
+        zone: ShortcutZone,
+        cx: &mut App,
+    ) -> anyhow::Result<()> {
+        self.update_one(id, |binding| binding.zone = zone, cx)
     }
 
     pub(crate) fn remove(&mut self, id: &str, cx: &mut App) -> anyhow::Result<()> {
@@ -645,6 +691,11 @@ fn types_character(keys: &str) -> bool {
     keystroke.key == "space" || keystroke.key.chars().count() == 1
 }
 
+fn is_function_key(key: &str) -> bool {
+    key.strip_prefix('f')
+        .is_some_and(|number| number.parse::<u8>().is_ok_and(|number| number > 0))
+}
+
 fn same_binding(first: &str, second: &str) -> bool {
     matches!(
         (parse_keystroke(first), parse_keystroke(second)),
@@ -863,6 +914,17 @@ mod tests {
             assert!(!super::types_character(keys), "{keys}");
         }
         assert_eq!(super::types_character("alt-5"), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn notes_require_a_modifier_or_a_function_key() {
+        for keys in ["secondary-k", "shift-enter", "shift-up", "f5"] {
+            assert!(ShortcutZone::Note.accepts(keys), "{keys}");
+        }
+        for keys in ["up", "delete", "shift-a", "space"] {
+            assert!(!ShortcutZone::Note.accepts(keys), "{keys}");
+        }
+        assert!(ShortcutZone::Interface.accepts("a"));
     }
 
     #[test]

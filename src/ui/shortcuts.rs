@@ -4,6 +4,7 @@ use gpui_kit::component::{
     ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
+    menu::{DropdownMenu as _, PopupMenuItem},
     scroll::Scrollbar,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
     v_flex,
@@ -16,7 +17,7 @@ use gpui_kit::{
     rems,
 };
 
-use crate::app::keymap::{self, Shortcut, ShortcutRegistry};
+use crate::app::keymap::{self, Shortcut, ShortcutRegistry, ShortcutZone};
 
 struct ShortcutGroup {
     category: SharedString,
@@ -163,10 +164,17 @@ impl ShortcutsView {
         };
         match capture.phase {
             CapturePhase::Listening | CapturePhase::Invalid(_) => {
-                capture.phase = capture_binding(&event.keystroke).map_or_else(
-                    || CapturePhase::Invalid("That key cannot be used. Try another.".into()),
-                    CapturePhase::Proposed,
-                );
+                let zone = self
+                    .groups
+                    .iter()
+                    .flat_map(|group| &group.rows)
+                    .find(|shortcut| shortcut.id() == capture.id)
+                    .map_or(ShortcutZone::Global, Shortcut::zone);
+                capture.phase = match capture_binding(&event.keystroke) {
+                    Some(binding) if zone.accepts(&binding) => CapturePhase::Proposed(binding),
+                    Some(_) => CapturePhase::Invalid(MODIFIER_NEEDED_IN_NOTES.into()),
+                    None => CapturePhase::Invalid("That key cannot be used. Try another.".into()),
+                };
             }
             CapturePhase::Proposed(_)
                 if key == "enter" && event.keystroke.modifiers == gpui_kit::Modifiers::none() =>
@@ -211,6 +219,16 @@ impl ShortcutsView {
 
     fn reset_binding(&mut self, id: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         self.apply_change(|registry, cx| registry.reset(id, cx), window, cx);
+    }
+
+    fn set_zone(
+        &mut self,
+        id: &'static str,
+        zone: ShortcutZone,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_change(|registry, cx| registry.set_zone(id, zone, cx), window, cx);
     }
 
     fn reset_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -275,6 +293,15 @@ impl ShortcutsView {
                                         .font_weight(FontWeight::MEDIUM)
                                         .child("Shortcut"),
                                 ),
+                            )
+                            .child(
+                                TableHead::new().child(
+                                    div()
+                                        .id(format!("shortcuts-zone-header-{}", group.category))
+                                        .aria_label("Active in")
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child("Active in"),
+                                ),
                             ),
                     ),
             )
@@ -314,8 +341,54 @@ impl ShortcutsView {
                             .child(shortcut.description()),
                     ),
                 )
-                .child(TableCell::new().child(binding_cell)),
+                .child(TableCell::new().child(binding_cell))
+                .child(TableCell::new().child(Self::render_zone(shortcut, cx))),
         }
+    }
+
+    /// The zone, as plain text when the action can act in only one.
+    fn render_zone(shortcut: &Shortcut, cx: &Context<Self>) -> gpui_kit::AnyElement {
+        let id = shortcut.id();
+        let current = shortcut.zone();
+        if let [only] = shortcut.zones() {
+            return div()
+                .id(format!("shortcut-zone-{id}"))
+                .aria_label(only.label())
+                .text_color(cx.theme().muted_foreground)
+                .child(only.label())
+                .into_any_element();
+        }
+        let zones = shortcut.zones();
+        let keys = shortcut.binding().map(str::to_owned);
+        let view = cx.weak_entity();
+        Button::new(format!("shortcut-zone-{id}"))
+            .ghost()
+            .small()
+            .label(current.label())
+            .dropdown_caret(true)
+            .accessibility_label(format!(
+                "{} is active in {}",
+                shortcut.description(),
+                current.label()
+            ))
+            .dropdown_menu(move |mut menu, _, _| {
+                for &zone in zones {
+                    let view = view.clone();
+                    let accepted = keys.as_deref().is_none_or(|keys| zone.accepts(keys));
+                    menu = menu.item(
+                        PopupMenuItem::new(zone.label())
+                            .checked(zone == current)
+                            .disabled(!accepted)
+                            .on_click(move |_, window, cx| {
+                                let _ = view.update(cx, |this, cx| {
+                                    this.set_zone(id, zone, window, cx);
+                                });
+                            }),
+                    );
+                }
+                menu
+            })
+            .into_any_element()
     }
 
     fn render_binding_button(shortcut: &Shortcut, cx: &Context<Self>) -> Button {
@@ -549,6 +622,11 @@ impl Render for ShortcutsView {
             )
     }
 }
+
+#[cfg(target_os = "macos")]
+const MODIFIER_NEEDED_IN_NOTES: &str = "In notes, add Cmd or Ctrl.";
+#[cfg(not(target_os = "macos"))]
+const MODIFIER_NEEDED_IN_NOTES: &str = "In notes, add Ctrl or Alt.";
 
 fn capture_binding(keystroke: &Keystroke) -> Option<String> {
     let key = keystroke.key.as_str();
