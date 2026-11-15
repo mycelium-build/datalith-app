@@ -3,8 +3,8 @@ name: Renovate
 # Self-hosted Renovate for the three Datalith repositories, acting as the datalith-bot App.
 # Global settings: .github/renovate/global.json. Shared rules: .github/renovate/preset.json.
 # Each repository opts in with its own renovate.json.
-# Runs daily so security updates land the same day; other updates are scheduled for Tuesdays
-# by the shared rules.
+# Runs daily to refresh existing PRs and propose security fixes without delay.
+# New ordinary updates wait three days and are scheduled for Tuesdays.
 on:
   schedule:
     # Run daily for security updates; ordinary updates are allowed all Tuesday (Europe/Paris).
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 50
     env:
       # renovate: datasource=npm depName=renovate
-      RENOVATE_VERSION: 44.235.2
+      RENOVATE_VERSION: 44.239.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +40,12 @@ jobs:
       - name: Install Rust toolchain
         shell: bash
         run: rustup toolchain install
+
+      - name: Validate Renovate configuration
+        run: >-
+          npx --yes --package="renovate@${RENOVATE_VERSION}"
+          renovate-config-validator --strict
+          .github/renovate/global.json .github/renovate/preset.json renovate.json
 
       - name: Load tool versions
         shell: bash
@@ -64,5 +70,5 @@ jobs:
         env:
           RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
           RENOVATE_CONFIG_FILE: .github/renovate/global.json
-          LOG_LEVEL: info
+          LOG_LEVEL: debug
         run: npx --yes "renovate@${RENOVATE_VERSION}"

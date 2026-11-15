@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Shared Renovate rules for the Datalith repositories: one PR per update type, security updates daily, everything else on Tuesdays. Each group sets its commit prefix explicitly (fix for what ships, chore for the rest).",
+  "description": "Shared Renovate rules: ordinary releases wait three days and new PRs are scheduled on Tuesdays; security fixes skip the delay; existing PRs stay current with main.",
   "extends": [
     "config:recommended",
     "customManagers:githubActionsVersions"
@@ -10,10 +10,15 @@
     "* * * * 2"
   ],
   "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "rebaseWhen": "behind-base-branch",
+  "updateNotScheduled": true,
   "prHourlyLimit": 0,
   "semanticCommits": "enabled",
   "commitMessageAction": "update",
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "automerge": false,
   "platformAutomerge": false,
   "lockFileMaintenance": {
@@ -80,7 +85,7 @@
     }
   ],
   "vulnerabilityAlerts": {
-    "description": "Security fixes: every day, without waiting, in one PR.",
+    "description": "Security fixes: checked daily without a release-age delay; prefer the lowest fixed version.",
     "groupName": "security updates",
     "schedule": [
       "at any time"
@@ -89,7 +94,8 @@
     "labels": [
       "security"
     ],
-    "commitMessagePrefix": "fix(deps):"
+    "commitMessagePrefix": "fix(deps):",
+    "vulnerabilityFixStrategy": "lowest"
   },
   "osvVulnerabilityAlerts": true
 }

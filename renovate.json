@@ -3,6 +3,9 @@
   "extends": [
     "local>mycelium-build/datalith-app//.github/renovate/preset"
   ],
+  "cargo": {
+    "minimumReleaseAgePackageManagerSync": true
+  },
   "packageRules": [
     {
       "description": "THIRD-PARTY-NOTICES.md lists every crate with its version: regenerate it in each Cargo update.",
