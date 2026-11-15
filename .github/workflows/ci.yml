@@ -20,7 +20,7 @@ jobs:
   #   including ci when only files it never reads change (docs, contributor and release tooling);
   # - a release-please PR that only bumps the version runs a light check.
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -147,7 +147,7 @@ jobs:
   update-manifest:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.manifest != 'false' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -164,7 +164,7 @@ jobs:
   ci:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.ci-mode != 'skip' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
@@ -180,7 +180,7 @@ jobs:
       - name: Install Linux dependencies
         run: scripts/install-linux-build-dependencies.sh
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.event_name == 'push' }}
 
@@ -217,7 +217,7 @@ jobs:
       - name: Create formatter token
         if: steps.fmt.outputs.changed == 'true'
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
@@ -231,7 +231,7 @@ jobs:
 
       - name: Commit formatting
         if: steps.fmt.outputs.changed == 'true'
-        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           branch: ${{ github.event.pull_request.head.ref }}
           commit_message: "chore: apply rustfmt"
@@ -243,7 +243,7 @@ jobs:
   license-compliance:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.licenses != 'false' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       LICENSE_CHECK_SKIP_ADVISORIES: ${{ needs.plan.outputs.advisories == 'false' && '1' || '0' }}
@@ -262,7 +262,7 @@ jobs:
         run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Install cargo-about and cargo-deny
-        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }},cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
