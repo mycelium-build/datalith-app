@@ -284,6 +284,15 @@ impl VaultCatalog {
         })?
     }
 
+    /// Reconciles the given paths into the database synchronously
+    /// (blocking until done).
+    /// Lets a caller that just wrote to disk guarantee that a following `query_base` sees the fresh frontmatter,
+    /// instead of losing the race against the async notify watcher.
+    pub(crate) fn refresh_paths(&self, paths: Vec<PathBuf>) {
+        let inner = self.inner.clone();
+        let _ = run_blocking("refresh", move || reconcile_paths(&inner, paths));
+    }
+
     // Callers await from UI code even though the body runs on a blocking thread.
     #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub(crate) async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
