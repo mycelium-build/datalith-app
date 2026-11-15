@@ -1,5 +1,6 @@
 //! Stable app-derived identity used to isolate each machine's workspace.
 
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -119,7 +120,13 @@ fn derive_machine_id(identifier: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(b"com.mycelium-build.datalith.machine-id.v1\0");
     digest.update(identifier.trim().as_bytes());
-    format!("{:x}", digest.finalize())
+    digest
+        .finalize()
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 #[cfg(target_os = "linux")]
