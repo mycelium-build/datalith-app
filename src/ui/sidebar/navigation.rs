@@ -63,7 +63,7 @@ impl DatalithView {
                 self.expand_tree_item(&id, cx);
             }
         } else {
-            let new_tab = event.keystroke.modifiers.platform;
+            let new_tab = event.keystroke.modifiers.secondary(cx);
             self.open_file(path, new_tab, window, cx);
         }
     }
