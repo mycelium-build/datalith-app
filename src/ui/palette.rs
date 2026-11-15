@@ -195,9 +195,7 @@ impl Palette {
         self.search_results = if query.len() < MIN_SEARCH_QUERY_LENGTH {
             Vec::new()
         } else {
-            catalog
-                .map(|catalog| catalog.search(&query))
-                .unwrap_or_default()
+            catalog.map_or_default(|catalog| catalog.search(&query))
         };
         self.item_sizes =
             vec![size(px(PALETTE_WIDTH), px(SEARCH_ITEM_HEIGHT)); self.search_results.len()];
@@ -209,9 +207,8 @@ impl Palette {
         open_files: &[PathBuf],
         query: &SharedString,
     ) {
-        let all_files = catalog
-            .map(|catalog| picker::collect_from_paths(catalog.paths()))
-            .unwrap_or_default();
+        let all_files =
+            catalog.map_or_default(|catalog| picker::collect_from_paths(catalog.paths()));
         self.quick_switcher_entries = picker::filter(&all_files, open_files, query);
         self.item_sizes = vec![
             size(px(PALETTE_WIDTH), px(QUICK_SWITCHER_ITEM_HEIGHT));

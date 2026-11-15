@@ -110,7 +110,7 @@ impl Wave {
                 .cell
                 .mul_add(col.approx_as::<f32>().unwrap_or_inf() + 0.5, 0.0);
             let dx = x - self.center_x;
-            let distance = dx.mul_add(dx, dy * dy).sqrt();
+            let distance = dx.hypot(dy);
             let offset = if self.revealing {
                 distance - self.front
             } else {

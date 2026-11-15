@@ -44,8 +44,7 @@ impl RenderOnce for PriorityTrigger {
         });
         let label = self
             .current
-            .map(|p| format!("({})", p.as_char()))
-            .unwrap_or_default();
+            .map_or_default(|p| format!("({})", p.as_char()));
 
         let task_index = self.task_index;
         let editor = self.editor;
@@ -88,8 +87,7 @@ impl RenderOnce for PriorityTrigger {
                         .get(new_idx)
                         .copied()
                         .unwrap_or_default()
-                        .map(|priority| format!("({priority})"))
-                        .unwrap_or_default();
+                        .map_or_default(|priority| format!("({priority})"));
                     this.commit_priority(task_index, &value, cx);
                 });
             });

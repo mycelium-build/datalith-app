@@ -494,6 +494,5 @@ fn table_cell_text(
     }
     snapshot
         .projection_value(row, &property.source)
-        .map(super::format_scalar_text)
-        .unwrap_or_default()
+        .map_or_default(super::format_scalar_text)
 }

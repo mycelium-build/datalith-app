@@ -198,8 +198,7 @@ impl TodoTxtState {
                         .workspace
                         .task(fi)
                         .and_then(|t| t.creation_date)
-                        .map(|d| d.to_string())
-                        .unwrap_or_default();
+                        .map_or_default(|d| d.to_string());
                     e.update(cx, |s, cx| s.set_value(original, window, cx));
                 }
             }))

@@ -43,7 +43,9 @@ fn parse_hex(hex: &str) -> Result<GraphColor> {
     };
     let bytes = expanded
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| -> Result<u8> {
             let pair = std::str::from_utf8(pair)?;
             Ok(u8::from_str_radix(pair, 16)?)

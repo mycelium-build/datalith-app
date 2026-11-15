@@ -71,7 +71,7 @@ pub struct Api {
 }
 
 #[OpenApi]
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
 impl Api {
     /// Health check advertised to local clients.
     #[oai(path = "/ping", method = "get")]

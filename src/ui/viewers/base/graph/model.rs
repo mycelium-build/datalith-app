@@ -32,7 +32,7 @@ pub(super) fn deterministic_position(path: &str, node_count: usize) -> Point<f32
         / INITIAL_LAYOUT_REFERENCE_NODES)
         .sqrt();
     let radial_hash = ((hash >> 32) as u32) as f32 / u32::MAX as f32;
-    let radius = (40.0 + radial_hash * (INITIAL_LAYOUT_RADIUS - 40.0)) * population_scale;
+    let radius = radial_hash.mul_add(INITIAL_LAYOUT_RADIUS - 40.0, 40.0) * population_scale;
     point(angle.cos() * radius, angle.sin() * radius)
 }
 

@@ -241,8 +241,7 @@ impl VaultCatalog {
         self.inner
             .search
             .lock()
-            .map(|search| search.search(query))
-            .unwrap_or_default()
+            .map_or_default(|search| search.search(query))
     }
 
     #[must_use]
@@ -286,7 +285,7 @@ impl VaultCatalog {
     }
 
     // Callers await from UI code even though the body runs on a blocking thread.
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub(crate) async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
         let database = self.inner.database.clone();
         run_blocking("query", move || {

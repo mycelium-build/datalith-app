@@ -264,7 +264,7 @@ mod tests {
         let document = parse_markdown("---\nd:\n 1. a\n 1. b\nloose text\n---\nBody");
         let frontmatter = document.frontmatter.expect("frontmatter");
 
-        assert!(frontmatter.properties.is_empty());
+        assert_eq!(frontmatter.properties, Vec::new());
         assert!(
             frontmatter
                 .error

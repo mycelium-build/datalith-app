@@ -88,14 +88,12 @@ pub(super) fn resolve(
         .config
         .highlight
         .as_ref()
-        .map(highlight_tokens)
-        .unwrap_or_default();
+        .map_or_default(highlight_tokens);
     for (token, value) in resolved
         .config
         .highlight
         .as_ref()
-        .map(highlight_tokens)
-        .unwrap_or_default()
+        .map_or_default(highlight_tokens)
     {
         if let Some(color) = value.and_then(|value| try_parse_color(&value).ok()) {
             if explicit_highlight.get(&token).is_some_and(Option::is_some) {

@@ -203,9 +203,9 @@ mod tests {
 
     #[test]
     fn embedded_license_assets_are_non_empty() {
-        assert!(!MIT_LICENSE.trim().is_empty());
-        assert!(!LICENSING.trim().is_empty());
-        assert!(!THIRD_PARTY_NOTICES.trim().is_empty());
+        assert_ne!(MIT_LICENSE.trim(), "");
+        assert_ne!(LICENSING.trim(), "");
+        assert_ne!(THIRD_PARTY_NOTICES.trim(), "");
     }
 
     #[test]
