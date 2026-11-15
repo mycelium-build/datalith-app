@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use gpui_kit::{
-    App, InvalidKeystrokeError, KeyBinding, Keystroke, Modifiers, OperatingSystem, Unbind,
-};
+use gpui_kit::{App, InvalidKeystrokeError, KeyBinding, Keystroke, Modifiers, OperatingSystem};
 
 pub const fn host_os() -> OperatingSystem {
     std::cfg_select! {
@@ -50,8 +48,8 @@ struct ShortcutDefinition {
     category: &'static str,
     binding: &'static str, // a string because GPUI represents it like this
     description: &'static str,
-    make_binding: fn(&str, &App) -> KeyBinding,
-    make_unbind: fn(&str, &App) -> KeyBinding,
+    action_name: &'static str,
+    make_binding: fn(&str, &App) -> Option<KeyBinding>,
 }
 
 /// A shortcut with its effective binding after applying user overrides.
@@ -151,12 +149,29 @@ impl ShortcutRegistry {
     }
 
     fn replace(&mut self, next: Vec<Option<String>>, cx: &mut App) -> anyhow::Result<()> {
-        let previous = std::mem::replace(&mut self.bindings, next);
+        self.bindings = next;
         let persistence = super::settings::set_shortcut_overrides(overrides_for(&self.bindings));
-        let operations = binding_operations(&previous, &self.bindings, cx);
-        cx.bind_keys(operations);
+        self.install(cx);
         super::menus::install(cx);
         persistence
+    }
+
+    /// Rebuilds the keymap with these shortcuts after every other binding,
+    /// which keep their order. Unlike adding `Unbind` entries, this also
+    /// removes a shortcut that moves to a context of another depth.
+    fn install(&self, cx: &mut App) {
+        let shortcuts = SHORTCUTS
+            .iter()
+            .zip(&self.bindings)
+            .filter_map(|(definition, binding)| {
+                binding
+                    .as_deref()
+                    .and_then(|keys| (definition.make_binding)(keys, cx))
+            })
+            .collect::<Vec<_>>();
+        let others = other_bindings(cx.key_bindings().borrow().bindings());
+        cx.clear_key_bindings();
+        cx.bind_keys(others.into_iter().chain(shortcuts));
     }
 }
 
@@ -168,20 +183,9 @@ macro_rules! shortcuts {
                 category: $category,
                 binding: $keys,
                 description: $description,
+                action_name: concat!("datalith::", stringify!($action)),
                 make_binding: |keys, cx| {
-                    KeyBinding::load(keys, Box::new($action), None, false, None, cx)
-                        .expect("shortcut binding should parse")
-                },
-                make_unbind: |keys, cx| {
-                    KeyBinding::load(
-                        keys,
-                        Box::new(Unbind(concat!("datalith::", stringify!($action)).into())),
-                        None,
-                        false,
-                        None,
-                        cx,
-                    )
-                    .expect("shortcut binding should parse")
+                    KeyBinding::load(keys, Box::new($action), None, false, None, cx).ok()
                 },
             }),*
         ];
@@ -365,36 +369,20 @@ pub fn display_binding_or_unbound(binding: Option<&str>) -> String {
 }
 
 pub fn register(cx: &mut App) {
-    let registry = ShortcutRegistry::new();
-    let bindings = registry
-        .bindings
-        .into_iter()
-        .zip(SHORTCUTS)
-        .filter_map(|(binding, definition)| {
-            binding.map(|keys| (definition.make_binding)(&keys, cx))
-        })
-        .collect::<Vec<_>>();
-    cx.bind_keys(bindings);
+    ShortcutRegistry::new().install(cx);
 }
 
-/// Replaces just Datalith-owned bindings, leaving component and GPUI bindings intact.
-fn binding_operations(
-    previous: &[Option<String>],
-    next: &[Option<String>],
-    cx: &App,
-) -> Vec<KeyBinding> {
-    let mut bindings = Vec::new();
-    for (definition, binding) in SHORTCUTS.iter().zip(previous) {
-        if let Some(binding) = binding {
-            bindings.push((definition.make_unbind)(binding, cx));
-        }
-    }
-    for (definition, binding) in SHORTCUTS.iter().zip(next) {
-        if let Some(binding) = binding {
-            bindings.push((definition.make_binding)(binding, cx));
-        }
-    }
+/// The bindings that don't belong to a Datalith shortcut, in keymap order.
+fn other_bindings<'a>(bindings: impl Iterator<Item = &'a KeyBinding>) -> Vec<KeyBinding> {
     bindings
+        .filter(|binding| {
+            let name = binding.action().name();
+            SHORTCUTS
+                .iter()
+                .all(|definition| definition.action_name != name)
+        })
+        .cloned()
+        .collect()
 }
 
 fn default_bindings() -> Vec<Option<String>> {
@@ -512,7 +500,7 @@ mod tests {
         default_bindings, display_binding, effective_bindings, overrides_for, parse_keystroke,
     };
     use crate::app::actions::Quit;
-    use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, Unbind, actions};
+    use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, actions};
     use std::collections::BTreeMap;
 
     actions!(
@@ -544,10 +532,6 @@ mod tests {
 
     fn quit_binding(suffix: &str) -> KeyBinding {
         binding(suffix, Quit)
-    }
-
-    fn quit_unbind(suffix: &str) -> KeyBinding {
-        binding(suffix, Unbind("datalith::Quit".into()))
     }
 
     #[test]
@@ -607,9 +591,10 @@ mod tests {
     }
 
     #[test]
-    fn replacing_a_datalith_binding_preserves_other_actions() {
-        let mut keymap = Keymap::new(vec![quit_binding("q"), binding("q", ComponentAction)]);
-        keymap.add_bindings(vec![quit_unbind("q"), quit_binding("x")]);
+    fn rebuilding_replaces_only_datalith_shortcuts() {
+        let existing = Keymap::new(vec![quit_binding("q"), binding("q", ComponentAction)]);
+        let mut keymap = Keymap::new(super::other_bindings(existing.bindings()));
+        keymap.add_bindings([quit_binding("x")]);
 
         let (old_key, _) = keymap.bindings_for_input(
             &[parse_keystroke("secondary-q").expect("valid key")],
@@ -634,22 +619,6 @@ mod tests {
             new_key
                 .iter()
                 .any(|binding| binding.action().partial_eq(&Quit))
-        );
-    }
-
-    #[test]
-    fn replacing_bindings_does_not_restore_a_default_after_multiple_edits() {
-        let mut keymap = Keymap::new(vec![quit_binding("q")]);
-        keymap.add_bindings(vec![quit_unbind("q"), quit_binding("x")]);
-        keymap.add_bindings(vec![quit_unbind("x")]);
-        let (old_key, _) = keymap.bindings_for_input(
-            &[parse_keystroke("secondary-q").expect("valid key")],
-            &[KeyContext::default()],
-        );
-        assert!(
-            old_key
-                .iter()
-                .all(|binding| !binding.action().partial_eq(&Quit))
         );
     }
 }
