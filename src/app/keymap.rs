@@ -34,6 +34,8 @@ pub enum ShortcutZone {
     Interface,
     /// In a note, in edit and view modes.
     Note,
+    /// In a base, in edit and view modes.
+    Base,
 }
 
 impl ShortcutZone {
@@ -45,7 +47,24 @@ impl ShortcutZone {
             Self::Global => WORKSPACE_CONTEXT,
             Self::Interface => "Workspace && !Input",
             Self::Note => NOTE_CONTEXT,
+            Self::Base => BASE_CONTEXT,
         }
+    }
+
+    /// The name stored in the settings.
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Interface => "interface",
+            Self::Note => "note",
+            Self::Base => "base",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Self> {
+        [Self::Global, Self::Interface, Self::Note, Self::Base]
+            .into_iter()
+            .find(|zone| zone.id() == id)
     }
 }
 
@@ -61,6 +80,8 @@ fn is_secondary(modifiers: Modifiers) -> bool {
         modifiers.control
     }
 }
+
+use super::settings::ShortcutOverride;
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
@@ -80,6 +101,8 @@ struct ShortcutDefinition {
     category: &'static str,
     binding: &'static str, // a string because GPUI represents it like this
     zone: ShortcutZone,
+    /// The zones the action can act in, starting with `zone`.
+    zones: &'static [ShortcutZone],
     description: &'static str,
     action_name: &'static str,
     make_binding: fn(&str, &str, &App) -> Option<KeyBinding>,
@@ -90,16 +113,41 @@ impl ShortcutDefinition {
     /// match inside a text field of the zone, at the field's depth, where
     /// they win because they're registered after the component bindings.
     /// Keys that type a character never match inside a text field.
-    fn predicate(&self, keys: &str) -> String {
-        let zone = self.zone.predicate();
-        if DEFAULTS_OVER_FIELDS.contains(&self.id) && same_binding(keys, self.binding) {
-            format!("{zone} > Input || {zone}")
-        } else if types_character(keys) && self.zone != ShortcutZone::Interface {
-            format!("{zone} && !Input")
-        } else {
-            zone.to_owned()
+    fn predicate(&self, binding: &Binding) -> Option<String> {
+        let keys = binding.keys.as_deref()?;
+        let zone = binding.zone.predicate();
+        Some(
+            if self.is_default(binding) && DEFAULTS_OVER_FIELDS.contains(&self.id) {
+                format!("{zone} > Input || {zone}")
+            } else if types_character(keys) && binding.zone != ShortcutZone::Interface {
+                format!("{zone} && !Input")
+            } else {
+                zone.to_owned()
+            },
+        )
+    }
+
+    fn default_binding(&self) -> Binding {
+        Binding {
+            keys: Some(self.binding.to_owned()),
+            zone: self.zone,
         }
     }
+
+    fn is_default(&self, binding: &Binding) -> bool {
+        binding.zone == self.zone
+            && binding
+                .keys
+                .as_deref()
+                .is_some_and(|keys| same_binding(keys, self.binding))
+    }
+}
+
+/// The keys of a shortcut, `None` when removed, and the zone they apply in.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Binding {
+    keys: Option<String>,
+    zone: ShortcutZone,
 }
 
 /// A shortcut with its effective binding after applying user overrides.
@@ -130,7 +178,7 @@ impl Shortcut {
 }
 
 pub struct ShortcutRegistry {
-    bindings: Vec<Option<String>>,
+    bindings: Vec<Binding>,
 }
 
 impl ShortcutRegistry {
@@ -149,7 +197,7 @@ impl ShortcutRegistry {
                 id: definition.id,
                 category: definition.category,
                 description: definition.description,
-                binding: binding.clone(),
+                binding: binding.keys.clone(),
             })
             .collect()
     }
@@ -159,25 +207,25 @@ impl ShortcutRegistry {
             .iter()
             .position(|definition| definition.id == id)
             .and_then(|index| self.bindings.get(index))
-            .and_then(Option::as_deref)
+            .and_then(|binding| binding.keys.as_deref())
     }
 
     pub(crate) fn set(&mut self, id: &str, binding: &str, cx: &mut App) -> anyhow::Result<()> {
-        let binding = normalize_binding(binding)
+        let keys = normalize_binding(binding)
             .ok_or_else(|| anyhow::anyhow!("That key combination is not supported."))?;
-        self.update_one(id, Some(binding), cx)
+        self.update_one(id, |binding| binding.keys = Some(keys), cx)
     }
 
     pub(crate) fn remove(&mut self, id: &str, cx: &mut App) -> anyhow::Result<()> {
-        self.update_one(id, None, cx)
+        self.update_one(id, |binding| binding.keys = None, cx)
     }
 
     pub(crate) fn reset(&mut self, id: &str, cx: &mut App) -> anyhow::Result<()> {
         let Some(definition) = SHORTCUTS.iter().find(|definition| definition.id == id) else {
             anyhow::bail!("Unknown shortcut.");
         };
-        let binding = Some(definition.binding.to_owned());
-        self.update_one(id, binding, cx)
+        let default = definition.default_binding();
+        self.update_one(id, |binding| *binding = default, cx)
     }
 
     pub(crate) fn reset_all(&mut self, cx: &mut App) -> anyhow::Result<()> {
@@ -187,18 +235,22 @@ impl ShortcutRegistry {
     fn update_one(
         &mut self,
         id: &str,
-        binding: Option<String>,
+        change: impl FnOnce(&mut Binding),
         cx: &mut App,
     ) -> anyhow::Result<()> {
         let Some(index) = SHORTCUTS.iter().position(|definition| definition.id == id) else {
             anyhow::bail!("Unknown shortcut.");
         };
         let mut next = self.bindings.clone();
+        let Some(mut binding) = next.get(index).cloned() else {
+            anyhow::bail!("Unknown shortcut.");
+        };
+        change(&mut binding);
         assign(&mut next, index, binding);
         self.replace(next, cx)
     }
 
-    fn replace(&mut self, next: Vec<Option<String>>, cx: &mut App) -> anyhow::Result<()> {
+    fn replace(&mut self, next: Vec<Binding>, cx: &mut App) -> anyhow::Result<()> {
         self.bindings = next;
         let persistence = super::settings::set_shortcut_overrides(overrides_for(&self.bindings));
         self.install(cx);
@@ -214,9 +266,8 @@ impl ShortcutRegistry {
             .iter()
             .zip(&self.bindings)
             .filter_map(|(definition, binding)| {
-                binding.as_deref().and_then(|keys| {
-                    (definition.make_binding)(keys, &definition.predicate(keys), cx)
-                })
+                let keys = binding.keys.as_deref()?;
+                (definition.make_binding)(keys, &definition.predicate(binding)?, cx)
             })
             .collect::<Vec<_>>();
         let others = other_bindings(cx.key_bindings().borrow().bindings());
@@ -226,13 +277,14 @@ impl ShortcutRegistry {
 }
 
 macro_rules! shortcuts {
-    ($(($id:literal, $category:literal, $keys:literal, $zone:ident, $description:literal, $action:ident)),* $(,)?) => {
+    ($(($id:literal, $category:literal, $keys:literal, [$zone:ident $(, $zones:ident)*], $description:literal, $action:ident)),* $(,)?) => {
         const SHORTCUTS: &[ShortcutDefinition] = &[
             $(ShortcutDefinition {
                 id: $id,
                 category: $category,
                 binding: $keys,
                 zone: ShortcutZone::$zone,
+                zones: &[ShortcutZone::$zone $(, ShortcutZone::$zones)*],
                 description: $description,
                 action_name: concat!("datalith::", stringify!($action)),
                 make_binding: |keys, predicate, cx| {
@@ -247,12 +299,12 @@ macro_rules! shortcuts {
 shortcuts!(
     // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
     // File
-    ("quit", "File", "secondary-q", Global, "Quit", Quit),
+    ("quit", "File", "secondary-q", [Global], "Quit", Quit),
     (
         "new-note",
         "File",
         "secondary-n",
-        Global,
+        [Global, Interface],
         "New note",
         NewFile
     ),
@@ -260,16 +312,23 @@ shortcuts!(
         "new-folder",
         "File",
         "secondary-shift-n",
-        Global,
+        [Global, Interface],
         "New folder",
         NewFolder
     ),
-    ("rename", "File", "f2", Global, "Rename", Rename),
+    (
+        "rename",
+        "File",
+        "f2",
+        [Global, Interface],
+        "Rename",
+        Rename
+    ),
     (
         "delete",
         "File",
         "secondary-backspace",
-        Interface,
+        [Interface, Global],
         "Delete",
         Delete
     ),
@@ -277,7 +336,7 @@ shortcuts!(
         "duplicate",
         "File",
         "secondary-d",
-        Global,
+        [Global, Interface],
         "Duplicate",
         Duplicate
     ),
@@ -285,7 +344,7 @@ shortcuts!(
         "open-in-explorer",
         "File",
         "secondary-shift-e",
-        Global,
+        [Global, Interface],
         "Open in Explorer",
         OpenInExplorer
     ),
@@ -293,7 +352,7 @@ shortcuts!(
         "copy-path",
         "File",
         "secondary-l",
-        Global,
+        [Global, Interface],
         "Copy path",
         CopyPath
     ),
@@ -302,7 +361,7 @@ shortcuts!(
         "quick-switcher",
         "Navigation",
         "secondary-p",
-        Global,
+        [Global],
         "Quick switcher",
         ToggleQuickSwitcher
     ),
@@ -310,7 +369,7 @@ shortcuts!(
         "focus-sidebar",
         "Navigation",
         "secondary-0",
-        Global,
+        [Global],
         "Focus sidebar",
         FocusSidebar
     ),
@@ -318,7 +377,7 @@ shortcuts!(
         "navigate-back",
         "Navigation",
         "secondary-[",
-        Global,
+        [Global, Interface],
         "Navigate back",
         GoBack
     ),
@@ -326,7 +385,7 @@ shortcuts!(
         "navigate-forward",
         "Navigation",
         "secondary-]",
-        Global,
+        [Global, Interface],
         "Navigate forward",
         GoForward
     ),
@@ -334,17 +393,24 @@ shortcuts!(
         "open-link",
         "Navigation",
         "secondary-enter",
-        Note,
+        [Note],
         "Open link",
         OpenLink
     ),
     // Tabs
-    ("new-tab", "Tabs", "secondary-t", Global, "New tab", NewTab),
+    (
+        "new-tab",
+        "Tabs",
+        "secondary-t",
+        [Global, Interface],
+        "New tab",
+        NewTab
+    ),
     (
         "close-tab",
         "Tabs",
         "secondary-w",
-        Global,
+        [Global, Interface],
         "Close tab",
         CloseTab
     ),
@@ -352,7 +418,7 @@ shortcuts!(
         "select-tab-1",
         "Tabs",
         "secondary-1",
-        Global,
+        [Global, Interface],
         "Select tab 1",
         SelectTab1
     ),
@@ -360,7 +426,7 @@ shortcuts!(
         "select-tab-2",
         "Tabs",
         "secondary-2",
-        Global,
+        [Global, Interface],
         "Select tab 2",
         SelectTab2
     ),
@@ -368,7 +434,7 @@ shortcuts!(
         "select-tab-3",
         "Tabs",
         "secondary-3",
-        Global,
+        [Global, Interface],
         "Select tab 3",
         SelectTab3
     ),
@@ -376,7 +442,7 @@ shortcuts!(
         "select-tab-4",
         "Tabs",
         "secondary-4",
-        Global,
+        [Global, Interface],
         "Select tab 4",
         SelectTab4
     ),
@@ -384,7 +450,7 @@ shortcuts!(
         "select-tab-5",
         "Tabs",
         "secondary-5",
-        Global,
+        [Global, Interface],
         "Select tab 5",
         SelectTab5
     ),
@@ -392,7 +458,7 @@ shortcuts!(
         "select-tab-6",
         "Tabs",
         "secondary-6",
-        Global,
+        [Global, Interface],
         "Select tab 6",
         SelectTab6
     ),
@@ -400,7 +466,7 @@ shortcuts!(
         "select-tab-7",
         "Tabs",
         "secondary-7",
-        Global,
+        [Global, Interface],
         "Select tab 7",
         SelectTab7
     ),
@@ -408,7 +474,7 @@ shortcuts!(
         "select-tab-8",
         "Tabs",
         "secondary-8",
-        Global,
+        [Global, Interface],
         "Select tab 8",
         SelectTab8
     ),
@@ -416,7 +482,7 @@ shortcuts!(
         "select-last-tab",
         "Tabs",
         "secondary-9",
-        Global,
+        [Global, Interface],
         "Select last tab",
         SelectLastTab
     ),
@@ -425,7 +491,7 @@ shortcuts!(
         "search-files",
         "View",
         "secondary-shift-f",
-        Global,
+        [Global, Interface],
         "Search files",
         ToggleSearch
     ),
@@ -433,7 +499,7 @@ shortcuts!(
         "toggle-editor-mode",
         "View",
         "secondary-e",
-        Global,
+        [Global, Note, Base],
         "Toggle edit / view",
         ToggleEditorMode
     ),
@@ -441,7 +507,7 @@ shortcuts!(
         "toggle-theme",
         "View",
         "secondary-shift-d",
-        Global,
+        [Global],
         "Toggle theme",
         ToggleTheme
     ),
@@ -449,7 +515,7 @@ shortcuts!(
         "open-settings",
         "View",
         "secondary-,",
-        Global,
+        [Global],
         "Open settings",
         OpenSettings
     ),
@@ -458,7 +524,7 @@ shortcuts!(
         "show-shortcuts",
         "Help",
         "secondary-/",
-        Global,
+        [Global],
         "Show shortcuts",
         OpenShortcuts
     ),
@@ -493,53 +559,68 @@ fn other_bindings<'a>(bindings: impl Iterator<Item = &'a KeyBinding>) -> Vec<Key
         .collect()
 }
 
-fn default_bindings() -> Vec<Option<String>> {
+fn default_bindings() -> Vec<Binding> {
     SHORTCUTS
         .iter()
-        .map(|definition| Some(definition.binding.to_owned()))
+        .map(ShortcutDefinition::default_binding)
         .collect()
 }
 
-fn overrides_for(bindings: &[Option<String>]) -> BTreeMap<String, Option<String>> {
+fn overrides_for(bindings: &[Binding]) -> BTreeMap<String, ShortcutOverride> {
     SHORTCUTS
         .iter()
         .zip(bindings)
-        .filter_map(|(definition, binding)| match binding {
-            Some(binding) if same_binding(binding, definition.binding) => None,
-            Some(binding) => Some((definition.id.to_owned(), Some(binding.clone()))),
-            None => Some((definition.id.to_owned(), None)),
+        .filter(|(definition, binding)| !definition.is_default(binding))
+        .map(|(definition, binding)| {
+            let shortcut = ShortcutOverride {
+                keys: binding.keys.clone(),
+                zone: (binding.zone != definition.zone).then(|| binding.zone.id().to_owned()),
+            };
+            (definition.id.to_owned(), shortcut)
         })
         .collect()
 }
 
-fn effective_bindings(overrides: &BTreeMap<String, Option<String>>) -> Vec<Option<String>> {
+/// Applies saved overrides to the defaults. Invalid keys are ignored, and a
+/// zone the action can't act in falls back to its default zone.
+fn effective_bindings(overrides: &BTreeMap<String, ShortcutOverride>) -> Vec<Binding> {
     let mut bindings = default_bindings();
     for (index, definition) in SHORTCUTS.iter().enumerate() {
-        if let Some(binding) = overrides.get(definition.id) {
-            let binding = match binding {
-                Some(binding) => match normalize_binding(binding) {
-                    Some(binding) => Some(binding),
-                    None => continue,
-                },
-                None => None,
-            };
-            assign(&mut bindings, index, binding);
-        }
+        let Some(shortcut) = overrides.get(definition.id) else {
+            continue;
+        };
+        let keys = match shortcut.keys.as_deref() {
+            Some(keys) => match normalize_binding(keys) {
+                Some(keys) => Some(keys),
+                None => continue,
+            },
+            None => None,
+        };
+        let zone = shortcut
+            .zone
+            .as_deref()
+            .and_then(ShortcutZone::from_id)
+            .filter(|zone| definition.zones.contains(zone))
+            .unwrap_or(definition.zone);
+        assign(&mut bindings, index, Binding { keys, zone });
     }
 
     bindings
 }
 
-/// Give `index` its binding, unbinding any other shortcut with the same keystroke.
-fn assign(bindings: &mut [Option<String>], index: usize, binding: Option<String>) {
-    if let Some(binding) = binding.as_deref() {
+/// Give `index` its binding, removing the keys from any other shortcut in
+/// the same zone.
+fn assign(bindings: &mut [Binding], index: usize, binding: Binding) {
+    if let Some(keys) = binding.keys.as_deref() {
         for (other_index, other) in bindings.iter_mut().enumerate() {
             if other_index != index
+                && other.zone == binding.zone
                 && other
+                    .keys
                     .as_deref()
-                    .is_some_and(|other| same_binding(other, binding))
+                    .is_some_and(|other| same_binding(other, keys))
             {
-                *other = None;
+                other.keys = None;
             }
         }
     }
@@ -625,6 +706,7 @@ mod tests {
         overrides_for, parse_keystroke,
     };
     use crate::app::actions::Quit;
+    use crate::app::settings::ShortcutOverride;
     use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, actions};
     use std::collections::BTreeMap;
 
@@ -690,29 +772,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reassignment_persists_the_released_command_as_unbound() {
-        let mut bindings = default_bindings();
-        bindings[1] = Some("secondary-x".into());
-        bindings[2] = None;
-        let overrides = overrides_for(&bindings);
-        assert_eq!(overrides.get("new-note"), Some(&Some("secondary-x".into())));
-        assert_eq!(overrides.get("new-folder"), Some(&None));
-
-        let effective = effective_bindings(&overrides);
-        assert_eq!(effective[1].as_deref(), Some("secondary-x"));
-        assert_eq!(effective[2], None);
+    fn keys(overrides: &BTreeMap<String, ShortcutOverride>, id: &str) -> Option<String> {
+        overrides.get(id).and_then(|shortcut| shortcut.keys.clone())
     }
 
     #[test]
-    fn later_shortcut_definition_wins_conflicting_saved_overrides() {
+    fn overrides_round_trip_keys_zones_and_removals() {
+        let mut bindings = default_bindings();
+        bindings[1].keys = Some("secondary-x".into());
+        bindings[2].keys = None;
+        bindings[3].zone = ShortcutZone::Interface;
+        let overrides = overrides_for(&bindings);
+        assert_eq!(keys(&overrides, "new-note").as_deref(), Some("secondary-x"));
+        assert_eq!(keys(&overrides, "new-folder"), None);
+        assert_eq!(overrides["rename"].zone.as_deref(), Some("interface"));
+        assert!(!overrides.contains_key("quit"));
+
+        assert_eq!(effective_bindings(&overrides), bindings);
+    }
+
+    #[test]
+    fn keys_move_only_within_the_same_zone() {
+        let override_keys = |zone: Option<&str>| ShortcutOverride {
+            keys: Some("secondary-x".to_owned()),
+            zone: zone.map(str::to_owned),
+        };
         let overrides = BTreeMap::from([
-            ("new-note".to_owned(), Some("secondary-x".to_owned())),
-            ("new-folder".to_owned(), Some("secondary-x".to_owned())),
+            ("new-note".to_owned(), override_keys(None)),
+            ("new-folder".to_owned(), override_keys(None)),
+            ("rename".to_owned(), override_keys(Some("interface"))),
+            ("quit".to_owned(), override_keys(Some("note"))),
         ]);
         let effective = effective_bindings(&overrides);
-        assert_eq!(effective[1], None);
-        assert_eq!(effective[2].as_deref(), Some("secondary-x"));
+        assert_eq!(
+            effective[0].zone,
+            ShortcutZone::Global,
+            "zone not permitted"
+        );
+        assert_eq!(effective[1].keys, None, "same zone, later definition wins");
+        assert_eq!(effective[2].keys.as_deref(), Some("secondary-x"));
+        assert_eq!(effective[3].keys.as_deref(), Some("secondary-x"));
     }
 
     #[test]
@@ -772,7 +871,8 @@ mod tests {
             .iter()
             .find(|definition| definition.id == "open-link")
             .expect("open-link is a shortcut");
-        let predicate = open_link.predicate(open_link.binding);
+        let default = open_link.default_binding();
+        let predicate = open_link.predicate(&default).expect("bound");
         let keymap = Keymap::new(vec![
             KeyBinding::new("ctrl-enter", ComponentAction, Some("Input")),
             KeyBinding::new("ctrl-enter", Quit, Some(&predicate)),
@@ -783,7 +883,11 @@ mod tests {
         let ctrl_enter = [parse_keystroke("ctrl-enter").expect("valid key")];
         let matched = keymap.bindings_for_input(&ctrl_enter, &stack).0;
         assert!(matched[0].action().partial_eq(&Quit));
-        assert_ne!(open_link.predicate("secondary-o"), predicate);
+        let remapped = super::Binding {
+            keys: Some("secondary-o".to_owned()),
+            ..default
+        };
+        assert_ne!(open_link.predicate(&remapped), Some(predicate));
     }
 
     #[test]
