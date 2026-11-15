@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
@@ -8,8 +9,8 @@ use gpui_kit::component::{
     v_flex,
 };
 use gpui_kit::{
-    App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    Styled, UniformListScrollHandle, div, px, uniform_list,
+    App, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
+    UniformListScrollHandle, div, px, uniform_list,
 };
 
 use super::{DatalithView, modal};
@@ -115,14 +116,10 @@ impl LicensesView {
                 .w(px(760.))
                 .h(px(620.))
                 .track_focus(&focus_handle)
-                .on_key_down(
-                    cx.listener(|view: &mut DatalithView, event: &KeyDownEvent, _, cx| {
-                        if event.keystroke.key == "escape" {
-                            view.licenses.close();
-                            cx.notify();
-                        }
-                    }),
-                )
+                .on_action(cx.listener(|view: &mut DatalithView, _: &Cancel, _, cx| {
+                    view.licenses.close();
+                    cx.notify();
+                }))
                 .child(
                     v_flex()
                         .size_full()

@@ -1,4 +1,5 @@
 use gpui_kit::base::FocusTrapElement as _;
+use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::{
     ActiveTheme, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -8,8 +9,8 @@ use gpui_kit::component::{
     v_flex,
 };
 use gpui_kit::{
-    App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, StatefulInteractiveElement, Styled, Window, div, px, rems,
+    App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, Window, div, px, rems,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -140,15 +141,12 @@ impl SettingsView {
                     .h(rems(42.))
                     .max_h_full()
                     .track_focus(&self.focus_handle)
-                    .on_key_down(cx.listener(
-                        |view: &mut DatalithView, event: &KeyDownEvent, window, cx| {
-                            if event.keystroke.key == "escape" {
-                                view.settings.dismiss(window, cx);
-                                cx.stop_propagation();
-                                cx.notify();
-                            }
-                        },
-                    ))
+                    .on_action(
+                        cx.listener(|view: &mut DatalithView, _: &Cancel, window, cx| {
+                            view.settings.dismiss(window, cx);
+                            cx.notify();
+                        }),
+                    )
                     .child(
                         v_flex()
                             .size_full()
