@@ -10,6 +10,14 @@
     "* * * * 2"
   ],
   "minimumReleaseAge": "3 days",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "minimumReleaseAgePackageManagerSync": true,
+  "npm": {
+    "constraints": {
+      "npm": ">=11.10.0 <12"
+    },
+    "npmrc": "min-release-age=3\n"
+  },
   "internalChecksFilter": "strict",
   "rebaseWhen": "behind-base-branch",
   "updateNotScheduled": true,
@@ -30,6 +38,16 @@
     "commitMessageAction": "lock file maintenance"
   },
   "packageRules": [
+    {
+      "description": "Keep the Renovate runner's npm compatible with both Node repositories and its release-age setting.",
+      "matchDatasources": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "npm"
+      ],
+      "allowedVersions": ">=11.10.0 <12"
+    },
     {
       "description": "Version updates ship in the app: fix(deps), one PR per update type.",
       "matchUpdateTypes": [
@@ -91,6 +109,7 @@
       "at any time"
     ],
     "minimumReleaseAge": null,
+    "npmrc": "min-release-age=0\n",
     "labels": [
       "security"
     ],
