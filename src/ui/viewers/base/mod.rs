@@ -12,15 +12,15 @@ use snapshot::file_name;
 use snapshot::load_snapshot;
 use snapshot::{BaseItem, BaseRow, BaseSnapshot, BaseStatus};
 
-use gpui_kit::component::input::EditorState;
+use gpui_kit::component::input::{EditorState, InputEvent, InputState};
 use gpui_kit::component::{
     ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
     h_flex, v_flex,
 };
 use gpui_kit::{
-    AnyElement, App, AppContext, Context, ElementId, Entity, FocusHandle, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, Styled, Task, Window, div,
+    AnyElement, App, AppContext, Context, ElementId, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Task, Window, div,
     prelude::FluentBuilder,
 };
 
@@ -207,7 +207,145 @@ impl BaseViewState {
         cx.notify();
     }
 
+    pub(super) fn begin_cell_edit(
+        &mut self,
+        is_list: bool,
+        row: usize,
+        column: usize,
+        initial: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.preview {
+            return;
+        }
+        self.clear_edits();
+        let input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value(initial.to_string(), window, cx);
+            state
+        });
+        let subscription = cx.subscribe_in(
+            &input,
+            window,
+            move |this, _input, event, _window, cx| match event {
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    this.commit_cell_edit(cx);
+                }
+                _ => {}
+            },
+        );
+        input.focus_handle(cx).focus(window, cx);
+        let edit = cells::CellEdit {
+            row,
+            column,
+            input,
+            subscription: Some(subscription),
+            error: None,
+        };
+        if is_list {
+            if let Some(list) = &mut self.list {
+                list.edit = Some(edit);
+            }
+        } else if let Some(table) = &mut self.table {
+            table.edit = Some(edit);
+        }
+        cx.notify();
+    }
+
+    fn clear_edits(&mut self) {
+        if let Some(list) = &mut self.list {
+            list.edit = None;
+        }
+        if let Some(table) = &mut self.table {
+            table.edit = None;
+        }
+    }
+
+    /// Removes the active edit from its owning view, returning the view kind plus the edit
+    /// (subscription included, so it stays alive for rollback).
+    fn take_edit(&mut self) -> Option<(bool, cells::CellEdit)> {
+        if let Some(list) = &mut self.list
+            && let Some(edit) = list.edit.take()
+        {
+            return Some((true, edit));
+        }
+        if let Some(table) = &mut self.table
+            && let Some(edit) = table.edit.take()
+        {
+            return Some((false, edit));
+        }
+        None
+    }
+
+    fn restore_edit(&mut self, is_list: bool, edit: cells::CellEdit) {
+        if is_list {
+            if let Some(list) = &mut self.list {
+                list.edit = Some(edit);
+            }
+        } else if let Some(table) = &mut self.table {
+            table.edit = Some(edit);
+        }
+    }
+
+    /// Commits the active edit: fs write -> catalog reconcile -> explicit re-query,
+    /// so the view reflects the change immediately.
+    /// On failure the input stays open with the error message.
+    fn commit_cell_edit(&mut self, cx: &mut Context<Self>) {
+        let Some((is_list, mut edit)) = self.take_edit() else {
+            return;
+        };
+        let new_value = edit.input.read(cx).value().to_string();
+        let snapshot = match &self.status {
+            BaseStatus::Ready(snapshot) | BaseStatus::Empty(snapshot) => snapshot.clone(),
+            _ => {
+                edit.error = Some("No data to edit".into());
+                self.restore_edit(is_list, edit);
+                cx.notify();
+                return;
+            }
+        };
+        let Some(row) = snapshot.rows.get(edit.row).cloned() else {
+            cx.notify();
+            return;
+        };
+        let Some(view) = snapshot.definition.views.get(snapshot.view_index).cloned() else {
+            cx.notify();
+            return;
+        };
+        let Some(property) = view.order.get(edit.column).cloned() else {
+            cx.notify();
+            return;
+        };
+        let Some(catalog) = self.catalog.clone() else {
+            edit.error = Some("No Vault Catalog is available".into());
+            self.restore_edit(is_list, edit);
+            cx.notify();
+            return;
+        };
+        let result = commit_property(&catalog, &row.path, &property.source, &new_value);
+        match result {
+            Ok(()) => {
+                // fs write is not enough: DB reconcile is async (notify -> reconciler thread).
+                // Force a route through it so the re-query below does not read stale frontmatter.
+                catalog.refresh_paths(vec![catalog.root().join(&row.path)]);
+                self.rebuild(cx);
+            }
+            Err(error) => {
+                edit.error = Some(error.to_string());
+                self.restore_edit(is_list, edit);
+                cx.notify();
+            }
+        }
+    }
+
+    pub(super) fn cancel_cell_edit(&mut self, cx: &mut Context<Self>) {
+        self.clear_edits();
+        cx.notify();
+    }
+
     fn select_view(&mut self, name: String, cx: &mut Context<Self>) {
+        self.clear_edits();
         self.selected_view = Some(name);
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
@@ -384,4 +522,20 @@ impl Render for BaseViewState {
         }
         root
     }
+}
+
+/// Writes one frontmatter key (empty deletes it) via the chunked writer.
+fn commit_property(
+    catalog: &crate::vault::VaultCatalog,
+    relative_path: &std::path::Path,
+    key: &str,
+    new_value: &str,
+) -> anyhow::Result<()> {
+    let absolute = catalog.root().join(relative_path);
+    let value = if new_value.is_empty() {
+        None
+    } else {
+        Some(new_value)
+    };
+    crate::vault::file_ops::update_frontmatter(&absolute, key, value)
 }

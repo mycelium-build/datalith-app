@@ -59,6 +59,7 @@ pub(super) fn list_items(
 pub(super) struct ListState {
     pub(super) scroll_handle: VirtualListScrollHandle,
     pub(super) item_sizes: Vec<Size<Pixels>>,
+    pub(super) edit: Option<super::cells::CellEdit>,
 }
 
 impl ListState {
@@ -66,6 +67,7 @@ impl ListState {
         Self {
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Vec::new(),
+            edit: None,
         }
     }
 }
@@ -81,6 +83,7 @@ impl BaseViewState {
             return super::centered_message("List view state is missing", cx);
         };
         let entity = cx.entity();
+        let edit_entity = entity.clone();
         let item_sizes = list_state.item_sizes.clone();
         let handler = self.handler.clone();
         let list = v_virtual_list(
@@ -116,13 +119,26 @@ impl BaseViewState {
                                 let Some(row) = snapshot.rows.get(*row_index) else {
                                     return div().into_any_element();
                                 };
+                                let edit = state
+                                    .list
+                                    .as_ref()
+                                    .and_then(|list_state| list_state.edit.as_ref());
+                                let read_only = state.catalog.as_ref().is_none_or(|catalog| {
+                                    crate::vault::source::is_read_only(
+                                        &catalog.root().join(&row.path),
+                                    )
+                                });
                                 render_list_row(
                                     *ordinal,
+                                    *row_index,
                                     snapshot,
                                     row,
                                     &snapshot.definition,
                                     view,
                                     &handler,
+                                    &edit_entity,
+                                    edit,
+                                    read_only,
                                     cx,
                                 )
                             }
@@ -265,13 +281,19 @@ fn render_summary_item(
     column.into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn render_list_row(
     ordinal: usize,
+    row_index: usize,
     snapshot: &BaseSnapshot,
     row: &BaseRow,
     definition: &crate::document::base::BaseDefinition,
     view: &BaseView,
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
+    view_entity: &gpui_kit::Entity<BaseViewState>,
+    edit: Option<&super::cells::CellEdit>,
+    read_only: bool,
     cx: &App,
 ) -> AnyElement {
     let list = view.as_list().cloned().unwrap_or_default();
@@ -288,7 +310,19 @@ fn render_list_row(
                     .items_center()
                     .h(px(LIST_ROW_HEIGHT))
                     .child(marker)
-                    .child(cell(snapshot, row, property, handler, 0, 0, true, cx))
+                    .child(cell(
+                        snapshot,
+                        row,
+                        row_index,
+                        property,
+                        handler,
+                        view_entity,
+                        edit,
+                        read_only,
+                        0,
+                        true,
+                        cx,
+                    ))
                     .into_any_element(),
             );
         }
@@ -313,7 +347,17 @@ fn render_list_row(
                             .child(format!("{}:", definition.display_label(property))),
                     )
                     .child(cell(
-                        snapshot, row, property, handler, ordinal, column, true, cx,
+                        snapshot,
+                        row,
+                        row_index,
+                        property,
+                        handler,
+                        view_entity,
+                        edit,
+                        read_only,
+                        column,
+                        true,
+                        cx,
                     ))
                     .into_any_element()
             });
@@ -333,7 +377,17 @@ fn render_list_row(
                 continue;
             };
             cells.push(cell(
-                snapshot, row, property, handler, ordinal, column, true, cx,
+                snapshot,
+                row,
+                row_index,
+                property,
+                handler,
+                view_entity,
+                edit,
+                read_only,
+                column,
+                true,
+                cx,
             ));
         }
         lines.push(
@@ -356,20 +410,28 @@ fn render_list_row(
 fn cell(
     snapshot: &BaseSnapshot,
     row: &BaseRow,
+    row_index: usize,
     property: &crate::document::base::DisplayProperty,
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
-    ordinal: usize,
+    view_entity: &gpui_kit::Entity<BaseViewState>,
+    edit: Option<&super::cells::CellEdit>,
+    read_only: bool,
     column: usize,
     truncate: bool,
     cx: &App,
 ) -> AnyElement {
-    super::render_property_cell(
+    super::cells::render_editable_cell(
         snapshot,
         row,
+        row_index,
+        column,
         property,
         handler,
-        ElementId::Name(format!("base-cell-{ordinal}-{column}").into()),
+        ElementId::Name(format!("base-cell-{row_index}-{column}").into()),
         truncate,
         cx.theme(),
+        edit,
+        view_entity,
+        read_only,
     )
 }

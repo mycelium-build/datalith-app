@@ -1,15 +1,32 @@
 //! Cell rendering over projected snapshot values.
 
-use gpui_kit::component::{ActiveTheme, Theme, h_flex};
+use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::{ActiveTheme, StyledExt, Theme, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
+    AnyElement, ClickEvent, ElementId, Entity, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, StatefulInteractiveElement, Styled, Subscription, div, prelude::FluentBuilder,
 };
 
 use crate::document::base::DisplayProperty;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 
 use super::snapshot::{BaseRow, BaseSnapshot, file_name, path_text};
+
+pub(super) struct CellEdit {
+    pub(super) row: usize,
+    pub(super) column: usize,
+    pub(super) input: Entity<InputState>,
+    #[allow(dead_code, reason = "for staying alive")]
+    pub(super) subscription: Option<Subscription>,
+    pub(super) error: Option<String>,
+}
+
+pub(super) fn editable_source(source: &str, is_markdown: bool) -> bool {
+    if source.starts_with("file.") || source.starts_with("formula.") {
+        return false;
+    }
+    is_markdown
+}
 
 pub(super) fn render_property_cell(
     snapshot: &BaseSnapshot,
@@ -70,6 +87,124 @@ pub(super) fn render_property_cell(
         .whitespace_normal()
         .child(format_scalar_text(value))
         .into_any_element()
+}
+
+/// Editable cell: single click swaps the static text for an inline input.
+/// When `edit` matches this (row, column) the input renders instead.
+/// `initial` is the current display text, captured for `begin_cell_edit`.
+/// `view_entity` is `None` when the source is read-only (no edit affordance).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_editable_cell(
+    snapshot: &BaseSnapshot,
+    row: &BaseRow,
+    row_index: usize,
+    column: usize,
+    property: &DisplayProperty,
+    handler: &gpui_kit::WeakEntity<FileHandler>,
+    id: ElementId,
+    truncate: bool,
+    theme: &Theme,
+    edit: Option<&CellEdit>,
+    view_entity: &Entity<super::BaseViewState>,
+    read_only: bool,
+) -> AnyElement {
+    if let Some(active) = edit
+        && active.row == row_index
+        && active.column == column
+    {
+        let mut input = Input::new(&active.input)
+            .appearance(false)
+            .flex_1()
+            .px_0()
+            .py_0()
+            .h_7()
+            .h_flex()
+            .text_base();
+        if active.error.is_some() {
+            input = input.border_color(theme.danger);
+        }
+        let entity = view_entity.clone();
+        return v_flex()
+            .id(id)
+            .w_full()
+            .on_key_down(move |event: &KeyDownEvent, _window, cx| {
+                if event.keystroke.key == "escape" {
+                    entity.update(cx, |state, cx| {
+                        state.cancel_cell_edit(cx);
+                    });
+                }
+            })
+            .child(input)
+            .when(active.error.is_some(), |flex| {
+                flex.child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.danger)
+                        .child(active.error.clone().unwrap_or_default()),
+                )
+            })
+            .into_any_element();
+    }
+    let is_markdown = row
+        .path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
+    let editable = !read_only && editable_source(&property.source, is_markdown);
+    if !editable {
+        return render_property_cell(snapshot, row, property, handler, id, truncate, theme);
+    }
+    let initial = cell_display_text(snapshot, row, property);
+    let entity = view_entity.clone();
+    let is_list = matches!(
+        snapshot
+            .definition
+            .views
+            .get(snapshot.view_index)
+            .map(|view| view.view_type),
+        Some(crate::document::base::ViewType::List)
+    );
+    div()
+        .id(id)
+        .when(truncate, Styled::text_ellipsis)
+        .whitespace_normal()
+        .min_w(gpui_kit::px(80.))
+        .cursor_pointer()
+        .hover(|style| style.bg(theme.muted))
+        .on_click(move |_: &ClickEvent, window, cx| {
+            entity.update(cx, |state, cx| {
+                state.begin_cell_edit(is_list, row_index, column, &initial, window, cx);
+            });
+        })
+        .child(render_property_cell_text(snapshot, row, property, theme))
+        .into_any_element()
+}
+
+/// Plain-text value for a cell, without link interactivity
+/// (used as the click-to-edit affordance underneath the edit wrapper).
+fn render_property_cell_text(
+    snapshot: &BaseSnapshot,
+    row: &BaseRow,
+    property: &DisplayProperty,
+    theme: &Theme,
+) -> AnyElement {
+    if property.source == "file.name" {
+        return div()
+            .text_color(theme.link)
+            .child(file_name(&row.path).unwrap_or_default().to_string())
+            .into_any_element();
+    }
+    let text = cell_display_text(snapshot, row, property);
+    div().child(text).into_any_element()
+}
+
+fn cell_display_text(snapshot: &BaseSnapshot, row: &BaseRow, property: &DisplayProperty) -> String {
+    if property.source == "file.name" {
+        return file_name(&row.path).unwrap_or_default().to_string();
+    }
+    snapshot
+        .projection_value(row, &property.source)
+        .map_or_default(format_scalar_text)
 }
 
 /// Splits `[[target|label]]`-shaped string values into interactive parts.

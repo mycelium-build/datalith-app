@@ -34,6 +34,7 @@ pub(super) struct TableState {
     pub(super) scroll_handle: VirtualListScrollHandle,
     pub(super) h_scroll_handle: ScrollHandle,
     pub(super) item_sizes: Vec<Size<Pixels>>,
+    pub(super) edit: Option<super::cells::CellEdit>,
     column_widths: RefCell<ColumnWidths>,
 }
 
@@ -43,6 +44,7 @@ impl TableState {
             scroll_handle: VirtualListScrollHandle::new(),
             h_scroll_handle: ScrollHandle::new(),
             item_sizes: Vec::new(),
+            edit: None,
             column_widths: RefCell::default(),
         }
     }
@@ -162,6 +164,7 @@ impl BaseViewState {
         let column_widths = table_state.column_widths.borrow().widths.clone();
         let table_min_width = table_width(&column_widths);
         let row_column_widths = column_widths.clone();
+        let edit_entity = entity.clone();
         let footer =
             build_table_footer(snapshot, view, &column_widths, table_min_width, cx.theme());
         let header =
@@ -180,6 +183,10 @@ impl BaseViewState {
                 };
                 visible_range
                     .map(|index| {
+                        let edit = state
+                            .table
+                            .as_ref()
+                            .and_then(|table_state| table_state.edit.as_ref());
                         render_table_item(
                             index,
                             snapshot,
@@ -187,6 +194,9 @@ impl BaseViewState {
                             table_min_width,
                             &row_column_widths,
                             &handler,
+                            &edit_entity,
+                            edit,
+                            state.catalog.as_ref(),
                             cx.theme(),
                         )
                     })
@@ -259,6 +269,7 @@ pub(super) fn row_sizes(snapshot: &BaseSnapshot) -> Vec<Size<Pixels>> {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn render_table_item(
     index: usize,
     snapshot: &BaseSnapshot,
@@ -266,6 +277,9 @@ fn render_table_item(
     min_width: Pixels,
     column_widths: &[Pixels],
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
+    view_entity: &gpui_kit::Entity<BaseViewState>,
+    edit: Option<&super::cells::CellEdit>,
+    catalog: Option<&crate::vault::VaultCatalog>,
     theme: &Theme,
 ) -> AnyElement {
     let Some(item) = snapshot.items.get(index) else {
@@ -296,6 +310,9 @@ fn render_table_item(
                 min_width,
                 column_widths,
                 handler,
+                view_entity,
+                edit,
+                catalog,
                 theme,
             )
         }
@@ -377,9 +394,14 @@ fn render_table_row(
     table_min_width: Pixels,
     column_widths: &[Pixels],
     handler: &gpui_kit::WeakEntity<crate::document::handler::FileHandler>,
+    view_entity: &gpui_kit::Entity<BaseViewState>,
+    edit: Option<&super::cells::CellEdit>,
+    catalog: Option<&crate::vault::VaultCatalog>,
     theme: &Theme,
 ) -> AnyElement {
     let table = view.as_table().copied().unwrap_or_default();
+    let read_only = catalog
+        .is_none_or(|catalog| crate::vault::source::is_read_only(&catalog.root().join(&row.path)));
     div()
         .id(ElementId::Name(format!("base-table-row-{index}").into()))
         .w_full()
@@ -402,14 +424,19 @@ fn render_table_row(
                             .max_w(px(TABLE_COLUMN_MAX_WIDTH))
                             .flex_shrink_0()
                             .px_2()
-                            .child(super::cells::render_property_cell(
+                            .child(super::cells::render_editable_cell(
                                 snapshot,
                                 row,
+                                index,
+                                column,
                                 property,
                                 handler,
                                 ElementId::Name(format!("base-cell-{index}-{column}").into()),
                                 true,
                                 theme,
+                                edit,
+                                view_entity,
+                                read_only,
                             )),
                     )
                 }),
