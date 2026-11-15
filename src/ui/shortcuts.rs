@@ -7,6 +7,7 @@ use gpui_kit::component::{
     menu::{DropdownMenu as _, PopupMenuItem},
     scroll::Scrollbar,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
+    tooltip::Tooltip,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -71,6 +72,8 @@ pub struct ShortcutsView {
     scroll: ScrollHandle,
     registry: ShortcutRegistry,
     groups: Vec<ShortcutGroup>,
+    /// Where another binding wins each shortcut's keys, by shortcut id.
+    shadowed: Vec<(&'static str, Vec<&'static str>)>,
     capture: Option<ShortcutCapture>,
     settings_error: Option<String>,
     _capture_subscription: Subscription,
@@ -81,6 +84,7 @@ impl ShortcutsView {
         let focus = cx.focus_handle();
         let registry = ShortcutRegistry::new();
         let groups = shortcut_groups(registry.shortcuts());
+        let shadowed = shadowed_places(&registry, cx);
         let weak_view = cx.weak_entity();
         let capture_subscription = cx.intercept_keystrokes(move |event, window, cx| {
             if let Some(view) = weak_view.upgrade() {
@@ -93,6 +97,7 @@ impl ShortcutsView {
             scroll: ScrollHandle::new(),
             registry,
             groups,
+            shadowed,
             capture: None,
             settings_error: None,
             _capture_subscription: capture_subscription,
@@ -245,6 +250,7 @@ impl ShortcutsView {
             format!("Couldn’t save shortcuts. Changes apply for this session. {error}")
         });
         self.groups = shortcut_groups(self.registry.shortcuts());
+        self.shadowed = shadowed_places(&self.registry, cx);
         self.capture = None;
         self.focus.focus(window, cx);
         cx.notify();
@@ -327,7 +333,13 @@ impl ShortcutsView {
             .items_center()
             .justify_between()
             .gap_3()
-            .child(Self::render_binding_button(shortcut, cx))
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(Self::render_binding_button(shortcut, cx))
+                    .children(self.render_shadowed(shortcut, cx)),
+            )
             .child(self.render_shortcut_controls(shortcut, &row_id, cx));
         ShortcutRow {
             id: row_id,
@@ -344,6 +356,28 @@ impl ShortcutsView {
                 .child(TableCell::new().child(binding_cell))
                 .child(TableCell::new().child(Self::render_zone(shortcut, cx))),
         }
+    }
+
+    /// An icon whose tooltip lists where another binding wins the keys.
+    fn render_shadowed(&self, shortcut: &Shortcut, cx: &Context<Self>) -> Option<impl IntoElement> {
+        let places = self
+            .shadowed
+            .iter()
+            .find(|(id, _)| *id == shortcut.id())
+            .map(|(_, places)| places)
+            .filter(|places| !places.is_empty())?;
+        let description = format!("Inactive {}", places.join(", "));
+        Some(
+            div()
+                .id(format!("shortcut-shadowed-{}", shortcut.id()))
+                .aria_label(description.clone())
+                .tooltip(move |window, cx| Tooltip::new(description.clone()).build(window, cx))
+                .child(
+                    Icon::new(IconName::Info)
+                        .size_4()
+                        .text_color(cx.theme().muted_foreground),
+                ),
+        )
     }
 
     /// The zone, as plain text when the action can act in only one.
@@ -641,6 +675,17 @@ fn is_modifier_key(key: &str) -> bool {
         key,
         "shift" | "ctrl" | "control" | "cmd" | "super" | "alt" | "fn" | "win"
     )
+}
+
+fn shadowed_places(
+    registry: &ShortcutRegistry,
+    cx: &App,
+) -> Vec<(&'static str, Vec<&'static str>)> {
+    registry
+        .shortcuts()
+        .iter()
+        .map(|shortcut| (shortcut.id(), registry.shadowed_places(shortcut.id(), cx)))
+        .collect()
 }
 
 fn shortcut_groups(shortcuts: Vec<Shortcut>) -> Vec<ShortcutGroup> {
