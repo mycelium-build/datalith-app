@@ -10,6 +10,7 @@ use crate::document::filter::{Filter, PropertyPath};
 
 mod cards;
 mod graph;
+mod kanban;
 mod list;
 mod parse;
 mod table;
@@ -20,6 +21,7 @@ pub use graph::{
     BorderStyle, ClassStyle, DirectionalEdgeHoverStyle, GraphClass, GraphColor, GraphConfig,
     GraphDisplay, GraphPhysics, NodeStyle, RawGraphClass,
 };
+pub use kanban::KanbanConfig;
 pub use list::ListConfig;
 pub use table::TableConfig;
 
@@ -91,6 +93,15 @@ impl BaseView {
             _ => None,
         }
     }
+
+    /// The kanban-view settings when this view renders as a kanban board.
+    #[must_use]
+    pub const fn as_kanban(&self) -> Option<&KanbanConfig> {
+        match &self.kind {
+            ViewKind::Kanban(config) => Some(config),
+            _ => None,
+        }
+    }
 }
 
 /// The per-kind settings payload of a view.
@@ -101,6 +112,7 @@ pub enum ViewKind {
     Table(TableConfig),
     Cards(CardsConfig),
     Graph(GraphConfig),
+    Kanban(KanbanConfig),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -195,6 +207,7 @@ pub enum ViewType {
     Table,
     Cards,
     Graph,
+    Kanban,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
