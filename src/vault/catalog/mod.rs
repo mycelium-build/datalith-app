@@ -164,6 +164,14 @@ impl VaultCatalog {
     }
 
     #[must_use]
+    pub(crate) fn has_yaml_frontmatter(&self, path: &Path) -> bool {
+        self.inner
+            .file_types
+            .capabilities(path)
+            .is_some_and(|capabilities| capabilities.yaml_frontmatter)
+    }
+
+    #[must_use]
     pub(crate) fn paths(&self) -> Vec<PathBuf> {
         let database = self.inner.database.clone();
         run_blocking("paths", move || {

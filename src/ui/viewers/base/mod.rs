@@ -340,6 +340,12 @@ impl BaseViewState {
             cx.notify();
             return;
         };
+        if !catalog.has_yaml_frontmatter(&row.path) {
+            edit.error = Some("This file type has no YAML frontmatter".into());
+            self.restore_edit(is_list, edit);
+            cx.notify();
+            return;
+        }
         let result = commit_property(&catalog, &row.path, &property.source, &new_value);
         match result {
             Ok(()) => {

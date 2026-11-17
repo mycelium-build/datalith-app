@@ -128,6 +128,10 @@ impl BaseViewState {
                                         &catalog.root().join(&row.path),
                                     )
                                 });
+                                let has_frontmatter = state
+                                    .catalog
+                                    .as_ref()
+                                    .is_some_and(|catalog| catalog.has_yaml_frontmatter(&row.path));
                                 render_list_row(
                                     *ordinal,
                                     *row_index,
@@ -139,6 +143,7 @@ impl BaseViewState {
                                     &edit_entity,
                                     edit,
                                     read_only,
+                                    has_frontmatter,
                                     cx,
                                 )
                             }
@@ -294,6 +299,7 @@ fn render_list_row(
     view_entity: &gpui_kit::Entity<BaseViewState>,
     edit: Option<&super::cells::CellEdit>,
     read_only: bool,
+    has_frontmatter: bool,
     cx: &App,
 ) -> AnyElement {
     let list = view.as_list().cloned().unwrap_or_default();
@@ -319,6 +325,7 @@ fn render_list_row(
                         view_entity,
                         edit,
                         read_only,
+                        has_frontmatter,
                         0,
                         true,
                         cx,
@@ -355,6 +362,7 @@ fn render_list_row(
                         view_entity,
                         edit,
                         read_only,
+                        has_frontmatter,
                         column,
                         true,
                         cx,
@@ -385,6 +393,7 @@ fn render_list_row(
                 view_entity,
                 edit,
                 read_only,
+                has_frontmatter,
                 column,
                 true,
                 cx,
@@ -416,6 +425,7 @@ fn cell(
     view_entity: &gpui_kit::Entity<BaseViewState>,
     edit: Option<&super::cells::CellEdit>,
     read_only: bool,
+    has_frontmatter: bool,
     column: usize,
     truncate: bool,
     cx: &App,
@@ -433,5 +443,6 @@ fn cell(
         edit,
         view_entity,
         read_only,
+        has_frontmatter,
     )
 }

@@ -21,11 +21,11 @@ pub(super) struct CellEdit {
     pub(super) error: Option<String>,
 }
 
-pub(super) fn editable_source(source: &str, is_markdown: bool) -> bool {
+pub(super) fn editable_source(source: &str, has_frontmatter: bool) -> bool {
     if source.starts_with("file.") || source.starts_with("formula.") {
         return false;
     }
-    is_markdown
+    has_frontmatter
 }
 
 pub(super) fn render_property_cell(
@@ -107,6 +107,7 @@ pub(super) fn render_editable_cell(
     edit: Option<&CellEdit>,
     view_entity: &Entity<super::BaseViewState>,
     read_only: bool,
+    has_frontmatter: bool,
 ) -> AnyElement {
     if let Some(active) = edit
         && active.row == row_index
@@ -145,12 +146,7 @@ pub(super) fn render_editable_cell(
             })
             .into_any_element();
     }
-    let is_markdown = row
-        .path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
-    let editable = !read_only && editable_source(&property.source, is_markdown);
+    let editable = !read_only && editable_source(&property.source, has_frontmatter);
     if !editable {
         return render_property_cell(snapshot, row, property, handler, id, truncate, theme);
     }

@@ -402,6 +402,7 @@ fn render_table_row(
     let table = view.as_table().copied().unwrap_or_default();
     let read_only = catalog
         .is_none_or(|catalog| crate::vault::source::is_read_only(&catalog.root().join(&row.path)));
+    let has_frontmatter = catalog.is_some_and(|catalog| catalog.has_yaml_frontmatter(&row.path));
     div()
         .id(ElementId::Name(format!("base-table-row-{index}").into()))
         .w_full()
@@ -437,6 +438,7 @@ fn render_table_row(
                                 edit,
                                 view_entity,
                                 read_only,
+                                has_frontmatter,
                             )),
                     )
                 }),
