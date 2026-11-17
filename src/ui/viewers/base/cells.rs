@@ -15,6 +15,7 @@ use super::snapshot::{BaseRow, BaseSnapshot, file_name, path_text};
 pub(super) struct CellEdit {
     pub(super) row: usize,
     pub(super) column: usize,
+    pub(super) initial: String,
     pub(super) input: Entity<InputState>,
     #[allow(dead_code, reason = "for staying alive")]
     pub(super) subscription: Option<Subscription>,
@@ -146,7 +147,12 @@ pub(super) fn render_editable_cell(
             })
             .into_any_element();
     }
-    let editable = !read_only && editable_source(&property.source, has_frontmatter);
+    let editable = !read_only
+        && editable_source(&property.source, has_frontmatter)
+        && !matches!(
+            snapshot.projection_value(row, &property.source),
+            Some(serde_json::Value::Array(_) | serde_json::Value::Object(_))
+        );
     if !editable {
         return render_property_cell(snapshot, row, property, handler, id, truncate, theme);
     }
