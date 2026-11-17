@@ -373,6 +373,7 @@ fn render_card_row(
     });
     h_flex()
         .w_full()
+        .items_start()
         .gap(px(CARD_GAP))
         .children(cards)
         .into_any_element()
