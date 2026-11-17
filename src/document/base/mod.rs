@@ -218,6 +218,45 @@ pub enum CardImageFit {
     Contain,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CardBodyHeight {
+    Auto,
+    Fixed(f32),
+}
+
+pub const DEFAULT_BODY_HEIGHT: f32 = 96.0;
+
+impl Default for CardBodyHeight {
+    fn default() -> Self {
+        Self::Fixed(DEFAULT_BODY_HEIGHT)
+    }
+}
+
+impl<'de> Deserialize<'de> for CardBodyHeight {
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = yaml_serde::Value::deserialize(deserializer)?;
+        match &value {
+            yaml_serde::Value::String(text) if text == "auto" => Ok(Self::Auto),
+            yaml_serde::Value::String(_) => Err(serde::de::Error::custom(
+                "bodyHeight must be \"auto\" or a positive number",
+            )),
+            _ => match value.as_f64() {
+                Some(number) if number.is_finite() && number.abs() <= f64::from(f32::MAX) => {
+                    let height = number as f32;
+                    Ok(Self::Fixed(height))
+                }
+                _ => Err(serde::de::Error::custom(
+                    "bodyHeight must be \"auto\" or a positive number",
+                )),
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ListMarkers {

@@ -16,14 +16,16 @@ views:
     imageFit: cover
     imageAspectRatio: 1.5
     cardSize: 220
+    bodyHeight: auto
 ```
 
 # Cards Settings
 
 - `image`: note or file property used for the card image. Local wikilinks, local paths, and HTTP(S) URLs are supported.
-- `imageFit`: `cover` or `contain`. The default is `cover`.
-- `imageAspectRatio`: positive numeric image aspect ratio. The default is `1`.
-- `cardSize`: target card width in pixels. The default is `200`.
+- `imageFit`: `cover` (default) or `contain`.
+- `imageAspectRatio`: positive numeric image aspect ratio, default is `1`.
+- `cardSize`: target card width in pixels, default is `200`.
+- `bodyHeight`: size of the properties area below the image, default `96`. `auto` grows the area to the full displayed content.
 
 The configured `order` properties are shown below the image. `file.name` is an interactive link to the file. Press and hold a card image to show it fullscreen; releasing the mouse returns to the cards view.
 
