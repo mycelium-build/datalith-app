@@ -15,6 +15,9 @@ use gpui_kit::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
+use crate::app::actions::{
+    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
+};
 use crate::vault;
 use crate::vault::path::display_name;
 
@@ -97,15 +100,34 @@ impl DatalithView {
         cx: &Context<Self>,
         tree_state_entity: &Entity<TreeState>,
         drop_box: Option<(usize, usize)>,
+        active_read_only: bool,
     ) -> impl IntoElement {
         let view = cx.entity();
-
-        tree::tree(
-            tree_state_entity,
+        tree::tree(tree_state_entity, {
+            let view = view.clone();
             move |ix, entry, selected, _window, cx| {
                 Self::render_tree_item(&view, ix, entry, selected, drop_box, cx)
-            },
-        )
+            }
+        })
+        .context_menu(move |_ix, entry, menu, _window, cx| {
+            let path = Self::path_from_id(&entry.item().id);
+            view.update(cx, |v, _| {
+                v.context_menu_target = Some(path.clone());
+            });
+            menu.menu_with_disabled("New File", Box::new(NewFile), active_read_only)
+                .menu_with_disabled("New Folder", Box::new(NewFolder), active_read_only)
+                .separator()
+                .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
+                .menu_with_disabled("Delete", Box::new(Delete), active_read_only)
+                .menu_with_disabled("Duplicate", Box::new(Duplicate), active_read_only)
+                .separator()
+                .menu_with_disabled(
+                    "Open in Explorer",
+                    Box::new(OpenInExplorer),
+                    active_read_only,
+                )
+                .menu("Copy Path", Box::new(CopyPath))
+        })
     }
 
     /// Drops stale hover state once the drag ends, then reports the highlighted rows.
@@ -313,7 +335,6 @@ impl DatalithView {
                     let path = path.to_path_buf();
                     move |this, _event: &MouseDownEvent, _window, _cx| {
                         this.context_menu_target = Some(path.clone());
-                        this.context_menu_from_row = true;
                     }
                 }),
             )

@@ -19,9 +19,7 @@ use gpui_kit::{
     Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::app::actions::{
-    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
-};
+use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer, Rename};
 use crate::app::settings as app_settings;
 use crate::ui::notifications;
 use crate::vault::file_ops;
@@ -393,11 +391,12 @@ impl DatalithView {
                     }
                 }))
             })
-            .child(
-                div()
-                    .flex_1()
-                    .child(Self::render_file_tree(cx, &self.tree_state, drop_box)),
-            )
+            .child(div().flex_1().child(Self::render_file_tree(
+                cx,
+                &self.tree_state,
+                drop_box,
+                active_read_only,
+            )))
             .child(
                 div()
                     .border_t(px(BORDER_WIDTH))
@@ -420,24 +419,10 @@ impl DatalithView {
                     ),
             )
             .context_menu(move |menu, _window, cx| {
-                let from_row = view.update(cx, |v, _| {
-                    let from_row = v.context_menu_from_row;
-                    v.context_menu_from_row = false;
-                    from_row
-                });
-
-                if !from_row {
-                    view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
-                }
+                view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
 
                 menu.menu_with_disabled("New File", Box::new(NewFile), active_read_only)
                     .menu_with_disabled("New Folder", Box::new(NewFolder), active_read_only)
-                    .when(from_row, |menu| {
-                        menu.separator()
-                            .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
-                            .menu_with_disabled("Delete", Box::new(Delete), active_read_only)
-                            .menu_with_disabled("Duplicate", Box::new(Duplicate), active_read_only)
-                    })
                     .separator()
                     .menu_with_disabled(
                         "Open in Explorer",

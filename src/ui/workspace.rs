@@ -286,7 +286,6 @@ impl DatalithView {
         self.pending_open = None;
         self.pending_external_updates.clear();
         self.context_menu_target = None;
-        self.context_menu_from_row = false;
         self.pending_navigation = None;
         self.focus_editor_requested = false;
         self.focus_sidebar_requested = false;
@@ -344,7 +343,6 @@ impl DatalithView {
         self.pending_open = None;
         self.pending_external_updates.clear();
         self.context_menu_target = None;
-        self.context_menu_from_row = false;
         self.pending_navigation = None;
         self.focus_editor_requested = false;
         self.focus_sidebar_requested = false;
