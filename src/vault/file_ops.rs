@@ -333,6 +333,7 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
 
     fn temp_vault(name: &str) -> PathBuf {
@@ -665,7 +666,7 @@ mod tests {
         let note = root.join("Note.md");
         let mut original = String::from("---\ntitle: T\n---\n\n");
         for i in 0..5000 {
-            original.push_str(&format!("line {i} — some body text ✓\n"));
+            writeln!(original, "line {i} — some body text ✓").unwrap();
         }
         fs::write(&note, &original).unwrap();
 
