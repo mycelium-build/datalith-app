@@ -78,6 +78,8 @@ struct RawBaseView {
     image_aspect_ratio: Option<f32>,
     #[serde(rename = "cardSize")]
     card_size: Option<f32>,
+    #[serde(rename = "columnWidth")]
+    column_width: Option<f32>,
     display: Option<GraphDisplay>,
     physics: Option<GraphPhysics>,
     classes: Option<Vec<RawGraphClass>>,
@@ -237,6 +239,18 @@ impl BaseDefinition {
             )?,
             ViewType::Graph => {
                 super::graph::build(&name, view.display, view.physics, view.classes)?
+            }
+            ViewType::Kanban => {
+                let group = group_by
+                    .clone()
+                    .ok_or_else(|| anyhow!("view {name:?} (kanban) must declare groupBy"))?;
+                super::kanban::build(
+                    group,
+                    view.image,
+                    view.image_fit,
+                    view.image_aspect_ratio,
+                    view.column_width,
+                )?
             }
         };
         Ok(BaseView {
@@ -509,6 +523,44 @@ mod tests {
             "missing groupBy must fail",
         );
         assert!(error.to_string().contains('T'), "{error}");
+    }
+
+    #[test]
+    fn kanban_views_require_group_by() {
+        let error = expect_error(
+            "views:\n  - type: kanban\n    name: Board",
+            "kanban without groupBy must fail",
+        );
+        let message = error.to_string();
+        assert!(message.contains("Board"), "{message}");
+        assert!(message.contains("groupBy"), "{message}");
+    }
+
+    #[test]
+    fn kanban_views_parse_group_width_and_image() {
+        let definition = parse(
+            "views:\n  - type: kanban\n    name: Board\n    groupBy:\n      property: status\n      direction: DESC\n    columnWidth: 300\n    image: cover\n    imageFit: contain\n    imageAspectRatio: 2.0",
+        )
+        .expect("kanban view must parse");
+        let view = &definition.views[0];
+        let config = view.as_kanban().expect("kanban config must exist");
+        assert_eq!(config.group.property.source, "status");
+        assert_eq!(config.column_width, 300.0);
+        assert_eq!(config.image_aspect_ratio, 2.0);
+        assert_eq!(
+            config.image.as_ref().map(|image| image.source.as_str()),
+            Some("cover")
+        );
+    }
+
+    #[test]
+    fn kanban_column_width_must_be_positive() {
+        assert!(
+            parse(
+                "views:\n  - type: kanban\n    name: Board\n    groupBy:\n      property: status\n    columnWidth: 0"
+            )
+            .is_err()
+        );
     }
 
     #[test]
