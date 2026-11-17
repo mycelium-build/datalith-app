@@ -333,8 +333,8 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fmt::Write as _;
     use crate::document::file_types::{FileTypeCapabilities, RegisteredFileTypes};
+    use std::fmt::Write as _;
 
     fn temp_vault(name: &str) -> PathBuf {
         let root =
