@@ -18,16 +18,23 @@ pub(in crate::ui::viewers::base) enum CardImage {
     External(String),
 }
 
-pub(super) fn render_card_image(
+pub(in crate::ui::viewers::base) fn render_card_image(
     image: CardImage,
     card_width: f32,
     view: &BaseView,
     fullscreen_entity: Entity<BaseViewState>,
     cx: &App,
 ) -> AnyElement {
-    let cards_config = view.as_cards().cloned().unwrap_or_default();
-    let image_height = card_width / cards_config.image_aspect_ratio;
-    let object_fit = match cards_config.image_fit {
+    let (image_fit, image_aspect_ratio) = view
+        .as_cards()
+        .map(|cards| (cards.image_fit, cards.image_aspect_ratio))
+        .or_else(|| {
+            view.as_kanban()
+                .map(|kanban| (kanban.image_fit, kanban.image_aspect_ratio))
+        })
+        .unwrap_or((CardImageFit::Cover, 1.0));
+    let image_height = card_width / image_aspect_ratio;
+    let object_fit = match image_fit {
         CardImageFit::Cover => ObjectFit::Cover,
         CardImageFit::Contain => ObjectFit::Contain,
     };
@@ -42,23 +49,21 @@ pub(super) fn render_card_image(
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             fullscreen_entity.update(cx, |state, cx| {
-                if let Some(cards) = state.cards.as_mut() {
-                    cards.show_fullscreen_image(preview_image.clone());
-                    cx.notify();
-                }
+                state.fullscreen_image = Some(preview_image.clone());
+                cx.notify();
             });
         });
     let image_element = match image {
         CardImage::Local(path) => img(crate::ui::viewers::image::image_source(&path))
             .size_full()
             .object_fit(object_fit)
-            .aspect_ratio(cards_config.image_aspect_ratio)
+            .aspect_ratio(image_aspect_ratio)
             .rounded(px(CARD_RADIUS))
             .into_any_element(),
         CardImage::External(url) => img(SharedUri::from(url))
             .size_full()
             .object_fit(object_fit)
-            .aspect_ratio(cards_config.image_aspect_ratio)
+            .aspect_ratio(image_aspect_ratio)
             .rounded(px(CARD_RADIUS))
             .into_any_element(),
     };

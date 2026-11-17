@@ -124,8 +124,11 @@ pub(super) fn collect_projection_sources(view: &crate::document::base::BaseView)
         return Vec::new();
     }
     let mut sources: Vec<String> = view.order.iter().map(|p| p.source.clone()).collect();
-    if let Some(cards) = view.as_cards()
-        && let Some(image) = &cards.image
+    let image_source = view
+        .as_cards()
+        .and_then(|cards| cards.image.as_ref())
+        .or_else(|| view.as_kanban().and_then(|kanban| kanban.image.as_ref()));
+    if let Some(image) = image_source
         && !sources.contains(&image.source)
     {
         sources.push(image.source.clone());
@@ -335,9 +338,12 @@ pub(super) async fn load_snapshot(
         projection_index.insert(source.clone(), index);
     }
 
-    if view.view_type == ViewType::Cards
-        && let Some(cards_config) = view.as_cards()
-        && let Some(image) = &cards_config.image
+    let image_property = view
+        .as_cards()
+        .and_then(|cards| cards.image.as_ref())
+        .or_else(|| view.as_kanban().and_then(|kanban| kanban.image.as_ref()));
+    if matches!(view.view_type, ViewType::Cards | ViewType::Kanban)
+        && let Some(image) = image_property
     {
         let pending = cards::collect_card_image_targets(&image.source, &rows, &projection_index);
         let resolved = if pending.is_empty() {
