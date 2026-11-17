@@ -7,16 +7,14 @@ use gpui_kit::{
     ParentElement, Pixels, SharedUri, Size, Styled, Window, div, img, prelude::StyledImage as _,
     px, size,
 };
+use std::collections::HashMap;
 
-use crate::document::base::BaseView;
+use crate::document::base::{BaseView, CardBodyHeight, DEFAULT_BODY_HEIGHT};
 
 use super::{BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState};
 
 const CARD_RADIUS: f32 = 6.0;
 const CARD_GAP: f32 = 16.0;
-const CARD_BODY_MIN_HEIGHT: f32 = 96.0;
-const CARD_BODY_PADDING: f32 = 24.0;
-const CARD_PROPERTY_HEIGHT: f32 = 44.0;
 const CARD_MIN_WIDTH: f32 = 120.0;
 const GRID_PADDING: f32 = 16.0;
 
@@ -29,6 +27,8 @@ pub(super) use image::{
 pub(super) struct CardsState {
     pub(super) scroll_handle: VirtualListScrollHandle,
     pub(super) viewport_width: Pixels,
+    pub(super) auto_body_heights: HashMap<usize, f32>,
+    pub(super) auto_width: f32,
 }
 
 impl CardsState {
@@ -36,6 +36,8 @@ impl CardsState {
         Self {
             scroll_handle: VirtualListScrollHandle::new(),
             viewport_width: px(0.),
+            auto_body_heights: HashMap::new(),
+            auto_width: 0.0,
         }
     }
 }
@@ -86,6 +88,7 @@ struct CardRenderContext<'a> {
 }
 
 impl BaseViewState {
+    #[allow(clippy::too_many_lines)]
     pub(super) fn render_cards(
         &self,
         snapshot: &BaseSnapshot,
@@ -105,7 +108,9 @@ impl BaseViewState {
         } else {
             let columns = columns_for(cards_config.card_size, viewport_width);
             let card_width = card_width_for(cards_config.card_size, viewport_width, columns);
-            let item_sizes = card_row_sizes(snapshot, columns, card_width);
+            let measured = same_card_width(cards_state.auto_width, card_width)
+                .then_some(&cards_state.auto_body_heights);
+            let item_sizes = card_row_sizes(snapshot, columns, card_width, measured);
             let handler = self.handler.clone();
             let fullscreen_entity = entity.clone();
             let list_entity = entity.clone();
@@ -268,7 +273,12 @@ fn card_width_for(card_size: f32, viewport_width: Pixels, columns: usize) -> f32
     ((width - gaps) / columns).max(CARD_MIN_WIDTH)
 }
 
-fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> Vec<Size<Pixels>> {
+fn card_row_sizes(
+    snapshot: &BaseSnapshot,
+    columns: usize,
+    card_width: f32,
+    measured: Option<&HashMap<usize, f32>>,
+) -> Vec<Size<Pixels>> {
     let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
         return Vec::new();
     };
@@ -276,7 +286,6 @@ fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> V
         .as_cards()
         .and_then(|cards| Some((cards, cards.image.as_ref()?)))
         .map_or(0.0, |(cards, _)| card_width / cards.image_aspect_ratio);
-    let row_height = image_height + card_body_height(view) + CARD_GAP;
     flatten_card_items(&snapshot.items, !snapshot.summaries.is_empty(), columns)
         .iter()
         .map(|item| match item {
@@ -289,7 +298,10 @@ fn card_row_sizes(snapshot: &BaseSnapshot, columns: usize, card_width: f32) -> V
                     GROUP_HEADER_WITH_SUMMARIES_HEIGHT
                 }),
             ),
-            CardItem::GridRow(_) => size(px(1.0), px(row_height)),
+            CardItem::GridRow(indices) => {
+                let body = body_height_for_row(view, indices, measured);
+                size(px(1.0), px(image_height + body + CARD_GAP))
+            }
         })
         .collect()
 }
@@ -366,6 +378,7 @@ fn render_card_row(
         .into_any_element()
 }
 
+#[allow(clippy::too_many_lines)]
 fn render_card(
     id: String,
     index: usize,
@@ -432,31 +445,100 @@ fn render_card(
                     .into_any_element()
             }
         });
-    v_flex()
-        .id(card_id)
-        .w(px(card_width))
-        .h(px(card_height(context.view, card_width)))
-        .flex_shrink_0()
+    let body_content = v_flex()
+        .whitespace_normal()
+        .gap_1()
+        .p_3()
+        .children(properties);
+    let is_auto = matches!(
+        context.view.as_cards().map(|cards| cards.body_height),
+        Some(CardBodyHeight::Auto)
+    );
+    let body = if is_auto {
+        let entity = context.fullscreen_entity.clone();
+        div()
+            .child(body_content.on_prepaint(move |bounds, window, cx| {
+                let height = f32::from(bounds.size.height);
+                let mut changed = false;
+                entity.update(cx, |state, _| {
+                    if let Some(cards) = state.cards.as_mut() {
+                        if !same_card_width(cards.auto_width, card_width) {
+                            cards.auto_width = card_width;
+                            cards.auto_body_heights.clear();
+                        }
+                        let stored = cards.auto_body_heights.get(&index).copied();
+                        if stored.is_none_or(|stored| (stored - height).abs() > 0.5) {
+                            cards.auto_body_heights.insert(index, height);
+                            changed = true;
+                        }
+                    }
+                });
+                if changed {
+                    window.defer(cx, {
+                        let entity = entity.clone();
+                        move |_, cx| entity.update(cx, |_, cx| cx.notify())
+                    });
+                }
+            }))
+            .into_any_element()
+    } else {
+        div()
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scrollbar()
+            .child(body_content)
+            .into_any_element()
+    };
+    let card = v_flex().id(card_id).w(px(card_width));
+    let card = if is_auto {
+        card
+    } else {
+        card.h(px(card_height(context.view, card_width)))
+    };
+    card.flex_shrink_0()
         .overflow_hidden()
         .rounded(px(CARD_RADIUS))
         .border_1()
         .border_color(context.cx.theme().border)
         .bg(context.cx.theme().secondary)
         .children(image)
-        .child(
-            div().flex_1().min_h_0().overflow_y_scrollbar().child(
-                v_flex()
-                    .whitespace_normal()
-                    .gap_1()
-                    .p_3()
-                    .children(properties),
-            ),
-        )
+        .child(body)
         .into_any_element()
 }
 
+fn same_card_width(stored: f32, current: f32) -> bool {
+    (stored - current).abs() < 0.5
+}
+
+/// Below-image body height for one grid row:
+/// fixed size or auto (tallest measured body)
+fn body_height_for_row(
+    view: &BaseView,
+    indices: &[usize],
+    measured: Option<&HashMap<usize, f32>>,
+) -> f32 {
+    let config = view.as_cards().cloned().unwrap_or_default();
+    match config.body_height {
+        CardBodyHeight::Fixed(height) => height,
+        CardBodyHeight::Auto => {
+            let measured_max = indices
+                .iter()
+                .filter_map(|index| measured.and_then(|heights| heights.get(index)).copied())
+                .fold(0.0, f32::max);
+            if measured_max > 0.0 {
+                measured_max
+            } else {
+                DEFAULT_BODY_HEIGHT
+            }
+        }
+    }
+}
+
 fn card_height(view: &BaseView, card_width: f32) -> f32 {
-    let body = card_body_height(view);
+    let body = match view.as_cards().map(|cards| cards.body_height) {
+        Some(CardBodyHeight::Fixed(height)) => height,
+        _ => DEFAULT_BODY_HEIGHT,
+    };
     let image_height = view
         .as_cards()
         .and_then(|cards| Some((cards, cards.image.as_ref()?)))
@@ -464,23 +546,45 @@ fn card_height(view: &BaseView, card_width: f32) -> f32 {
     image_height + body
 }
 
-fn card_body_height(view: &BaseView) -> f32 {
-    let cards_config = view.as_cards().cloned().unwrap_or_default();
-    let image_source = cards_config
-        .image
-        .as_ref()
-        .map(|property| property.source.as_str());
-    let property_count = view
-        .order
-        .iter()
-        .filter(|property| image_source != Some(property.source.as_str()))
-        .count()
-        .max(1);
-    let property_count = f32::from(u16::try_from(property_count).unwrap_or(1));
-    (property_count - 1.0)
-        .mul_add(
-            4.0,
-            f32::mul_add(property_count, CARD_PROPERTY_HEIGHT, CARD_BODY_PADDING),
-        )
-        .max(CARD_BODY_MIN_HEIGHT)
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, HashMap};
+
+    use super::*;
+    use crate::document::base::{CardBodyHeight, CardsConfig, SortDirection, ViewKind, ViewType};
+    use crate::document::filter::{Filter, PropertyPath};
+
+    fn auto_view() -> BaseView {
+        BaseView {
+            view_type: ViewType::Cards,
+            name: "Gallery".to_string(),
+            filters: Filter::MatchAll,
+            limit: None,
+            order: vec![crate::document::base::DisplayProperty {
+                source: "note".to_string(),
+                path: PropertyPath::Note(vec!["note".to_string()]),
+            }],
+            sort: Vec::new(),
+            group_by: None,
+            group_direction: SortDirection::Asc,
+            summaries: BTreeMap::new(),
+            kind: ViewKind::Cards(CardsConfig {
+                body_height: CardBodyHeight::Auto,
+                ..Default::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn auto_row_height_prefers_measured_heights() {
+        let view = auto_view();
+        let placeholder = body_height_for_row(&view, &[0], None);
+        let measured = HashMap::from([(0, 999.0), (1, 300.0)]);
+        let with_measured = body_height_for_row(&view, &[0, 1], Some(&measured));
+        assert_eq!(with_measured, 999.0, "measured height must win");
+        assert_ne!(
+            placeholder, 999.0,
+            "placeholder must not be the measured value"
+        );
+    }
 }

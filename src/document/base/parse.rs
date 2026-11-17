@@ -6,9 +6,9 @@ use anyhow::{Result, anyhow, bail};
 use serde::Deserialize;
 
 use super::{
-    AggregateFn, BaseDefinition, BaseView, CardImageFit, CustomSummary, DisplayProperty,
-    GraphDisplay, GraphPhysics, GroupRule, HARD_RESULT_LIMIT, ListMarkers, PostFn, PropertyConfig,
-    RawGraphClass, SortDirection, SortRule, Summary, TableRowHeight, ViewType,
+    AggregateFn, BaseDefinition, BaseView, CardBodyHeight, CardImageFit, CustomSummary,
+    DisplayProperty, GraphDisplay, GraphPhysics, GroupRule, HARD_RESULT_LIMIT, ListMarkers, PostFn,
+    PropertyConfig, RawGraphClass, SortDirection, SortRule, Summary, TableRowHeight, ViewType,
 };
 use crate::document::expr::{Expr, PropertyRef};
 use crate::document::filter::{Filter, PropertyPath, parse_property};
@@ -78,6 +78,8 @@ struct RawBaseView {
     image_aspect_ratio: Option<f32>,
     #[serde(rename = "cardSize")]
     card_size: Option<f32>,
+    #[serde(rename = "bodyHeight")]
+    body_height: Option<CardBodyHeight>,
     #[serde(rename = "columnWidth")]
     column_width: Option<f32>,
     display: Option<GraphDisplay>,
@@ -236,6 +238,7 @@ impl BaseDefinition {
                 view.image_fit,
                 view.image_aspect_ratio,
                 view.card_size,
+                view.body_height,
             )?,
             ViewType::Graph => {
                 super::graph::build(&name, view.display, view.physics, view.classes)?
