@@ -73,7 +73,7 @@ views:
     indentProperties: true
     separators: " · "
 
-  # Card gallery; cover resolves from the cover property.
+  # Card gallery
   - type: cards
     name: Covers
     image: cover
@@ -85,6 +85,25 @@ views:
       - author
       - status
       - rating
+
+  # Kanban board: book sorted in each column by status.
+  - type: kanban
+    name: Reading board
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - title
+      - author
+      - status
+      - rating
+    sort:
+      - property: rating
+        direction: DESC
+    image: cover
+    imageFit: cover
+    imageAspectRatio: 1.5
+    columnWidth: 300
 
   # Backlinks table showing which notes reference each book.
   - type: table
