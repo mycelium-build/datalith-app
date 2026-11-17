@@ -9308,7 +9308,7 @@ SPDX identifier: `Apache-2.0`
 
 Used by:
 
-- `notify-types` 2.3.1 — `MIT OR Apache-2.0` — <https://github.com/notify-rs/notify.git>
+- `notify-types` 2.3.0 — `MIT OR Apache-2.0` — <https://github.com/notify-rs/notify.git>
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -15201,7 +15201,7 @@ Used by:
 - `profiling-procmacros` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `profiling` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `quote` 1.0.47 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/quote>
-- `rand` 0.10.4 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
+- `rand` 0.10.3 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.8.8 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.9.5 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand_chacha` 0.9.0 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
@@ -22187,7 +22187,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `lz4_flex` 0.14.2 — `MIT` — <https://github.com/pseitz/lz4_flex>
+- `lz4_flex` 0.14.0 — `MIT` — <https://github.com/pseitz/lz4_flex>
 ```
 The MIT License (MIT)
 
