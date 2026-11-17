@@ -22,12 +22,13 @@ const GRID_PADDING: f32 = 16.0;
 
 mod image;
 
-pub(super) use image::{CardImage, collect_card_image_targets, resolve_card_image};
+pub(super) use image::{
+    CardImage, collect_card_image_targets, render_card_image, resolve_card_image,
+};
 
 pub(super) struct CardsState {
     pub(super) scroll_handle: VirtualListScrollHandle,
     pub(super) viewport_width: Pixels,
-    fullscreen_image: Option<CardImage>,
 }
 
 impl CardsState {
@@ -35,49 +36,44 @@ impl CardsState {
         Self {
             scroll_handle: VirtualListScrollHandle::new(),
             viewport_width: px(0.),
-            fullscreen_image: None,
         }
     }
+}
 
-    fn show_fullscreen_image(&mut self, image: CardImage) {
-        self.fullscreen_image = Some(image);
-    }
-
-    pub(super) fn render_fullscreen_image(&self, cx: &App) -> Option<AnyElement> {
-        let image = self.fullscreen_image.as_ref()?;
-        let content = match image {
-            CardImage::Local(path) => img(crate::ui::viewers::image::image_source(path))
-                .size_full()
-                .object_fit(ObjectFit::Contain)
-                .into_any_element(),
-            CardImage::External(url) => img(SharedUri::from(url.clone()))
-                .size_full()
-                .object_fit(ObjectFit::Contain)
-                .into_any_element(),
-        };
-        Some(
-            div()
-                .absolute()
-                .inset_0()
-                .size_full()
-                .bg(cx.theme().background)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(content)
-                .into_any_element(),
-        )
-    }
+pub(super) fn render_fullscreen_image(image: Option<&CardImage>, cx: &App) -> Option<AnyElement> {
+    let image = image?;
+    let content = match image {
+        CardImage::Local(path) => img(crate::ui::viewers::image::image_source(path))
+            .size_full()
+            .object_fit(ObjectFit::Contain)
+            .into_any_element(),
+        CardImage::External(url) => img(SharedUri::from(url.clone()))
+            .size_full()
+            .object_fit(ObjectFit::Contain)
+            .into_any_element(),
+    };
+    Some(
+        div()
+            .absolute()
+            .inset_0()
+            .size_full()
+            .bg(cx.theme().background)
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(content)
+            .into_any_element(),
+    )
 }
 
 pub(super) fn hide_fullscreen_image(
     state: &mut BaseViewState,
     _event: &gpui_kit::MouseUpEvent,
     _window: &mut Window,
-    _cx: &mut Context<BaseViewState>,
+    cx: &mut Context<BaseViewState>,
 ) {
-    if let Some(cards) = state.cards.as_mut() {
-        cards.fullscreen_image = None;
+    if state.fullscreen_image.take().is_some() {
+        cx.notify();
     }
 }
 

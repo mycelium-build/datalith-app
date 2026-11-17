@@ -1,6 +1,7 @@
 mod cards;
 mod cells;
 mod graph;
+mod kanban;
 mod list;
 mod preview;
 mod snapshot;
@@ -78,7 +79,10 @@ pub struct BaseViewState {
     list: Option<list::ListState>,
     table: Option<table::TableState>,
     cards: Option<cards::CardsState>,
+    kanban: Option<kanban::KanbanState>,
     graph: Option<Entity<graph::GraphState>>,
+    /// Fullscreen card image, shared by views.
+    fullscreen_image: Option<cards::CardImage>,
     /// The definition source the last successful build came from;
     /// graph camera/simulation reset only when this changes.
     last_source: String,
@@ -108,7 +112,9 @@ impl BaseViewState {
             list: None,
             table: None,
             cards: None,
+            kanban: None,
             graph: None,
+            fullscreen_image: None,
             last_source: String::new(),
             selected_view: None,
             generation: 0,
@@ -187,6 +193,17 @@ impl BaseViewState {
                             }
                             Some(view) if view.view_type == ViewType::Cards => {
                                 state.cards.get_or_insert_with(cards::CardsState::new);
+                            }
+                            Some(view) if view.view_type == ViewType::Kanban => {
+                                let columns = snapshot
+                                    .items
+                                    .iter()
+                                    .filter(|item| matches!(item, BaseItem::Header { .. }))
+                                    .count();
+                                state
+                                    .kanban
+                                    .get_or_insert_with(kanban::KanbanState::new)
+                                    .ensure_columns(columns);
                             }
                             Some(view) if view.view_type == ViewType::Graph => {
                                 state.update_graph(&snapshot, view, source_changed, cx);
@@ -459,6 +476,7 @@ impl BaseViewState {
             ViewType::List => self.render_list(snapshot, view, cx),
             ViewType::Table => self.render_table(snapshot, view, window, cx),
             ViewType::Cards => self.render_cards(snapshot, view, window, cx),
+            ViewType::Kanban => self.render_kanban(snapshot, view, cx),
             ViewType::Graph => self.render_graph(),
         }
     }
@@ -513,11 +531,7 @@ impl Render for BaseViewState {
             .overflow_hidden()
             .on_mouse_up(MouseButton::Left, cx.listener(cards::hide_fullscreen_image))
             .child(root_content);
-        if let Some(preview) = self
-            .cards
-            .as_ref()
-            .and_then(|cards| cards.render_fullscreen_image(cx))
-        {
+        if let Some(preview) = cards::render_fullscreen_image(self.fullscreen_image.as_ref(), cx) {
             root = root.child(preview);
         }
         root
