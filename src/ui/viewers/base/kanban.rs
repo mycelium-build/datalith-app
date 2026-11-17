@@ -13,12 +13,15 @@ use gpui_kit::{
 };
 
 use crate::document::base::BaseView;
+use crate::vault::file_ops;
 use crate::vault::source;
 
 use super::cards;
-use super::cells::{format_scalar_text, render_property_cell};
+use super::cells::render_property_cell;
 use super::snapshot::{BaseItem, BaseRow, BaseSnapshot, BaseStatus};
-use super::{BaseViewState, centered_message, commit_property};
+use super::{BaseViewState, centered_message};
+
+use std::path::{Path, PathBuf};
 
 pub(super) struct KanbanState {
     pub(super) h_scroll_handle: ScrollHandle,
@@ -44,7 +47,7 @@ impl KanbanState {
 /// Drag payload for a card: the catalog-relative path of the dragged row.
 #[derive(Clone)]
 pub(super) struct DragCard {
-    path: std::path::PathBuf,
+    path: PathBuf,
 }
 
 impl Render for DragCard {
@@ -71,9 +74,8 @@ struct Column {
     count: usize,
     ordinal: usize,
     rows: Vec<usize>,
-    /// Raw text of the group value (`""` when the column is Empty).
-    raw: String,
-    is_empty: bool,
+    /// Typed group value used when creating or moving cards.
+    raw: serde_json::Value,
 }
 
 fn build_columns(snapshot: &BaseSnapshot, view: &BaseView) -> Vec<Column> {
@@ -94,8 +96,7 @@ fn build_columns(snapshot: &BaseSnapshot, view: &BaseView) -> Vec<Column> {
                     count: *count,
                     ordinal: *ordinal,
                     rows: Vec::new(),
-                    raw: String::new(),
-                    is_empty: false,
+                    raw: serde_json::Value::Null,
                 });
             }
             BaseItem::Row { index, .. } => {
@@ -112,16 +113,22 @@ fn build_columns(snapshot: &BaseSnapshot, view: &BaseView) -> Vec<Column> {
             .first()
             .and_then(|index| snapshot.rows.get(*index))
         else {
-            column.is_empty = column.label == "Empty";
-            column.raw.clone_from(&column.label);
             continue;
         };
         let value = snapshot.projection_value(row, &group_source);
-        column.is_empty = value
-            .is_none_or(|value| value.is_null() || format_scalar_text(value).trim().is_empty());
-        column.raw = value.map_or_default(format_scalar_text);
+        column.raw = value.cloned().unwrap_or_default();
     }
     columns
+}
+
+fn folder_drop_destination(note: &Path, folder: &Path) -> Option<PathBuf> {
+    if note.parent() == Some(folder) {
+        return None;
+    }
+    Some(crate::vault::path::unique_path(
+        folder,
+        &note.file_name()?.to_string_lossy(),
+    ))
 }
 
 fn is_folder_group(view: &BaseView) -> bool {
@@ -210,9 +217,8 @@ impl BaseViewState {
 
     fn drop_card_on_column(
         &mut self,
-        dragged_path: &std::path::Path,
-        raw: &str,
-        is_empty: bool,
+        dragged_path: &Path,
+        raw: &serde_json::Value,
         cx: &mut Context<Self>,
     ) {
         if self.preview {
@@ -243,15 +249,10 @@ impl BaseViewState {
         }
         let result = if is_folder_group(&view) {
             let old_absolute = catalog.root().join(&row.path);
-            let Some(file_name) = row.path.file_name().map(std::ffi::OsStr::to_os_string) else {
+            let destination_dir = catalog.root().join(raw.as_str().unwrap_or_default());
+            let Some(destination) = folder_drop_destination(&old_absolute, &destination_dir) else {
                 return;
             };
-            let destination_dir = catalog.root().join(raw);
-            let destination =
-                crate::vault::path::unique_path(&destination_dir, &file_name.to_string_lossy());
-            if destination == old_absolute {
-                return;
-            }
             crate::vault::file_ops::rename(&catalog, &old_absolute, &destination).map(|_result| {
                 catalog.refresh_paths(vec![old_absolute, destination]);
             })
@@ -266,9 +267,9 @@ impl BaseViewState {
             if group_source.starts_with("file.") || group_source.starts_with("formula.") {
                 return;
             }
-            let new_value = if is_empty { "" } else { raw };
+            let new_value = (!raw.is_null()).then_some(raw);
             let absolute = catalog.root().join(&row.path);
-            commit_property(&catalog, &row.path, group_source, new_value).map(|()| {
+            file_ops::update_frontmatter(&absolute, group_source, new_value).map(|()| {
                 catalog.refresh_paths(vec![absolute]);
             })
         };
@@ -279,7 +280,7 @@ impl BaseViewState {
         }
     }
 
-    fn create_kanban_card(&mut self, raw: &str, is_empty: bool, cx: &mut Context<Self>) {
+    fn create_kanban_card(&mut self, raw: &serde_json::Value, cx: &mut Context<Self>) {
         if self.preview {
             return;
         }
@@ -294,7 +295,7 @@ impl BaseViewState {
             return;
         };
         let target_dir = if is_folder_group(&view) {
-            catalog.root().join(raw)
+            catalog.root().join(raw.as_str().unwrap_or_default())
         } else {
             let Some(config) = view.as_kanban() else {
                 return;
@@ -306,15 +307,15 @@ impl BaseViewState {
             catalog.root()
         };
         let target = target_dir.join("New Note.md");
-        let Ok(created) = crate::vault::file_ops::create_with_name(&target, "New Note.md") else {
+        let Ok(created) = file_ops::create_with_name(&target, "New Note.md") else {
             cx.notify();
             return;
         };
-        if !is_folder_group(&view) && !is_empty {
+        if !is_folder_group(&view) && !raw.is_null() {
             let group_source = view
                 .as_kanban()
                 .map_or_default(|config| config.group.property.source.clone());
-            let _ = crate::vault::file_ops::update_frontmatter(&created, &group_source, Some(raw));
+            let _ = file_ops::update_frontmatter(&created, &group_source, Some(raw));
         }
         catalog.refresh_paths(vec![created]);
         self.rebuild(cx);
@@ -361,7 +362,6 @@ fn render_column(
     };
     let raw = column.raw.clone();
     let drop_raw = raw.clone();
-    let is_empty = column.is_empty;
     v_flex()
         .id(ElementId::Name(
             format!("base-kanban-column-{}", column.ordinal).into(),
@@ -375,7 +375,7 @@ fn render_column(
         .bg(cx.theme().secondary)
         .drag_over::<DragCard>(|style, _drag, _window, cx| style.bg(cx.theme().drop_target))
         .on_drop(cx.listener(move |state, drag: &DragCard, _window, cx| {
-            state.drop_card_on_column(&drag.path, &drop_raw, is_empty, cx);
+            state.drop_card_on_column(&drag.path, &drop_raw, cx);
         }))
         .child(
             div()
@@ -393,7 +393,7 @@ fn render_column(
             .small()
             .label("+ New")
             .on_click(cx.listener(move |state, _, _, cx| {
-                state.create_kanban_card(&raw, is_empty, cx);
+                state.create_kanban_card(&raw, cx);
             }))
             .into_any_element(),
         )
@@ -489,4 +489,19 @@ fn render_card(
         );
     }
     card.child(body).into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::folder_drop_destination;
+    use std::path::Path;
+
+    #[test]
+    fn dropping_in_current_folder_keeps_filename() {
+        let folder = Path::new("Books");
+        assert_eq!(
+            folder_drop_destination(&folder.join("Note.md"), folder),
+            None
+        );
+    }
 }

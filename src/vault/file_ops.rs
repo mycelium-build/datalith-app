@@ -43,7 +43,7 @@ const FRONTMATTER_SCAN_CAP_BYTES: usize = 1024 * 1024;
 /// A note without frontmatter gains a fresh block on set,
 /// deleting the last key removes the block entirely.
 /// The file is replaced atomically via temp file + rename.
-pub fn update_frontmatter(path: &Path, key: &str, value: Option<&str>) -> Result<()> {
+pub fn update_frontmatter(path: &Path, key: &str, value: Option<&serde_json::Value>) -> Result<()> {
     source::ensure_writable(path)?;
 
     let mut file =
@@ -77,7 +77,7 @@ pub fn update_frontmatter(path: &Path, key: &str, value: Option<&str>) -> Result
     if let Some(value) = value {
         mapping.push((
             yaml_serde::Value::String(key.to_string()),
-            yaml_serde::Value::String(value.to_string()),
+            yaml_serde::to_value(value)?,
         ));
     }
 
@@ -595,7 +595,7 @@ mod tests {
         )
         .unwrap();
 
-        update_frontmatter(&note, "status", Some("done")).unwrap();
+        update_frontmatter(&note, "status", Some(&serde_json::json!("done"))).unwrap();
 
         let result = fs::read_to_string(&note).unwrap();
         assert!(result.contains("title: Old"));
@@ -625,7 +625,7 @@ mod tests {
         let note = root.join("Note.md");
         fs::write(&note, "# No frontmatter\nBody\n").unwrap();
 
-        update_frontmatter(&note, "status", Some("new")).unwrap();
+        update_frontmatter(&note, "status", Some(&serde_json::json!("new"))).unwrap();
 
         let result = fs::read_to_string(&note).unwrap();
         assert!(result.starts_with("---\n"));
@@ -639,7 +639,7 @@ mod tests {
         let note = root.join("Note.md");
         fs::write(&note, "---\nthis never closes\n").unwrap();
 
-        update_frontmatter(&note, "status", Some("new")).unwrap();
+        update_frontmatter(&note, "status", Some(&serde_json::json!("new"))).unwrap();
 
         let result = fs::read_to_string(&note).unwrap();
         assert!(result.contains("status: new"));
@@ -654,7 +654,7 @@ mod tests {
         let original = "---\n: bad: [\n---\n\nBody\n";
         fs::write(&note, original).unwrap();
 
-        let result = update_frontmatter(&note, "status", Some("x"));
+        let result = update_frontmatter(&note, "status", Some(&serde_json::json!("x")));
         assert!(result.is_err());
         assert_eq!(fs::read_to_string(&note).unwrap(), original);
         fs::remove_dir_all(root).unwrap();
@@ -670,7 +670,7 @@ mod tests {
         }
         fs::write(&note, &original).unwrap();
 
-        update_frontmatter(&note, "title", Some("Renamed")).unwrap();
+        update_frontmatter(&note, "title", Some(&serde_json::json!("Renamed"))).unwrap();
 
         let result = fs::read_to_string(&note).unwrap();
         assert!(result.contains("title: Renamed"));

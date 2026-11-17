@@ -28,6 +28,7 @@ use gpui_kit::{
 use crate::document::base::{BaseDefinition, ViewType};
 use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
+use crate::vault::file_ops;
 
 pub struct BaseViewer {
     state: Entity<BaseViewState>,
@@ -257,6 +258,7 @@ impl BaseViewState {
             row,
             column,
             input,
+            initial: initial.to_owned(),
             subscription: Some(subscription),
             error: None,
         };
@@ -313,6 +315,10 @@ impl BaseViewState {
             return;
         };
         let new_value = edit.input.read(cx).value().to_string();
+        if new_value == edit.initial {
+            cx.notify();
+            return;
+        }
         let snapshot = match &self.status {
             BaseStatus::Ready(snapshot) | BaseStatus::Empty(snapshot) => snapshot.clone(),
             _ => {
@@ -346,7 +352,17 @@ impl BaseViewState {
             cx.notify();
             return;
         }
-        let result = commit_property(&catalog, &row.path, &property.source, &new_value);
+        let result = edited_value(
+            snapshot.projection_value(&row, &property.source),
+            &new_value,
+        )
+        .and_then(|value| {
+            file_ops::update_frontmatter(
+                &catalog.root().join(&row.path),
+                &property.source,
+                value.as_ref(),
+            )
+        });
         match result {
             Ok(()) => {
                 // fs write is not enough: DB reconcile is async (notify -> reconciler thread).
@@ -544,18 +560,47 @@ impl Render for BaseViewState {
     }
 }
 
-/// Writes one frontmatter key (empty deletes it) via the chunked writer.
-fn commit_property(
-    catalog: &crate::vault::VaultCatalog,
-    relative_path: &std::path::Path,
-    key: &str,
-    new_value: &str,
-) -> anyhow::Result<()> {
-    let absolute = catalog.root().join(relative_path);
-    let value = if new_value.is_empty() {
-        None
-    } else {
-        Some(new_value)
+fn edited_value(
+    original: Option<&serde_json::Value>,
+    text: &str,
+) -> anyhow::Result<Option<serde_json::Value>> {
+    use serde_json::Value;
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let value = match original {
+        Some(Value::Number(_)) => Value::Number(
+            text.trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Enter a valid number"))?,
+        ),
+        Some(Value::Bool(_)) => Value::Bool(
+            text.trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Enter true or false"))?,
+        ),
+        Some(Value::Array(_) | Value::Object(_)) => {
+            anyhow::bail!("This property requires a structured value")
+        }
+        _ => Value::String(text.to_owned()),
     };
-    crate::vault::file_ops::update_frontmatter(&absolute, key, value)
+    Ok(Some(value))
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::edited_value;
+    use serde_json::json;
+
+    #[test]
+    fn edits_preserve_scalar_types() {
+        for (original, text, expected) in [
+            (json!(5), "6", json!(6)),
+            (json!("5"), "6", json!("6")),
+            (json!(false), "true", json!(true)),
+        ] {
+            assert_eq!(edited_value(Some(&original), text).unwrap(), Some(expected));
+        }
+        assert!(edited_value(Some(&json!(5)), "unknown").is_err());
+    }
 }
