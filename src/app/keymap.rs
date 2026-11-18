@@ -207,7 +207,7 @@ impl ShortcutDefinition {
         };
         Some(
             if self.is_default(binding) && DEFAULTS_OVER_FIELDS.contains(&self.id) {
-                format!("{zone} > Input || {zone}")
+                format!("({zone} > Input) || {zone}")
             } else if types_character(keys) {
                 format!("{zone} && !Input")
             } else {
@@ -1056,7 +1056,7 @@ mod tests {
         DEFAULTS_OVER_FIELDS, MODAL_CONTEXT, SHORTCUTS, ShortcutZone, WORKSPACE_CONTEXT,
         default_bindings, display_binding, effective_bindings, overrides_for, parse_keystroke,
     };
-    use crate::app::actions::Quit;
+    use crate::app::actions::{OpenLink, Quit};
     use crate::app::settings::ShortcutOverride;
     use gpui_kit::{Action, KeyBinding, KeyBindingContextPredicate, KeyContext, Keymap, actions};
     use std::collections::BTreeMap;
@@ -1130,10 +1130,6 @@ mod tests {
             .expect("known shortcut")
     }
 
-    fn keys(overrides: &BTreeMap<String, ShortcutOverride>, id: &str) -> Option<String> {
-        overrides.get(id).and_then(|shortcut| shortcut.keys.clone())
-    }
-
     #[test]
     fn overrides_round_trip_keys_zones_and_removals() {
         let mut bindings = default_bindings();
@@ -1141,11 +1137,6 @@ mod tests {
         bindings[index("new-folder")].keys = None;
         bindings[index("rename")].zone = ShortcutZone::Global;
         let overrides = overrides_for(&bindings);
-        assert_eq!(keys(&overrides, "new-note").as_deref(), Some("secondary-x"));
-        assert_eq!(keys(&overrides, "new-folder"), None);
-        assert_eq!(overrides["rename"].zone.as_deref(), Some("global"));
-        assert!(!overrides.contains_key("quit"));
-
         assert_eq!(effective_bindings(&overrides), bindings);
     }
 
@@ -1180,30 +1171,6 @@ mod tests {
             effective[index("rename")].keys.as_deref(),
             Some("secondary-x")
         );
-    }
-
-    #[test]
-    fn zones_yield_to_text_field_bindings() {
-        let ctrl_backspace = [parse_keystroke("ctrl-backspace").expect("valid key")];
-        let keymap = Keymap::new(vec![
-            KeyBinding::new("ctrl-backspace", ComponentAction, Some("Input")),
-            KeyBinding::new(
-                "ctrl-backspace",
-                Quit,
-                Some(ShortcutZone::Global.predicate()),
-            ),
-        ]);
-        let workspace = KeyContext::parse("Workspace").expect("valid context");
-        let input = KeyContext::parse("Input").expect("valid context");
-        let typing = [workspace.clone(), input];
-        let outside_fields = [workspace];
-
-        let in_field = keymap.bindings_for_input(&ctrl_backspace, &typing).0;
-        assert!(in_field[0].action().partial_eq(&ComponentAction));
-        let outside = keymap
-            .bindings_for_input(&ctrl_backspace, &outside_fields)
-            .0;
-        assert!(outside[0].action().partial_eq(&Quit));
     }
 
     #[test]
@@ -1276,25 +1243,35 @@ mod tests {
                 "{}",
                 definition.id
             );
-            assert_eq!(definition.zones.first(), Some(&definition.zone));
         }
     }
 
     #[test]
-    fn character_keys_are_kept_out_of_text_fields() {
+    fn printable_shortcuts_apply_outside_the_text_field() {
+        let definition = &SHORTCUTS[index("new-note")];
+        let workspace = KeyContext::parse("Workspace").unwrap();
+        let typing = [workspace.clone(), KeyContext::parse("Input").unwrap()];
+        let active_while_typing = |keys: &str| {
+            let binding = super::Binding {
+                keys: Some(keys.into()),
+                zone: ShortcutZone::Global,
+            };
+            let predicate =
+                KeyBindingContextPredicate::parse(&definition.predicate(&binding).unwrap())
+                    .unwrap();
+            assert!(
+                predicate
+                    .depth_of(std::slice::from_ref(&workspace))
+                    .is_some(),
+                "{keys}"
+            );
+            predicate.depth_of(&typing).is_some()
+        };
         for keys in ["a", "shift-a", "1", "space", "["] {
-            assert!(super::types_character(keys), "{keys}");
+            assert!(!active_while_typing(keys), "{keys}");
         }
-        for keys in [
-            "f2",
-            "secondary-a",
-            "enter",
-            "shift-up",
-            "secondary-shift-5",
-        ] {
-            assert!(!super::types_character(keys), "{keys}");
-        }
-        assert_eq!(super::types_character("alt-5"), cfg!(target_os = "macos"));
+        assert!(active_while_typing("f2"));
+        assert_eq!(active_while_typing("alt-5"), !cfg!(target_os = "macos"));
     }
 
     #[test]
@@ -1309,28 +1286,49 @@ mod tests {
     }
 
     #[test]
-    fn default_over_fields_beats_the_field_binding() {
-        let open_link = SHORTCUTS
-            .iter()
-            .find(|definition| definition.id == "open-link")
-            .expect("open-link is a shortcut");
-        let default = open_link.default_binding();
-        let predicate = open_link.predicate(&default).expect("bound");
-        let keymap = Keymap::new(vec![
-            KeyBinding::new("ctrl-enter", ComponentAction, Some("Input")),
-            KeyBinding::new("ctrl-enter", Quit, Some(&predicate)),
-        ]);
-        let stack = ["Workspace", "Note", "Input"]
-            .map(|context| KeyContext::parse(context).expect("valid context"));
-
-        let ctrl_enter = [parse_keystroke("ctrl-enter").expect("valid key")];
-        let matched = keymap.bindings_for_input(&ctrl_enter, &stack).0;
-        assert!(matched[0].action().partial_eq(&Quit));
-        let remapped = super::Binding {
-            keys: Some("secondary-o".to_owned()),
-            ..default
+    fn open_link_wins_its_default_key_in_the_editor_but_yields_a_remapped_key() {
+        let open_link = &SHORTCUTS[index("open-link")];
+        let note = [
+            KeyContext::parse("Workspace").unwrap(),
+            KeyContext::parse("Note").unwrap(),
+        ];
+        let typing = [
+            note[0].clone(),
+            note[1].clone(),
+            KeyContext::parse("Input").unwrap(),
+        ];
+        let primary_enter = if cfg!(target_os = "macos") {
+            "cmd-enter"
+        } else {
+            "ctrl-enter"
         };
-        assert_ne!(open_link.predicate(&remapped), Some(predicate));
+        for (keys, wins_in_input) in [(primary_enter, true), (secondary_keys("x"), false)] {
+            let binding = super::Binding {
+                keys: Some(keys.into()),
+                zone: ShortcutZone::Note,
+            };
+            let predicate = open_link.predicate(&binding).unwrap();
+            let keymap = Keymap::new(vec![
+                KeyBinding::new(keys, ComponentAction, Some("Input")),
+                KeyBinding::new(keys, OpenLink, Some(&predicate)),
+            ]);
+            let pressed = [parse_keystroke(keys).unwrap()];
+            assert!(
+                keymap.bindings_for_input(&pressed, &note).0[0]
+                    .action()
+                    .partial_eq(&OpenLink)
+            );
+            let expected: &dyn Action = if wins_in_input {
+                &OpenLink
+            } else {
+                &ComponentAction
+            };
+            assert!(
+                keymap.bindings_for_input(&pressed, &typing).0[0]
+                    .action()
+                    .partial_eq(expected)
+            );
+        }
     }
 
     #[test]

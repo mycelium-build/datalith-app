@@ -53,7 +53,7 @@ pub fn bind_keys(cx: &mut gpui_kit::App) {
     use crate::app::actions::{NextTask, PreviousTask};
     use crate::app::keymap::TODO_LIST_CONTEXT;
 
-    let task_fields = format!("{TODO_LIST_CONTEXT} > Input || {TODO_LIST_CONTEXT}");
+    let task_fields = format!("({TODO_LIST_CONTEXT} > Input) || {TODO_LIST_CONTEXT}");
     cx.bind_keys([
         gpui_kit::KeyBinding::new("up", PreviousTask, Some(&task_fields)),
         gpui_kit::KeyBinding::new("down", NextTask, Some(&task_fields)),
