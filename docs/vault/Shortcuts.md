@@ -22,7 +22,7 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 | --- | --- |
 | Quit | `Cmd/Ctrl+Q` |
 | New note | `Cmd/Ctrl+N` |
-| New todo list | `Cmd/Ctrl+Alt+N` |
+| New todo list | `Ctrl+Shift+T` |
 | New base | `Cmd/Ctrl+Alt+B` |
 | New folder | `Cmd/Ctrl+Shift+N` |
 | Rename | `F2` |
