@@ -12,7 +12,7 @@ use super::actions::{
 #[cfg(any(target_os = "macos", test))]
 mod native;
 #[cfg(target_os = "macos")]
-pub(crate) use native::register_native_menu_action;
+pub use native::register_native_menu_action;
 
 pub fn install(cx: &mut App) {
     let menus = definitions(cx).map(|(_, menu)| menu);

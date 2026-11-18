@@ -22,7 +22,7 @@ impl PartialEq for NativeMenuClick {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn register_native_menu_action(cx: &mut gpui_kit::App) {
+pub fn register_native_menu_action(cx: &mut gpui_kit::App) {
     cx.on_action(|click: &NativeMenuClick, cx| {
         let action = click.0.boxed_clone();
         cx.defer(move |cx| cx.dispatch_action(action.as_ref()));
