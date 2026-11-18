@@ -6,6 +6,7 @@ pub mod monolith;
 pub mod notifications;
 pub mod palette;
 pub mod render;
+mod scroll_keys;
 pub mod settings;
 mod shortcuts;
 pub mod sidebar;
@@ -50,7 +51,7 @@ pub fn bind_keys(cx: &mut gpui_kit::App) {
     sidebar::bind_keys(cx);
     palette::bind_keys(cx);
     modal::bind_keys(cx);
-    shortcuts::bind_keys(cx);
+    scroll_keys::bind_keys(cx);
     editors::todo_txt::bind_keys(cx);
     viewers::base::bind_keys(cx);
 }
