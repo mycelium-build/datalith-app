@@ -10,13 +10,15 @@ const CONTEXT: &str = "ScrollView";
 
 pub fn bind_keys(cx: &mut App) {
     let context = Some(CONTEXT);
+    let typing_excluded = Some("ScrollView && !Input");
     cx.bind_keys([
         KeyBinding::new("down", SelectDown, context),
         KeyBinding::new("up", SelectUp, context),
         KeyBinding::new("pagedown", SelectPageDown, context),
-        KeyBinding::new("space", SelectPageDown, context),
+        // A text field inside doesn't bind Space, so it would lose it.
+        KeyBinding::new("space", SelectPageDown, typing_excluded),
         KeyBinding::new("pageup", SelectPageUp, context),
-        KeyBinding::new("shift-space", SelectPageUp, context),
+        KeyBinding::new("shift-space", SelectPageUp, typing_excluded),
         KeyBinding::new("home", SelectFirst, context),
         KeyBinding::new("end", SelectLast, context),
     ]);
