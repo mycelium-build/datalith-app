@@ -1,3 +1,4 @@
+use gpui_kit::prelude::FluentBuilder as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -105,8 +106,16 @@ impl DatalithView {
         let view = cx.entity();
         tree::tree(tree_state_entity, {
             let view = view.clone();
-            move |ix, entry, selected, _window, cx| {
-                Self::render_tree_item(&view, ix, entry, selected, drop_box, cx)
+            move |ix, entry, selected, window, cx| {
+                // The selection takes the accent color only while the tree has
+                // focus, so it shows whether the Sidebar shortcuts will act.
+                let focused = view
+                    .read(cx)
+                    .sidebar_focus_handle
+                    .contains_focused(window, cx);
+                let unfocused_selection = cx.theme().sidebar_accent;
+                Self::render_tree_item(&view, ix, entry, selected && focused, drop_box, cx)
+                    .when(selected && !focused, |item| item.bg(unfocused_selection))
             }
         })
         .context_menu(move |_ix, entry, menu, _window, cx| {
@@ -392,7 +401,13 @@ impl DatalithView {
                 } else {
                     this.last_sidebar_selection = Some(path.clone());
                     let new_tab = event.modifiers().secondary(cx);
-                    this.open_file(path.clone(), new_tab, window, cx);
+                    // Clicking the open file keeps the focus on the tree, which
+                    // mouse-down gave it; any other file takes it to its editor.
+                    if new_tab || this.tabs.active_path() != Some(path.as_path()) {
+                        this.open_file(path.clone(), new_tab, window, cx);
+                    } else {
+                        cx.notify();
+                    }
                 }
             }
         }))
