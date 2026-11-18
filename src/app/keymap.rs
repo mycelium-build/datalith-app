@@ -480,7 +480,7 @@ shortcuts!(
     (
         "new-todo-list",
         "File",
-        "ctrl-shift-t",
+        "secondary-alt-t",
         [Global, Sidebar],
         "New todo list",
         NewTodoList
