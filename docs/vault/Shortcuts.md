@@ -14,7 +14,7 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 - While a panel such as Settings or the palette is open, only **Quit**, **Open settings**, **Toggle theme**, **Quick switcher** and **Search files** respond.
 - Keys belong to one action per place. Saving keys that another action uses in the same place removes them from that action, which then shows **No shortcut**. An info icon marks a shortcut that another binding takes over somewhere, such as while typing.
 - Hover a row to **Reset** it to its default or **Remove** its shortcut. **Reset all** restores every default.
-- Changes apply immediately, including in the menus, and are saved in the user `config.json`. If saving fails, the tab says so and the changes apply until you quit.
+- Changes apply immediately, including in the menus, and are saved in the user `config.json`. If saving fails, the tab says so and the changes apply until you quit. On macOS, the Shortcuts tab shows the keys for commands whose scope depends on focus. These commands can also be clicked in the native menu.
 
 # File
 

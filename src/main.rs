@@ -42,6 +42,8 @@ fn main() {
 
         cx.set_global(app::AppState::default());
         app::actions::register(cx);
+        #[cfg(target_os = "macos")]
+        app::menus::register_native_menu_action(cx);
         ui::bind_keys(cx);
         app::keymap::register(cx);
         app::menus::install(cx);
