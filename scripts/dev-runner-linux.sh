@@ -8,6 +8,10 @@
 # ~/.local/share/icons. Tests, other binaries, Stable/Preview checkouts and CI are passed straight
 # through.
 #
+# The build runs as a `datalith-dev` hard link next to the binary: KDE Plasma matches a window's
+# executable name against StartupWMClass before its app id, so a process named `datalith` would be
+# grouped under the installed Stable entry and get its blue icon.
+#
 #   scripts/dev-runner-linux.sh --uninstall   removes the entry and the icons
 #   DATALITH_DEV_DESKTOP_ENTRY=0              leaves them alone
 
@@ -66,15 +70,17 @@ uninstall_entry() {
     echo "Removed the Datalith Dev desktop entry and icons."
 }
 
-ensure_entry() {
-    binary=$1
+is_dev_app() {
     # Only the app itself (target/<profile>/datalith), not test binaries (target/<profile>/deps/datalith-<hash>).
-    [ "$(basename -- "$binary")" = datalith ] || return 0
-    [ "$(basename -- "$(dirname -- "$binary")")" != deps ] || return 0
+    [ "$(basename -- "$1")" = datalith ] || return 1
+    [ "$(basename -- "$(dirname -- "$1")")" != deps ] || return 1
     # Stable and Preview checkouts would clash with the packaged apps' entries.
-    [ "$(tr -d '[:space:]' <"$ROOT/CHANNEL")" = dev ] || return 0
-    [ "${DATALITH_DEV_DESKTOP_ENTRY:-1}" != 0 ] && [ -z "${CI:-}" ] || return 0
-    binary=$(CDPATH='' cd -- "$(dirname -- "$binary")" && pwd)/datalith
+    [ "$(tr -d '[:space:]' <"$ROOT/CHANNEL")" = dev ] || return 1
+    [ "${DATALITH_DEV_DESKTOP_ENTRY:-1}" != 0 ] && [ -z "${CI:-}" ]
+}
+
+ensure_entry() {
+    binary=$(CDPATH='' cd -- "$(dirname -- "$1")" && pwd)/$STEM
 
     if [ -f "$DESKTOP_FILE" ]; then
         # Never touch an entry someone else wrote.
@@ -92,8 +98,13 @@ if [ "${1:-}" = "--uninstall" ]; then
     uninstall_entry
     exit 0
 fi
-if [ "$#" -gt 0 ]; then
+if [ "$#" -gt 0 ] && is_dev_app "$1"; then
     # A failure here must never keep the binary from running.
-    (ensure_entry "$1") || echo "Could not install the Datalith Dev icon; continuing." >&2
+    link=$(dirname -- "$1")/$STEM
+    if ln -f -- "$1" "$link" 2>/dev/null; then
+        shift
+        set -- "$link" "$@"
+        (ensure_entry "$1") || echo "Could not install the Datalith Dev icon; continuing." >&2
+    fi
 fi
 exec "$@"
