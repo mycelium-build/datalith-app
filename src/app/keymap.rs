@@ -24,6 +24,8 @@ pub const WORKSPACE_CONTEXT: &str = "Workspace";
 pub const NOTE_CONTEXT: &str = "Note";
 pub const TODO_LIST_CONTEXT: &str = "TodoList";
 pub const BASE_CONTEXT: &str = "Base";
+/// Key context of the file tree in the sidebar.
+pub const FILE_TREE_CONTEXT: &str = "FileTree";
 /// Key context of the modal panels (settings, licenses, palette).
 pub const MODAL_CONTEXT: &str = "Modal";
 
@@ -32,8 +34,9 @@ pub const MODAL_CONTEXT: &str = "Modal";
 pub enum ShortcutZone {
     /// Everywhere in the workspace.
     Global,
-    /// In the workspace, except while a text field has focus.
-    Interface,
+    /// In the sidebar's file tree, which has no text field except while
+    /// renaming, so a key needs no modifier there.
+    Sidebar,
     /// In a note, in edit and view modes.
     Note,
     /// In a todo list.
@@ -49,7 +52,7 @@ impl ShortcutZone {
     const fn predicate(self) -> &'static str {
         match self {
             Self::Global => WORKSPACE_CONTEXT,
-            Self::Interface => "Workspace && !Input",
+            Self::Sidebar => FILE_TREE_CONTEXT,
             Self::Note => NOTE_CONTEXT,
             Self::TodoList => TODO_LIST_CONTEXT,
             Self::Base => BASE_CONTEXT,
@@ -60,7 +63,7 @@ impl ShortcutZone {
     const fn id(self) -> &'static str {
         match self {
             Self::Global => "global",
-            Self::Interface => "interface",
+            Self::Sidebar => "sidebar",
             Self::Note => "note",
             Self::TodoList => "todo-list",
             Self::Base => "base",
@@ -71,7 +74,7 @@ impl ShortcutZone {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Global => "Everywhere",
-            Self::Interface => "Interface",
+            Self::Sidebar => "Sidebar",
             Self::Note => "Notes",
             Self::TodoList => "Todo lists",
             Self::Base => "Bases",
@@ -95,7 +98,7 @@ impl ShortcutZone {
     fn from_id(id: &str) -> Option<Self> {
         [
             Self::Global,
-            Self::Interface,
+            Self::Sidebar,
             Self::Note,
             Self::TodoList,
             Self::Base,
@@ -138,6 +141,7 @@ const PLACES: &[(&str, &[&str])] = &[
         &[WORKSPACE_CONTEXT, TODO_LIST_CONTEXT, "Input"],
     ),
     ("in bases", &[WORKSPACE_CONTEXT, BASE_CONTEXT]),
+    ("in the sidebar", &[WORKSPACE_CONTEXT, FILE_TREE_CONTEXT]),
 ];
 
 /// Shortcuts whose default keys take precedence over a focused text field,
@@ -185,9 +189,7 @@ impl ShortcutDefinition {
     fn predicate(&self, binding: &Binding) -> Option<String> {
         let keys = binding.keys.as_deref()?;
         let zone = binding.zone.predicate();
-        let zone = if matches!(binding.zone, ShortcutZone::Global | ShortcutZone::Interface)
-            && !ACTIVE_IN_MODALS.contains(&self.id)
-        {
+        let zone = if binding.zone == ShortcutZone::Global && !ACTIVE_IN_MODALS.contains(&self.id) {
             format!("{zone} && !{MODAL_CONTEXT}")
         } else {
             zone.to_owned()
@@ -195,7 +197,7 @@ impl ShortcutDefinition {
         Some(
             if self.is_default(binding) && DEFAULTS_OVER_FIELDS.contains(&self.id) {
                 format!("{zone} > Input || {zone}")
-            } else if types_character(keys) && binding.zone != ShortcutZone::Interface {
+            } else if types_character(keys) {
                 format!("{zone} && !Input")
             } else {
                 zone
@@ -442,7 +444,7 @@ shortcuts!(
         "new-note",
         "File",
         "secondary-n",
-        [Global, Interface],
+        [Global, Sidebar],
         "New note",
         NewFile
     ),
@@ -450,23 +452,16 @@ shortcuts!(
         "new-folder",
         "File",
         "secondary-shift-n",
-        [Global, Interface],
+        [Global, Sidebar],
         "New folder",
         NewFolder
     ),
-    (
-        "rename",
-        "File",
-        "f2",
-        [Global, Interface],
-        "Rename",
-        Rename
-    ),
+    ("rename", "File", "f2", [Sidebar, Global], "Rename", Rename),
     (
         "delete",
         "File",
         "secondary-backspace",
-        [Interface, Global],
+        [Sidebar, Global],
         "Delete",
         Delete
     ),
@@ -474,7 +469,7 @@ shortcuts!(
         "duplicate",
         "File",
         "secondary-d",
-        [Global, Interface],
+        [Sidebar, Global],
         "Duplicate",
         Duplicate
     ),
@@ -482,7 +477,7 @@ shortcuts!(
         "open-in-explorer",
         "File",
         "secondary-shift-e",
-        [Global, Interface],
+        [Sidebar, Global],
         "Open in Explorer",
         OpenInExplorer
     ),
@@ -490,7 +485,7 @@ shortcuts!(
         "copy-path",
         "File",
         "secondary-l",
-        [Global, Interface],
+        [Sidebar, Global],
         "Copy path",
         CopyPath
     ),
@@ -515,7 +510,7 @@ shortcuts!(
         "navigate-back",
         "Navigation",
         "secondary-[",
-        [Global, Interface],
+        [Global, Sidebar],
         "Navigate back",
         GoBack
     ),
@@ -523,7 +518,7 @@ shortcuts!(
         "navigate-forward",
         "Navigation",
         "secondary-]",
-        [Global, Interface],
+        [Global, Sidebar],
         "Navigate forward",
         GoForward
     ),
@@ -540,7 +535,7 @@ shortcuts!(
         "new-tab",
         "Tabs",
         "secondary-t",
-        [Global, Interface],
+        [Global, Sidebar],
         "New tab",
         NewTab
     ),
@@ -548,7 +543,7 @@ shortcuts!(
         "close-tab",
         "Tabs",
         "secondary-w",
-        [Global, Interface],
+        [Global, Sidebar],
         "Close tab",
         CloseTab
     ),
@@ -556,7 +551,7 @@ shortcuts!(
         "select-tab-1",
         "Tabs",
         "secondary-1",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 1",
         SelectTab1
     ),
@@ -564,7 +559,7 @@ shortcuts!(
         "select-tab-2",
         "Tabs",
         "secondary-2",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 2",
         SelectTab2
     ),
@@ -572,7 +567,7 @@ shortcuts!(
         "select-tab-3",
         "Tabs",
         "secondary-3",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 3",
         SelectTab3
     ),
@@ -580,7 +575,7 @@ shortcuts!(
         "select-tab-4",
         "Tabs",
         "secondary-4",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 4",
         SelectTab4
     ),
@@ -588,7 +583,7 @@ shortcuts!(
         "select-tab-5",
         "Tabs",
         "secondary-5",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 5",
         SelectTab5
     ),
@@ -596,7 +591,7 @@ shortcuts!(
         "select-tab-6",
         "Tabs",
         "secondary-6",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 6",
         SelectTab6
     ),
@@ -604,7 +599,7 @@ shortcuts!(
         "select-tab-7",
         "Tabs",
         "secondary-7",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 7",
         SelectTab7
     ),
@@ -612,7 +607,7 @@ shortcuts!(
         "select-tab-8",
         "Tabs",
         "secondary-8",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select tab 8",
         SelectTab8
     ),
@@ -620,7 +615,7 @@ shortcuts!(
         "select-last-tab",
         "Tabs",
         "secondary-9",
-        [Global, Interface],
+        [Global, Sidebar],
         "Select last tab",
         SelectLastTab
     ),
@@ -629,7 +624,7 @@ shortcuts!(
         "search-files",
         "View",
         "secondary-shift-f",
-        [Global, Interface],
+        [Global, Sidebar],
         "Search files",
         ToggleSearch
     ),
@@ -973,11 +968,11 @@ mod tests {
         let mut bindings = default_bindings();
         bindings[1].keys = Some("secondary-x".into());
         bindings[2].keys = None;
-        bindings[3].zone = ShortcutZone::Interface;
+        bindings[3].zone = ShortcutZone::Global;
         let overrides = overrides_for(&bindings);
         assert_eq!(keys(&overrides, "new-note").as_deref(), Some("secondary-x"));
         assert_eq!(keys(&overrides, "new-folder"), None);
-        assert_eq!(overrides["rename"].zone.as_deref(), Some("interface"));
+        assert_eq!(overrides["rename"].zone.as_deref(), Some("global"));
         assert!(!overrides.contains_key("quit"));
 
         assert_eq!(effective_bindings(&overrides), bindings);
@@ -992,7 +987,7 @@ mod tests {
         let overrides = BTreeMap::from([
             ("new-note".to_owned(), override_keys(None)),
             ("new-folder".to_owned(), override_keys(None)),
-            ("rename".to_owned(), override_keys(Some("interface"))),
+            ("rename".to_owned(), override_keys(Some("sidebar"))),
             ("quit".to_owned(), override_keys(Some("note"))),
         ]);
         let effective = effective_bindings(&overrides);
@@ -1009,7 +1004,6 @@ mod tests {
     #[test]
     fn zones_yield_to_text_field_bindings() {
         let ctrl_backspace = [parse_keystroke("ctrl-backspace").expect("valid key")];
-        let ctrl_k = [parse_keystroke("ctrl-k").expect("valid key")];
         let keymap = Keymap::new(vec![
             KeyBinding::new("ctrl-backspace", ComponentAction, Some("Input")),
             KeyBinding::new(
@@ -1017,7 +1011,6 @@ mod tests {
                 Quit,
                 Some(ShortcutZone::Global.predicate()),
             ),
-            KeyBinding::new("ctrl-k", Quit, Some(ShortcutZone::Interface.predicate())),
         ]);
         let workspace = KeyContext::parse("Workspace").expect("valid context");
         let input = KeyContext::parse("Input").expect("valid context");
@@ -1030,14 +1023,6 @@ mod tests {
             .bindings_for_input(&ctrl_backspace, &outside_fields)
             .0;
         assert!(outside[0].action().partial_eq(&Quit));
-
-        assert!(keymap.bindings_for_input(&ctrl_k, &typing).0.is_empty());
-        assert!(
-            !keymap
-                .bindings_for_input(&ctrl_k, &outside_fields)
-                .0
-                .is_empty()
-        );
     }
 
     #[test]
@@ -1093,7 +1078,7 @@ mod tests {
         for keys in ["up", "delete", "shift-a", "space"] {
             assert!(!ShortcutZone::Note.accepts(keys), "{keys}");
         }
-        assert!(ShortcutZone::Interface.accepts("a"));
+        assert!(ShortcutZone::Sidebar.accepts("a"));
     }
 
     #[test]
