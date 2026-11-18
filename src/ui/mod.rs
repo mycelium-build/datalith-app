@@ -96,6 +96,8 @@ pub struct DatalithView {
     pub(crate) focus_editor_requested: bool,
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
+    /// The active document last selected in the tree, which follows it.
+    revealed_active_path: Option<PathBuf>,
     pub(crate) pending_navigation: Option<tabs::NavigationAction>,
     pub(crate) pending_notifications: Vec<Notification>,
     /// Deletions that Undo can still restore, most recent last.
@@ -174,6 +176,7 @@ impl DatalithView {
             focus_editor_requested: false,
             sidebar_focus_handle,
             last_sidebar_selection: None,
+            revealed_active_path: None,
             pending_navigation: None,
             pending_notifications: initial_notifications,
             deleted_items: Vec::new(),

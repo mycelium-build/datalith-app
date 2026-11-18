@@ -175,11 +175,19 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.select_in_sidebar(path, cx) {
+            self.sidebar_focus_handle.focus(window, cx);
+        }
+    }
+
+    /// Expands the ancestors of `path` and selects it in the tree, without
+    /// moving the focus. Returns whether `path` is in the vault.
+    pub(crate) fn select_in_sidebar(&mut self, path: &Path, cx: &mut Context<Self>) -> bool {
         let Some(root) = self.root_path.clone() else {
-            return;
+            return false;
         };
         if !path.starts_with(&root) {
-            return;
+            return false;
         }
 
         let mut ancestor = path.parent();
@@ -204,8 +212,8 @@ impl DatalithView {
             }
         });
         self.last_sidebar_selection = Some(path.to_path_buf());
-        self.sidebar_focus_handle.focus(window, cx);
         cx.notify();
+        true
     }
 
     pub(crate) fn focus_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
