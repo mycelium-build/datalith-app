@@ -4,7 +4,7 @@ status: accepted
 
 # Use Barnes-Hut approximation for graph repulsion
 
-The Graph View must calculate repulsion repeatedly while animating as many as 10,000 nodes. We use a two-dimensional Barnes-Hut quadtree in [`src/ui/viewers/graph.rs`](../../src/ui/viewers/graph.rs) because it reduces the usual work from quadratic pairwise repulsion toward approximately `O(n log n)`, while its small force approximation is not perceptible enough to matter in an exploratory graph layout.
+The Graph View must calculate repulsion repeatedly while animating as many as 10,000 nodes. We use a two-dimensional Barnes-Hut quadtree in [`crates/datalith-ui/src/viewers/base/graph/physics.rs`](../../crates/datalith-ui/src/viewers/base/graph/physics.rs) because it reduces the usual work from quadratic pairwise repulsion toward approximately `O(n log n)`, while its small force approximation is not perceptible enough to matter in an exploratory graph layout.
 
 ## How Barnes-Hut works
 
