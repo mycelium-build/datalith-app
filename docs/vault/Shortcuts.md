@@ -11,6 +11,7 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 - Click an action's shortcut, press the new keys, then click **Save**. Press **Escape** or click **Cancel** to keep the current shortcut. If a key can't be used, such as Escape, Tab or Enter alone, the tab says so and offers **Try again**.
 - **Active in** shows where a shortcut works: **Everywhere**, **Interface** (everywhere except while typing in a text field), **Notes**, **Todo lists** or **Bases**. Click it to choose another place, when the action has more than one.
 - While you type, a text field keeps its own keys, such as `Cmd/Ctrl+Backspace` to delete a word. A key that types a character, like `A` or `Shift+A`, never runs a shortcut in a text field. In notes and todo lists, a shortcut needs `Cmd/Ctrl`, `Alt` or `Shift`, or a function key.
+- While a panel such as Settings or the palette is open, only **Quit**, **Open settings**, **Toggle theme**, **Quick switcher** and **Search files** respond.
 - Keys belong to one action per place. Saving keys that another action uses in the same place removes them from that action, which then shows **No shortcut**. An info icon marks a shortcut that another binding takes over somewhere, such as while typing.
 - Hover a row to **Reset** it to its default or **Remove** its shortcut. **Reset all** restores every default.
 - Changes apply immediately, including in the menus, and are saved in the user `config.json`. If saving fails, the tab says so and the changes apply until you quit.

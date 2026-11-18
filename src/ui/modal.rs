@@ -6,8 +6,7 @@ use gpui_kit::{
 };
 
 use super::DatalithView;
-
-const MODAL_CONTEXT: &str = "Modal";
+use crate::app::keymap::MODAL_CONTEXT;
 
 /// Binds Escape to `Cancel` in a modal panel.
 pub fn bind_keys(cx: &mut App) {
