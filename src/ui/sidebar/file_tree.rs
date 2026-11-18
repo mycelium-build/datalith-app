@@ -1,4 +1,4 @@
-use gpui_kit::component::Selectable as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -105,14 +105,22 @@ impl DatalithView {
         tree::tree(tree_state_entity, {
             let view = view.clone();
             move |ix, entry, selected, window, cx| {
-                // Outline the selection while the tree has focus, so it shows
+                // The selection keeps its fill wherever the focus is; a ring
+                // frames it while the tree has keyboard focus, so it shows
                 // whether the Sidebar shortcuts will act.
                 let focused = view
                     .read(cx)
                     .sidebar_focus_handle
                     .contains_focused(window, cx);
+                // Every row has the border, so framing one doesn't shift it.
+                let frame = if selected && focused {
+                    cx.theme().ring
+                } else {
+                    gpui_kit::transparent_black()
+                };
                 Self::render_tree_item(&view, ix, entry, selected, drop_box, cx)
-                    .secondary_selected(selected && focused)
+                    .border_1()
+                    .border_color(frame)
             }
         })
         .context_menu(move |_ix, entry, menu, _window, cx| {
@@ -306,8 +314,10 @@ impl DatalithView {
 
         let icon = this.tree_row_icon(path, is_folder, is_expanded);
 
+        // Not ListItem's selected style: the theme's tint can be too faint
+        // to find the selection when the tree has lost focus.
         let mut list_item = ListItem::new(ix)
-            .selected(selected)
+            .when(selected, |item| item.bg(cx.theme().selection))
             .text_color(cx.theme().sidebar_foreground)
             .pl(px(depth
                 .approx_as::<f32>()
