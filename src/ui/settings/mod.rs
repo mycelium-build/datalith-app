@@ -127,7 +127,7 @@ impl SettingsView {
     }
 
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
-        modal::backdrop("settings-backdrop", cx, |view| view.settings.close())
+        modal::backdrop("settings-backdrop", cx, |view, _, _| view.settings.close())
             .p(px(32.))
             .bg(cx.theme().overlay)
             .on_click(cx.listener(|view: &mut DatalithView, _, window, cx| {

@@ -111,7 +111,7 @@ impl LicensesView {
 
     pub fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
-        modal::backdrop("licenses-backdrop", cx, |view| view.licenses.close()).child(
+        modal::backdrop("licenses-backdrop", cx, |view, _, _| view.licenses.close()).child(
             modal::panel("licenses-panel", cx)
                 .w(px(760.))
                 .h(px(620.))

@@ -7,10 +7,10 @@ use gpui_kit::component::{
     v_flex, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, App, AppContext, Context, ElementId, Entity, Focusable, FontWeight, HighlightStyle,
-    Hsla, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, ScrollStrategy,
-    SharedString, Size, StatefulInteractiveElement, Styled, StyledText, Subscription, Window, div,
-    px, size,
+    AnyElement, App, AppContext, Context, ElementId, Entity, FocusHandle, Focusable, FontWeight,
+    HighlightStyle, Hsla, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels,
+    ScrollStrategy, SharedString, Size, StatefulInteractiveElement, Styled, StyledText,
+    Subscription, Window, div, px, size,
 };
 
 use crate::ui::{DatalithView, modal};
@@ -39,6 +39,7 @@ pub enum PaletteKind {
 pub struct Palette {
     pub(crate) kind: PaletteKind,
     switching_from: Option<PaletteKind>,
+    opener: Option<FocusHandle>,
     pub(crate) open: bool,
     pub(crate) needs_focus: bool,
     pub(crate) input: Entity<InputState>,
@@ -187,6 +188,7 @@ impl Palette {
             open: false,
             needs_focus: false,
             switching_from: None,
+            opener: None,
             search_query: SharedString::default(),
             qs_query: SharedString::default(),
             input: cx.new(|cx| InputState::new(window, cx).placeholder("Search files...")),
@@ -211,8 +213,10 @@ impl Palette {
         self.item_sizes.clear();
     }
 
-    pub(crate) const fn close(&mut self) {
+    fn close(&mut self) {
         self.open = false;
+        self.needs_focus = false;
+        self.opener = None;
     }
 
     pub(crate) fn search(&mut self, catalog: Option<&VaultCatalog>, query: &SharedString) {
@@ -338,7 +342,7 @@ impl Palette {
     pub(crate) fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement + use<> {
         let input = self.input.clone();
 
-        modal::backdrop("palette-backdrop", cx, |view| view.palette.close()).child(
+        modal::backdrop("palette-backdrop", cx, DatalithView::dismiss_palette).child(
             modal::panel("palette-panel", cx)
                 .w(px(PALETTE_WIDTH))
                 .border(px(BORDER_WIDTH))
@@ -354,8 +358,8 @@ impl Palette {
                             view.palette.move_selection(true);
                             cx.notify();
                         }))
-                        .on_action(cx.listener(|view, _: &Cancel, _, cx| {
-                            view.palette.close();
+                        .on_action(cx.listener(|view, _: &Cancel, window, cx| {
+                            view.dismiss_palette(window, cx);
                             cx.notify();
                         }))
                         .child(
@@ -530,7 +534,26 @@ impl Palette {
                 };
             }
         }
+        self.opener = window.focused(cx);
         self.input.focus_handle(cx).focus(window, cx);
         self.needs_focus = false;
+    }
+}
+
+impl DatalithView {
+    pub(crate) fn dismiss_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.palette.open {
+            return;
+        }
+        let opener = self.palette.opener.take();
+        self.palette.close();
+        if let Some(opener) =
+            opener.filter(|handle| self.workspace_focus_handle.contains(handle, window))
+        {
+            opener.focus(window, cx);
+        } else {
+            self.focus_active_tab(window, cx);
+        }
+        cx.notify();
     }
 }

@@ -287,6 +287,7 @@ impl DatalithView {
             ViewMode::Edit
         };
         self.new_empty_tab_with_id(TabId::new(), mode, cx);
+        self.focus_editor_requested = true;
     }
 
     fn new_empty_tab_with_id(&mut self, id: TabId, mode: ViewMode, cx: &mut Context<Self>) {

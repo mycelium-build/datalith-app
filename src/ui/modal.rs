@@ -2,7 +2,7 @@ use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::{
     App, Context, Div, ElementId, InteractiveElement, KeyBinding, Stateful,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use super::DatalithView;
@@ -17,7 +17,7 @@ pub fn bind_keys(cx: &mut App) {
 pub fn backdrop(
     id: impl Into<ElementId>,
     cx: &Context<DatalithView>,
-    close: fn(&mut DatalithView),
+    close: fn(&mut DatalithView, &mut Window, &mut Context<DatalithView>),
 ) -> Stateful<Div> {
     div()
         .absolute()
@@ -29,8 +29,8 @@ pub fn backdrop(
         .id(id)
         // Keep wheel and pointer events on the modal, including at its scroll boundaries.
         .occlude()
-        .on_click(cx.listener(move |view: &mut DatalithView, _, _, cx| {
-            close(view);
+        .on_click(cx.listener(move |view: &mut DatalithView, _, window, cx| {
+            close(view, window, cx);
             cx.notify();
         }))
 }
