@@ -111,7 +111,9 @@ impl SettingsView {
     }
 
     pub(crate) fn focus(&mut self, window: &mut Window, cx: &mut App) {
-        self.return_focus = window.focused(cx);
+        if !self.focus_handle.contains_focused(window, cx) {
+            self.return_focus = window.focused(cx);
+        }
         self.focus_handle.focus(window, cx);
     }
 

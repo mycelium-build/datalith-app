@@ -19,9 +19,7 @@ use gpui_kit::{
     Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::app::actions::{
-    CopyPath, NewBase, NewFile, NewFolder, NewTodoList, OpenInExplorer, Rename,
-};
+use crate::app::actions::{self, Rename};
 use crate::app::settings as app_settings;
 use crate::ui::notifications;
 use crate::vault::file_ops;
@@ -204,8 +202,10 @@ impl DatalithView {
         if crate::vault::source::is_read_only(path) {
             return;
         }
-        self.context_menu_target = Some(path.to_path_buf());
-        window.dispatch_action(Box::new(Rename), cx);
+        let target = path.to_path_buf();
+        window.defer(cx, move |_, cx| {
+            actions::handle_rename(&Rename, Some(target), cx);
+        });
     }
 
     pub fn rename_file(
@@ -431,25 +431,59 @@ impl DatalithView {
                             ),
                     ),
             )
-            .context_menu(move |menu, _window, cx| {
-                view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
-
-                new_entries(menu, active_read_only)
-                    .separator()
-                    .menu_with_disabled(
-                        "Open in Explorer",
-                        Box::new(OpenInExplorer),
-                        active_read_only,
-                    )
-                    .menu("Copy Path", Box::new(CopyPath))
+            .context_menu(move |menu, _, cx| {
+                let root = view.read(cx).root_path.as_deref();
+                file_menu(menu, root, false, active_read_only)
             })
     }
 }
 
-/// The sidebar menus' entries that create a file or a folder.
-fn new_entries(menu: PopupMenu, read_only: bool) -> PopupMenu {
-    menu.menu_with_disabled("New Note", Box::new(NewFile), read_only)
-        .menu_with_disabled("New Todo List", Box::new(NewTodoList), read_only)
-        .menu_with_disabled("New Base", Box::new(NewBase), read_only)
-        .menu_with_disabled("New Folder", Box::new(NewFolder), read_only)
+/// Build menu commands with the path the user clicked.
+fn file_menu(menu: PopupMenu, path: Option<&Path>, is_entry: bool, read_only: bool) -> PopupMenu {
+    fn item<A: gpui_kit::Action + Default>(
+        label: &'static str,
+        run: fn(&A, Option<PathBuf>, &mut gpui_kit::App),
+        path: Option<&Path>,
+        disabled: bool,
+    ) -> PopupMenuItem {
+        let path = path.map(Path::to_path_buf);
+        let action = A::default();
+        PopupMenuItem::new(label)
+            .disabled(disabled)
+            .action(action.boxed_clone())
+            .on_click(move |_, _, cx| run(&action, path.clone(), cx))
+    }
+    menu.item(item("New Note", actions::handle_new_file, path, read_only))
+        .item(item(
+            "New Todo List",
+            actions::handle_new_todo_list,
+            path,
+            read_only,
+        ))
+        .item(item("New Base", actions::handle_new_base, path, read_only))
+        .item(item(
+            "New Folder",
+            actions::handle_new_folder,
+            path,
+            read_only,
+        ))
+        .when(is_entry, |menu| {
+            menu.separator()
+                .item(item("Rename", actions::handle_rename, path, read_only))
+                .item(item("Delete", actions::handle_delete, path, read_only))
+                .item(item(
+                    "Duplicate",
+                    actions::handle_duplicate,
+                    path,
+                    read_only,
+                ))
+        })
+        .separator()
+        .item(item(
+            "Open in Explorer",
+            actions::handle_open_in_explorer,
+            path,
+            read_only,
+        ))
+        .item(item("Copy Path", actions::handle_copy_path, path, false))
 }

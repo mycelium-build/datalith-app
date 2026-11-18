@@ -102,7 +102,6 @@ macro_rules! with_writable_view {
                 .as_deref()
                 .is_some_and(crate::vault::source::is_read_only)
             {
-                $view.context_menu_target = None;
                 return;
             }
             $body
@@ -117,15 +116,15 @@ pub fn register(cx: &mut App) {
     cx.on_action(toggle_search);
     cx.on_action(toggle_quick_switcher);
     cx.on_action(close_palette);
-    cx.on_action(handle_new_file);
-    cx.on_action(handle_new_todo_list);
-    cx.on_action(handle_new_base);
-    cx.on_action(handle_new_folder);
-    cx.on_action(handle_rename);
-    cx.on_action(handle_delete);
-    cx.on_action(handle_duplicate);
-    cx.on_action(handle_open_in_explorer);
-    cx.on_action(handle_copy_path);
+    cx.on_action(on_selection(handle_new_file));
+    cx.on_action(on_selection(handle_new_todo_list));
+    cx.on_action(on_selection(handle_new_base));
+    cx.on_action(on_selection(handle_new_folder));
+    cx.on_action(on_selection(handle_rename));
+    cx.on_action(on_selection(handle_delete));
+    cx.on_action(on_selection(handle_duplicate));
+    cx.on_action(on_selection(handle_open_in_explorer));
+    cx.on_action(on_selection(handle_copy_path));
     cx.on_action(handle_close_tab);
     cx.on_action(handle_new_tab);
     cx.on_action(handle_focus_sidebar);
@@ -230,25 +229,28 @@ pub fn close_palette(_: &ClosePalette, cx: &mut App) {
     with_workspace_window(DatalithView::dismiss_palette, cx);
 }
 
-pub fn handle_new_file(_: &NewFile, cx: &mut App) {
-    create_file(cx, "New Note.md", "");
+/// Keyboard and application menu commands resolve their target from the current selection.
+fn on_selection<A>(run: fn(&A, Option<PathBuf>, &mut App)) -> impl Fn(&A, &mut App) {
+    move |action, cx| run(action, None, cx)
 }
 
-pub fn handle_new_todo_list(_: &NewTodoList, cx: &mut App) {
-    create_file(cx, "New Todo List.todotxt", "");
+pub fn handle_new_file(_: &NewFile, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Note.md", "");
 }
 
-pub fn handle_new_base(_: &NewBase, cx: &mut App) {
-    create_file(cx, "New Base.base", file_ops::NEW_BASE_CONTENT);
+pub fn handle_new_todo_list(_: &NewTodoList, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Todo List.todotxt", "");
+}
+
+pub fn handle_new_base(_: &NewBase, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Base.base", file_ops::NEW_BASE_CONTENT);
 }
 
 /// Creates a file next to the selection, opens it, and starts renaming it.
-fn create_file(cx: &mut App, base_name: &str, content: &str) {
+fn create_file(cx: &mut App, target: Option<PathBuf>, base_name: &str, content: &str) {
     with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
-        let target = view
-            .context_menu_target
-            .take()
+        let target = target
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target
@@ -266,12 +268,10 @@ fn create_file(cx: &mut App, base_name: &str, content: &str) {
     });
 }
 
-pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
+pub fn handle_new_folder(_: &NewFolder, target: Option<PathBuf>, cx: &mut App) {
     with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
-        let target = view
-            .context_menu_target
-            .take()
+        let target = target
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target
@@ -284,7 +284,7 @@ pub fn handle_new_folder(_: &NewFolder, cx: &mut App) {
     });
 }
 
-pub fn handle_rename(_: &Rename, cx: &mut App) {
+pub fn handle_rename(_: &Rename, target: Option<PathBuf>, cx: &mut App) {
     with_writable_view!(cx, |view, cx| {
         let catalog_blocked = view
             .vault_catalog
@@ -297,10 +297,7 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
             return;
         }
         view.commit_rename(cx);
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
+        let target = target.or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
             view.rename_target = Some(target);
         }
@@ -308,13 +305,10 @@ pub fn handle_rename(_: &Rename, cx: &mut App) {
     });
 }
 
-pub fn handle_delete(_: &Delete, cx: &mut App) {
+pub fn handle_delete(_: &Delete, target: Option<PathBuf>, cx: &mut App) {
     with_writable_view!(cx, |view, cx| {
         let target_index = view.tree_state.read(cx).selected_index();
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
+        let target = target.or_else(|| view.resolve_target(cx));
         view.commit_rename(cx);
         if let Some(target) = target
             && let Some(root) = view.root_path.clone()
@@ -329,7 +323,7 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
             }
             view.close_tabs_under(&target, cx);
             view.refresh_tree(cx);
-            let count = view.visible_tree_entry_count();
+            let count = view.visible_tree_entry_count(cx);
             if count > 0 {
                 let new_ix = target_index.unwrap_or(0).min(count.saturating_sub(1));
                 view.tree_state.update(cx, |state, cx| {
@@ -345,13 +339,10 @@ pub fn handle_delete(_: &Delete, cx: &mut App) {
     });
 }
 
-pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
+pub fn handle_duplicate(_: &Duplicate, target: Option<PathBuf>, cx: &mut App) {
     with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
+        let target = target.or_else(|| view.resolve_target(cx));
         if let Some(target) = target {
             if let Ok(duplicated) = file_ops::duplicate(&target)
                 && duplicated.is_file()
@@ -364,12 +355,9 @@ pub fn handle_duplicate(_: &Duplicate, cx: &mut App) {
     });
 }
 
-pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
+pub fn handle_open_in_explorer(_: &OpenInExplorer, target: Option<PathBuf>, cx: &mut App) {
     with_writable_view!(cx, |view, cx| {
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
+        let target = target.or_else(|| view.resolve_target(cx));
         if let Some(target) = target
             && let Err(error) = system::reveal_in_file_manager(&target)
         {
@@ -382,12 +370,9 @@ pub fn handle_open_in_explorer(_: &OpenInExplorer, cx: &mut App) {
     });
 }
 
-pub fn handle_copy_path(_: &CopyPath, cx: &mut App) {
+pub fn handle_copy_path(_: &CopyPath, target: Option<PathBuf>, cx: &mut App) {
     with_view!(cx, |view, cx| {
-        let target = view
-            .context_menu_target
-            .take()
-            .or_else(|| view.resolve_target(cx));
+        let target = target.or_else(|| view.resolve_target(cx));
         if let Some(target) = target
             && let Err(error) = system::copy_path(&target)
         {
@@ -493,10 +478,13 @@ pub fn open_about(_: &OpenAbout, cx: &mut App) {
 }
 
 pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.licenses.open();
-        cx.notify();
-    });
+    with_workspace_window(
+        |view, window, cx| {
+            view.licenses.open(window, cx);
+            cx.notify();
+        },
+        cx,
+    );
 }
 
 pub fn open_source(_: &OpenSource, cx: &mut App) {

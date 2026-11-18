@@ -169,27 +169,10 @@ impl DatalithView {
         self.refresh_tree(cx);
     }
 
-    pub(crate) fn visible_tree_entry_count(&self) -> usize {
-        // Counting tree nodes cannot plausibly overflow for real vault sizes.
-        #[allow(clippy::arithmetic_side_effects)]
-        fn count_items(items: &[TreeItem]) -> usize {
-            items
-                .iter()
-                .map(|item| {
-                    1 + if item.is_expanded() {
-                        count_items(&item.children)
-                    } else {
-                        0
-                    }
-                })
-                .sum()
-        }
-
-        self.root_path.as_ref().map_or(0, |root| {
-            count_items(&build_file_items_with_expanded(
-                root,
-                &self.expanded_tree_ids,
-            ))
-        })
+    pub(crate) fn visible_tree_entry_count(&self, cx: &Context<Self>) -> usize {
+        let tree = self.tree_state.read(cx);
+        (0..usize::MAX)
+            .take_while(|&ix| tree.entry(ix).is_some())
+            .count()
     }
 }

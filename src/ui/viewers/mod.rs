@@ -30,7 +30,7 @@ impl ViewerKind {
         match self {
             Self::Base(viewer) => viewer.focus_handle(cx),
             Self::Markdown(viewer) => viewer.focus_handle(cx),
-            Self::Image(viewer) => viewer.focus_handle(cx),
+            Self::Image(viewer) => viewer.focus_handle(),
         }
     }
 

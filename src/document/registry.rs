@@ -206,8 +206,8 @@ pub fn default_registry() -> FileRegistry {
                 },
                 icon: DatalithIcon::Image,
                 editor_factory: None,
-                viewer_factory: Some(|path, _editor, _dependencies, _cx| {
-                    Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf())))
+                viewer_factory: Some(|path, _editor, _dependencies, cx| {
+                    Some(ViewerKind::Image(ImageViewer::new(path.to_path_buf(), cx)))
                 }),
                 reload_adapter: None,
                 default_mode: ViewMode::View,
