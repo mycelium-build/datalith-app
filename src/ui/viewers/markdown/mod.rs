@@ -8,13 +8,13 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use gpui_kit::component::input::EditorState;
-use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::scroll::{ScrollableElement, Scrollbar};
 use gpui_kit::component::{ActiveTheme, Theme};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, Focusable, FontWeight, HighlightStyle,
-    InteractiveElement, IntoElement, ParentElement, SharedString, SharedUri,
-    StatefulInteractiveElement, Styled, div, img, px, relative,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, ScrollHandle, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, div, img, px, relative,
 };
 use percent_encoding::percent_decode_str;
 
@@ -22,6 +22,7 @@ use crate::app::fonts::{self, ResolvedFonts};
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 use crate::document::markdown::{MarkdownInline, parse_markdown};
 use crate::ui::BASE_FONT_SIZE;
+use crate::ui::scroll_keys::scroll_with_keys;
 use crate::vault::path::display_name;
 
 use constants::{MD_HEADING_SIZES, MD_LINE_HEIGHT, MD_TITLE_MARGIN, MD_TITLE_SIZE};
@@ -30,6 +31,9 @@ use frontmatter::render_frontmatter;
 pub struct MarkdownViewer {
     input: Entity<EditorState>,
     file_path: PathBuf,
+    /// Focus and scroll position for reading with the keyboard; theme
+    /// previews, rebuilt on every render, go without.
+    keyboard: Option<(FocusHandle, ScrollHandle)>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -49,11 +53,23 @@ struct BlockContext<'a> {
 
 impl MarkdownViewer {
     pub const fn new(input: Entity<EditorState>, file_path: PathBuf) -> Self {
-        Self { input, file_path }
+        Self {
+            input,
+            file_path,
+            keyboard: None,
+        }
+    }
+
+    /// Lets the note take focus and scroll with the arrow and page keys.
+    pub fn with_keyboard(mut self, cx: &App) -> Self {
+        self.keyboard = Some((cx.focus_handle(), ScrollHandle::new()));
+        self
     }
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.focus_handle(cx)
+        self.keyboard
+            .as_ref()
+            .map_or_else(|| self.input.focus_handle(cx), |(focus, _)| focus.clone())
     }
 
     fn render_image(&self, url: &str, alt: &str, grouped: bool, appearance: &Theme) -> AnyElement {
@@ -143,11 +159,10 @@ impl MarkdownViewer {
         };
         elements.extend(self.render_blocks(&document.blocks, 0, false, &mut ctx));
 
-        div()
+        let page = div()
             .id("markdown-preview")
             .size_full()
             .min_h_0()
-            .overflow_y_scrollbar()
             .overflow_x_hidden()
             .p_4()
             .whitespace_normal()
@@ -155,7 +170,24 @@ impl MarkdownViewer {
             .text_color(appearance.foreground)
             .font_family(fonts.reading().clone())
             .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
-            .child(div().w_full().min_w_0().children(elements))
+            .child(div().w_full().min_w_0().children(elements));
+        let Some((focus, scroll)) = &self.keyboard else {
+            return page.overflow_y_scrollbar().into_any_element();
+        };
+        let focus_on_click = focus.clone();
+        let page = page
+            .overflow_y_scroll()
+            .track_scroll(scroll)
+            .track_focus(focus)
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                focus_on_click.focus(window, cx);
+            });
+        div()
+            .relative()
+            .size_full()
+            .min_h_0()
+            .child(scroll_with_keys(page, scroll))
+            .child(Scrollbar::vertical(scroll))
             .into_any_element()
     }
 
