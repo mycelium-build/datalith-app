@@ -15,9 +15,16 @@ use super::snapshot::{BaseRow, BaseSnapshot, file_name, path_text};
 
 const CELL_EDITOR_CONTEXT: &str = "BaseCellEditor";
 
-/// Binds Escape to `Cancel` in a cell editor, after the field's own Escape.
+/// Key context of the base viewer, where Escape closes a full-screen image.
+pub(super) const VIEWER_CONTEXT: &str = "BaseViewer";
+
+/// Binds Escape to `Cancel` in a cell editor, after the field's own Escape,
+/// and in the viewer.
 pub fn bind_keys(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CELL_EDITOR_CONTEXT))]);
+    cx.bind_keys([
+        KeyBinding::new("escape", Cancel, Some(CELL_EDITOR_CONTEXT)),
+        KeyBinding::new("escape", Cancel, Some(VIEWER_CONTEXT)),
+    ]);
 }
 
 pub(super) struct CellEdit {

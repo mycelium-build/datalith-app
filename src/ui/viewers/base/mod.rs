@@ -26,6 +26,8 @@ use gpui_kit::{
     prelude::FluentBuilder,
 };
 
+use gpui_kit::base::actions::Cancel;
+
 use crate::app::actions::{NextView, PreviousView, ResetZoom, ZoomIn, ZoomOut};
 use crate::document::base::{BaseDefinition, ViewType};
 
@@ -606,6 +608,14 @@ impl Render for BaseViewState {
             .relative()
             .overflow_hidden()
             .track_focus(&self.focus_handle)
+            .key_context(cells::VIEWER_CONTEXT)
+            .on_action(cx.listener(|this, _: &Cancel, _, cx| {
+                if this.fullscreen_image.take().is_some() {
+                    cx.notify();
+                } else {
+                    cx.propagate();
+                }
+            }))
             .on_action(cx.listener(|this, _: &NextView, _, cx| {
                 if !this.preview {
                     this.select_adjacent_view(true, cx);
