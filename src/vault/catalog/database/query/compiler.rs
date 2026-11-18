@@ -436,17 +436,22 @@ impl BaseQueryCompiler {
             }
             "startsWith" | "endsWith" => {
                 let subject_sql = self.compile_expr(subject)?;
-                let Some(Expr::Text(pattern)) = args.first() else {
-                    bail!(".{name} requires a string literal")
+                let [argument] = args else {
+                    bail!(".{name} takes one argument")
                 };
-                let glob = match name {
-                    "startsWith" => format!("{}*", escape_glob(pattern)),
-                    _ => format!("*{}", escape_glob(pattern)),
+                let needle = self.compile_expr(argument)?.emit(Precedence::Or);
+                // Quote GLOB metacharacters as bracket groups before adding our wildcard.
+                let quoted = format!(
+                    "replace(replace(replace({needle}, '[', '[[]'), '*', '[*]'), '?', '[?]')"
+                );
+                let pattern = if name == "startsWith" {
+                    format!("{quoted} || '*'")
+                } else {
+                    format!("'*' || {quoted}")
                 };
-                let placeholder = self.bind(Value::Text(glob));
                 Ok(Sql {
                     text: format!(
-                        "{} GLOB {placeholder}",
+                        "{} GLOB ({pattern})",
                         subject_sql.emit(Precedence::Comparison)
                     ),
                     precedence: Precedence::Comparison,
@@ -562,15 +567,6 @@ fn duration_modifier(duration: crate::document::expr::Duration, negative: bool) 
         duration.amount
     };
     Ok(format!("{sign}{amount} {}", unit.modifier()))
-}
-
-fn escape_glob(pattern: &str) -> String {
-    pattern
-        .replace('\\', "\\\\")
-        .replace('*', "\\*")
-        .replace('?', "\\?")
-        .replace('[', "\\[")
-        .replace(']', "\\]")
 }
 
 /// Maps common moment.js tokens onto strftime directives;
@@ -694,13 +690,21 @@ mod tests {
     fn file_predicates_compile_and_match() {
         pollster::block_on(async {
             let (database, root) = catalog_with(&[
-                ("Notes/A.md", "---\ntags: [front]\n---\n[[Target]]"),
+                (
+                    "Notes/A.md",
+                    "---\ntags: [front]\nprefix: A\nsuffix: A\n---\n[[Target]]",
+                ),
                 ("Other/B.md", "---\n---\nplain"),
                 ("Target.md", "---\n---\n"),
             ])
             .await;
             for (filter_source, expected) in [
-                ("file.hasTag(\"front\")", 1usize),
+                ("file.name.startsWith(prefix)", 1usize),
+                ("file.name.endsWith(suffix)", 1),
+                ("file.name.startsWith(file.name)", 3),
+                ("file.name.startsWith(\"A\")", 1),
+                ("file.name.endsWith(\"*\")", 0),
+                ("file.hasTag(\"front\")", 1),
                 ("file.hasTag(\"missing-tag\")", 0),
                 ("file.hasLink(\"Target\")", 1),
                 ("file.hasLink(\"Target.md\")", 1),
