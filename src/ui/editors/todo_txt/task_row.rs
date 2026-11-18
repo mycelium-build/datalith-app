@@ -16,6 +16,7 @@ use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
 use txtodo::{Priority, Task};
 
 use crate::app::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, ToggleTask};
+use crate::app::actions::{CollapseTask, EditTaskDate, ExpandTask, LowerPriority, RaisePriority};
 use crate::document::todo_txt::parse_date;
 
 use super::TodoTxtState;
@@ -258,7 +259,43 @@ impl TodoTxtState {
             .on_action(cx.listener(move |this, _: &NextTask, window, cx| {
                 this.focus_next_task(fi, window, cx);
             }))
+            .on_action(cx.listener(move |this, _: &RaisePriority, _, cx| {
+                this.step_priority_unless_read_only(fi, true, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &LowerPriority, _, cx| {
+                this.step_priority_unless_read_only(fi, false, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &EditTaskDate, window, cx| {
+                if let Some(input) = this.date_inputs.get(&fi) {
+                    input.focus_handle(cx).focus(window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &CollapseTask, _, cx| {
+                this.set_expanded(fi, false, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &ExpandTask, _, cx| {
+                this.set_expanded(fi, true, cx);
+            }))
             .into_any_element()
+    }
+
+    fn step_priority_unless_read_only(&mut self, index: usize, up: bool, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            cx.propagate();
+        } else {
+            self.step_priority(index, up, cx);
+        }
+    }
+
+    /// Shows or hides the task's subtasks, when it has any.
+    fn set_expanded(&mut self, index: usize, expanded: bool, cx: &mut Context<Self>) {
+        let has_subtasks = self
+            .workspace
+            .task(index)
+            .is_some_and(|task| !task.subtasks.is_empty());
+        if has_subtasks && self.workspace.is_expanded(index) != expanded {
+            self.toggle_expand(index, cx);
+        }
     }
 
     fn focus_previous_task(&self, flat_index: usize, window: &mut Window, cx: &mut Context<Self>) {

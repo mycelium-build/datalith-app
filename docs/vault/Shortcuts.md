@@ -80,6 +80,10 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 | Delete task | `Cmd/Ctrl+Shift+Backspace` |
 | Previous / next task | `↑` / `↓` |
 | Search tasks | `Cmd/Ctrl+F` |
+| New task | `Cmd/Ctrl+N` |
+| Raise / lower priority | `Alt+↑` / `Alt+↓` |
+| Edit date | `Cmd/Ctrl+D` |
+| Collapse / expand subtasks | `Cmd/Ctrl+Alt+↑` / `Cmd/Ctrl+Alt+↓` |
 
 On a priority, `↑` and `↓` change it. In a date, Escape restores the saved one.
 

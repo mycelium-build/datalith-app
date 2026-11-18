@@ -67,6 +67,12 @@ actions!(
         PreviousTask,
         NextTask,
         SearchTasks,
+        NewTask,
+        RaisePriority,
+        LowerPriority,
+        EditTaskDate,
+        CollapseTask,
+        ExpandTask,
     ]
 );
 
