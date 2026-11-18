@@ -235,14 +235,14 @@ pub struct ShortcutOverride {
 #[serde(untagged)]
 enum StoredShortcutOverride {
     KeysOnly(Option<String>),
-    Current(ShortcutOverride),
+    KeysWithContext(ShortcutOverride),
 }
 
 impl From<StoredShortcutOverride> for ShortcutOverride {
     fn from(stored: StoredShortcutOverride) -> Self {
         match stored {
             StoredShortcutOverride::KeysOnly(keys) => Self { keys, zone: None },
-            StoredShortcutOverride::Current(shortcut) => shortcut,
+            StoredShortcutOverride::KeysWithContext(shortcut) => shortcut,
         }
     }
 }
@@ -408,7 +408,7 @@ impl StoredSettings {
                 .map(|(id, shortcut)| {
                     (
                         id.clone(),
-                        StoredShortcutOverride::Current(shortcut.clone()),
+                        StoredShortcutOverride::KeysWithContext(shortcut.clone()),
                     )
                 })
                 .collect(),
