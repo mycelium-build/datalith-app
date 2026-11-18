@@ -314,8 +314,20 @@ impl DatalithView {
             return;
         }
 
-        let current = display_name(target).to_string();
-        let state = cx.new(|cx| InputState::new(window, cx).default_value(current.as_str()));
+        let current = display_name(target);
+        let selected_name = if crate::vault::source::is_dir(target) {
+            current
+        } else {
+            Path::new(current)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or(current)
+        };
+        let state = cx.new(|cx| {
+            let mut input = InputState::new(window, cx).default_value(current);
+            input.set_selected_range(0..selected_name.len(), cx);
+            input
+        });
 
         self.rename_sub = Some(cx.subscribe_in(
             &state,
@@ -329,8 +341,7 @@ impl DatalithView {
         ));
 
         state.focus_handle(cx).focus(window, cx);
-        self.rename_state = Some(state.clone());
-        window.dispatch_action(Box::new(gpui_kit::component::input::SelectAll), cx);
+        self.rename_state = Some(state);
     }
 
     fn path_from_id(id: &SharedString) -> PathBuf {
