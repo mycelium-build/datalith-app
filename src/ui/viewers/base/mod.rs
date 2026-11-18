@@ -7,6 +7,7 @@ mod preview;
 mod snapshot;
 mod table;
 
+pub use cells::bind_keys;
 use cells::centered_message;
 use cells::{format_scalar_text, render_property_cell};
 use snapshot::file_name;

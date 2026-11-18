@@ -1,9 +1,10 @@
 //! Cell rendering over projected snapshot values.
 
+use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme, StyledExt, Theme, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, ClickEvent, ElementId, Entity, InteractiveElement, IntoElement, KeyDownEvent,
+    AnyElement, App, ClickEvent, ElementId, Entity, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, StatefulInteractiveElement, Styled, Subscription, div, prelude::FluentBuilder,
 };
 
@@ -11,6 +12,13 @@ use crate::document::base::DisplayProperty;
 use crate::document::handler::{FileHandler, FileHandlerEvent};
 
 use super::snapshot::{BaseRow, BaseSnapshot, file_name, path_text};
+
+const CELL_EDITOR_CONTEXT: &str = "BaseCellEditor";
+
+/// Binds Escape to `Cancel` in a cell editor, after the field's own Escape.
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CELL_EDITOR_CONTEXT))]);
+}
 
 pub(super) struct CellEdit {
     pub(super) row: usize,
@@ -129,12 +137,11 @@ pub(super) fn render_editable_cell(
         return v_flex()
             .id(id)
             .w_full()
-            .on_key_down(move |event: &KeyDownEvent, _window, cx| {
-                if event.keystroke.key == "escape" {
-                    entity.update(cx, |state, cx| {
-                        state.cancel_cell_edit(cx);
-                    });
-                }
+            .key_context(CELL_EDITOR_CONTEXT)
+            .on_action(move |_: &Cancel, _window, cx| {
+                entity.update(cx, |state, cx| {
+                    state.cancel_cell_edit(cx);
+                });
             })
             .child(input)
             .when(active.error.is_some(), |flex| {
