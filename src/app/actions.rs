@@ -21,6 +21,7 @@ actions!(
     datalith,
     [
         OpenVault,
+        OpenVaultSelector,
         ToggleSearch,
         ClosePalette,
         ToggleQuickSwitcher,

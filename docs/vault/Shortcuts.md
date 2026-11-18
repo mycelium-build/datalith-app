@@ -38,6 +38,7 @@ Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file select
 | Action | Shortcut |
 | --- | --- |
 | Open vault | `Cmd/Ctrl+O` |
+| Open vault selector | `Ctrl+Alt+V` |
 | Quick switcher | `Cmd/Ctrl+P` |
 | Focus sidebar | `Cmd/Ctrl+0` |
 | Navigate back | `Cmd/Ctrl+[` |
@@ -45,6 +46,8 @@ Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file select
 | Open link | `Cmd/Ctrl+Enter` |
 
 In a text field, `Cmd/Ctrl+[` and `Cmd/Ctrl+]` change indentation. Open link works in notes.
+
+Use ↑ and ↓ in the vault selector to choose a vault. Enter opens it and Escape closes the menu.
 
 # Tabs
 

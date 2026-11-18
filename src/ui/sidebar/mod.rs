@@ -416,6 +416,7 @@ impl DatalithView {
                     .p_2()
                     .child(
                         Button::new("vault-selector")
+                            .track_focus(&self.vault_selector_focus_handle)
                             .ghost()
                             .small()
                             .w_full()

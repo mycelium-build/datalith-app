@@ -136,7 +136,7 @@ use super::actions::{
     CollapseTask, EditTaskDate, ExpandTask, LowerPriority, NewTask, RaisePriority,
 };
 use super::actions::{NextView, PreviousView, ResetZoom, ZoomIn, ZoomOut};
-use super::actions::{OpenDocumentation, OpenThemes, OpenVault};
+use super::actions::{OpenDocumentation, OpenThemes, OpenVault, OpenVaultSelector};
 
 /// Representative context stacks, to find where another binding takes a
 /// shortcut's keys: a text field's own keys, or a more specific zone.
@@ -536,6 +536,14 @@ shortcuts!(
         [Global],
         "Open vault",
         OpenVault
+    ),
+    (
+        "open-vault-selector",
+        "Navigation",
+        "ctrl-alt-v",
+        [Global],
+        "Open vault selector",
+        OpenVaultSelector
     ),
     (
         "quick-switcher",
