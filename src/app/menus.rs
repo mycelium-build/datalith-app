@@ -9,8 +9,16 @@ use super::actions::{
     ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
+#[cfg(any(target_os = "macos", test))]
+mod native;
+#[cfg(target_os = "macos")]
+pub(crate) use native::register_native_menu_action;
+
 pub fn install(cx: &mut App) {
-    cx.set_menus(definitions(cx).map(|(_, menu)| menu));
+    let menus = definitions(cx).map(|(_, menu)| menu);
+    #[cfg(target_os = "macos")]
+    let menus = menus.map(|menu| native::scope_shortcuts(menu, &cx.key_bindings().borrow()));
+    cx.set_menus(menus);
 
     if let Some(menus) = cx.get_menus() {
         GlobalState::global_mut(cx).set_app_menus(menus);
