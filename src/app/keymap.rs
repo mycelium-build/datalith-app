@@ -469,7 +469,7 @@ shortcuts!(
     (
         "new-todo-list",
         "File",
-        "secondary-alt-n",
+        "ctrl-shift-t",
         [Global, Sidebar],
         "New todo list",
         NewTodoList
