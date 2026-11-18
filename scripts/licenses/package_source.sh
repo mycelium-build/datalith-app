@@ -32,7 +32,7 @@ done
 PACKAGE_VERSION="$(python3 - <<'PY'
 import tomllib
 with open('Cargo.toml', 'rb') as f:
-    print(tomllib.load(f)['package']['version'])
+    print(tomllib.load(f)['workspace']['package']['version'])
 PY
 )"
 

@@ -1,0 +1,138 @@
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::{ActiveTheme, Disableable};
+use gpui_kit::{
+    AnyElement, App, ClickEvent, ElementId, Entity, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, StatefulInteractiveElement, Styled, div, px,
+};
+
+use conv::{ConvUtil, UnwrapOrInf};
+
+use crate::handler::{FileHandler, FileHandlerEvent};
+use datalith_core::markdown::{Frontmatter, FrontmatterValue};
+
+use super::constants::{
+    MD_FRONTMATTER_FONT_SCALE, MD_FRONTMATTER_PADDING, MD_FRONTMATTER_RADIUS, MD_LINE_HEIGHT,
+};
+
+pub(super) fn render_frontmatter(
+    frontmatter: &Frontmatter,
+    base_font_size: f32,
+    margin_top: f32,
+    handler: &Entity<FileHandler>,
+    cx: &App,
+) -> AnyElement {
+    let handler = handler.clone();
+    let max_key_len = frontmatter
+        .properties
+        .iter()
+        .map(|property| property.key.len())
+        .max()
+        .unwrap_or(0);
+    let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
+    let line_h = px(font_size * MD_LINE_HEIGHT);
+    let key_width = px(font_size * max_key_len.approx_as::<f32>().unwrap_or_inf() * 0.6);
+    let mut rows: Vec<AnyElement> = Vec::new();
+
+    if let Some(error) = &frontmatter.error {
+        rows.push(
+            div()
+                .border_1()
+                .border_color(cx.theme().danger)
+                .bg(cx.theme().danger.opacity(0.08))
+                .text_color(cx.theme().danger)
+                .rounded(px(4.0))
+                .p_2()
+                .text_size(px(font_size))
+                .child(error.clone())
+                .into_any_element(),
+        );
+    }
+
+    for (property_index, property) in frontmatter.properties.iter().enumerate() {
+        let mut values: Vec<AnyElement> = Vec::new();
+        for (value_index, value) in property.values.iter().enumerate() {
+            let id = u64::try_from(property_index)
+                .unwrap_or_default()
+                .saturating_mul(1000)
+                .saturating_add(u64::try_from(value_index).unwrap_or_default());
+            let element = match value {
+                FrontmatterValue::Boolean(value) => {
+                    Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
+                        .checked(*value)
+                        .disabled(true)
+                        .tab_stop(false)
+                        .into_any_element()
+                }
+                FrontmatterValue::Link { label, target } => {
+                    render_link(label, target, id, handler.clone(), cx)
+                }
+                FrontmatterValue::Text(value) => div().child(value.clone()).into_any_element(),
+            };
+            values.push(element);
+        }
+
+        rows.push(
+            div()
+                .flex()
+                .items_start()
+                .gap_1()
+                .child(
+                    div()
+                        .w(key_width)
+                        .flex_shrink_0()
+                        .text_size(px(font_size))
+                        .line_height(line_h)
+                        .text_color(cx.theme().foreground)
+                        .font_weight(FontWeight::BOLD)
+                        .child(property.key.clone()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .ml_2()
+                        .flex()
+                        .flex_col()
+                        .text_size(px(font_size))
+                        .line_height(line_h)
+                        .text_color(cx.theme().muted_foreground)
+                        .children(values),
+                )
+                .into_any_element(),
+        );
+    }
+
+    div()
+        .bg(cx.theme().muted)
+        .rounded(px(MD_FRONTMATTER_RADIUS))
+        .p(px(MD_FRONTMATTER_PADDING))
+        .mt(px(margin_top))
+        .children(rows)
+        .into_any_element()
+}
+
+fn render_link(
+    label: &str,
+    target: &str,
+    id: u64,
+    handler: Entity<FileHandler>,
+    cx: &App,
+) -> AnyElement {
+    let target = target.to_string();
+    div()
+        .id(ElementId::NamedInteger("frontmatter-link".into(), id))
+        .text_color(cx.theme().link)
+        .hover(|style| style.text_color(cx.theme().link_hover))
+        .active(|style| style.text_color(cx.theme().link_active))
+        .underline()
+        .cursor_pointer()
+        .on_click(move |event: &ClickEvent, _window, cx| {
+            handler.update(cx, |_, cx| {
+                cx.emit(FileHandlerEvent::LinkClicked(
+                    target.clone(),
+                    event.modifiers().secondary(cx),
+                ));
+            });
+        })
+        .child(label.to_string())
+        .into_any_element()
+}

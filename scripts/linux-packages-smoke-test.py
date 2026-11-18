@@ -40,6 +40,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PKG_DIR = ROOT / "target" / "x86_64-unknown-linux-gnu" / "release"
@@ -122,14 +123,8 @@ def container_exists(name: str) -> bool:
 
 
 def package_version() -> str:
-    match = re.search(
-        r'^version\s*=\s*"([^"]+)"',
-        (ROOT / "Cargo.toml").read_text(),
-        flags=re.MULTILINE,
-    )
-    if not match:
-        raise SystemExit("cannot read version from Cargo.toml")
-    return match.group(1)
+    with (ROOT / "Cargo.toml").open("rb") as manifest:
+        return tomllib.load(manifest)["workspace"]["package"]["version"]
 
 
 def ensure_container(name: str, image: str) -> None:
