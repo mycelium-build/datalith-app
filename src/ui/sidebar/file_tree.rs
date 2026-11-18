@@ -16,9 +16,7 @@ use gpui_kit::{
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::actions::{
-    CopyPath, Delete, Duplicate, NewFile, NewFolder, OpenInExplorer, Rename,
-};
+use crate::app::actions::{CopyPath, Delete, Duplicate, OpenInExplorer, Rename};
 use crate::vault;
 use crate::vault::path::display_name;
 
@@ -123,8 +121,7 @@ impl DatalithView {
             view.update(cx, |v, _| {
                 v.context_menu_target = Some(path.clone());
             });
-            menu.menu_with_disabled("New File", Box::new(NewFile), active_read_only)
-                .menu_with_disabled("New Folder", Box::new(NewFolder), active_read_only)
+            super::new_entries(menu, active_read_only)
                 .separator()
                 .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
                 .menu_with_disabled("Delete", Box::new(Delete), active_read_only)

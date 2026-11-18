@@ -19,7 +19,9 @@ use gpui_kit::{
     Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::app::actions::{CopyPath, NewFile, NewFolder, OpenInExplorer, Rename};
+use crate::app::actions::{
+    CopyPath, NewBase, NewFile, NewFolder, NewTodoList, OpenInExplorer, Rename,
+};
 use crate::app::settings as app_settings;
 use crate::ui::notifications;
 use crate::vault::file_ops;
@@ -420,8 +422,7 @@ impl DatalithView {
             .context_menu(move |menu, _window, cx| {
                 view.update(cx, |v, _| v.context_menu_target = v.root_path.clone());
 
-                menu.menu_with_disabled("New File", Box::new(NewFile), active_read_only)
-                    .menu_with_disabled("New Folder", Box::new(NewFolder), active_read_only)
+                new_entries(menu, active_read_only)
                     .separator()
                     .menu_with_disabled(
                         "Open in Explorer",
@@ -431,4 +432,12 @@ impl DatalithView {
                     .menu("Copy Path", Box::new(CopyPath))
             })
     }
+}
+
+/// The sidebar menus' entries that create a file or a folder.
+fn new_entries(menu: PopupMenu, read_only: bool) -> PopupMenu {
+    menu.menu_with_disabled("New Note", Box::new(NewFile), read_only)
+        .menu_with_disabled("New Todo List", Box::new(NewTodoList), read_only)
+        .menu_with_disabled("New Base", Box::new(NewBase), read_only)
+        .menu_with_disabled("New Folder", Box::new(NewFolder), read_only)
 }

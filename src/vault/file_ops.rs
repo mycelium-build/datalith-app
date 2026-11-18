@@ -8,17 +8,18 @@ use anyhow::{Context, Result, bail, ensure};
 use crate::vault::path::{parent_dir, unique_path};
 use crate::vault::{VaultCatalog, links, source};
 
-pub fn create(target: &Path) -> Result<PathBuf> {
-    create_with_name(target, "New Note.md")
-}
+/// The content of a new base: one table of every file.
+pub const NEW_BASE_CONTENT: &str = "views:\n  - type: table\n    name: All files\n";
 
-pub fn create_with_name(target: &Path, base_name: &str) -> Result<PathBuf> {
+/// Creates a file named after `base_name`, made unique, in `target` or its folder.
+pub fn create(target: &Path, base_name: &str, content: &str) -> Result<PathBuf> {
     source::ensure_writable(target)?;
 
     let directory = parent_dir(target);
     let path = unique_path(&directory, base_name);
     source::ensure_writable(&path)?;
-    fs::write(&path, "").with_context(|| format!("Failed to create file {}", path.display()))?;
+    fs::write(&path, content)
+        .with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
 
@@ -409,7 +410,7 @@ mod tests {
         ));
         fs::create_dir_all(&personal).unwrap();
         let catalog = VaultCatalog::open(&personal, RegisteredFileTypes::new([])).unwrap();
-        assert!(create(&root).is_err());
+        assert!(create(&root, "New Note.md", "").is_err());
         assert!(create_folder(&root).is_err());
         assert!(update(&note, "changed").is_err());
         assert!(delete(&root, &note).is_err());
@@ -534,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn create_with_name_avoids_existing_names() {
+    fn create_avoids_existing_names() {
         let root = std::env::temp_dir().join(format!(
             "datalith-file-ops-create-name-{}",
             std::process::id()
@@ -544,7 +545,7 @@ mod tests {
         fs::write(root.join("Note.md"), "").unwrap();
         fs::write(root.join("Note 1.md"), "").unwrap();
 
-        let path = create_with_name(&root, "Note.md").unwrap();
+        let path = create(&root, "Note.md", "").unwrap();
 
         assert_eq!(path, root.join("Note 2.md"));
         assert!(path.exists());
@@ -553,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn create_with_name_creates_the_requested_file() {
+    fn create_creates_the_requested_file() {
         let root = std::env::temp_dir().join(format!(
             "datalith-file-ops-create-requested-{}",
             std::process::id()
@@ -561,7 +562,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 
-        let path = create_with_name(&root, "Meeting.md").unwrap();
+        let path = create(&root, "Meeting.md", "").unwrap();
 
         assert_eq!(path, root.join("Meeting.md"));
         assert!(path.exists());
@@ -578,7 +579,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 
-        let path = create(&root).unwrap();
+        let path = create(&root, "New Note.md", "").unwrap();
 
         assert_eq!(path, root.join("New Note.md"));
         assert!(path.exists());

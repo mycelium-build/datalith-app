@@ -22,6 +22,8 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 | --- | --- |
 | Quit | `Cmd/Ctrl+Q` |
 | New note | `Cmd/Ctrl+N` |
+| New todo list | None by default |
+| New base | None by default |
 | New folder | `Cmd/Ctrl+Shift+N` |
 | Rename | `F2` |
 | Delete | `Cmd/Ctrl+Backspace` |

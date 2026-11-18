@@ -19,7 +19,7 @@ Press **Cmd/Ctrl+N** to create a new file. It is created in the current Vault an
 - `Tasks.todotxt`: a todo.txt file, opened in the task editor.
 - `Library.base`: a Base Definition, opened as list, table, cards, or graph views.
 
-You can also right-click in the sidebar and choose **New File** or **New Folder**.
+You can also right-click in the sidebar and choose **New Note**, **New Todo List**, **New Base** or **New Folder**.
 
 # Write some content
 
@@ -58,5 +58,5 @@ Some files only have a viewer or only an editor. See [[FileTypes]].
 
 - The **OS menu bar** has File and Navigate menus with all available actions.
 - **Cmd/Ctrl+Shift+D** toggles between light and dark mode. See [[Settings]].
-- **Right-click** any file or folder in the sidebar for: New File, New Folder, Rename, Delete, Duplicate, Open in Explorer, and Copy Path. After **Delete**, click **Undo** in the notification, or press `Cmd/Ctrl+Z` while the sidebar has focus, to restore the item.
+- **Right-click** any file or folder in the sidebar for: New Note, New Todo List, New Base, New Folder, Rename, Delete, Duplicate, Open in Explorer, and Copy Path. After **Delete**, click **Undo** in the notification, or press `Cmd/Ctrl+Z` while the sidebar has focus, to restore the item.
 - See [[Shortcuts]] for the full keybinding reference.

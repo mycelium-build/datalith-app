@@ -307,7 +307,7 @@ impl BaseViewState {
             catalog.root()
         };
         let target = target_dir.join("New Note.md");
-        let Ok(created) = file_ops::create_with_name(&target, "New Note.md") else {
+        let Ok(created) = file_ops::create(&target, "New Note.md", "") else {
             cx.notify();
             return;
         };
