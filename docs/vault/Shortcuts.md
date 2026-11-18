@@ -31,7 +31,7 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 | Open in Explorer | `Cmd/Ctrl+Shift+E` |
 | Copy path | `Cmd/Ctrl+L` |
 
-Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file selected in the sidebar, while the sidebar has focus. Click the open file or an empty area of the sidebar, or press `Cmd/Ctrl+0`, to focus it.
+Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file selected in the sidebar, while the sidebar has focus. A colored background marks the file open in the active tab. A focus ring marks the row targeted by sidebar shortcuts. Click the open file or an empty area of the sidebar, or press `Cmd/Ctrl+0`, to focus it.
 
 # Navigation
 
