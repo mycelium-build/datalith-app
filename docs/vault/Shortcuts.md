@@ -22,11 +22,11 @@ Open **Shortcuts** from the gear menu or the Datalith menu, or press `Cmd/Ctrl+/
 | --- | --- |
 | Quit | `Cmd/Ctrl+Q` |
 | New note | `Cmd/Ctrl+N` |
-| New todo list | None by default |
-| New base | None by default |
+| New todo list | `Cmd/Ctrl+Alt+N` |
+| New base | `Cmd/Ctrl+Alt+B` |
 | New folder | `Cmd/Ctrl+Shift+N` |
 | Rename | `F2` |
-| Delete | `Cmd/Ctrl+Backspace` |
+| Delete | `Delete`, or `Cmd+Backspace` on macOS |
 | Duplicate | `Cmd/Ctrl+D` |
 | Open in Explorer | `Cmd/Ctrl+Shift+E` |
 | Copy path | `Cmd/Ctrl+L` |
