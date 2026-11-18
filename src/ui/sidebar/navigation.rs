@@ -175,45 +175,58 @@ impl DatalithView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.select_in_sidebar(path, cx) {
+        if self.root_path.as_deref() == Some(path) {
+            self.focus_sidebar(window, cx);
+        } else if self.select_in_sidebar(path, cx) {
+            let closed_folder = self
+                .tree_state
+                .read(cx)
+                .selected_entry()
+                .filter(|entry| !entry.is_expanded() && crate::vault::source::is_dir(path))
+                .map(|entry| entry.item().id.clone());
+            if let Some(id) = closed_folder {
+                self.expand_tree_item(&id, cx);
+            }
             self.sidebar_focus_handle.focus(window, cx);
         }
     }
 
-    /// Expands the ancestors of `path` and selects it in the tree, without
-    /// moving the focus. Returns whether `path` is in the vault.
+    /// Reveal the document in the cached tree without taking keyboard focus.
     pub(crate) fn select_in_sidebar(&mut self, path: &Path, cx: &mut Context<Self>) -> bool {
-        let Some(root) = self.root_path.clone() else {
-            return false;
-        };
-        if !path.starts_with(&root) {
+        if !self
+            .root_path
+            .as_ref()
+            .is_some_and(|root| path.starts_with(root))
+        {
             return false;
         }
-
-        let mut ancestor = path.parent();
-        while let Some(folder) = ancestor {
-            if folder == root.as_path() || !folder.starts_with(&root) {
-                break;
+        let item = TreeItem::new(
+            path.to_string_lossy().into_owned(),
+            display_name(path).to_owned(),
+        );
+        if !self.select_cached_item(&item, cx) {
+            // The file may have been created before the vault watcher delivered its update.
+            self.refresh_tree(cx);
+            if !self.select_cached_item(&item, cx) {
+                return false;
             }
-            self.mark_tree_item_expanded(&folder.to_string_lossy().into_owned().into(), true);
-            ancestor = folder.parent();
         }
-        if crate::vault::source::is_dir(path) {
-            self.mark_tree_item_expanded(&path.to_string_lossy().into_owned().into(), true);
-        }
-        self.refresh_tree(cx);
+        self.last_sidebar_selection = Some(path.to_path_buf());
+        true
+    }
 
-        let id: SharedString = path.to_string_lossy().into_owned().into();
-        let item = TreeItem::new(id, display_name(path).to_string());
+    fn select_cached_item(&self, item: &TreeItem, cx: &mut Context<Self>) -> bool {
         self.tree_state.update(cx, |state, cx| {
-            state.set_selected_item(Some(&item), cx);
+            let previous = state.selected_index();
+            state.set_selected_item(Some(item), cx);
             if let Some(ix) = state.selected_index() {
                 state.scroll_to_item(ix, ScrollStrategy::Center);
+                true
+            } else {
+                state.set_selected_index(previous, cx);
+                false
             }
-        });
-        self.last_sidebar_selection = Some(path.to_path_buf());
-        cx.notify();
-        true
+        })
     }
 
     pub(crate) fn focus_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
