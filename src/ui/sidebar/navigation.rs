@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use gpui_kit::base::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
+use gpui_kit::base::actions::{
+    Cancel, Confirm, SelectDown, SelectFirst, SelectLast, SelectLeft, SelectPageDown, SelectPageUp,
+    SelectRight, SelectUp,
+};
 use gpui_kit::component::tree::TreeItem;
 use gpui_kit::{
     App, Context, Div, InteractiveElement as _, KeyBinding, KeyBindingContextPredicate,
@@ -11,6 +14,9 @@ use crate::app::keymap::FILE_TREE_CONTEXT;
 use crate::vault::path::display_name;
 
 use super::DatalithView;
+
+/// Rows that Page Up and Page Down move the selection by.
+const TREE_PAGE_ROWS: usize = 10;
 
 actions!(
     file_tree,
@@ -26,9 +32,13 @@ pub fn bind_keys(cx: &mut App) {
     let predicate = KeyBindingContextPredicate::parse(FILE_TREE_CONTEXT)
         .ok()
         .map(std::rc::Rc::new);
-    let bindings: [(&str, Box<dyn gpui_kit::Action>); 8] = [
+    let bindings: [(&str, Box<dyn gpui_kit::Action>); 12] = [
         ("up", Box::new(SelectUp)),
         ("down", Box::new(SelectDown)),
+        ("home", Box::new(SelectFirst)),
+        ("end", Box::new(SelectLast)),
+        ("pageup", Box::new(SelectPageUp)),
+        ("pagedown", Box::new(SelectPageDown)),
         ("left", Box::new(SelectLeft)),
         ("right", Box::new(SelectRight)),
         ("enter", Box::new(Confirm { secondary: false })),
@@ -51,6 +61,24 @@ impl DatalithView {
             .key_context(FILE_TREE_CONTEXT)
             .on_action(cx.listener(Self::on_file_tree_up))
             .on_action(cx.listener(Self::on_file_tree_down))
+            .on_action(cx.listener(|this, _: &SelectFirst, _, cx| {
+                this.jump_in_tree(|_, _| 0, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectLast, _, cx| {
+                this.jump_in_tree(|_, count| count.saturating_sub(1), cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectPageUp, _, cx| {
+                this.jump_in_tree(|ix, _| ix.saturating_sub(TREE_PAGE_ROWS), cx);
+            }))
+            .on_action(cx.listener(|this, _: &SelectPageDown, _, cx| {
+                this.jump_in_tree(
+                    |ix, count| {
+                        ix.saturating_add(TREE_PAGE_ROWS)
+                            .min(count.saturating_sub(1))
+                    },
+                    cx,
+                );
+            }))
             .on_action(cx.listener(Self::on_file_tree_left))
             .on_action(cx.listener(Self::on_file_tree_right))
             .on_action(cx.listener(Self::on_file_tree_confirm))
@@ -230,6 +258,20 @@ impl DatalithView {
                 state.set_selected_index(Some(new_ix), cx);
                 state.scroll_to_item(new_ix, gpui_kit::ScrollStrategy::Top);
             }
+        });
+        self.update_last_selection(cx);
+    }
+
+    /// Selects the row `target` picks from the selected row and the row count.
+    fn jump_in_tree(&mut self, target: fn(usize, usize) -> usize, cx: &mut Context<Self>) {
+        let count = self.visible_tree_entry_count();
+        if count == 0 {
+            return;
+        }
+        self.tree_state.update(cx, |state, cx| {
+            let new_ix = target(state.selected_index().unwrap_or(0), count);
+            state.set_selected_index(Some(new_ix), cx);
+            state.scroll_to_item(new_ix, gpui_kit::ScrollStrategy::Center);
         });
         self.update_last_selection(cx);
     }
