@@ -16,7 +16,7 @@ use gpui_kit::{
 
 use conv::ConvAsUtil;
 
-use crate::app::actions::{NextTask, PreviousTask, SearchTasks};
+use crate::app::actions::{NewTask, NextTask, PreviousTask, SearchTasks};
 use crate::ui::icons::DatalithIcon;
 
 use super::TodoTxtState;
@@ -91,6 +91,13 @@ impl Render for TodoTxtState {
             .track_focus(&self.editor_focus)
             .on_action(cx.listener(|this, _: &SearchTasks, window, cx| {
                 this.search_input.focus_handle(cx).focus(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &NewTask, window, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.new_task_input.focus_handle(cx).focus(window, cx);
+                }
             }))
             .child(header)
             .child(

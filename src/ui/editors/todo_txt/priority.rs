@@ -16,10 +16,19 @@ pub(super) const PRIORITY_VALUES: [Option<char>; 6] =
 
 pub(super) const PRIORITY_CONTEXT: &str = "TodoPriority";
 
-/// Moves the task's priority one step up or down the list, wrapping around.
 fn cycle_priority(editor: &Entity<TodoTxtState>, task_index: usize, up: bool, app: &mut App) {
-    app.update_entity(editor, |this, cx| {
-        let current = this.workspace.task(task_index).and_then(|t| t.priority);
+    app.update_entity(editor, |this, cx| this.step_priority(task_index, up, cx));
+}
+
+impl TodoTxtState {
+    /// Moves the task's priority one step up or down the list, wrapping around.
+    pub(super) fn step_priority(
+        &mut self,
+        task_index: usize,
+        up: bool,
+        cx: &mut gpui_kit::Context<Self>,
+    ) {
+        let current = self.workspace.task(task_index).and_then(|t| t.priority);
         let current_idx = current
             .and_then(|p| {
                 PRIORITY_VALUES
@@ -41,8 +50,8 @@ fn cycle_priority(editor: &Entity<TodoTxtState>, task_index: usize, up: bool, ap
             .copied()
             .unwrap_or_default()
             .map_or_default(|priority| format!("({priority})"));
-        this.commit_priority(task_index, &value, cx);
-    });
+        self.commit_priority(task_index, &value, cx);
+    }
 }
 
 #[derive(IntoElement)]

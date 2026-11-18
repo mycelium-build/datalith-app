@@ -131,6 +131,9 @@ use super::actions::{
     SelectTab5, SelectTab6, SelectTab7, SelectTab8, ToggleEditorMode, ToggleQuickSwitcher,
     ToggleSearch, ToggleTheme,
 };
+use super::actions::{
+    CollapseTask, EditTaskDate, ExpandTask, LowerPriority, NewTask, RaisePriority,
+};
 use super::actions::{OpenDocumentation, OpenThemes, OpenVault};
 
 /// Representative context stacks, to find where another binding takes a
@@ -156,6 +159,12 @@ const DEFAULTS_OVER_FIELDS: &[&str] = &[
     "previous-task",
     "next-task",
     "search-tasks",
+    "new-task",
+    "raise-priority",
+    "lower-priority",
+    "edit-task-date",
+    "collapse-task",
+    "expand-task",
 ];
 
 /// Application-wide shortcuts that stay active in a modal. Every other
@@ -773,6 +782,54 @@ shortcuts!(
         [TodoList],
         "Search tasks",
         SearchTasks
+    ),
+    (
+        "new-task",
+        "Todo list",
+        "secondary-n",
+        [TodoList],
+        "New task",
+        NewTask
+    ),
+    (
+        "raise-priority",
+        "Todo list",
+        "alt-up",
+        [TodoList],
+        "Raise priority",
+        RaisePriority
+    ),
+    (
+        "lower-priority",
+        "Todo list",
+        "alt-down",
+        [TodoList],
+        "Lower priority",
+        LowerPriority
+    ),
+    (
+        "edit-task-date",
+        "Todo list",
+        "secondary-d",
+        [TodoList],
+        "Edit date",
+        EditTaskDate
+    ),
+    (
+        "collapse-task",
+        "Todo list",
+        "secondary-alt-up",
+        [TodoList],
+        "Collapse subtasks",
+        CollapseTask
+    ),
+    (
+        "expand-task",
+        "Todo list",
+        "secondary-alt-down",
+        [TodoList],
+        "Expand subtasks",
+        ExpandTask
     ),
 );
 
