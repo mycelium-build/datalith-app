@@ -78,6 +78,9 @@ actions!(
         ZoomIn,
         ZoomOut,
         ResetZoom,
+        Bold,
+        Italic,
+        InsertWikiLink,
     ]
 );
 

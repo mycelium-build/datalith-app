@@ -6,6 +6,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Styled, Window, div, px,
 };
 
+use crate::app::actions::{Bold, InsertWikiLink, Italic};
 use crate::ui::{BASE_FONT_SIZE, LINE_HEIGHT};
 use crate::vault::VaultCatalog;
 
@@ -87,6 +88,10 @@ impl MarkdownEditor {
                 WikiLinkAutocomplete::handle_escape,
             );
 
+            container = wrap_on::<Bold>(container, &self.input, "**", "**");
+            container = wrap_on::<Italic>(container, &self.input, "*", "*");
+            container = wrap_on::<InsertWikiLink>(container, &self.input, "[[", "]]");
+
             let autocomplete = self.autocomplete.clone();
             container = container.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 if let Some(autocomplete) = autocomplete.as_ref() {
@@ -115,6 +120,43 @@ impl MarkdownEditor {
     }
 }
 
+/// Wraps the selection in `open` and `close` on `A`, or unwraps it when it
+/// is already wrapped, then keeps the inner text selected.
+fn wrap_on<A: Action + 'static>(
+    container: Div,
+    input: &Entity<EditorState>,
+    open: &'static str,
+    close: &'static str,
+) -> Div {
+    let input = input.clone();
+    container.on_action(move |_: &A, window, cx| {
+        input.update(cx, |state, cx| {
+            let start = state.selected_range().start;
+            let selected = state.selected_text().to_string();
+            let (replacement, inner) = toggle_wrap(&selected, open, close);
+            state.replace(replacement, window, cx);
+            let inner_start = start.saturating_add(inner.start);
+            let inner_end = start.saturating_add(inner.end);
+            state.set_selected_range(inner_start..inner_end, cx);
+        });
+    })
+}
+
+/// The text replacing `selected`, and the range of its inner text.
+fn toggle_wrap(selected: &str, open: &str, close: &str) -> (String, std::ops::Range<usize>) {
+    let unwrapped = selected
+        .strip_prefix(open)
+        .and_then(|rest| rest.strip_suffix(close))
+        .filter(|_| selected.len() >= open.len().saturating_add(close.len()));
+    unwrapped.map_or_else(
+        || {
+            let inner_end = open.len().saturating_add(selected.len());
+            (format!("{open}{selected}{close}"), open.len()..inner_end)
+        },
+        |inner| (inner.to_owned(), 0..inner.len()),
+    )
+}
+
 /// Routes wiki-link popup keys before the editor handles them itself.
 fn capture_menu_key<A: Action + 'static>(
     container: Div,
@@ -130,4 +172,23 @@ fn capture_menu_key<A: Action + 'static>(
             cx.stop_propagation();
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toggle_wrap;
+
+    #[test]
+    fn toggle_wrap_wraps_then_unwraps() {
+        assert_eq!(
+            toggle_wrap("word", "**", "**"),
+            ("**word**".to_owned(), 2..6)
+        );
+        assert_eq!(
+            toggle_wrap("**word**", "**", "**"),
+            ("word".to_owned(), 0..4)
+        );
+        assert_eq!(toggle_wrap("", "[[", "]]"), ("[[]]".to_owned(), 2..2));
+        assert_eq!(toggle_wrap("*", "*", "*"), ("***".to_owned(), 1..2));
+    }
 }

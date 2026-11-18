@@ -46,6 +46,16 @@ Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file select
 
 In a text field, `Cmd/Ctrl+[` and `Cmd/Ctrl+]` change indentation. Open link works in notes.
 
+# Note
+
+| Action | Shortcut |
+| --- | --- |
+| Bold | `Cmd/Ctrl+B` |
+| Italic | `Cmd/Ctrl+I` |
+| Insert wiki link | `Cmd/Ctrl+K` |
+
+They wrap the selection, or remove the wrapping when the selection already has it.
+
 # Wiki links
 
 Type `[[` and three characters to open link suggestions. Use the arrow keys, Enter and Escape to pick or dismiss one.
