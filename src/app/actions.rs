@@ -190,40 +190,43 @@ pub fn open_vault_path(path: PathBuf, pending: Option<PendingOpen>, cx: &mut App
 }
 
 pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        if view.palette.open {
-            view.palette.close();
-        } else {
-            view.palette.open_as(PaletteKind::Search);
-            let query = view.palette.search_query.clone();
-            if !query.trim().is_empty() {
-                view.palette.search(view.vault_catalog.as_ref(), &query);
+    with_workspace_window(
+        |view, window, cx| {
+            if view.palette.open {
+                view.dismiss_palette(window, cx);
+            } else {
+                view.palette.open_as(PaletteKind::Search);
+                let query = view.palette.search_query.clone();
+                if !query.trim().is_empty() {
+                    view.palette.search(view.vault_catalog.as_ref(), &query);
+                }
             }
-        }
-        cx.notify();
-    });
+            cx.notify();
+        },
+        cx,
+    );
 }
 
 pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        if view.palette.open {
-            view.palette.close();
-        } else {
-            view.palette.open_as(PaletteKind::QuickSwitcher);
-            let open = view.tabs.open_paths();
-            let query = view.palette.qs_query.clone();
-            view.palette
-                .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, &query);
-        }
-        cx.notify();
-    });
+    with_workspace_window(
+        |view, window, cx| {
+            if view.palette.open {
+                view.dismiss_palette(window, cx);
+            } else {
+                view.palette.open_as(PaletteKind::QuickSwitcher);
+                let open = view.tabs.open_paths();
+                let query = view.palette.qs_query.clone();
+                view.palette
+                    .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, &query);
+            }
+            cx.notify();
+        },
+        cx,
+    );
 }
 
 pub fn close_palette(_: &ClosePalette, cx: &mut App) {
-    with_view!(cx, |view, cx| {
-        view.palette.close();
-        cx.notify();
-    });
+    with_workspace_window(DatalithView::dismiss_palette, cx);
 }
 
 pub fn handle_new_file(_: &NewFile, cx: &mut App) {

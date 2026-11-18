@@ -94,6 +94,7 @@ pub struct DatalithView {
     pub(crate) expanded_tree_ids: Vec<SharedString>,
     pub(crate) focus_sidebar_requested: bool,
     pub(crate) focus_editor_requested: bool,
+    workspace_focus_handle: FocusHandle,
     sidebar_focus_handle: FocusHandle,
     pub(crate) last_sidebar_selection: Option<PathBuf>,
     /// The active document last selected in the tree, which follows it.
@@ -174,6 +175,7 @@ impl DatalithView {
             expanded_tree_ids: Vec::new(),
             focus_sidebar_requested: false,
             focus_editor_requested: false,
+            workspace_focus_handle: cx.focus_handle(),
             sidebar_focus_handle,
             last_sidebar_selection: None,
             revealed_active_path: None,

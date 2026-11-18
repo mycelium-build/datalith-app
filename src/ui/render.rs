@@ -120,6 +120,7 @@ impl Render for DatalithView {
         }
 
         v_flex()
+            .track_focus(&self.workspace_focus_handle)
             .key_context(keymap::WORKSPACE_CONTEXT)
             .size_full()
             .relative()

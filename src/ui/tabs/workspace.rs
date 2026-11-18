@@ -105,10 +105,12 @@ impl DatalithView {
 
     pub(crate) fn focus_active_tab(&self, window: &mut Window, cx: &mut Context<Self>) {
         match self.tabs.active() {
-            Some(Tab::Document(tab)) => tab.handler.read(cx).focus_handle(cx).focus(window, cx),
+            Some(Tab::Document(tab)) if tab.path().is_some() => {
+                tab.handler.read(cx).focus_handle(cx).focus(window, cx);
+            }
             Some(Tab::Theme { editor, .. }) => editor.focus_handle(cx).focus(window, cx),
             Some(Tab::Shortcuts(view)) => view.focus_handle(cx).focus(window, cx),
-            None => {}
+            Some(Tab::Document(_)) | None => self.workspace_focus_handle.focus(window, cx),
         }
     }
 }
