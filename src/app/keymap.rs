@@ -69,7 +69,7 @@ impl ShortcutZone {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Global => "Everywhere",
-            Self::Interface => "Outside text fields",
+            Self::Interface => "Interface",
             Self::Note => "Notes",
             Self::TodoList => "Todo lists",
             Self::Base => "Bases",

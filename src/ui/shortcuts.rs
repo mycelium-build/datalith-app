@@ -417,9 +417,12 @@ impl ShortcutsView {
         let zones = shortcut.zones();
         let keys = shortcut.binding().map(str::to_owned);
         let view = cx.weak_entity();
+        // Pull the ghost button back by its padding so its label lines up
+        // with the header and the plain-text zones.
         Button::new(format!("shortcut-zone-{id}"))
             .ghost()
             .small()
+            .ml_neg_2()
             .label(current.label())
             .dropdown_caret(true)
             .accessibility_label(format!(
