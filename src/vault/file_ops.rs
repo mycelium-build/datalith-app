@@ -536,54 +536,26 @@ mod tests {
 
     #[test]
     fn create_avoids_existing_names() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-file-ops-create-name-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("Note.md"), "").unwrap();
+        let root = temp_vault("create-name");
+        let original = root.join("Note.md");
+        fs::write(&original, "Keep this note").unwrap();
         fs::write(root.join("Note 1.md"), "").unwrap();
 
         let path = create(&root, "Note.md", "").unwrap();
 
         assert_eq!(path, root.join("Note 2.md"));
-        assert!(path.exists());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "");
-        let _ = fs::remove_dir_all(root);
+        assert_eq!(fs::read_to_string(path).unwrap(), "");
+        assert_eq!(fs::read_to_string(original).unwrap(), "Keep this note");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn create_creates_the_requested_file() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-file-ops-create-requested-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-
-        let path = create(&root, "Meeting.md", "").unwrap();
-
-        assert_eq!(path, root.join("Meeting.md"));
-        assert!(path.exists());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "");
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn create_uses_the_default_new_note_name() {
-        let root = std::env::temp_dir().join(format!(
-            "datalith-file-ops-create-default-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-
-        let path = create(&root, "New Note.md", "").unwrap();
-
-        assert_eq!(path, root.join("New Note.md"));
-        assert!(path.exists());
-        let _ = fs::remove_dir_all(root);
+    fn create_writes_the_requested_filename_and_content() {
+        let root = temp_vault("create-base");
+        let path = create(&root, "Meeting.base", NEW_BASE_CONTENT).unwrap();
+        assert_eq!(path, root.join("Meeting.base"));
+        assert_eq!(fs::read_to_string(path).unwrap(), NEW_BASE_CONTENT);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

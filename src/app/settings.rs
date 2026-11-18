@@ -230,18 +230,18 @@ pub struct ShortcutOverride {
     pub(crate) zone: Option<String>,
 }
 
-/// A stored override: schema 4 and earlier saved the keys alone.
+/// Schema 4 stored a key string or null. Schema 5 writes an object with keys and an optional zone.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 enum StoredShortcutOverride {
-    Legacy(Option<String>),
+    KeysOnly(Option<String>),
     Current(ShortcutOverride),
 }
 
 impl From<StoredShortcutOverride> for ShortcutOverride {
     fn from(stored: StoredShortcutOverride) -> Self {
         match stored {
-            StoredShortcutOverride::Legacy(keys) => Self { keys, zone: None },
+            StoredShortcutOverride::KeysOnly(keys) => Self { keys, zone: None },
             StoredShortcutOverride::Current(shortcut) => shortcut,
         }
     }
@@ -641,18 +641,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_4_shortcut_overrides_keep_their_keys_in_the_default_zone() {
-        let stored: StoredSettings = serde_json::from_str(
-            r#"{"schema_version":4,"shortcut_overrides":{"new-note":"secondary-x","close-tab":null}}"#,
-        )
-        .unwrap();
-        let overrides = stored.normalized().shortcut_overrides;
-        assert_eq!(overrides["new-note"].keys.as_deref(), Some("secondary-x"));
-        assert_eq!(overrides["new-note"].zone, None);
-        assert_eq!(overrides["close-tab"], ShortcutOverride::default());
-    }
-
-    #[test]
     fn variant_fonts_normalize_names() {
         let mut fonts = FontSettings::default();
         fonts.set_family(FontRole::Interface, Some("  Helvetica  ".into()));
@@ -778,27 +766,36 @@ mod tests {
     }
 
     #[test]
-    fn shortcut_reassignments_and_explicit_unbound_state_round_trip() {
+    fn schema_4_shortcuts_survive_an_upgrade_and_a_scope_change() {
         let file = temp_settings_file("shortcut-overrides");
+        fs::write(
+            &file,
+            r#"{"schema_version":4,"shortcut_overrides":{"new-note":"secondary-x","close-tab":null}}"#,
+        )
+        .unwrap();
         let mut store = SettingsStore::new(file.clone());
-        let overrides = std::collections::BTreeMap::from([
-            (
-                "new-note".to_owned(),
-                ShortcutOverride {
-                    keys: Some("x".to_owned()),
-                    zone: Some("interface".to_owned()),
-                },
-            ),
-            ("close-tab".to_owned(), ShortcutOverride::default()),
-        ]);
+        let settings = store.snapshot();
+        let remapped = &settings.shortcut_overrides["new-note"];
+        assert_eq!(remapped.keys.as_deref(), Some("secondary-x"));
+        assert_eq!(remapped.zone, None);
+        assert_eq!(settings.shortcut_overrides["close-tab"].keys, None);
 
         store
-            .update(|settings| settings.shortcut_overrides = overrides.clone())
+            .update(|settings| {
+                settings
+                    .shortcut_overrides
+                    .get_mut("new-note")
+                    .unwrap()
+                    .zone = Some("sidebar".into());
+            })
             .unwrap();
-
-        let reloaded = SettingsStore::new(file.clone()).snapshot();
-        assert_eq!(reloaded.shortcut_overrides, overrides);
-        let _ = fs::remove_file(file);
+        let reloaded = SettingsStore::new(file.clone())
+            .snapshot()
+            .shortcut_overrides;
+        assert_eq!(reloaded["new-note"].keys.as_deref(), Some("secondary-x"));
+        assert_eq!(reloaded["new-note"].zone.as_deref(), Some("sidebar"));
+        assert_eq!(reloaded["close-tab"].keys, None);
+        fs::remove_file(file).unwrap();
     }
 
     #[test]
