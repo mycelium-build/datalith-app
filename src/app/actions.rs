@@ -25,6 +25,8 @@ actions!(
         ClosePalette,
         ToggleQuickSwitcher,
         NewFile,
+        NewTodoList,
+        NewBase,
         NewFolder,
         Rename,
         Delete,
@@ -99,6 +101,8 @@ pub fn register(cx: &mut App) {
     cx.on_action(toggle_quick_switcher);
     cx.on_action(close_palette);
     cx.on_action(handle_new_file);
+    cx.on_action(handle_new_todo_list);
+    cx.on_action(handle_new_base);
     cx.on_action(handle_new_folder);
     cx.on_action(handle_rename);
     cx.on_action(handle_delete);
@@ -205,6 +209,19 @@ pub fn close_palette(_: &ClosePalette, cx: &mut App) {
 }
 
 pub fn handle_new_file(_: &NewFile, cx: &mut App) {
+    create_file(cx, "New Note.md", "");
+}
+
+pub fn handle_new_todo_list(_: &NewTodoList, cx: &mut App) {
+    create_file(cx, "New Todo List.todotxt", "");
+}
+
+pub fn handle_new_base(_: &NewBase, cx: &mut App) {
+    create_file(cx, "New Base.base", file_ops::NEW_BASE_CONTENT);
+}
+
+/// Creates a file next to the selection, opens it, and starts renaming it.
+fn create_file(cx: &mut App, base_name: &str, content: &str) {
     with_writable_view!(cx, |view, cx| {
         view.commit_rename(cx);
         let target = view
@@ -213,7 +230,7 @@ pub fn handle_new_file(_: &NewFile, cx: &mut App) {
             .or_else(|| view.resolve_target(cx))
             .or_else(|| view.root_path.clone());
         if let Some(target) = target
-            && let Ok(created) = file_ops::create(&target)
+            && let Ok(created) = file_ops::create(&target, base_name, content)
         {
             if target.is_dir() {
                 let id: SharedString = target.to_string_lossy().to_string().into();

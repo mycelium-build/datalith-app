@@ -4,9 +4,9 @@ use gpui_kit::{App, Menu, MenuItem};
 use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortcuts, OpenThemes};
 
 use super::actions::{
-    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenVault, Quit, Rename, ToggleQuickSwitcher, ToggleSearch,
-    ToggleTheme,
+    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
+    NewFolder, NewTab, NewTodoList, OpenInExplorer, OpenVault, Quit, Rename, ToggleQuickSwitcher,
+    ToggleSearch, ToggleTheme,
 };
 
 pub fn install(cx: &mut App) {
@@ -57,7 +57,9 @@ fn application_menu(cx: &App) -> Menu {
 
 fn file_menu() -> Menu {
     Menu::new("File").items([
-        MenuItem::action("New File", NewFile),
+        MenuItem::action("New Note", NewFile),
+        MenuItem::action("New Todo List", NewTodoList),
+        MenuItem::action("New Base", NewBase),
         MenuItem::action("New Folder", NewFolder),
         MenuItem::separator(),
         MenuItem::action("Rename", Rename),

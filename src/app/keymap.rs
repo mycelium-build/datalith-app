@@ -125,10 +125,10 @@ use super::settings::ShortcutOverride;
 
 use super::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, SearchTasks, ToggleTask};
 use super::actions::{
-    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewFile, NewFolder,
-    NewTab, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts, Quit, Rename, SelectLastTab,
-    SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5, SelectTab6, SelectTab7, SelectTab8,
-    ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
+    CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
+    NewFolder, NewTab, NewTodoList, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts, Quit,
+    Rename, SelectLastTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5, SelectTab6,
+    SelectTab7, SelectTab8, ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
 /// Representative context stacks, to find where another binding takes a
@@ -207,7 +207,7 @@ impl ShortcutDefinition {
 
     fn default_binding(&self) -> Binding {
         Binding {
-            keys: Some(self.binding.to_owned()),
+            keys: (!self.binding.is_empty()).then(|| self.binding.to_owned()),
             zone: self.zone,
         }
     }
@@ -438,6 +438,7 @@ macro_rules! shortcuts {
 
 shortcuts!(
     // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
+    // An empty binding means no default shortcut.
     // File
     ("quit", "File", "secondary-q", [Global], "Quit", Quit),
     (
@@ -447,6 +448,22 @@ shortcuts!(
         [Global, Sidebar],
         "New note",
         NewFile
+    ),
+    (
+        "new-todo-list",
+        "File",
+        "",
+        [Global, Sidebar],
+        "New todo list",
+        NewTodoList
+    ),
+    (
+        "new-base",
+        "File",
+        "",
+        [Global, Sidebar],
+        "New base",
+        NewBase
     ),
     (
         "new-folder",
@@ -959,6 +976,13 @@ mod tests {
         );
     }
 
+    fn index(id: &str) -> usize {
+        SHORTCUTS
+            .iter()
+            .position(|definition| definition.id == id)
+            .expect("known shortcut")
+    }
+
     fn keys(overrides: &BTreeMap<String, ShortcutOverride>, id: &str) -> Option<String> {
         overrides.get(id).and_then(|shortcut| shortcut.keys.clone())
     }
@@ -966,9 +990,9 @@ mod tests {
     #[test]
     fn overrides_round_trip_keys_zones_and_removals() {
         let mut bindings = default_bindings();
-        bindings[1].keys = Some("secondary-x".into());
-        bindings[2].keys = None;
-        bindings[3].zone = ShortcutZone::Global;
+        bindings[index("new-note")].keys = Some("secondary-x".into());
+        bindings[index("new-folder")].keys = None;
+        bindings[index("rename")].zone = ShortcutZone::Global;
         let overrides = overrides_for(&bindings);
         assert_eq!(keys(&overrides, "new-note").as_deref(), Some("secondary-x"));
         assert_eq!(keys(&overrides, "new-folder"), None);
@@ -992,13 +1016,23 @@ mod tests {
         ]);
         let effective = effective_bindings(&overrides);
         assert_eq!(
-            effective[0].zone,
+            effective[index("quit")].zone,
             ShortcutZone::Global,
             "zone not permitted"
         );
-        assert_eq!(effective[1].keys, None, "same zone, later definition wins");
-        assert_eq!(effective[2].keys.as_deref(), Some("secondary-x"));
-        assert_eq!(effective[3].keys.as_deref(), Some("secondary-x"));
+        assert_eq!(
+            effective[index("new-note")].keys,
+            None,
+            "same zone, later definition wins"
+        );
+        assert_eq!(
+            effective[index("new-folder")].keys.as_deref(),
+            Some("secondary-x")
+        );
+        assert_eq!(
+            effective[index("rename")].keys.as_deref(),
+            Some("secondary-x")
+        );
     }
 
     #[test]
