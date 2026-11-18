@@ -111,6 +111,12 @@ impl GraphState {
         cx.notify();
     }
 
+    /// Moves the view by `x` and `y` pixels.
+    pub(super) fn pan_by(&mut self, x: f32, y: f32, cx: &mut Context<Self>) {
+        self.camera.pan = point(self.camera.pan.x + x, self.camera.pan.y + y);
+        cx.notify();
+    }
+
     /// Fits the camera to the nodes again on the next layout.
     pub(super) fn reset_zoom(&mut self, cx: &mut Context<Self>) {
         self.camera_fitted = false;

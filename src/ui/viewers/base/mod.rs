@@ -26,13 +26,15 @@ use gpui_kit::{
     prelude::FluentBuilder,
 };
 
-use gpui_kit::base::actions::Cancel;
+use gpui_kit::base::actions::{Cancel, SelectDown, SelectLeft, SelectRight, SelectUp};
 
 use crate::app::actions::{NextView, PreviousView, ResetZoom, ZoomIn, ZoomOut};
 use crate::document::base::{BaseDefinition, ViewType};
 
 /// How much one Zoom in or Zoom out scales the graph.
 const ZOOM_STEP: f32 = 1.25;
+/// How far one arrow key pans the graph, in pixels.
+const GRAPH_PAN_STEP: f32 = 60.0;
 use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
 use crate::vault::file_ops;
@@ -443,6 +445,27 @@ impl BaseViewState {
             .flatten()
     }
 
+    /// Pans the shown graph with the arrow keys.
+    fn with_graph_keys(element: gpui_kit::Div, cx: &Context<Self>) -> gpui_kit::Div {
+        let pan = |x: f32, y: f32| {
+            move |this: &mut Self, cx: &mut Context<Self>| {
+                this.update_shown_graph(cx, |graph, cx| graph.pan_by(x, y, cx));
+            }
+        };
+        let (up, down, left, right) = (
+            pan(0.0, GRAPH_PAN_STEP),
+            pan(0.0, -GRAPH_PAN_STEP),
+            pan(GRAPH_PAN_STEP, 0.0),
+            pan(-GRAPH_PAN_STEP, 0.0),
+        );
+        element
+            .key_context(cells::GRAPH_CONTEXT)
+            .on_action(cx.listener(move |this, _: &SelectUp, _, cx| up(this, cx)))
+            .on_action(cx.listener(move |this, _: &SelectDown, _, cx| down(this, cx)))
+            .on_action(cx.listener(move |this, _: &SelectLeft, _, cx| left(this, cx)))
+            .on_action(cx.listener(move |this, _: &SelectRight, _, cx| right(this, cx)))
+    }
+
     fn update_shown_graph(
         &self,
         cx: &mut Context<Self>,
@@ -658,12 +681,17 @@ impl Render for BaseViewState {
         }
         // An element has one key context, so the scrolling keys sit on a
         // wrapper, which the focused root dispatches through.
-        match scroll {
-            Some(scroll) => crate::ui::scroll_keys::scroll_with_keys(div().size_full(), &scroll)
+        if let Some(scroll) = scroll {
+            return crate::ui::scroll_keys::scroll_with_keys(div().size_full(), &scroll)
                 .child(root)
-                .into_any_element(),
-            None => root.into_any_element(),
+                .into_any_element();
         }
+        if self.shown_graph().is_some() {
+            return Self::with_graph_keys(div().size_full(), cx)
+                .child(root)
+                .into_any_element();
+        }
+        root.into_any_element()
     }
 }
 

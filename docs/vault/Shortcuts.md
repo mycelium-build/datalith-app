@@ -107,6 +107,15 @@ On a priority, `↑` and `↓` change it. In a date, Escape restores the saved o
 
 In a graph view, `Cmd/Ctrl+0` resets the zoom instead of focusing the sidebar.
 
+# Fixed keys
+
+These keys aren't listed in the Shortcuts tab and can't be changed.
+
+- In a note being read, and in list, table and cards views, the arrow keys, Page Up / Page Down, Space / Shift+Space and Home / End scroll.
+- In a graph view, the arrow keys move the view.
+- In the sidebar, the arrow keys move the selection, Home / End jump to the first or last item, and Page Up / Page Down move ten items.
+- Escape closes panels, the palette, link suggestions, a full-screen card image, and cancels a rename or a cell edit.
+
 # Help
 
 | Action | Shortcut |
