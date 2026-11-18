@@ -54,6 +54,8 @@ actions!(
         SelectTab7,
         SelectTab8,
         SelectLastTab,
+        NextTab,
+        PreviousTab,
         ToggleEditorMode,
         GoBack,
         GoForward,
@@ -122,6 +124,8 @@ pub fn register(cx: &mut App) {
     cx.on_action(handle_select_tab_7);
     cx.on_action(handle_select_tab_8);
     cx.on_action(handle_select_last_tab);
+    cx.on_action(|_: &NextTab, cx: &mut App| select_adjacent_tab(true, cx));
+    cx.on_action(|_: &PreviousTab, cx: &mut App| select_adjacent_tab(false, cx));
     cx.on_action(open_settings);
     cx.on_action(open_themes);
     cx.on_action(open_shortcuts);
@@ -517,6 +521,15 @@ define_tab_handlers!(
 pub fn handle_select_last_tab(_: &SelectLastTab, cx: &mut App) {
     with_view!(cx, |view, cx| {
         if view.tabs.select_last() {
+            view.focus_editor_requested = true;
+            cx.notify();
+        }
+    });
+}
+
+fn select_adjacent_tab(forward: bool, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if view.tabs.select_adjacent(forward) {
             view.focus_editor_requested = true;
             cx.notify();
         }

@@ -55,6 +55,8 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 | --- | --- |
 | New tab | `Cmd/Ctrl+T` |
 | Close tab | `Cmd/Ctrl+W` |
+| Next tab | `Ctrl+Tab` |
+| Previous tab | `Ctrl+Shift+Tab` |
 | Select tab | `Cmd/Ctrl+1` … `Cmd/Ctrl+8` |
 | Select last tab | `Cmd/Ctrl+9` |
 

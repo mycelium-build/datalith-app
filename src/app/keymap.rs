@@ -126,9 +126,10 @@ use super::settings::ShortcutOverride;
 use super::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, SearchTasks, ToggleTask};
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
-    NewFolder, NewTab, NewTodoList, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts, Quit,
-    Rename, SelectLastTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5, SelectTab6,
-    SelectTab7, SelectTab8, ToggleEditorMode, ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
+    NewFolder, NewTab, NewTodoList, NextTab, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts,
+    PreviousTab, Quit, Rename, SelectLastTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4,
+    SelectTab5, SelectTab6, SelectTab7, SelectTab8, ToggleEditorMode, ToggleQuickSwitcher,
+    ToggleSearch, ToggleTheme,
 };
 
 /// Representative context stacks, to find where another binding takes a
@@ -567,6 +568,23 @@ shortcuts!(
         [Global, Sidebar],
         "Close tab",
         CloseTab
+    ),
+    // Ctrl, not Cmd, on every platform, like browsers.
+    (
+        "next-tab",
+        "Tabs",
+        "ctrl-tab",
+        [Global, Sidebar],
+        "Next tab",
+        NextTab
+    ),
+    (
+        "previous-tab",
+        "Tabs",
+        "ctrl-shift-tab",
+        [Global, Sidebar],
+        "Previous tab",
+        PreviousTab
     ),
     (
         "select-tab-1",

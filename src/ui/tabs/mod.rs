@@ -150,6 +150,25 @@ impl Tabs {
         true
     }
 
+    /// Selects the next tab, or the previous one, wrapping around the ends.
+    pub(crate) fn select_adjacent(&mut self, forward: bool) -> bool {
+        let len = self.entries.len();
+        let Some(active) = self.active.filter(|_| len > 1) else {
+            return false;
+        };
+        self.active = Some(if forward {
+            active
+                .checked_add(1)
+                .filter(|next| *next < len)
+                .unwrap_or(0)
+        } else {
+            active
+                .checked_sub(1)
+                .unwrap_or_else(|| len.saturating_sub(1))
+        });
+        true
+    }
+
     pub(crate) const fn select_last(&mut self) -> bool {
         let Some(index) = self.entries.len().checked_sub(1) else {
             return false;

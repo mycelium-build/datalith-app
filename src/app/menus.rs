@@ -5,8 +5,8 @@ use crate::app::actions::{OpenAbout, OpenDocumentation, OpenSettings, OpenShortc
 
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
-    NewFolder, NewTab, NewTodoList, OpenInExplorer, OpenVault, Quit, Rename, ToggleQuickSwitcher,
-    ToggleSearch, ToggleTheme,
+    NewFolder, NewTab, NewTodoList, NextTab, OpenInExplorer, OpenVault, PreviousTab, Quit, Rename,
+    ToggleQuickSwitcher, ToggleSearch, ToggleTheme,
 };
 
 pub fn install(cx: &mut App) {
@@ -81,6 +81,8 @@ fn navigate_menu() -> Menu {
         MenuItem::separator(),
         MenuItem::action("New Tab", NewTab),
         MenuItem::action("Close Tab", CloseTab),
+        MenuItem::action("Next Tab", NextTab),
+        MenuItem::action("Previous Tab", PreviousTab),
         MenuItem::action("Go Back", GoBack),
         MenuItem::action("Go Forward", GoForward),
         MenuItem::separator(),
