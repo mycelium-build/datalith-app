@@ -1,62 +1,56 @@
 //! Shortcut reference and remapping controls in a dedicated workspace tab.
 
+use std::{cell::OnceCell, ops::Range};
+
 use gpui_kit::component::{
-    ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable, Size,
+    ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     scroll::Scrollbar,
-    table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
+    table::{TableCell, TableHead, TableRow},
     tooltip::Tooltip,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement,
-    Keystroke, KeystrokeEvent, ParentElement, Render, RenderOnce, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
+    Keystroke, KeystrokeEvent, ParentElement, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
+    rems, uniform_list,
 };
 
 use crate::app::keymap::{self, Shortcut, ShortcutRegistry, ShortcutZone};
 
-struct ShortcutGroup {
-    category: SharedString,
-    rows: Vec<Shortcut>,
+enum ShortcutListRow {
+    Category(&'static str),
+    ColumnHeaders,
+    Shortcut {
+        shortcut: Shortcut,
+        shadowed: OnceCell<Vec<&'static str>>,
+    },
 }
 
-/// Adds a hover group while retaining the table's row semantics, index and sizing.
-#[derive(IntoElement)]
-struct ShortcutRow {
-    id: SharedString,
-    row: TableRow,
-}
-
-impl Sizable for ShortcutRow {
-    fn with_size(mut self, size: impl Into<Size>) -> Self {
-        self.row = self.row.with_size(size);
-        self
+fn shortcut_rows(shortcuts: Vec<Shortcut>) -> Vec<ShortcutListRow> {
+    let mut rows = Vec::new();
+    let mut category = None;
+    for shortcut in shortcuts {
+        if category != Some(shortcut.category()) {
+            category = Some(shortcut.category());
+            rows.push(ShortcutListRow::Category(shortcut.category()));
+            rows.push(ShortcutListRow::ColumnHeaders);
+        }
+        rows.push(ShortcutListRow::Shortcut {
+            shortcut,
+            shadowed: OnceCell::new(),
+        });
     }
-}
-
-impl ChildElement for ShortcutRow {
-    fn with_ix(mut self, ix: usize) -> Self {
-        self.row = self.row.with_ix(ix);
-        self
-    }
-}
-
-impl RenderOnce for ShortcutRow {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        div()
-            .id(self.id.clone())
-            .group(self.id)
-            .w_full()
-            .child(self.row)
-    }
+    rows
 }
 
 struct ShortcutCapture {
     id: &'static str,
+    zone: ShortcutZone,
     phase: CapturePhase,
 }
 
@@ -68,11 +62,9 @@ enum CapturePhase {
 
 pub struct ShortcutsView {
     focus: FocusHandle,
-    scroll: ScrollHandle,
+    scroll: UniformListScrollHandle,
     registry: ShortcutRegistry,
-    groups: Vec<ShortcutGroup>,
-    /// Where another binding wins each shortcut's keys, by shortcut id.
-    shadowed: Vec<(&'static str, Vec<&'static str>)>,
+    rows: Vec<ShortcutListRow>,
     capture: Option<ShortcutCapture>,
     settings_error: Option<String>,
     _capture_subscription: Subscription,
@@ -82,8 +74,7 @@ impl ShortcutsView {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         let registry = ShortcutRegistry::new();
-        let groups = shortcut_groups(registry.shortcuts());
-        let shadowed = shadowed_places(&registry, cx);
+        let rows = shortcut_rows(registry.shortcuts());
         let weak_view = cx.weak_entity();
         let capture_subscription = cx.intercept_keystrokes(move |event, window, cx| {
             if let Some(view) = weak_view.upgrade() {
@@ -93,10 +84,9 @@ impl ShortcutsView {
 
         Self {
             focus,
-            scroll: ScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
             registry,
-            groups,
-            shadowed,
+            rows,
             capture: None,
             settings_error: None,
             _capture_subscription: capture_subscription,
@@ -144,14 +134,10 @@ impl ShortcutsView {
         };
         match capture.phase {
             CapturePhase::Listening | CapturePhase::Invalid(_) => {
-                let zone = self
-                    .groups
-                    .iter()
-                    .flat_map(|group| &group.rows)
-                    .find(|shortcut| shortcut.id() == capture.id)
-                    .map_or(ShortcutZone::Global, Shortcut::zone);
                 capture.phase = match capture_binding(&event.keystroke) {
-                    Some(binding) if zone.accepts(&binding) => CapturePhase::Proposed(binding),
+                    Some(binding) if capture.zone.accepts(&binding) => {
+                        CapturePhase::Proposed(binding)
+                    }
                     Some(_) => CapturePhase::Invalid(MODIFIER_NEEDED_IN_NOTES.into()),
                     None => CapturePhase::Invalid("That key cannot be used. Try another.".into()),
                 };
@@ -167,9 +153,16 @@ impl ShortcutsView {
         cx.notify();
     }
 
-    fn start_capture(&mut self, id: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_capture(
+        &mut self,
+        id: &'static str,
+        zone: ShortcutZone,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.capture = Some(ShortcutCapture {
             id,
+            zone,
             phase: CapturePhase::Listening,
         });
         self.focus.focus(window, cx);
@@ -186,6 +179,7 @@ impl ShortcutsView {
         let Some(ShortcutCapture {
             id,
             phase: CapturePhase::Proposed(binding),
+            ..
         }) = self.capture.take()
         else {
             return;
@@ -224,123 +218,128 @@ impl ShortcutsView {
         self.settings_error = change(&mut self.registry, cx).err().map(|error| {
             format!("Couldn’t save shortcuts. Changes apply for this session. {error}")
         });
-        self.groups = shortcut_groups(self.registry.shortcuts());
-        self.shadowed = shadowed_places(&self.registry, cx);
+        self.rows = shortcut_rows(self.registry.shortcuts());
         self.capture = None;
         self.focus.focus(window, cx);
         cx.notify();
     }
 
-    fn render_tables(&self, cx: &Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_5()
-            .children(self.groups.iter().map(|group| self.render_group(group, cx)))
+    fn render_list(&self, cx: &Context<Self>) -> impl IntoElement {
+        uniform_list(
+            "shortcuts-scroll",
+            self.rows.len(),
+            cx.processor(|view, range: Range<usize>, _, cx| {
+                range
+                    .filter_map(|ix| {
+                        view.rows
+                            .get(ix)
+                            .map(|row| view.render_list_row(ix, row, cx))
+                    })
+                    .collect()
+            }),
+        )
+        .track_scroll(&self.scroll)
+        .size_full()
     }
 
-    fn render_group(&self, group: &ShortcutGroup, cx: &Context<Self>) -> impl IntoElement {
-        let body = TableBody::new().children(
-            group
-                .rows
-                .iter()
-                .map(|shortcut| self.render_shortcut_row(shortcut, cx)),
-        );
-        let table = Table::new()
-            .accessibility_label(format!("{} shortcuts", group.category))
-            .rounded_lg()
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
-            .child(
-                TableHeader::new()
-                    .bg(cx.theme().muted)
-                    .text_color(cx.theme().muted_foreground)
-                    .child(
-                        TableRow::new()
-                            .child(
-                                TableHead::new().child(
-                                    div()
-                                        .id(format!("shortcuts-action-header-{}", group.category))
-                                        .aria_label("Action")
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child("Action"),
-                                ),
-                            )
-                            .child(
-                                TableHead::new().child(
-                                    div()
-                                        .id(format!("shortcuts-binding-header-{}", group.category))
-                                        .aria_label("Shortcut")
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child("Shortcut"),
-                                ),
-                            )
-                            .child(
-                                TableHead::new().child(
-                                    div()
-                                        .id(format!("shortcuts-zone-header-{}", group.category))
-                                        .aria_label("Active in")
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child("Active in"),
-                                ),
-                            ),
-                    ),
-            )
-            .child(body);
-        v_flex()
-            .gap_2()
-            .child(
-                div()
-                    .id(format!("shortcuts-category-{}", group.category))
-                    .aria_label(group.category.clone())
-                    .text_base()
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(cx.theme().foreground)
-                    .child(group.category.clone()),
-            )
-            .child(div().w_full().child(table))
-    }
-
-    fn render_shortcut_row(&self, shortcut: &Shortcut, cx: &Context<Self>) -> ShortcutRow {
-        let id = shortcut.id();
-        let row_id: SharedString = format!("shortcut-row-{id}").into();
-        let binding_cell = h_flex()
-            .items_center()
-            .justify_between()
-            .gap_3()
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(Self::render_binding_button(shortcut, cx))
-                    .children(self.render_shadowed(shortcut, cx)),
-            )
-            .child(self.render_shortcut_controls(shortcut, &row_id, cx));
-        ShortcutRow {
-            id: row_id,
-            row: TableRow::new()
+    fn render_list_row(
+        &self,
+        ix: usize,
+        row: &ShortcutListRow,
+        cx: &Context<Self>,
+    ) -> gpui_kit::Div {
+        let content = match row {
+            ShortcutListRow::Category(category) => TableRow::new()
                 .child(
-                    TableCell::new().child(
+                    TableHead::new().col_span(3).child(
                         div()
-                            .id(format!("shortcut-action-{id}"))
-                            .aria_label(shortcut.description())
-                            .text_color(cx.theme().foreground)
-                            .child(shortcut.description()),
+                            .id(format!("shortcuts-category-{category}"))
+                            .aria_label(*category)
+                            .text_base()
+                            .font_weight(FontWeight::BOLD)
+                            .child(*category),
                     ),
                 )
-                .child(TableCell::new().child(binding_cell))
-                .child(TableCell::new().child(Self::render_zone(shortcut, cx))),
-        }
+                .with_ix(ix)
+                .into_any_element(),
+            ShortcutListRow::ColumnHeaders => TableRow::new()
+                .with_ix(ix)
+                .bg(cx.theme().muted)
+                .text_color(cx.theme().muted_foreground)
+                .children(
+                    ["Action", "Shortcut", "Active in"].map(|label| TableHead::new().child(label)),
+                )
+                .into_any_element(),
+            ShortcutListRow::Shortcut { shortcut, shadowed } => {
+                let places =
+                    shadowed.get_or_init(|| self.registry.shadowed_places(shortcut.id(), cx));
+                self.render_shortcut_row(ix, shortcut, places, cx)
+                    .into_any_element()
+            }
+        };
+        div()
+            .w_full()
+            .max_w(rems(80.))
+            .mx_auto()
+            .px_6()
+            .h_10()
+            .flex()
+            .items_center()
+            .child(content)
+    }
+
+    fn render_shortcut_row(
+        &self,
+        ix: usize,
+        shortcut: &Shortcut,
+        places: &[&str],
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let id = shortcut.id();
+        let row_id: SharedString = format!("shortcut-row-{id}").into();
+        let row = TableRow::new().with_ix(ix).child(
+            TableCell::new().child(
+                div()
+                    .id(format!("shortcut-action-{id}"))
+                    .aria_label(shortcut.description())
+                    .text_color(cx.theme().foreground)
+                    .child(shortcut.description()),
+            ),
+        );
+        let row = if let Some(capture) = self.capture.as_ref().filter(|capture| capture.id == id) {
+            row.child(
+                TableCell::new()
+                    .col_span(2)
+                    .child(Self::render_capture_controls(capture, cx)),
+            )
+        } else {
+            let binding_cell = h_flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(Self::render_binding_button(shortcut, cx))
+                        .children(Self::render_shadowed(shortcut, places, cx)),
+                )
+                .child(Self::render_shortcut_controls(shortcut, &row_id, cx));
+            row.child(TableCell::new().child(binding_cell))
+                .child(TableCell::new().child(Self::render_zone(shortcut, cx)))
+        };
+        div().id(row_id.clone()).group(row_id).w_full().child(row)
     }
 
     /// An icon whose tooltip lists where another binding wins the keys.
-    fn render_shadowed(&self, shortcut: &Shortcut, cx: &Context<Self>) -> Option<impl IntoElement> {
-        let places = self
-            .shadowed
-            .iter()
-            .find(|(id, _)| *id == shortcut.id())
-            .map(|(_, places)| places)
-            .filter(|places| !places.is_empty())?;
+    fn render_shadowed(
+        shortcut: &Shortcut,
+        places: &[&str],
+        cx: &Context<Self>,
+    ) -> Option<impl IntoElement> {
+        if places.is_empty() {
+            return None;
+        }
         let description = format!("Inactive {}", places.join(", "));
         Some(
             div()
@@ -405,6 +404,7 @@ impl ShortcutsView {
 
     fn render_binding_button(shortcut: &Shortcut, cx: &Context<Self>) -> Button {
         let id = shortcut.id();
+        let zone = shortcut.zone();
         let current_binding = keymap::display_binding_or_unbound(shortcut.binding());
         let mut binding_label = Button::new(format!("shortcut-binding-{id}"))
             .small()
@@ -414,7 +414,7 @@ impl ShortcutsView {
             .accessibility_label(current_binding)
             .tooltip(format!("Change shortcut for {}", shortcut.description()))
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.start_capture(id, window, cx);
+                this.start_capture(id, zone, window, cx);
             }));
         if let Some(binding) = shortcut.binding() {
             binding_label = binding_label
@@ -443,15 +443,11 @@ impl ShortcutsView {
     }
 
     fn render_shortcut_controls(
-        &self,
         shortcut: &Shortcut,
         row_id: &SharedString,
         cx: &Context<Self>,
     ) -> gpui_kit::Div {
         let id = shortcut.id();
-        if let Some(capture) = self.capture.as_ref().filter(|capture| capture.id == id) {
-            return Self::render_capture_controls(capture, cx);
-        }
         h_flex()
             .items_center()
             .gap_2()
@@ -484,6 +480,7 @@ impl ShortcutsView {
 
     fn render_capture_controls(capture: &ShortcutCapture, cx: &Context<Self>) -> gpui_kit::Div {
         let id = capture.id;
+        let zone = capture.zone;
         let mut controls = h_flex().items_center().gap_2();
         match &capture.phase {
             CapturePhase::Listening => {
@@ -537,7 +534,7 @@ impl ShortcutsView {
                             .small()
                             .label("Try again")
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.start_capture(id, window, cx);
+                                this.start_capture(id, zone, window, cx);
                             })),
                     )
                     .child(
@@ -564,7 +561,7 @@ impl Focusable for ShortcutsView {
 impl Render for ShortcutsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let root = v_flex().id("shortcuts-editor").track_focus(&self.focus);
-        super::scroll_keys::scroll_with_keys(root, &self.scroll)
+        super::scroll_keys::scroll_with_keys(root, &self.scroll.0.borrow().base_handle)
             .size_full()
             .min_h_0()
             .bg(cx.theme().background)
@@ -608,20 +605,13 @@ impl Render for ShortcutsView {
                     .flex_1()
                     .min_h_0()
                     .child(
-                        div()
-                            .id("shortcuts-scroll")
+                        gpui_kit::base::Table::new("shortcut-table")
+                            .accessibility_label("Keyboard shortcuts")
+                            .row_count(self.rows.len())
+                            .column_count(3)
+                            .text_sm()
                             .size_full()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll)
-                            .child(
-                                div()
-                                    .w_full()
-                                    .max_w(rems(80.))
-                                    .mx_auto()
-                                    .px_6()
-                                    .py_6()
-                                    .child(self.render_tables(cx)),
-                            ),
+                            .child(self.render_list(cx)),
                     )
                     .child(
                         div()
@@ -651,31 +641,4 @@ fn is_modifier_key(key: &str) -> bool {
         key,
         "shift" | "ctrl" | "control" | "cmd" | "super" | "alt" | "fn" | "win"
     )
-}
-
-fn shadowed_places(
-    registry: &ShortcutRegistry,
-    cx: &App,
-) -> Vec<(&'static str, Vec<&'static str>)> {
-    registry
-        .shortcuts()
-        .iter()
-        .map(|shortcut| (shortcut.id(), registry.shadowed_places(shortcut.id(), cx)))
-        .collect()
-}
-
-fn shortcut_groups(shortcuts: Vec<Shortcut>) -> Vec<ShortcutGroup> {
-    let mut groups: Vec<ShortcutGroup> = Vec::new();
-    for shortcut in shortcuts {
-        match groups.last_mut() {
-            Some(group) if group.category.as_str() == shortcut.category() => {
-                group.rows.push(shortcut);
-            }
-            _ => groups.push(ShortcutGroup {
-                category: shortcut.category().into(),
-                rows: vec![shortcut],
-            }),
-        }
-    }
-    groups
 }
