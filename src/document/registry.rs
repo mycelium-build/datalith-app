@@ -182,13 +182,12 @@ pub fn default_registry() -> FileRegistry {
                     crate::vault::source::is_read_only(path),
                 ))
             }),
-            viewer_factory: Some(|path, editor, _dependencies, _cx| {
+            viewer_factory: Some(|path, editor, _dependencies, cx| {
                 let editor = editor?;
                 let state = editor.input()?.clone();
-                Some(ViewerKind::Markdown(MarkdownViewer::new(
-                    state,
-                    path.to_path_buf(),
-                )))
+                Some(ViewerKind::Markdown(
+                    MarkdownViewer::new(state, path.to_path_buf()).with_keyboard(cx),
+                ))
             }),
             reload_adapter: Some(reload_text),
             default_mode: ViewMode::Edit,
