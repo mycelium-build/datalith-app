@@ -26,7 +26,11 @@ use gpui_kit::{
     prelude::FluentBuilder,
 };
 
+use crate::app::actions::{NextView, PreviousView, ResetZoom, ZoomIn, ZoomOut};
 use crate::document::base::{BaseDefinition, ViewType};
+
+/// How much one Zoom in or Zoom out scales the graph.
+const ZOOM_STEP: f32 = 1.25;
 use crate::document::handler::FileHandler;
 use crate::vault::VaultCatalog;
 use crate::vault::file_ops;
@@ -384,6 +388,55 @@ impl BaseViewState {
         cx.notify();
     }
 
+    /// Selects the next view, or the previous one, wrapping around the ends.
+    fn select_adjacent_view(&mut self, forward: bool, cx: &mut Context<Self>) {
+        let Some(views) = self.definition.as_ref().map(|definition| &definition.views) else {
+            return;
+        };
+        let current = self
+            .selected_view
+            .as_ref()
+            .and_then(|name| views.iter().position(|view| &view.name == name))
+            .unwrap_or(0);
+        let next = if forward {
+            current
+                .checked_add(1)
+                .filter(|next| *next < views.len())
+                .unwrap_or(0)
+        } else {
+            current
+                .checked_sub(1)
+                .unwrap_or_else(|| views.len().saturating_sub(1))
+        };
+        if let Some(name) = views.get(next).map(|view| view.name.clone())
+            && next != current
+        {
+            self.select_view(name, cx);
+        }
+    }
+
+    /// The graph, when the current view shows it.
+    fn shown_graph(&self) -> Option<Entity<graph::GraphState>> {
+        let BaseStatus::Ready(snapshot) = &self.status else {
+            return None;
+        };
+        let view = snapshot.definition.views.get(snapshot.view_index)?;
+        matches!(view.view_type, ViewType::Graph)
+            .then(|| self.graph.clone())
+            .flatten()
+    }
+
+    fn update_shown_graph(
+        &self,
+        cx: &mut Context<Self>,
+        update: impl FnOnce(&mut graph::GraphState, &mut Context<graph::GraphState>),
+    ) {
+        match self.shown_graph() {
+            Some(graph) => graph.update(cx, update),
+            None => cx.propagate(),
+        }
+    }
+
     fn select_view(&mut self, name: String, cx: &mut Context<Self>) {
         self.clear_edits();
         self.selected_view = Some(name);
@@ -552,6 +605,26 @@ impl Render for BaseViewState {
             .size_full()
             .relative()
             .overflow_hidden()
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &NextView, _, cx| {
+                if !this.preview {
+                    this.select_adjacent_view(true, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &PreviousView, _, cx| {
+                if !this.preview {
+                    this.select_adjacent_view(false, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ZoomIn, _, cx| {
+                this.update_shown_graph(cx, |graph, cx| graph.zoom_by(ZOOM_STEP, cx));
+            }))
+            .on_action(cx.listener(|this, _: &ZoomOut, _, cx| {
+                this.update_shown_graph(cx, |graph, cx| graph.zoom_by(ZOOM_STEP.recip(), cx));
+            }))
+            .on_action(cx.listener(|this, _: &ResetZoom, _, cx| {
+                this.update_shown_graph(cx, graph::GraphState::reset_zoom);
+            }))
             .on_mouse_up(MouseButton::Left, cx.listener(cards::hide_fullscreen_image))
             .child(root_content);
         if let Some(preview) = cards::render_fullscreen_image(self.fullscreen_image.as_ref(), cx) {

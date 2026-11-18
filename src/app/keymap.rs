@@ -134,6 +134,7 @@ use super::actions::{
 use super::actions::{
     CollapseTask, EditTaskDate, ExpandTask, LowerPriority, NewTask, RaisePriority,
 };
+use super::actions::{NextView, PreviousView, ResetZoom, ZoomIn, ZoomOut};
 use super::actions::{OpenDocumentation, OpenThemes, OpenVault};
 
 /// Representative context stacks, to find where another binding takes a
@@ -831,6 +832,47 @@ shortcuts!(
         "Expand subtasks",
         ExpandTask
     ),
+    // Base
+    (
+        "next-view",
+        "Base",
+        "secondary-alt-right",
+        [Base],
+        "Next view",
+        NextView
+    ),
+    (
+        "previous-view",
+        "Base",
+        "secondary-alt-left",
+        [Base],
+        "Previous view",
+        PreviousView
+    ),
+    (
+        "zoom-in",
+        "Base",
+        "secondary-=",
+        [Base],
+        "Zoom in graph",
+        ZoomIn
+    ),
+    (
+        "zoom-out",
+        "Base",
+        "secondary--",
+        [Base],
+        "Zoom out graph",
+        ZoomOut
+    ),
+    (
+        "reset-zoom",
+        "Base",
+        "secondary-0",
+        [Base],
+        "Reset graph zoom",
+        ResetZoom
+    ),
 );
 
 pub fn display_binding(binding: &str) -> String {
@@ -1010,8 +1052,8 @@ pub fn captured_binding(keystroke: &Keystroke) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MODAL_CONTEXT, SHORTCUTS, ShortcutZone, WORKSPACE_CONTEXT, default_bindings,
-        display_binding, effective_bindings, overrides_for, parse_keystroke,
+        DEFAULTS_OVER_FIELDS, MODAL_CONTEXT, SHORTCUTS, ShortcutZone, WORKSPACE_CONTEXT,
+        default_bindings, display_binding, effective_bindings, overrides_for, parse_keystroke,
     };
     use crate::app::actions::Quit;
     use crate::app::settings::ShortcutOverride;
@@ -1189,6 +1231,25 @@ mod tests {
         assert!(!active("delete", &in_modal));
         assert!(active("quit", &typing_in_modal));
         assert!(active("quick-switcher", &in_modal));
+    }
+
+    #[test]
+    fn every_default_parses_and_fits_its_zone() {
+        for definition in SHORTCUTS {
+            assert!(
+                parse_keystroke(definition.binding).is_ok(),
+                "{}",
+                definition.id
+            );
+            // Defaults over fields, like Enter in a todo list, may break R1.
+            assert!(
+                DEFAULTS_OVER_FIELDS.contains(&definition.id)
+                    || definition.zone.accepts(definition.binding),
+                "{}",
+                definition.id
+            );
+            assert_eq!(definition.zones.first(), Some(&definition.zone));
+        }
     }
 
     #[test]
