@@ -131,9 +131,13 @@ fn wrap_on<A: Action + 'static>(
     let input = input.clone();
     container.on_action(move |_: &A, window, cx| {
         input.update(cx, |state, cx| {
-            let start = state.selected_range().start;
+            let selection = state.selected_range();
+            let start = selection.start;
             let selected = state.selected_text().to_string();
             let (replacement, inner) = toggle_wrap(&selected, open, close);
+            // replace() writes the same text at every cursor. This replacement
+            // was computed from the active selection only.
+            state.set_selected_range(selection, cx);
             state.replace(replacement, window, cx);
             let inner_start = start.saturating_add(inner.start);
             let inner_end = start.saturating_add(inner.end);
