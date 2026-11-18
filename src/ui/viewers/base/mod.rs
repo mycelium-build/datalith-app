@@ -417,6 +417,21 @@ impl BaseViewState {
         }
     }
 
+    /// The vertical scroll of the current view, when it scrolls as a whole.
+    fn shown_scroll_handle(&self) -> Option<gpui_kit::ScrollHandle> {
+        let BaseStatus::Ready(snapshot) = &self.status else {
+            return None;
+        };
+        let view = snapshot.definition.views.get(snapshot.view_index)?;
+        let handle = match view.view_type {
+            ViewType::List => &self.list.as_ref()?.scroll_handle,
+            ViewType::Table => &self.table.as_ref()?.scroll_handle,
+            ViewType::Cards => &self.cards.as_ref()?.scroll_handle,
+            ViewType::Kanban | ViewType::Graph => return None,
+        };
+        Some((**handle).clone())
+    }
+
     /// The graph, when the current view shows it.
     fn shown_graph(&self) -> Option<Entity<graph::GraphState>> {
         let BaseStatus::Ready(snapshot) = &self.status else {
@@ -600,6 +615,7 @@ impl Render for BaseViewState {
             }
         };
         let root_content = column.child(content).into_any_element();
+        let scroll = self.shown_scroll_handle();
         let mut root = div()
             .id("base-viewer-root")
             .bg(cx.theme().background)
@@ -640,7 +656,14 @@ impl Render for BaseViewState {
         if let Some(preview) = cards::render_fullscreen_image(self.fullscreen_image.as_ref(), cx) {
             root = root.child(preview);
         }
-        root
+        // An element has one key context, so the scrolling keys sit on a
+        // wrapper, which the focused root dispatches through.
+        match scroll {
+            Some(scroll) => crate::ui::scroll_keys::scroll_with_keys(div().size_full(), &scroll)
+                .child(root)
+                .into_any_element(),
+            None => root.into_any_element(),
+        }
     }
 }
 
