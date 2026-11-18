@@ -7,11 +7,10 @@ use gpui_kit::{
     ScrollStrategy, SharedString, Window, actions,
 };
 
+use crate::app::keymap::FILE_TREE_CONTEXT;
 use crate::vault::path::display_name;
 
 use super::DatalithView;
-
-const FILE_TREE_CONTEXT: &str = "FileTree";
 
 actions!(
     file_tree,
