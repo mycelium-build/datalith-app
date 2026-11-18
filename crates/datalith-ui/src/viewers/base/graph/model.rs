@@ -1,0 +1,242 @@
+use std::path::PathBuf;
+
+use gpui_kit::{Point, point};
+
+use conv::{ConvAsUtil, UnwrapOrInf};
+
+use datalith_core::base::{
+    BorderStyle as GraphBorderStyle, ClassStyle, GraphColor, GraphPhysics,
+    NodeStyle as GraphNodeStyle,
+};
+
+pub(super) const INITIAL_LAYOUT_RADIUS: f32 = 256.0;
+pub(super) const INITIAL_LAYOUT_REFERENCE_NODES: f32 = 512.0;
+
+// Layout placement is a pseudo-random visual projection;
+// the lossy float casts below are deliberate and bounded by the hash's width.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::as_conversions
+)]
+pub(super) fn deterministic_position(path: &str, node_count: usize) -> Point<f32> {
+    // FNV-1a is stable across processes, unlike Rust's randomized default hasher.
+    let hash = path
+        .as_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
+        });
+    let angle = (hash as u32) as f32 / u32::MAX as f32 * std::f32::consts::TAU;
+    let population_scale = ((node_count as f32).max(INITIAL_LAYOUT_REFERENCE_NODES)
+        / INITIAL_LAYOUT_REFERENCE_NODES)
+        .sqrt();
+    let radial_hash = ((hash >> 32) as u32) as f32 / u32::MAX as f32;
+    let radius = radial_hash.mul_add(INITIAL_LAYOUT_RADIUS - 40.0, 40.0) * population_scale;
+    point(angle.cos() * radius, angle.sin() * radius)
+}
+
+pub(super) const BASE_NODE_RADIUS: f32 = 4.0;
+const LINK_SIZE_LOG_STRENGTH: f32 = 0.8;
+const MAX_LINK_SIZE_SCALE: f32 = 4.0;
+
+pub(super) fn incoming_link_scale(incoming: usize) -> f32 {
+    let degree: f32 = incoming.approx().unwrap_or_inf();
+    degree
+        .ln_1p()
+        .mul_add(LINK_SIZE_LOG_STRENGTH, 1.0)
+        .min(MAX_LINK_SIZE_SCALE)
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ViewNode {
+    pub(super) relative_path: PathBuf,
+    pub(super) label: String,
+    pub(super) orphan: bool,
+    pub(super) color: Option<GraphColor>,
+    pub(super) border_color: Option<GraphColor>,
+    pub(super) border_width: f32,
+    pub(super) hover_color: Option<GraphColor>,
+    pub(super) hover_size: f32,
+    pub(super) hover_border_color: Option<GraphColor>,
+    pub(super) hover_border_width: f32,
+    pub(super) radius: f32,
+    pub(super) center_weight: f32,
+    pub(super) position: Point<f32>,
+    pub(super) velocity: Point<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ViewEdge {
+    pub(super) source: usize,
+    pub(super) target: usize,
+    pub(super) reciprocal: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ViewEdgeStyle {
+    pub(super) color: Option<GraphColor>,
+    pub(super) width: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::viewers::base) struct GraphSnapshot {
+    pub(super) nodes: Vec<ViewNode>,
+    pub(super) edges: Vec<ViewEdge>,
+    pub(super) edge_color: Option<GraphColor>,
+    pub(super) edge_width: f32,
+    pub(super) edge_hover_outgoing: ViewEdgeStyle,
+    pub(super) edge_hover_incoming: ViewEdgeStyle,
+    pub(super) edge_hover_both: ViewEdgeStyle,
+    pub(super) arrow: bool,
+    pub(super) physics: GraphPhysics,
+    pub(super) legend: Vec<LegendEntry>,
+    /// Display-ready summary lines ("Pages Sum: 350") for the summary box.
+    pub(super) summaries: Vec<String>,
+}
+
+/// One legend row: a class name plus its resolved node color,
+/// where `None` renders with the application theme's default node color.
+#[derive(Clone, Debug)]
+pub(in crate::viewers::base) struct LegendEntry {
+    pub(super) name: String,
+    pub(super) color: Option<GraphColor>,
+}
+
+pub(super) struct GraphFocus {
+    source: usize,
+    included_nodes: Vec<bool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum IncidentDirection {
+    Outgoing,
+    Incoming,
+    Both,
+}
+
+impl GraphFocus {
+    pub(super) fn new(snapshot: &GraphSnapshot, source: usize) -> Self {
+        let mut included_nodes = vec![false; snapshot.nodes.len()];
+        if let Some(included) = included_nodes.get_mut(source) {
+            *included = true;
+        }
+        for edge in &snapshot.edges {
+            let sibling = match (edge.source == source, edge.target == source) {
+                (true, _) => edge.target,
+                (_, true) => edge.source,
+                _ => continue,
+            };
+            if let Some(included) = included_nodes.get_mut(sibling) {
+                *included = true;
+            }
+        }
+        Self {
+            source,
+            included_nodes,
+        }
+    }
+
+    pub(super) fn includes_node(&self, node: usize) -> bool {
+        self.included_nodes.get(node).copied().unwrap_or(false)
+    }
+
+    pub(super) const fn direction_of(&self, edge: &ViewEdge) -> Option<IncidentDirection> {
+        match (
+            edge.reciprocal,
+            edge.source == self.source,
+            edge.target == self.source,
+        ) {
+            (true, source_adjacent, target_adjacent) if source_adjacent || target_adjacent => {
+                Some(IncidentDirection::Both)
+            }
+            (false, true, _) => Some(IncidentDirection::Outgoing),
+            (false, false, true) => Some(IncidentDirection::Incoming),
+            _ => None,
+        }
+    }
+}
+
+pub(super) fn border_width(style: &GraphBorderStyle) -> f32 {
+    style
+        .width
+        .unwrap_or_else(|| if style.color.is_some() { 1.0 } else { 0.0 })
+}
+
+pub(super) fn hover_border_width(normal: &GraphBorderStyle, hover: &GraphBorderStyle) -> f32 {
+    hover.width.unwrap_or_else(|| {
+        if normal.width.is_some() || normal.color.is_some() {
+            border_width(normal)
+        } else if hover.color.is_some() {
+            1.0
+        } else {
+            0.0
+        }
+    })
+}
+
+pub(super) fn resolve_class_node_style(
+    base: &GraphNodeStyle,
+    class: Option<&ClassStyle>,
+) -> GraphNodeStyle {
+    let Some(class) = class else {
+        return base.clone();
+    };
+    let mut resolved = base.clone();
+    resolved.color = class.color.or(resolved.color);
+    if let Some(size) = class.size {
+        resolved.size = Some(resolved.size.unwrap_or(1.0) * size);
+    }
+    resolved.border.color = class.border.color.or(resolved.border.color);
+    resolved.border.width = class.border.width.or(resolved.border.width);
+    resolved.hover.color = class.hover.color.or(resolved.hover.color);
+    resolved.hover.size = class.hover.size.or(resolved.hover.size);
+    resolved.hover.border.color = class.hover.border.color.or(resolved.hover.border.color);
+    resolved.hover.border.width = class.hover.border.width.or(resolved.hover.border.width);
+    resolved
+}
+
+pub(super) fn hit_test_nodes(nodes: &[ViewNode], world: Point<f32>) -> Option<usize> {
+    nodes.iter().enumerate().rev().find_map(|(index, node)| {
+        let dx = world.x - node.position.x;
+        let dy = world.y - node.position.y;
+        (dx.mul_add(dx, dy * dy) <= node.radius * node.radius).then_some(index)
+    })
+}
+
+pub(super) const ALL_LABELS_MIN_ZOOM: f32 = 2.5;
+pub(super) const NODE_LABEL_WIDTH: f32 = 240.0;
+
+pub(super) fn label_node_indices(
+    nodes: &[ViewNode],
+    camera: super::camera::Camera,
+    viewport: Point<f32>,
+    hovered_node: Option<usize>,
+) -> Vec<usize> {
+    if camera.zoom < ALL_LABELS_MIN_ZOOM {
+        return hovered_node
+            .filter(|index| *index < nodes.len())
+            .into_iter()
+            .collect();
+    }
+
+    nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let center = camera.world_to_screen(node.position, viewport);
+            let radius = node.radius
+                * if hovered_node == Some(index) {
+                    node.hover_size
+                } else {
+                    1.0
+                }
+                * camera.zoom;
+            (center.x + radius >= 0.0
+                && center.x - radius <= viewport.x
+                && center.y + radius >= 0.0
+                && center.y - radius <= viewport.y)
+                .then_some(index)
+        })
+        .collect()
+}

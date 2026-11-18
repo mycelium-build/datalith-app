@@ -37,7 +37,7 @@ python3 "$SCRIPTS_DIR/sync_allowlist.py"
 python3 "$SCRIPTS_DIR/check_assets.py" --emit "$TMP_DIR/assets.md"
 
 # 5. Render the Rust dependency sections.
-cargo about generate \
+cargo about generate --manifest-path "$REPO_ROOT/apps/desktop/Cargo.toml" \
     --config "$SCRIPTS_DIR/about.toml" \
     --format handlebars \
     --fail \

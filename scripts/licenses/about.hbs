@@ -18,7 +18,7 @@ SPDX identifier: `{{id}}`
 
 Used by:
 
-{{#each used_by}}- `{{crate.name}}` {{crate.version}}{{#if crate.license}} — `{{crate.license}}`{{/if}}{{#if crate.repository}} — <{{crate.repository}}>{{/if}}{{#if (eq crate.name "datalith")}} <!-- x-release-please-version -->{{/if}}
+{{#each used_by}}- `{{crate.name}}` {{crate.version}}{{#if crate.license}} — `{{crate.license}}`{{/if}}{{#if crate.repository}} — <{{crate.repository}}>{{/if}}{{#if (eq crate.repository "https://github.com/mycelium-build/datalith-app")}} <!-- x-release-please-version -->{{/if}}
 {{/each}}
 ```
 {{{text}}}

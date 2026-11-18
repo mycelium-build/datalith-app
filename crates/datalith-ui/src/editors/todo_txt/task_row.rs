@@ -1,0 +1,445 @@
+use std::ops::{Add, Mul};
+
+use gpui_kit::base::actions::Cancel;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::input::Input;
+use gpui_kit::component::popover::{Popover, PopoverState};
+use gpui_kit::component::{ActiveTheme, Disableable, Icon, IconName, Sizable, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{
+    AnyElement, App, AppContext, Context, Element, ElementId, Focusable, InteractiveElement,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window, div, px,
+};
+
+use conv::{ConvUtil, UnwrapOrInf, UnwrapOrSaturate, ValueFrom};
+use txtodo::{Priority, Task};
+
+use crate::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, ToggleTask};
+use crate::actions::{CollapseTask, EditTaskDate, ExpandTask, LowerPriority, RaisePriority};
+use crate::todo_txt::parse_date;
+
+use super::TodoTxtState;
+use super::constants::{
+    TODO_COL_DATE, TODO_COL_EXPAND, TODO_COL_PRIORITY, TODO_INDENT_PX, TODO_ROW_HEIGHT,
+};
+use super::priority::{PRIORITY_VALUES, PriorityTrigger};
+
+use crate::contexts::DATE_CONTEXT;
+
+fn element_id(name: &'static str, index: usize) -> ElementId {
+    ElementId::NamedInteger(name.into(), u64::value_from(index).unwrap_or_saturate())
+}
+
+fn priority_option_id(flat_index: usize, pri_char: Option<char>) -> u64 {
+    (u64::value_from(flat_index).unwrap_or_saturate()) << 4
+        | u64::from(u32::from(pri_char.unwrap_or('×')))
+}
+
+impl TodoTxtState {
+    pub(super) fn render_task_row(
+        &self,
+        flat_index: usize,
+        task: &Task,
+        depth: usize,
+        is_selected: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let indent = (depth.approx_as::<f32>().unwrap_or_inf()).mul(TODO_INDENT_PX);
+        let has_subtasks = !task.subtasks.is_empty();
+        let is_expanded = self.workspace.is_expanded(flat_index);
+        let read_only = self.workspace.is_read_only();
+
+        let row_bg = if is_selected {
+            cx.theme().list_active
+        } else {
+            gpui_kit::transparent_black()
+        };
+
+        let mut row = h_flex()
+            .id(element_id("todo-row", flat_index))
+            .h(px(TODO_ROW_HEIGHT))
+            .w_full()
+            .items_center()
+            .gap_1()
+            .pl(px(indent.add(8.0)))
+            .pr_3()
+            .bg(row_bg)
+            .border_b_1()
+            .border_color(cx.theme().border.opacity(0.3))
+            .cursor_pointer()
+            .group("todo-row");
+
+        // Expand/collapse arrow
+        if has_subtasks {
+            let fi = flat_index;
+            let arrow_icon = if is_expanded {
+                IconName::ChevronDown
+            } else {
+                IconName::ChevronRight
+            };
+            row = row.child(
+                div()
+                    .flex_shrink_0()
+                    .w(px(TODO_COL_EXPAND))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Button::new(element_id("todo-expand", fi))
+                            .ghost()
+                            .xsmall()
+                            .icon(arrow_icon)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_expand(fi, cx);
+                            })),
+                    ),
+            );
+        } else {
+            row = row.child(div().flex_shrink_0().w(px(TODO_COL_EXPAND)));
+        }
+
+        // Checkbox
+        let completed = task.completed;
+        let fi = flat_index;
+        row = row.child(
+            Checkbox::new(element_id("todo-check", fi))
+                .checked(completed)
+                .disabled(read_only)
+                .on_click(cx.listener(move |this, _checked, window, cx| {
+                    this.toggle_complete(fi, window, cx);
+                })),
+        );
+
+        // Priority (popover)
+        row = row.child(if read_only {
+            Self::render_read_only_priority(task, cx)
+        } else {
+            self.render_priority_picker(flat_index, cx)
+        });
+
+        // Date
+        row = row.child(self.render_date_cell(flat_index, task, cx));
+
+        // Description — ALWAYS an Input
+        row = row.child(self.render_description_cell(flat_index, task, cx));
+
+        // Project pills
+        for project in &task.projects {
+            row = row.child(super::render_pill(
+                &format!("+{project}"),
+                cx.theme().muted_foreground,
+            ));
+        }
+
+        // Context pills
+        for context in &task.contexts {
+            row = row.child(super::render_pill(
+                &format!("@{context}"),
+                cx.theme().muted_foreground,
+            ));
+        }
+
+        // Hover actions
+        if !read_only {
+            row = row.child(Self::render_hover_actions(flat_index, cx));
+        }
+
+        row.into_any()
+    }
+
+    fn render_read_only_priority(task: &Task, cx: &Context<Self>) -> AnyElement {
+        let Some(priority) = task.priority else {
+            return div().w(px(TODO_COL_PRIORITY)).into_any_element();
+        };
+        let color = if task.completed {
+            cx.theme().muted_foreground
+        } else {
+            super::priority_color(priority.as_char())
+        };
+        div()
+            .w(px(TODO_COL_PRIORITY))
+            .flex()
+            .justify_center()
+            .child(super::render_pill(
+                &format!("({})", priority.as_char()),
+                color,
+            ))
+            .into_any_element()
+    }
+
+    fn render_date_cell(&self, flat_index: usize, task: &Task, cx: &Context<Self>) -> AnyElement {
+        let Some(date_entity) = self.date_inputs.get(&flat_index) else {
+            return div()
+                .flex_shrink_0()
+                .w(px(TODO_COL_DATE))
+                .into_any_element();
+        };
+        let date_val = date_entity.read(cx).value().to_string();
+        let is_valid = date_val.is_empty() || parse_date(&date_val).is_some();
+        let date_color = if task.completed || is_valid {
+            cx.theme().muted_foreground
+        } else {
+            cx.theme().danger
+        };
+        let date_input = Input::new(date_entity)
+            .appearance(false)
+            .p_0()
+            .readonly(self.workspace.is_read_only())
+            .text_color(date_color);
+        let fi = flat_index;
+        div()
+            .id(element_id("todo-date-wrap", fi))
+            .flex_shrink_0()
+            .w(px(TODO_COL_DATE))
+            .items_center()
+            .text_sm()
+            .child(date_input)
+            .key_context(DATE_CONTEXT)
+            .on_action(cx.listener(move |this, _: &Cancel, window, cx| {
+                if let Some(e) = this.date_inputs.get(&fi) {
+                    let original = this
+                        .workspace
+                        .task(fi)
+                        .and_then(|t| t.creation_date)
+                        .map_or_default(|d| d.to_string());
+                    e.update(cx, |s, cx| s.set_value(original, window, cx));
+                }
+            }))
+            .into_any_element()
+    }
+
+    fn render_description_cell(
+        &self,
+        flat_index: usize,
+        task: &Task,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let Some(desc_entity) = self.desc_inputs.get(&flat_index) else {
+            return div().flex_1().into_any_element();
+        };
+        let fi = flat_index;
+        let mut desc_input = Input::new(desc_entity)
+            .appearance(false)
+            .p_0()
+            .text_color(cx.theme().foreground)
+            .readonly(self.workspace.is_read_only());
+        if task.completed {
+            desc_input = desc_input.text_color(cx.theme().muted_foreground);
+        }
+        div()
+            .id(element_id("todo-desc-wrap", fi))
+            .flex_1()
+            .items_center()
+            .child(desc_input)
+            .on_action(cx.listener(move |this, _: &AddSubtask, _, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.add_subtask(fi, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &ToggleTask, window, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.toggle_complete(fi, window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &DeleteTask, window, cx| {
+                if this.workspace.is_read_only() {
+                    cx.propagate();
+                } else {
+                    this.delete_task(fi, window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &PreviousTask, window, cx| {
+                this.focus_previous_task(fi, window, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &NextTask, window, cx| {
+                this.focus_next_task(fi, window, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &RaisePriority, _, cx| {
+                this.step_priority_unless_read_only(fi, true, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &LowerPriority, _, cx| {
+                this.step_priority_unless_read_only(fi, false, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &EditTaskDate, window, cx| {
+                if let Some(input) = this.date_inputs.get(&fi) {
+                    input.focus_handle(cx).focus(window, cx);
+                }
+            }))
+            .on_action(cx.listener(move |this, _: &CollapseTask, _, cx| {
+                this.set_expanded(fi, false, cx);
+            }))
+            .on_action(cx.listener(move |this, _: &ExpandTask, _, cx| {
+                this.set_expanded(fi, true, cx);
+            }))
+            .into_any_element()
+    }
+
+    fn step_priority_unless_read_only(&mut self, index: usize, up: bool, cx: &mut Context<Self>) {
+        if self.workspace.is_read_only() {
+            cx.propagate();
+        } else {
+            self.step_priority(index, up, cx);
+        }
+    }
+
+    /// Shows or hides the task's subtasks, when it has any.
+    fn set_expanded(&mut self, index: usize, expanded: bool, cx: &mut Context<Self>) {
+        let has_subtasks = self
+            .workspace
+            .task(index)
+            .is_some_and(|task| !task.subtasks.is_empty());
+        if has_subtasks && self.workspace.is_expanded(index) != expanded {
+            self.toggle_expand(index, cx);
+        }
+    }
+
+    fn focus_previous_task(&self, flat_index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let visible = self.workspace.visible_tasks();
+        let Some(position) = visible.iter().position(|&(index, _)| index == flat_index) else {
+            return;
+        };
+        if let Some(&(previous_index, _)) =
+            position.checked_sub(1).and_then(|index| visible.get(index))
+        {
+            if let Some(input) = self.desc_inputs.get(&previous_index) {
+                input.focus_handle(cx).focus(window, cx);
+            }
+        } else {
+            self.search_input.focus_handle(cx).focus(window, cx);
+        }
+    }
+
+    fn focus_next_task(&self, flat_index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let visible = self.workspace.visible_tasks();
+        let Some(position) = visible.iter().position(|&(index, _)| index == flat_index) else {
+            return;
+        };
+        if let Some(&(next_index, _)) = position.checked_add(1).and_then(|index| visible.get(index))
+        {
+            if let Some(input) = self.desc_inputs.get(&next_index) {
+                input.focus_handle(cx).focus(window, cx);
+            }
+        } else if self.workspace.is_read_only() {
+            self.search_input.focus_handle(cx).focus(window, cx);
+        } else {
+            self.new_task_input.focus_handle(cx).focus(window, cx);
+        }
+    }
+
+    fn render_hover_actions(flat_index: usize, cx: &Context<Self>) -> AnyElement {
+        let fi = flat_index;
+        h_flex()
+            .gap_1()
+            .opacity(0.0)
+            .flex_shrink_0()
+            .when(true, |el| {
+                el.group_hover("todo-row", |style| style.opacity(1.0))
+            })
+            .child(
+                div()
+                    .id(element_id("todo-addsub", fi))
+                    .cursor_pointer()
+                    .child(
+                        Icon::new(IconName::Plus)
+                            .size_3()
+                            .text_color(cx.theme().muted_foreground),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.add_subtask(fi, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .id(element_id("todo-del", fi))
+                    .cursor_pointer()
+                    .child(
+                        Icon::new(IconName::Close)
+                            .size_3()
+                            .text_color(cx.theme().danger),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delete_task(fi, window, cx);
+                    })),
+            )
+            .into_any_element()
+    }
+
+    pub(super) fn render_priority_picker(
+        &self,
+        flat_index: usize,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let entity = cx.entity();
+
+        let trigger = PriorityTrigger {
+            id: element_id("pri-trigger", flat_index),
+            editor: entity.clone(),
+            task_index: flat_index,
+            current: self.workspace.task(flat_index).and_then(|t| t.priority),
+            completed: self.workspace.task(flat_index).is_some_and(|t| t.completed),
+        };
+
+        let content_entity = entity.clone();
+        let muted_foreground = cx.theme().muted_foreground;
+        let accent = cx.theme().accent;
+        let content =
+            move |_: &mut PopoverState, _window: &mut Window, _cx: &mut Context<PopoverState>| {
+                let mut menu = v_flex().py_1().min_w(px(80.0));
+
+                for value in PRIORITY_VALUES {
+                    let pri = value.map(Priority);
+                    let label = value.map_or_else(|| "×".to_string(), |value| value.to_string());
+                    let color = pri
+                        .map_or_else(|| muted_foreground, |p| super::priority_color(p.as_char()));
+                    let pri_char = pri.map(Priority::as_char);
+                    let ent = content_entity.clone();
+                    menu = menu.child(
+                        div()
+                            .id(ElementId::NamedInteger(
+                                "pri-opt".into(),
+                                priority_option_id(flat_index, pri_char),
+                            ))
+                            .px_3()
+                            .py_1()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(accent.opacity(0.1)))
+                            .text_sm()
+                            .text_color(color)
+                            .child(label)
+                            .on_click(move |_, window, app| {
+                                let value = pri_char.map_or_else(String::new, |c| format!("({c})"));
+                                app.update_entity(&ent, |this: &mut Self, cx| {
+                                    this.commit_priority(flat_index, &value, cx);
+                                    this.priority_picker_open = None;
+                                });
+                                window.refresh();
+                            }),
+                    );
+                }
+
+                menu.into_any_element()
+            };
+
+        Popover::new(element_id("pri-pop", flat_index))
+            .open(self.priority_picker_open == Some(flat_index))
+            .on_open_change({
+                move |open: &bool, _window: &mut Window, app: &mut App| {
+                    app.update_entity(&entity, |this: &mut Self, _cx| {
+                        if *open {
+                            this.priority_picker_open = Some(flat_index);
+                        } else if this.priority_picker_open == Some(flat_index) {
+                            this.priority_picker_open = None;
+                        }
+                    });
+                }
+            })
+            .trigger(trigger)
+            .content(content)
+            .into_any_element()
+    }
+}

@@ -1,0 +1,28 @@
+//! Commands handled by document editors and viewers.
+#![allow(clippy::derive_partial_eq_without_eq)]
+
+gpui_kit::actions!(
+    datalith,
+    [
+        ToggleTask,
+        AddSubtask,
+        DeleteTask,
+        PreviousTask,
+        NextTask,
+        SearchTasks,
+        NewTask,
+        RaisePriority,
+        LowerPriority,
+        EditTaskDate,
+        CollapseTask,
+        ExpandTask,
+        NextView,
+        PreviousView,
+        ZoomIn,
+        ZoomOut,
+        ResetZoom,
+        Bold,
+        Italic,
+        InsertWikiLink,
+    ]
+);

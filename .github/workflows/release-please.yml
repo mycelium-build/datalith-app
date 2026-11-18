@@ -60,7 +60,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      # The Rust strategy edits Cargo.toml/Cargo.lock without cargo package.
+      # The configured TOML updaters edit Cargo.toml/Cargo.lock without cargo package.
       - name: Prepare next release
         id: release-please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0

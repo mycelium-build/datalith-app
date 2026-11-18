@@ -23,14 +23,14 @@ repos:
         name: license compliance
         language: system
         entry: scripts/hooks/license-compliance.sh
-        files: ^(Cargo\.toml|Cargo\.lock|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$)
+        files: ^(Cargo\.toml|Cargo\.lock|(apps|crates)/[^/]+/Cargo\.toml|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$)
         pass_filenames: false
 
       # Same command as CI's "Run clippy" step, on push only (it compiles the crate).
       - id: cargo-clippy
         name: cargo clippy
         language: system
-        entry: cargo clippy --locked --all-targets --quiet
-        files: (\.rs$|^Cargo\.(toml|lock)$|^clippy\.toml$|^rust-toolchain\.toml$|^build\.rs$|^\.cargo/)
+        entry: cargo clippy --workspace --locked --all-targets --quiet
+        files: (\.rs$|^Cargo\.(toml|lock)$|^(apps|crates)/[^/]+/Cargo\.toml$|^clippy\.toml$|^rust-toolchain\.toml$|^build\.rs$|^\.cargo/)
         pass_filenames: false
         stages: [pre-push]

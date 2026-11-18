@@ -18,7 +18,13 @@
           "scripts/licenses/about.toml"
         ],
         "executionMode": "branch"
-      }
+      },
+      "matchFileNames": [
+        "Cargo.toml",
+        "crates/*/Cargo.toml",
+        "apps/*/Cargo.toml",
+        "Cargo.lock"
+      ]
     },
     {
       "description": "A new cargo-about can render the notices differently: regenerate them in that update too.",

@@ -1,0 +1,28 @@
+[package]
+name = "datalith-ui"
+description = "Reusable Datalith GPUI editors, viewers and their factories."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+datalith-core.workspace = true
+datalith-vault.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+percent-encoding.workspace = true
+time.workspace = true
+txtodo.workspace = true
+yaml_serde.workspace = true
+rand.workspace = true
+conv.workspace = true
+
+[dev-dependencies]
+datalith-vault = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

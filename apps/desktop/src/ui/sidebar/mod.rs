@@ -1,0 +1,489 @@
+pub mod file_tree;
+mod navigation;
+mod tree_actions;
+
+pub use tree_actions::DeletedItem;
+
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use gpui_kit::component::{
+    ActiveTheme, Sizable as _,
+    button::{Button, ButtonVariants as _},
+    input::{InputEvent, InputState},
+    menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem},
+};
+use gpui_kit::{
+    AppContext, Context, Focusable, InteractiveElement, IntoElement, MouseDownEvent,
+    MouseMoveEvent, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, prelude::FluentBuilder, px,
+};
+
+use crate::app::actions::{self, Rename};
+use crate::app::settings as app_settings;
+use crate::ui::notifications;
+use datalith_vault::file_ops;
+use datalith_vault::path::{display_name, unique_path};
+
+use super::DatalithView;
+pub use navigation::bind_keys;
+
+const BORDER_WIDTH: f32 = 2.0;
+const VAULT_MENU_WIDTH_REMS: f32 = 24.0;
+const VAULT_MENU_ITEM_CHROME_REMS: f32 = 2.0;
+pub(super) const TREE_PADDING_PX: f32 = 12.0;
+
+fn vault_menu_width(window: &Window) -> Pixels {
+    px(window.rem_size().as_f32() * VAULT_MENU_WIDTH_REMS)
+}
+
+fn vault_menu_row_width(window: &Window) -> Pixels {
+    px(window.rem_size().as_f32() * (VAULT_MENU_WIDTH_REMS - VAULT_MENU_ITEM_CHROME_REMS))
+}
+
+fn populate_vault_menu(
+    mut menu: PopupMenu,
+    view: &gpui_kit::Entity<DatalithView>,
+    window: &Window,
+    cx: &Context<PopupMenu>,
+) -> PopupMenu {
+    menu = menu.max_w(vault_menu_width(window));
+    let docs_path = crate::app::docs::docs_vault_path();
+    let docs_view = view.clone();
+    menu = menu.item(
+        PopupMenuItem::new(crate::app::docs::DOCS_VAULT_NAME).on_click(move |_, window, cx| {
+            docs_view.update(cx, |view, cx| {
+                view.set_root_path(docs_path.clone(), None, window, cx);
+            });
+        }),
+    );
+    menu = menu.separator();
+
+    let recent_vaults = app_settings::snapshot()
+        .recent_vaults
+        .into_iter()
+        .filter(|path| {
+            datalith_vault::source::is_dir(path) && !datalith_vault::source::is_read_only(path)
+        })
+        .collect::<Vec<_>>();
+    if recent_vaults.is_empty() {
+        menu = menu.label("No vault opened");
+    } else {
+        for path in recent_vaults {
+            menu = menu.item(personal_vault_menu_item(path, view, cx));
+        }
+    }
+
+    menu.item(
+        PopupMenuItem::new("Open a new vault").on_click(move |_, window, cx| {
+            window.dispatch_action(Box::new(crate::app::actions::OpenVault), cx);
+        }),
+    )
+}
+
+fn personal_vault_menu_item(
+    path: PathBuf,
+    view: &gpui_kit::Entity<DatalithView>,
+    cx: &Context<PopupMenu>,
+) -> PopupMenuItem {
+    let name: SharedString = display_name(&path).into();
+    let close_label = if view.read(cx).root_path.as_ref() == Some(&path) {
+        format!("Close and remove {name}")
+    } else {
+        format!("Remove {name} from recent vaults")
+    };
+    let button_id = format!("remove-vault-{}", path.display());
+    let close_view = view.clone();
+    let close_path = path.clone();
+    let menu = cx.entity().downgrade();
+    let close = std::rc::Rc::new(move |window: &mut Window, cx: &mut gpui_kit::App| {
+        window.prevent_default();
+        cx.stop_propagation();
+        if close_view.update(cx, |view, cx| view.close_personal_vault(&close_path, cx)) {
+            // A nested control dismisses its own menu, independent of keyboard focus.
+            let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
+            close_view
+                .read(cx)
+                .sidebar_focus_handle
+                .clone()
+                .focus(window, cx);
+        }
+    });
+    let item_view = view.clone();
+    let hovered = std::rc::Rc::new(std::cell::Cell::new(false));
+    let render_hovered = hovered.clone();
+    let menu_weak = cx.entity().downgrade();
+    PopupMenuItem::element(move |window, _| {
+        let is_row_hovered = render_hovered.get();
+        let hover_state = hovered.clone();
+        let hover_menu = menu_weak.clone();
+        let click_close = close.clone();
+        let keyboard_close = close.clone();
+        let button = Button::new(button_id.clone())
+            .icon(gpui_kit::component::IconName::Close)
+            .ghost()
+            .xsmall()
+            .accessibility_label(close_label.clone())
+            .on_click(move |_, window, cx| click_close(window, cx))
+            // Enter/Space bind to Confirm in the surrounding menu/popover contexts.
+            .on_action(move |_: &gpui_kit::base::actions::Confirm, window, cx| {
+                keyboard_close(window, cx);
+            });
+        gpui_kit::component::h_flex()
+            .id(format!("vault-row-{button_id}"))
+            .w_full()
+            .max_w(vault_menu_row_width(window))
+            .min_w_0()
+            .items_center()
+            .justify_between()
+            .on_hover(move |hovered, _, app| {
+                hover_state.set(*hovered);
+                let _ = hover_menu.update(app, |_, cx| cx.notify());
+            })
+            .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+            .child(
+                button
+                    .flex_shrink_0()
+                    .when(!is_row_hovered, gpui_kit::Styled::invisible),
+            )
+    })
+    .on_click(move |_, window, cx| {
+        item_view.update(cx, |view, cx| {
+            view.set_root_path(path.clone(), None, window, cx);
+        });
+    })
+}
+
+#[derive(Clone)]
+pub struct DragFile {
+    pub path: PathBuf,
+}
+
+/// Folder highlighted as the destination of the file being dragged.
+pub struct DragDropTarget {
+    pub folder: PathBuf,
+    /// Set while a collapsed folder row is hovered; drives the delayed auto-expand.
+    expand_at: Option<Instant>,
+}
+
+impl DragDropTarget {
+    fn new(folder: PathBuf, expand_on_hover: bool) -> Self {
+        Self {
+            folder,
+            expand_at: expand_on_hover.then(Instant::now),
+        }
+    }
+}
+
+impl Render for DragFile {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = display_name(&self.path).to_string();
+        div()
+            .px_2()
+            .py_1()
+            .bg(cx.theme().accent)
+            .text_color(cx.theme().accent_foreground)
+            .rounded_sm()
+            .text_sm()
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(name)
+    }
+}
+
+impl DatalithView {
+    pub(crate) fn start_inline_rename(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.reveal_in_sidebar(path, window, cx);
+        if datalith_vault::source::is_read_only(path) {
+            return;
+        }
+        let target = path.to_path_buf();
+        window.defer(cx, move |_, cx| {
+            actions::handle_rename(&Rename, Some(target), cx);
+        });
+    }
+
+    pub fn rename_file(
+        &mut self,
+        old_path: &std::path::Path,
+        new_path: &std::path::Path,
+        cx: &mut Context<Self>,
+    ) {
+        if old_path == new_path
+            || datalith_vault::source::is_read_only(old_path)
+            || datalith_vault::source::is_read_only(new_path)
+        {
+            return;
+        }
+        let Some(catalog) = self.vault_catalog.clone() else {
+            return;
+        };
+        if let Ok(result) = file_ops::rename(&catalog, old_path, new_path) {
+            if result.updated_sources == result.total_sources {
+                self.pending_notifications
+                    .push(notifications::rename_completed(result.updated_sources));
+            } else {
+                self.pending_notifications
+                    .push(notifications::rename_completed_partial(
+                        result.updated_sources,
+                        result.total_sources,
+                    ));
+            }
+        } else {
+            self.pending_notifications
+                .push(notifications::rename_failed());
+            return;
+        }
+        self.tabs.rename_path(old_path, new_path);
+        if let Some(super::PendingOpen::Open(path) | super::PendingOpen::Created(path)) =
+            self.pending_open.as_mut()
+            && let Ok(suffix) = path.strip_prefix(old_path)
+        {
+            *path = new_path.join(suffix);
+        }
+        self.last_sidebar_selection = self.last_sidebar_selection.as_ref().map(|path| {
+            path.strip_prefix(old_path)
+                .map_or_else(|_| path.clone(), |suffix| new_path.join(suffix))
+        });
+        self.refresh_tree_with_rename(old_path, new_path, cx);
+    }
+
+    fn handle_file_move(&mut self, old_path: &Path, new_path: &Path, cx: &mut Context<Self>) {
+        self.rename_file(old_path, new_path, cx);
+    }
+
+    pub(crate) fn commit_rename(&mut self, cx: &mut Context<Self>) {
+        if let (Some(ref rename_state), Some(ref target)) =
+            (self.rename_state.clone(), self.rename_target.clone())
+        {
+            let new_name = rename_state.read(cx).value().to_string();
+            if !new_name.is_empty() {
+                let old_ext = if datalith_vault::source::is_dir(target) {
+                    None
+                } else {
+                    target
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .and_then(|name| {
+                            name.rfind('.')
+                                .filter(|&dot| dot > 0)
+                                .and_then(|dot| name.get(dot..))
+                                .map(ToString::to_string)
+                        })
+                };
+                let mut name = new_name;
+                if let Some(ref ext) = old_ext
+                    && !name.contains('.')
+                {
+                    name.push_str(ext);
+                }
+                if let Some(parent) = target.parent() {
+                    let candidate = parent.join(&name);
+                    if candidate != *target {
+                        let final_path = unique_path(parent, &name);
+                        self.rename_file(target, &final_path, cx);
+                    }
+                }
+            }
+        }
+        self.clear_rename_state();
+    }
+
+    fn clear_rename_state(&mut self) {
+        self.rename_target = None;
+        self.rename_state = None;
+        self.rename_sub = None;
+    }
+
+    fn cancel_rename(&mut self, cx: &mut Context<Self>) {
+        self.clear_rename_state();
+        self.refresh_tree(cx);
+    }
+
+    fn ensure_rename_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ref target) = self.rename_target.clone() else {
+            self.rename_state = None;
+            return;
+        };
+        if self.rename_state.is_some() {
+            return;
+        }
+
+        let current = display_name(target);
+        let selected_name = if datalith_vault::source::is_dir(target) {
+            current
+        } else {
+            Path::new(current)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or(current)
+        };
+        let state = cx.new(|cx| {
+            let mut input = InputState::new(window, cx).default_value(current);
+            input.set_selected_range(0..selected_name.len(), cx);
+            input
+        });
+
+        self.rename_sub = Some(cx.subscribe_in(
+            &state,
+            window,
+            move |this, _input, event, _window, cx| match event {
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    this.commit_rename(cx);
+                }
+                _ => {}
+            },
+        ));
+
+        state.focus_handle(cx).focus(window, cx);
+        self.rename_state = Some(state);
+    }
+
+    fn path_from_id(id: &SharedString) -> PathBuf {
+        PathBuf::from(id.to_string())
+    }
+
+    pub fn render_sidebar(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let view = cx.entity();
+
+        self.ensure_rename_state(window, cx);
+
+        let drop_box = self.prepare_sidebar_drag_state(cx);
+
+        let selector_view = cx.entity();
+        let active_read_only = self
+            .root_path
+            .as_deref()
+            .is_some_and(datalith_vault::source::is_read_only);
+        let selector_label = if self.root_path.is_some() {
+            self.root_name.clone()
+        } else {
+            SharedString::from("No vault opened")
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .h_full()
+            .bg(cx.theme().sidebar)
+            .text_color(cx.theme().sidebar_foreground)
+            .border_r(px(BORDER_WIDTH))
+            .border_color(cx.theme().sidebar_border)
+            .track_focus(&self.sidebar_focus_handle)
+            .map(|element| Self::with_file_tree_actions(element, cx))
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|this, _event: &MouseDownEvent, window, cx| {
+                    this.sidebar_focus_handle.focus(window, cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .on_mouse_move(cx.listener(|this, _event: &MouseMoveEvent, _window, cx| {
+                // Rows stop propagation when the pointer is over a folder subtree;
+                // reaching this handler means the pointer is above empty space,
+                // where a drop falls back to the vault root.
+                this.clear_drag_target(cx);
+            }))
+            .when(!active_read_only, |sidebar| {
+                sidebar.on_drop(cx.listener(move |this, drag: &DragFile, _window, cx| {
+                    this.drag_drop_target = None;
+                    if let (Some(root), Some(name)) = (&this.root_path, drag.path.file_name()) {
+                        let new_path = root.join(name);
+                        this.handle_file_move(&drag.path, &new_path, cx);
+                    }
+                }))
+            })
+            .child(div().flex_1().child(Self::render_file_tree(
+                cx,
+                &self.tree_state,
+                drop_box,
+                active_read_only,
+            )))
+            .child(
+                div()
+                    .border_t(px(BORDER_WIDTH))
+                    .border_color(cx.theme().border)
+                    .p_2()
+                    .child(
+                        Button::new("vault-selector")
+                            .track_focus(&self.vault_selector_focus_handle)
+                            .ghost()
+                            .small()
+                            .w_full()
+                            .label(selector_label)
+                            .dropdown_caret(true)
+                            .accessibility_label("Select vault")
+                            .dropdown_menu_with_anchor(
+                                gpui_kit::Anchor::BottomLeft,
+                                move |menu, window, cx| {
+                                    populate_vault_menu(menu, &selector_view, window, cx)
+                                },
+                            ),
+                    ),
+            )
+            .context_menu(move |menu, _, cx| {
+                let root = view.read(cx).root_path.as_deref();
+                file_menu(menu, root, false, active_read_only)
+            })
+    }
+}
+
+/// Build menu commands with the path the user clicked.
+fn file_menu(menu: PopupMenu, path: Option<&Path>, is_entry: bool, read_only: bool) -> PopupMenu {
+    fn item<A: gpui_kit::Action + Default>(
+        label: &'static str,
+        run: fn(&A, Option<PathBuf>, &mut gpui_kit::App),
+        path: Option<&Path>,
+        disabled: bool,
+    ) -> PopupMenuItem {
+        let path = path.map(Path::to_path_buf);
+        let action = A::default();
+        PopupMenuItem::new(label)
+            .disabled(disabled)
+            .action(action.boxed_clone())
+            .on_click(move |_, _, cx| run(&action, path.clone(), cx))
+    }
+    menu.item(item("New Note", actions::handle_new_file, path, read_only))
+        .item(item(
+            "New Todo List",
+            actions::handle_new_todo_list,
+            path,
+            read_only,
+        ))
+        .item(item("New Base", actions::handle_new_base, path, read_only))
+        .item(item(
+            "New Folder",
+            actions::handle_new_folder,
+            path,
+            read_only,
+        ))
+        .when(is_entry, |menu| {
+            menu.separator()
+                .item(item("Rename", actions::handle_rename, path, read_only))
+                .item(item("Delete", actions::handle_delete, path, read_only))
+                .item(item(
+                    "Duplicate",
+                    actions::handle_duplicate,
+                    path,
+                    read_only,
+                ))
+        })
+        .separator()
+        .item(item(
+            "Open in Explorer",
+            actions::handle_open_in_explorer,
+            path,
+            read_only,
+        ))
+        .item(item("Copy Path", actions::handle_copy_path, path, false))
+}

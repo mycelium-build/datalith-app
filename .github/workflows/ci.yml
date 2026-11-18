@@ -64,7 +64,7 @@ jobs:
           flag() { if has "$1"; then echo true; else echo false; fi; }
 
           # check_assets.py checks every tracked file under assets/ against assets/licenses.toml.
-          licenses="$(flag '^(Cargo\.(toml|lock)|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
+          licenses="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
@@ -81,7 +81,7 @@ jobs:
             code=false
           fi
           # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
-          rust_deps="$(flag '^(Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/)')"
+          rust_deps="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|rust-toolchain\.toml|\.cargo/)')"
           mode=full
 
           if [[ "$EVENT" == push ]]; then
@@ -203,15 +203,15 @@ jobs:
       # Skipped when formatting changed: this tree will never be merged.
       - name: Run clippy
         if: (env.MODE == 'full' || env.MODE == 'warm') && steps.fmt.outputs.changed != 'true'
-        run: cargo clippy --locked --all-targets
+        run: cargo clippy --workspace --locked --all-targets
 
       - name: Check the version bump compiles
         if: env.MODE == 'light'
-        run: cargo check --locked --all-targets
+        run: cargo check --workspace --locked --all-targets
 
       - name: Run tests
         if: env.MODE == 'full' && steps.fmt.outputs.changed != 'true'
-        run: cargo test --locked
+        run: cargo test --workspace --locked
 
       # Mint the write token only after project code has finished running.
       - name: Create formatter token
