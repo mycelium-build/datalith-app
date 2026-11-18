@@ -24,6 +24,8 @@ pub const WORKSPACE_CONTEXT: &str = "Workspace";
 pub const NOTE_CONTEXT: &str = "Note";
 pub const TODO_LIST_CONTEXT: &str = "TodoList";
 pub const BASE_CONTEXT: &str = "Base";
+/// Key context of the modal panels (settings, licenses, palette).
+pub const MODAL_CONTEXT: &str = "Modal";
 
 /// Where a shortcut applies.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,6 +152,16 @@ const DEFAULTS_OVER_FIELDS: &[&str] = &[
     "search-tasks",
 ];
 
+/// Application-wide shortcuts that stay active in a modal. Every other
+/// workspace shortcut is suspended there, so it can't act behind the panel.
+const ACTIVE_IN_MODALS: &[&str] = &[
+    "quit",
+    "open-settings",
+    "toggle-theme",
+    "quick-switcher",
+    "search-files",
+];
+
 /// Static shortcut metadata, default binding, and action constructors.
 #[derive(Clone, Copy)]
 struct ShortcutDefinition {
@@ -169,16 +181,24 @@ impl ShortcutDefinition {
     /// match inside a text field of the zone, at the field's depth, where
     /// they win because they're registered after the component bindings.
     /// Keys that type a character never match inside a text field.
+    /// Workspace zones are suspended in modals, except for a few app actions.
     fn predicate(&self, binding: &Binding) -> Option<String> {
         let keys = binding.keys.as_deref()?;
         let zone = binding.zone.predicate();
+        let zone = if matches!(binding.zone, ShortcutZone::Global | ShortcutZone::Interface)
+            && !ACTIVE_IN_MODALS.contains(&self.id)
+        {
+            format!("{zone} && !{MODAL_CONTEXT}")
+        } else {
+            zone.to_owned()
+        };
         Some(
             if self.is_default(binding) && DEFAULTS_OVER_FIELDS.contains(&self.id) {
                 format!("{zone} > Input || {zone}")
             } else if types_character(keys) && binding.zone != ShortcutZone::Interface {
                 format!("{zone} && !Input")
             } else {
-                zone.to_owned()
+                zone
             },
         )
     }
@@ -874,12 +894,12 @@ pub fn captured_binding(keystroke: &Keystroke) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SHORTCUTS, ShortcutZone, default_bindings, display_binding, effective_bindings,
-        overrides_for, parse_keystroke,
+        MODAL_CONTEXT, SHORTCUTS, ShortcutZone, WORKSPACE_CONTEXT, default_bindings,
+        display_binding, effective_bindings, overrides_for, parse_keystroke,
     };
     use crate::app::actions::Quit;
     use crate::app::settings::ShortcutOverride;
-    use gpui_kit::{Action, KeyBinding, KeyContext, Keymap, actions};
+    use gpui_kit::{Action, KeyBinding, KeyBindingContextPredicate, KeyContext, Keymap, actions};
     use std::collections::BTreeMap;
 
     actions!(
@@ -1018,6 +1038,34 @@ mod tests {
                 .0
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn modals_suspend_workspace_shortcuts_except_app_actions() {
+        let workspace = KeyContext::parse(WORKSPACE_CONTEXT).expect("valid context");
+        let modal = KeyContext::parse(MODAL_CONTEXT).expect("valid context");
+        let input = KeyContext::parse("Input").expect("valid context");
+        let in_modal = [workspace.clone(), modal.clone()];
+        let typing_in_modal = [workspace.clone(), modal, input];
+        let active = |id: &str, stack: &[KeyContext]| {
+            let definition = SHORTCUTS
+                .iter()
+                .find(|definition| definition.id == id)
+                .expect("known shortcut");
+            let predicate = definition
+                .predicate(&definition.default_binding())
+                .expect("bound by default");
+            KeyBindingContextPredicate::parse(&predicate)
+                .expect("valid predicate")
+                .depth_of(stack)
+                .is_some()
+        };
+
+        assert!(active("new-note", std::slice::from_ref(&workspace)));
+        assert!(!active("new-note", &in_modal));
+        assert!(!active("delete", &in_modal));
+        assert!(active("quit", &typing_in_modal));
+        assert!(active("quick-switcher", &in_modal));
     }
 
     #[test]
