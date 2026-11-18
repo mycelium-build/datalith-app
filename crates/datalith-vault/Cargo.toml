@@ -1,0 +1,38 @@
+[package]
+name = "datalith-vault"
+description = "Datalith vault access: file operations, cross-document links, catalog and search."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+datalith-core.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tantivy.workspace = true
+levenshtein_automata.workspace = true
+tantivy-fst.workspace = true
+time.workspace = true
+notify.workspace = true
+yaml_serde.workspace = true
+rand.workspace = true
+pollster.workspace = true
+turso.workspace = true
+rayon.workspace = true
+conv.workspace = true
+
+[features]
+# Installs `testing::environment()` automatically, for the tests of crates built on this one.
+test-support = []
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "catalog"
+harness = false
+
+[lints]
+workspace = true

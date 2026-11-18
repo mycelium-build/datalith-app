@@ -1,18 +1,28 @@
-[package]
-name = "datalith"
+[workspace]
+resolver = "3"
+members = [
+  "apps/desktop",
+  "crates/datalith-core",
+  "crates/datalith-server",
+  "crates/datalith-ui",
+  "crates/datalith-vault",
+]
+# `cargo build`, `cargo run` and `cargo build --release` at the root build the desktop app.
+default-members = ["apps/desktop"]
+
+[workspace.package]
 version = "1.1.2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/mycelium-build/datalith-app"
+publish = false
 
-[[package.metadata.packager.deep_link_protocols]]
-name = "Datalith"
-schemes = ["datalith"]
+[workspace.dependencies]
+datalith-core = { path = "crates/datalith-core" }
+datalith-server = { path = "crates/datalith-server" }
+datalith-ui = { path = "crates/datalith-ui" }
+datalith-vault = { path = "crates/datalith-vault" }
 
-[target.'cfg(windows)'.build-dependencies]
-embed-resource = "3.0.9"
-
-[dependencies]
 gpui-kit = { version = "0.9.0", features = [
   "tree-sitter-markdown",
   "tree-sitter-yaml",
@@ -43,23 +53,15 @@ conv = "0.3.3"
 poem = "3.1.12"
 poem-openapi = { version = "5.1.16", features = ["swagger-ui"] }
 tokio = { version = "1.53.1", features = ["rt", "macros", "sync"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
-
-[dev-dependencies]
+embed-resource = "3.0.9"
 criterion = { version = "0.8.2", features = ["html_reports"] }
-poem = { version = "3.1.12", features = ["test"] }
 minisign = "0.10"
 base64 = "0.23"
 
-[[bench]]
-name = "catalog"
-harness = false
-
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 excessive_nesting = "deny"

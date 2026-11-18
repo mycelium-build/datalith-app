@@ -1,0 +1,18 @@
+[package]
+name = "datalith-core"
+description = "Datalith document formats, parsing, expressions and wiki link rules, independent of GPUI and of a vault location."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+pulldown-cmark.workspace = true
+percent-encoding.workspace = true
+yaml_serde.workspace = true
+
+[lints]
+workspace = true

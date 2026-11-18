@@ -104,7 +104,7 @@ jobs:
             for (const line of manifest.split(/\r?\n/)) {
               const section = line.match(/^\s*\[([^\]]+)]\s*(?:#.*)?$/)
               if (section) {
-                inPackage = section[1].trim() === 'package'
+                inPackage = section[1].trim() === 'workspace.package'
                 continue
               }
               if (inPackage) {
@@ -118,7 +118,7 @@ jobs:
 
             if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
               core.setFailed(
-                `Expected a stable semantic version in Cargo.toml [package], found ${version ?? 'none'}`
+                `Expected a stable semantic version in Cargo.toml [workspace.package], found ${version ?? 'none'}`
               )
               return
             }

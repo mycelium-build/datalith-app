@@ -1,0 +1,608 @@
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
+
+use anyhow::{Context, Result, anyhow};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+
+mod database;
+use database::{Backlink, CatalogDatabase};
+
+use crate::search::{SearchEngine, SearchHit};
+use crate::{DATALITH_DIR_NAME, source::VaultSource};
+use datalith_core::file_types::RegisteredFileTypes;
+use datalith_core::links::qualified_target;
+
+mod types;
+
+const CATALOG_INITIALIZATION_STACK_SIZE: usize = 16 * 1024 * 1024;
+const CATALOG_WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+pub use types::*;
+
+struct CatalogInner {
+    source: VaultSource,
+    database: CatalogDatabase,
+    file_types: RegisteredFileTypes,
+    search: Mutex<SearchEngine>,
+    subscribers: Mutex<Vec<mpsc::Sender<CatalogEvent>>>,
+    watcher: Mutex<Option<RecommendedWatcher>>,
+    state: Mutex<CatalogState>,
+}
+
+#[derive(Clone)]
+pub struct VaultCatalog {
+    inner: Arc<CatalogInner>,
+}
+
+fn rebase_event_paths(event: &mut notify::Event, observed_root: &Path, logical_root: &Path) {
+    for path in &mut event.paths {
+        if let Ok(relative) = path.strip_prefix(observed_root) {
+            *path = logical_root.join(relative);
+        }
+    }
+}
+
+impl VaultCatalog {
+    /// Opens the vault catalog and starts its initial synchronization.
+    ///
+    /// # Errors
+    /// Returns an error if the vault, database, index or synchronization thread cannot be opened.
+    pub fn open(root: &Path, file_types: RegisteredFileTypes) -> Result<Self> {
+        let source = VaultSource::for_root(root)?;
+        let database = pollster::block_on(CatalogDatabase::open(root))?;
+        let search = SearchEngine::open_existing(root, file_types.clone())?;
+
+        let inner = Arc::new(CatalogInner {
+            source,
+            database,
+            file_types: file_types.clone(),
+            search: Mutex::new(search),
+            subscribers: Mutex::new(Vec::new()),
+            watcher: Mutex::new(None),
+            state: Mutex::new(CatalogState::Syncing),
+        });
+        let catalog = Self {
+            inner: inner.clone(),
+        };
+
+        std::thread::Builder::new()
+            .name("vault-catalog-sync".into())
+            .stack_size(CATALOG_INITIALIZATION_STACK_SIZE)
+            .spawn(move || {
+                Self::sync_on_background_thread(&inner, &file_types);
+            })
+            .context("Failed to start Vault Catalog sync thread")?;
+
+        Ok(catalog)
+    }
+
+    fn sync_on_background_thread(inner: &Arc<CatalogInner>, file_types: &RegisteredFileTypes) {
+        let result = (|| -> Result<()> {
+            let root = inner.source.root();
+            let initial = walk_tracked_files(&root, file_types)?;
+            let stored = pollster::block_on(inner.database.stored_paths())?;
+            let removed = stored
+                .into_iter()
+                .filter(|path| !initial.contains(path))
+                .collect::<Vec<_>>();
+            let initial = initial.into_iter().collect::<Vec<_>>();
+            let sync_result =
+                pollster::block_on(inner.database.synchronize(&removed, &initial, file_types))?;
+
+            let search = inner
+                .search
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock Vault Search Index"))?;
+            search.indexer.synchronize(&sync_result.all)?;
+            drop(search);
+
+            if matches!(&inner.source, VaultSource::Directory(_)) {
+                let (notify_tx, notify_rx) = mpsc::channel();
+                let observed_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+                let logical_root = root.to_path_buf();
+                let mut watcher = notify::recommended_watcher(
+                    move |mut event: notify::Result<notify::Event>| {
+                        if let Ok(event) = &mut event {
+                            rebase_event_paths(event, &observed_root, &logical_root);
+                        }
+                        if let Err(error) = notify_tx.send(event) {
+                            // Background task there can be no UI
+                            eprintln!("Vault Catalog watcher stopped: {error}");
+                        }
+                    },
+                )?;
+                watcher.watch(&root, RecursiveMode::Recursive)?;
+
+                if let Ok(mut guard) = inner.watcher.lock() {
+                    *guard = Some(watcher);
+                }
+
+                spawn_reconciler(inner, notify_rx)?;
+            }
+
+            publish_event(inner, sync_result.all, true);
+
+            if let Ok(mut state) = inner.state.lock() {
+                *state = CatalogState::Ready;
+            }
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            eprintln!("Catalog sync failed: {e}");
+            if let Ok(mut state) = inner.state.lock() {
+                *state = CatalogState::Failed;
+            }
+            publish_event(inner, Vec::new(), false);
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    /// # Panics
+    /// Panics when synchronization exceeds the test timeout.
+    pub fn wait_until_ready(&self, timeout: std::time::Duration) {
+        let start = std::time::Instant::now();
+        loop {
+            let state = self.inner.state.lock().ok().map(|s| *s);
+            if matches!(state, Some(CatalogState::Ready | CatalogState::Failed)) {
+                break;
+            }
+            assert!(
+                start.elapsed() <= timeout,
+                "VaultCatalog sync did not complete within {timeout:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[must_use]
+    pub fn state(&self) -> CatalogState {
+        self.inner
+            .state
+            .lock()
+            .map_or(CatalogState::Syncing, |s| *s)
+    }
+
+    #[must_use]
+    pub fn root(&self) -> PathBuf {
+        self.inner.source.root().into_owned()
+    }
+
+    #[must_use]
+    pub fn has_yaml_frontmatter(&self, path: &Path) -> bool {
+        self.inner
+            .file_types
+            .capabilities(path)
+            .is_some_and(|capabilities| capabilities.yaml_frontmatter)
+    }
+
+    #[must_use]
+    pub fn paths(&self) -> Vec<PathBuf> {
+        let database = self.inner.database.clone();
+        run_blocking("paths", move || {
+            pollster::block_on(database.stored_paths()).unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
+    /// Returns up to `limit` suggestions for a partially typed wiki-link target.
+    ///
+    /// Matching is case-insensitive over the display label and the vault-relative path.
+    /// `excluded` is normally the note being edited and is left out of its own suggestions.
+    ///
+    /// Catalog failures are reported as an empty list.
+    /// The popup already hides when there is nothing to show
+    /// and a broken catalog must not interrupt typing.
+    #[must_use]
+    pub fn suggest_wiki_links(
+        &self,
+        query: &str,
+        excluded: Option<&Path>,
+        limit: usize,
+    ) -> Vec<WikiLinkMatch> {
+        // The first failure is logged; later ones are silent to avoid one warning per keystroke.
+        static LOGGED_FAILURE: std::sync::Once = std::sync::Once::new();
+
+        let database = self.inner.database.clone();
+        let root = self.root();
+        let excluded = excluded
+            .and_then(|path| path.strip_prefix(&root).ok())
+            .map(database::path_text);
+        let query = query.to_lowercase();
+        let result = run_blocking("wiki_links", move || {
+            pollster::block_on(database.suggest_wiki_links(&query, excluded.as_deref(), limit))
+        })
+        .and_then(std::convert::identity);
+        result.unwrap_or_else(|error| {
+            LOGGED_FAILURE.call_once(|| {
+                eprintln!("Wiki-link suggestions failed: {error}");
+            });
+            Vec::new()
+        })
+    }
+
+    /// Resolves the target to insert for an accepted wiki-link suggestion.
+    ///
+    /// This is a single duplicate-name query, run once per accepted suggestion
+    /// rather than on every keystroke. If the query fails, the qualified path
+    /// is used because it is always safe.
+    #[must_use]
+    pub fn wiki_link_target(&self, path: &str, label: &str) -> String {
+        let database = self.inner.database.clone();
+        let path = path.to_string();
+        let label = label.to_string();
+        let fallback = qualified_target(&path);
+        run_blocking("wiki_link_target", move || {
+            pollster::block_on(database.wiki_link_target(&path, &label))
+        })
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(fallback)
+    }
+
+    #[must_use]
+    pub fn events(&self) -> mpsc::Receiver<CatalogEvent> {
+        let (sender, receiver) = mpsc::channel();
+        if let Ok(mut subscribers) = self.inner.subscribers.lock() {
+            subscribers.push(sender);
+        }
+        receiver
+    }
+
+    #[must_use]
+    pub fn search(&self, query: &str) -> Vec<SearchHit> {
+        self.inner
+            .search
+            .lock()
+            .map_or_default(|search| search.search(query))
+    }
+
+    #[must_use]
+    pub fn resolve(&self, authored: &str) -> Option<PathBuf> {
+        let database = self.inner.database.clone();
+        let authored = authored.to_string();
+        run_blocking("resolve", move || {
+            pollster::block_on(database.resolve_path(&authored)).unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub fn resolve_paths(
+        &self,
+        targets: std::collections::BTreeSet<String>,
+    ) -> std::collections::BTreeMap<String, Option<PathBuf>> {
+        let database = self.inner.database.clone();
+        run_blocking("resolve", move || {
+            pollster::block_on(database.resolve_paths(targets)).unwrap_or_default()
+        })
+        .unwrap_or_default()
+    }
+
+    pub(crate) fn backlinks_under(&self, target: &Path) -> Result<Vec<Backlink>> {
+        let root = self.root();
+        let database = self.inner.database.clone();
+        let target = target.to_path_buf();
+        run_blocking("backlinks", move || {
+            pollster::block_on(database.backlinks_under(&target)).map(|links| {
+                links
+                    .into_iter()
+                    .map(|mut link| {
+                        link.source = root.join(link.source);
+                        link.target_path = root.join(link.target_path);
+                        link
+                    })
+                    .collect()
+            })
+        })?
+    }
+
+    /// Reconciles the given paths into the database synchronously
+    /// (blocking until done).
+    /// Lets a caller that just wrote to disk guarantee that a following `query_base` sees the fresh frontmatter,
+    /// instead of losing the race against the async notify watcher.
+    pub fn refresh_paths(&self, paths: Vec<PathBuf>) {
+        let inner = self.inner.clone();
+        let _ = run_blocking("refresh", move || reconcile_paths(&inner, paths));
+    }
+
+    // Callers await from UI code even though the body runs on a blocking thread.
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    ///
+    /// # Errors
+    /// Returns an error if the selection cannot be compiled or queried.
+    pub async fn query_base(&self, query: BaseQuery) -> Result<BaseSelection> {
+        let database = self.inner.database.clone();
+        run_blocking("query", move || {
+            pollster::block_on(database.query_base(query))
+        })?
+    }
+}
+
+/// Runs catalog work on a thread with headroom for turso's recursive SQL compiler.
+fn run_blocking<T>(label: &str, work: impl FnOnce() -> T + Send + 'static) -> Result<T>
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .name(format!("vault-catalog-{label}"))
+        .stack_size(CATALOG_WORKER_STACK_SIZE)
+        .spawn(work)
+        .context("Failed to start catalog worker thread")?
+        .join()
+        .map_err(|_| anyhow!("Catalog {label} thread panicked"))
+}
+
+fn spawn_reconciler(
+    inner: &Arc<CatalogInner>,
+    receiver: mpsc::Receiver<notify::Result<notify::Event>>,
+) -> Result<()> {
+    let weak = Arc::downgrade(inner);
+    std::thread::Builder::new()
+        .name("vault-catalog-reconciler".into())
+        .stack_size(CATALOG_WORKER_STACK_SIZE)
+        .spawn(move || {
+            while let Ok(event) = receiver.recv() {
+                let Some(inner) = weak.upgrade() else { break };
+                let Ok(event) = event else { continue };
+                let mut event_paths = event.paths;
+                while let Ok(next) = receiver.try_recv() {
+                    if let Ok(next) = next {
+                        event_paths.extend(next.paths);
+                    }
+                }
+                reconcile_paths(&inner, event_paths);
+            }
+        })
+        .context("Failed to start Vault Catalog reconciler")?;
+    Ok(())
+}
+
+fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
+    let mut changed = BTreeSet::new();
+    let mut removed = BTreeSet::new();
+    let root = inner.source.root();
+    let Ok(known) = pollster::block_on(inner.database.stored_paths()) else {
+        return;
+    };
+    let known = known.into_iter().collect::<BTreeSet<_>>();
+
+    for path in event_paths {
+        if !path.starts_with(&root) || path.starts_with(root.join(DATALITH_DIR_NAME)) {
+            continue;
+        }
+        if path.is_dir() {
+            let Ok(current) = walk_tracked_files(&path, &inner.file_types) else {
+                continue;
+            };
+            changed.extend(current.iter().cloned());
+            removed.extend(
+                known
+                    .iter()
+                    .filter(|known_path| {
+                        known_path.starts_with(&path) && !current.contains(*known_path)
+                    })
+                    .cloned(),
+            );
+        } else if path.is_file() && inner.file_types.is_tracked(&path) {
+            changed.insert(path);
+        } else {
+            removed.extend(
+                known
+                    .iter()
+                    .filter(|known_path| **known_path == path || known_path.starts_with(&path))
+                    .cloned(),
+            );
+        }
+    }
+    changed.retain(|path| !removed.contains(path));
+    if changed.is_empty() && removed.is_empty() {
+        return;
+    }
+
+    let changed = changed.into_iter().collect::<Vec<_>>();
+    let removed = removed.into_iter().collect::<Vec<_>>();
+    let Ok(sync_result) = pollster::block_on(inner.database.synchronize(
+        &removed,
+        &changed,
+        &inner.file_types,
+    )) else {
+        return;
+    };
+    // `sync_result.changed` contains only files whose content changed;
+    // unchanged files are not rewritten, reindexed, or re-published.
+    // A reported path that is absent from `sync_result.all` was not synchronized at all
+    // (deleted mid-sync or unreadable) and must be dropped from the derived representations too.
+    let synchronized_set = sync_result.all.iter().collect::<BTreeSet<_>>();
+    let omitted = changed
+        .iter()
+        .filter(|path| !synchronized_set.contains(path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut removed_from_derived = removed;
+    removed_from_derived.extend(omitted);
+    let structure_changed = sync_result.all.iter().any(|path| !known.contains(path))
+        || removed_from_derived.iter().any(|path| known.contains(path));
+    if let Ok(search) = inner.search.lock() {
+        let search = search;
+        if let Err(error) = search
+            .indexer
+            .apply(&removed_from_derived, &sync_result.changed)
+        {
+            // Background task there can be no UI
+            eprintln!("Failed to update Vault Search Index: {error}");
+        }
+    }
+    let mut paths = removed_from_derived;
+    paths.extend(sync_result.changed);
+    publish_event(inner, paths, structure_changed);
+}
+
+fn publish_event(inner: &CatalogInner, mut paths: Vec<PathBuf>, structure_changed: bool) {
+    if paths.is_empty() {
+        return;
+    }
+    paths.sort();
+    paths.dedup();
+    let event = CatalogEvent {
+        paths,
+        structure_changed,
+    };
+    if let Ok(mut subscribers) = inner.subscribers.lock() {
+        subscribers.retain(|subscriber| subscriber.send(event.clone()).is_ok());
+    }
+}
+
+fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> Result<BTreeSet<PathBuf>> {
+    let source = VaultSource::for_root(root)
+        .with_context(|| format!("Failed to open Vault source: {}", root.display()))?;
+    Ok(source
+        .paths()?
+        .into_iter()
+        .filter(|path| file_types.is_tracked(path))
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datalith_core::file_types::FileTypeCapabilities;
+
+    fn searched_paths(hits: Vec<SearchHit>) -> Vec<PathBuf> {
+        hits.into_iter().map(|hit| hit.path).collect()
+    }
+
+    #[test]
+    fn changed_paths_reconcile_catalog_and_search_index() {
+        let root =
+            std::env::temp_dir().join(format!("datalith-catalog-notify-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
+        let events = catalog.events();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        while events.try_recv().is_ok() {}
+        let path = root.join("Observed.md");
+
+        std::fs::write(&path, "distinctive watcher content").unwrap();
+        reconcile_paths(&catalog.inner, vec![path.clone()]);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let event = loop {
+            if let Ok(event) = events.recv_timeout(std::time::Duration::from_millis(50)) {
+                break event;
+            }
+            assert!(
+                std::time::Instant::now() <= deadline,
+                "catalog did not publish a reconcile event within 5s"
+            );
+        };
+        assert!(event.structure_changed);
+        assert!(catalog.paths().contains(&path));
+        assert_eq!(catalog.resolve("Observed"), Some(path.clone()));
+        let hits = catalog.search("distinctive watcher");
+        assert!(hits.iter().any(|hit| {
+            hit.snippet.contains("distinctive watcher") && !hit.highlights.is_empty()
+        }));
+        assert_eq!(searched_paths(hits), vec![path]);
+        drop(catalog);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn directory_observation_publishes_only_tracked_files() {
+        let root = std::env::temp_dir().join(format!(
+            "datalith-catalog-observed-paths-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = root.join("folder");
+        std::fs::create_dir_all(&folder).unwrap();
+        let tracked = folder.join("Tracked.md");
+        let hidden_tracked = folder.join(".Hidden.md");
+        std::fs::write(&tracked, "tracked").unwrap();
+        std::fs::write(&hidden_tracked, "hidden but tracked").unwrap();
+        std::fs::write(folder.join("Ignored.txt"), "ignored").unwrap();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
+        let events = catalog.events();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+        while events.try_recv().is_ok() {}
+        assert_eq!(
+            searched_paths(catalog.search("hidden")),
+            vec![hidden_tracked]
+        );
+
+        let added = folder.join("New.md");
+        std::fs::write(&added, "new tracked content").unwrap();
+        reconcile_paths(&catalog.inner, vec![folder]);
+
+        let event = events
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(event.paths, vec![added]);
+        assert!(event.structure_changed);
+        drop(catalog);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn embedded_vault_is_catalogued_and_searchable_without_materialization() {
+        let root = crate::testing::DOCUMENTATION.root();
+        let file_types = RegisteredFileTypes::new([(
+            "md".into(),
+            FileTypeCapabilities {
+                text_search: true,
+                wiki_links: true,
+                yaml_frontmatter: true,
+            },
+        )]);
+        let catalog = VaultCatalog::open(&root, file_types).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
+
+        let welcome = root.join("Welcome.md");
+        assert_eq!(catalog.state(), CatalogState::Ready);
+        assert!(catalog.paths().contains(&welcome));
+        assert!(searched_paths(catalog.search("Datalith")).contains(&welcome));
+        assert_eq!(catalog.resolve("Basics"), Some(root.join("Basics.md")));
+        let base = pollster::block_on(catalog.query_base(BaseQuery {
+            filters: datalith_core::filter::Filter::MatchAll,
+            formulas: std::collections::BTreeMap::default(),
+            projections: vec!["category".into()],
+            sort: Vec::new(),
+            group_by: None,
+            summaries: Vec::new(),
+            classes: Vec::new(),
+            limit: Some(100),
+        }))
+        .unwrap();
+        let welcome_row = base
+            .documents
+            .iter()
+            .find(|document| document.path == welcome)
+            .expect("Base query includes embedded Welcome metadata");
+        assert_eq!(welcome_row.values, vec![serde_json::json!("welcome")]);
+        assert!(!root.exists());
+
+        drop(catalog);
+        let cache = crate::environment::vault_dir(&root).unwrap();
+        let test_cache_root = cache.parent().unwrap().parent().unwrap();
+        let _ = std::fs::remove_dir_all(test_cache_root);
+    }
+}

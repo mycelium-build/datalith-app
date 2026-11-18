@@ -1,0 +1,557 @@
+// The gpui `actions!` macro generates unit structs deriving `PartialEq` without `Eq`;
+// that lint can only be suppressed here, not in the macro itself.
+#![allow(clippy::derive_partial_eq_without_eq)]
+
+use gpui_kit::component::{Theme, ThemeMode};
+use gpui_kit::{App, AppContext, PathPromptOptions, SharedString, actions};
+use std::path::PathBuf;
+
+use crate::app::{AppState, settings::ThemePreference, system};
+use crate::ui::palette::PaletteKind;
+use crate::ui::tabs::NavigationAction;
+use crate::ui::{
+    DatalithView, PendingOpen, notifications,
+    settings::{DOCS_URL, SettingsView},
+};
+use datalith_ui::handler::FileHandlerEvent;
+use datalith_vault::CatalogState;
+use datalith_vault::file_ops;
+
+pub use datalith_ui::actions::*;
+
+actions!(
+    datalith,
+    [
+        OpenVault,
+        OpenVaultSelector,
+        ToggleSearch,
+        ClosePalette,
+        ToggleQuickSwitcher,
+        NewFile,
+        NewTodoList,
+        NewBase,
+        NewFolder,
+        Rename,
+        Delete,
+        Duplicate,
+        OpenInExplorer,
+        CopyPath,
+        CloseTab,
+        NewTab,
+        FocusSidebar,
+        ToggleTheme,
+        OpenSettings,
+        OpenThemes,
+        CheckForUpdates,
+        OpenShortcuts,
+        OpenDocumentation,
+        OpenAbout,
+        OpenLicenses,
+        OpenSource,
+        SelectTab1,
+        SelectTab2,
+        SelectTab3,
+        SelectTab4,
+        SelectTab5,
+        SelectTab6,
+        SelectTab7,
+        SelectTab8,
+        SelectLastTab,
+        NextTab,
+        PreviousTab,
+        ToggleEditorMode,
+        GoBack,
+        GoForward,
+        OpenLink,
+        Quit,
+    ]
+);
+
+macro_rules! with_view {
+    ($cx:expr, |$view:ident, $cx2:ident| $body:block) => {
+        if let Some($view) = $cx.read_global(|state: &AppState, _| state.view.clone()) {
+            $view.update($cx, |$view, $cx2| $body);
+        }
+    };
+}
+
+// Keyboard and menu commands share the same vault capability check.
+macro_rules! with_writable_view {
+    ($cx:expr, |$view:ident, $cx2:ident| $body:block) => {
+        with_view!($cx, |$view, $cx2| {
+            if $view
+                .root_path
+                .as_deref()
+                .is_some_and(datalith_vault::source::is_read_only)
+            {
+                return;
+            }
+            $body
+        });
+    };
+}
+
+pub fn register(cx: &mut App) {
+    cx.on_action(quit);
+    cx.on_action(check_for_updates);
+    cx.on_action(open_vault);
+    cx.on_action(toggle_search);
+    cx.on_action(toggle_quick_switcher);
+    cx.on_action(close_palette);
+    cx.on_action(on_selection(handle_new_file));
+    cx.on_action(on_selection(handle_new_todo_list));
+    cx.on_action(on_selection(handle_new_base));
+    cx.on_action(on_selection(handle_new_folder));
+    cx.on_action(on_selection(handle_rename));
+    cx.on_action(on_selection(handle_delete));
+    cx.on_action(on_selection(handle_duplicate));
+    cx.on_action(on_selection(handle_open_in_explorer));
+    cx.on_action(on_selection(handle_copy_path));
+    cx.on_action(handle_close_tab);
+    cx.on_action(handle_new_tab);
+    cx.on_action(handle_focus_sidebar);
+    cx.on_action(toggle_theme);
+    cx.on_action(handle_select_tab_1);
+    cx.on_action(handle_select_tab_2);
+    cx.on_action(handle_select_tab_3);
+    cx.on_action(handle_select_tab_4);
+    cx.on_action(handle_select_tab_5);
+    cx.on_action(handle_select_tab_6);
+    cx.on_action(handle_select_tab_7);
+    cx.on_action(handle_select_tab_8);
+    cx.on_action(handle_select_last_tab);
+    cx.on_action(|_: &NextTab, cx: &mut App| select_adjacent_tab(true, cx));
+    cx.on_action(|_: &PreviousTab, cx: &mut App| select_adjacent_tab(false, cx));
+    cx.on_action(open_settings);
+    cx.on_action(open_themes);
+    cx.on_action(open_shortcuts);
+    cx.on_action(open_documentation);
+    cx.on_action(open_about);
+    cx.on_action(open_licenses);
+    cx.on_action(open_source);
+    cx.on_action(toggle_editor_mode);
+    cx.on_action(go_back);
+    cx.on_action(go_forward);
+    cx.on_action(handle_open_link);
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.quit();
+}
+
+pub fn open_vault(_: &OpenVault, cx: &mut App) {
+    let rx = cx.prompt_for_paths(PathPromptOptions {
+        files: false,
+        directories: true,
+        multiple: false,
+        prompt: Some("Select a folder".into()),
+    });
+    cx.spawn(async move |cx| {
+        if let Ok(Ok(Some(paths))) = rx.await
+            && let Some(path) = paths.into_iter().next()
+        {
+            cx.update(|cx| open_vault_path(path, None, cx));
+        }
+    })
+    .detach();
+}
+
+/// Route vault selection through the main window so transition and document opening stay ordered.
+pub fn open_vault_path(path: PathBuf, pending: Option<PendingOpen>, cx: &mut App) {
+    let view = cx.global::<AppState>().view.clone();
+    if let Some(view) = view
+        && let Some(handle) = cx.windows().first().copied()
+        && let Err(error) = handle.update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.set_root_path(path, pending, window, cx);
+            });
+        })
+    {
+        notifications::push_window_notification(cx, notifications::workspace_load_failed(&error));
+    }
+}
+
+pub fn toggle_search(_: &ToggleSearch, cx: &mut App) {
+    with_workspace_window(
+        |view, window, cx| {
+            if view.palette.open {
+                view.dismiss_palette(window, cx);
+            } else {
+                view.palette.open_as(PaletteKind::Search);
+                let query = view.palette.search_query.clone();
+                if !query.trim().is_empty() {
+                    view.palette.search(view.vault_catalog.as_ref(), &query);
+                }
+            }
+            cx.notify();
+        },
+        cx,
+    );
+}
+
+pub fn toggle_quick_switcher(_: &ToggleQuickSwitcher, cx: &mut App) {
+    with_workspace_window(
+        |view, window, cx| {
+            if view.palette.open {
+                view.dismiss_palette(window, cx);
+            } else {
+                view.palette.open_as(PaletteKind::QuickSwitcher);
+                let open = view.tabs.open_paths();
+                let query = view.palette.qs_query.clone();
+                view.palette
+                    .refresh_quick_switcher(view.vault_catalog.as_ref(), &open, &query);
+            }
+            cx.notify();
+        },
+        cx,
+    );
+}
+
+pub fn close_palette(_: &ClosePalette, cx: &mut App) {
+    with_workspace_window(DatalithView::dismiss_palette, cx);
+}
+
+/// Keyboard and application menu commands resolve their target from the current selection.
+fn on_selection<A>(run: fn(&A, Option<PathBuf>, &mut App)) -> impl Fn(&A, &mut App) {
+    move |action, cx| run(action, None, cx)
+}
+
+pub fn handle_new_file(_: &NewFile, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Note.md", "");
+}
+
+pub fn handle_new_todo_list(_: &NewTodoList, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Todo List.todotxt", "");
+}
+
+pub fn handle_new_base(_: &NewBase, target: Option<PathBuf>, cx: &mut App) {
+    create_file(cx, target, "New Base.base", file_ops::NEW_BASE_CONTENT);
+}
+
+/// Creates a file next to the selection, opens it, and starts renaming it.
+fn create_file(cx: &mut App, target: Option<PathBuf>, base_name: &str, content: &str) {
+    with_writable_view!(cx, |view, cx| {
+        view.commit_rename(cx);
+        let target = target
+            .or_else(|| view.resolve_target(cx))
+            .or_else(|| view.root_path.clone());
+        if let Some(target) = target
+            && let Ok(created) = file_ops::create(&target, base_name, content)
+        {
+            if target.is_dir() {
+                let id: SharedString = target.to_string_lossy().to_string().into();
+                view.mark_tree_item_expanded(&id, true);
+            }
+            view.refresh_tree(cx);
+            view.rename_target = Some(created.clone());
+            view.pending_open = Some(PendingOpen::Created(created));
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_new_folder(_: &NewFolder, target: Option<PathBuf>, cx: &mut App) {
+    with_writable_view!(cx, |view, cx| {
+        view.commit_rename(cx);
+        let target = target
+            .or_else(|| view.resolve_target(cx))
+            .or_else(|| view.root_path.clone());
+        if let Some(target) = target
+            && let Ok(created) = file_ops::create_folder(&target)
+        {
+            view.refresh_tree(cx);
+            view.rename_target = Some(created);
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_rename(_: &Rename, target: Option<PathBuf>, cx: &mut App) {
+    with_writable_view!(cx, |view, cx| {
+        let catalog_blocked = view
+            .vault_catalog
+            .as_ref()
+            .is_none_or(|c| c.state() != CatalogState::Ready);
+        if catalog_blocked {
+            view.pending_notifications
+                .push(notifications::rename_while_loading());
+            cx.notify();
+            return;
+        }
+        view.commit_rename(cx);
+        let target = target.or_else(|| view.resolve_target(cx));
+        if let Some(target) = target {
+            view.rename_target = Some(target);
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_delete(_: &Delete, target: Option<PathBuf>, cx: &mut App) {
+    with_writable_view!(cx, |view, cx| {
+        let target_index = view.tree_state.read(cx).selected_index();
+        let target = target.or_else(|| view.resolve_target(cx));
+        view.commit_rename(cx);
+        if let Some(target) = target
+            && let Some(root) = view.root_path.clone()
+        {
+            match file_ops::delete(&root, &target) {
+                Ok(deleted) => view.push_deleted(deleted),
+                Err(e) => {
+                    eprintln!("{e}");
+                    cx.notify();
+                    return;
+                }
+            }
+            view.close_tabs_under(&target, cx);
+            view.refresh_tree(cx);
+            let count = view.visible_tree_entry_count(cx);
+            if count > 0 {
+                let new_ix = target_index.unwrap_or(0).min(count.saturating_sub(1));
+                view.tree_state.update(cx, |state, cx| {
+                    state.set_selected_index(Some(new_ix), cx);
+                });
+                if let Some(entry) = view.tree_state.read(cx).selected_entry() {
+                    view.last_sidebar_selection = Some(PathBuf::from(entry.item().id.to_string()));
+                }
+            }
+            view.focus_sidebar_requested = true;
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_duplicate(_: &Duplicate, target: Option<PathBuf>, cx: &mut App) {
+    with_writable_view!(cx, |view, cx| {
+        view.commit_rename(cx);
+        let target = target.or_else(|| view.resolve_target(cx));
+        if let Some(target) = target {
+            if let Ok(duplicated) = file_ops::duplicate(&target)
+                && duplicated.is_file()
+            {
+                view.pending_open = Some(PendingOpen::Created(duplicated));
+            }
+            view.refresh_tree(cx);
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_open_in_explorer(_: &OpenInExplorer, target: Option<PathBuf>, cx: &mut App) {
+    with_writable_view!(cx, |view, cx| {
+        let target = target.or_else(|| view.resolve_target(cx));
+        if let Some(target) = target
+            && let Err(error) = system::reveal_in_file_manager(&target)
+        {
+            notifications::push_window_notification(
+                cx,
+                notifications::reveal_in_file_manager_failed(&target, &error),
+            );
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_copy_path(_: &CopyPath, target: Option<PathBuf>, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        let target = target.or_else(|| view.resolve_target(cx));
+        if let Some(target) = target
+            && let Err(error) = system::copy_path(&target)
+        {
+            notifications::push_window_notification(
+                cx,
+                notifications::copy_path_failed(&target, &error),
+            );
+        }
+        cx.notify();
+    });
+}
+
+pub fn handle_close_tab(_: &CloseTab, cx: &mut App) {
+    with_workspace_window(DatalithView::close_active_tab, cx);
+}
+
+pub fn handle_new_tab(_: &NewTab, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.new_empty_tab(cx);
+        cx.notify();
+    });
+}
+
+pub fn toggle_editor_mode(_: &ToggleEditorMode, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.toggle_editor_mode(cx);
+    });
+}
+
+pub fn handle_focus_sidebar(_: &FocusSidebar, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.ensure_sidebar_selection(cx);
+        view.focus_sidebar_requested = true;
+        cx.notify();
+    });
+}
+
+pub fn toggle_theme(_: &ToggleTheme, cx: &mut App) {
+    let current_mode = Theme::global(cx).mode;
+    let new_mode = match current_mode {
+        ThemeMode::Light => ThemeMode::Dark,
+        ThemeMode::Dark => ThemeMode::Light,
+    };
+    let preference = match new_mode {
+        ThemeMode::Light => ThemePreference::Light,
+        ThemeMode::Dark => ThemePreference::Dark,
+    };
+    crate::ui::themes::change_mode(preference, cx);
+}
+
+pub fn open_themes(_: &OpenThemes, cx: &mut App) {
+    with_workspace_window(DatalithView::open_themes, cx);
+}
+
+fn with_workspace_window(
+    update: fn(&mut DatalithView, &mut gpui_kit::Window, &mut gpui_kit::Context<DatalithView>),
+    cx: &mut App,
+) {
+    if let Some(window) = cx.active_window() {
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, cx| {
+                with_view!(cx, |view, cx| {
+                    update(view, window, cx);
+                });
+            });
+        });
+    }
+}
+
+fn open_preferences(open: fn(&mut SettingsView), cx: &mut App) {
+    if let Some(window) = cx.active_window() {
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, cx| {
+                with_view!(cx, |view, cx| {
+                    open(&mut view.settings);
+                    view.settings.focus(window, cx);
+                    cx.notify();
+                });
+            });
+        });
+    }
+}
+
+pub fn open_settings(_: &OpenSettings, cx: &mut App) {
+    open_preferences(SettingsView::open, cx);
+}
+
+pub fn open_shortcuts(_: &OpenShortcuts, cx: &mut App) {
+    with_workspace_window(DatalithView::open_shortcuts, cx);
+}
+
+pub fn open_documentation(_: &OpenDocumentation, cx: &mut App) {
+    if let Err(error) = system::open_url(DOCS_URL) {
+        notifications::push_window_notification(
+            cx,
+            notifications::documentation_open_failed(&error),
+        );
+    }
+}
+
+pub fn open_about(_: &OpenAbout, cx: &mut App) {
+    open_preferences(SettingsView::open_about, cx);
+}
+
+pub fn open_licenses(_: &OpenLicenses, cx: &mut App) {
+    with_workspace_window(
+        |view, window, cx| {
+            view.licenses.open(window, cx);
+            cx.notify();
+        },
+        cx,
+    );
+}
+
+pub fn open_source(_: &OpenSource, cx: &mut App) {
+    let url = crate::ui::licenses::corresponding_source_url();
+    if let Err(error) = system::open_url(&url) {
+        notifications::push_window_notification(cx, notifications::open_url_failed(&url, &error));
+    }
+}
+
+fn select_tab_index(index: usize, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if view.tabs.select(index) {
+            view.focus_editor_requested = true;
+            cx.notify();
+        }
+    });
+}
+
+macro_rules! define_tab_handlers {
+    ($($handler:ident => $action:ty => $index:expr),* $(,)?) => {
+        $(
+            pub fn $handler(_: &$action, cx: &mut App) {
+                select_tab_index($index, cx);
+            }
+        )*
+    };
+}
+
+define_tab_handlers!(
+    handle_select_tab_1 => SelectTab1 => 0,
+    handle_select_tab_2 => SelectTab2 => 1,
+    handle_select_tab_3 => SelectTab3 => 2,
+    handle_select_tab_4 => SelectTab4 => 3,
+    handle_select_tab_5 => SelectTab5 => 4,
+    handle_select_tab_6 => SelectTab6 => 5,
+    handle_select_tab_7 => SelectTab7 => 6,
+    handle_select_tab_8 => SelectTab8 => 7,
+);
+
+pub fn handle_select_last_tab(_: &SelectLastTab, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if view.tabs.select_last() {
+            view.focus_editor_requested = true;
+            cx.notify();
+        }
+    });
+}
+
+fn select_adjacent_tab(forward: bool, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if view.tabs.select_adjacent(forward) {
+            view.focus_editor_requested = true;
+            cx.notify();
+        }
+    });
+}
+
+pub fn go_back(_: &GoBack, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.pending_navigation = Some(NavigationAction::GoBack);
+        cx.notify();
+    });
+}
+
+pub fn go_forward(_: &GoForward, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        view.pending_navigation = Some(NavigationAction::GoForward);
+        cx.notify();
+    });
+}
+
+pub fn handle_open_link(_: &OpenLink, cx: &mut App) {
+    with_view!(cx, |view, cx| {
+        if let Some(file_handler) = view.tabs.active_handler().cloned()
+            && let Some(url) = file_handler.read(cx).markdown_link_at_cursor(cx)
+        {
+            file_handler.update(cx, |_handler, cx| {
+                cx.emit(FileHandlerEvent::LinkClicked(url, true));
+            });
+        }
+    });
+}
+
+fn check_for_updates(_: &CheckForUpdates, cx: &mut App) {
+    if let Some(updater) = super::update::Updater::get(cx) {
+        updater.update(cx, super::update::Updater::check_now);
+    }
+}
