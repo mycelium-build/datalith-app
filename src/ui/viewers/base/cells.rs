@@ -1,6 +1,6 @@
 //! Cell rendering over projected snapshot values.
 
-use gpui_kit::base::actions::Cancel;
+use gpui_kit::base::actions::{Cancel, SelectDown, SelectLeft, SelectRight, SelectUp};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme, StyledExt, Theme, h_flex, v_flex};
 use gpui_kit::{
@@ -18,12 +18,20 @@ const CELL_EDITOR_CONTEXT: &str = "BaseCellEditor";
 /// Key context of the base viewer, where Escape closes a full-screen image.
 pub(super) const VIEWER_CONTEXT: &str = "BaseViewer";
 
+/// Key context around a graph view, where the arrow keys pan.
+pub(super) const GRAPH_CONTEXT: &str = "BaseGraph";
+
 /// Binds Escape to `Cancel` in a cell editor, after the field's own Escape,
-/// and in the viewer.
+/// and in the viewer; binds the arrows around a graph.
 pub fn bind_keys(cx: &mut App) {
+    let graph = Some(GRAPH_CONTEXT);
     cx.bind_keys([
         KeyBinding::new("escape", Cancel, Some(CELL_EDITOR_CONTEXT)),
         KeyBinding::new("escape", Cancel, Some(VIEWER_CONTEXT)),
+        KeyBinding::new("up", SelectUp, graph),
+        KeyBinding::new("down", SelectDown, graph),
+        KeyBinding::new("left", SelectLeft, graph),
+        KeyBinding::new("right", SelectRight, graph),
     ]);
 }
 
