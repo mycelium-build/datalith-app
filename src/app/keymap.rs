@@ -124,6 +124,7 @@ fn is_secondary(modifiers: Modifiers) -> bool {
 use super::settings::ShortcutOverride;
 
 use super::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, SearchTasks, ToggleTask};
+use super::actions::{Bold, InsertWikiLink, Italic};
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
     NewFolder, NewTab, NewTodoList, NextTab, OpenInExplorer, OpenLink, OpenSettings, OpenShortcuts,
@@ -570,6 +571,17 @@ shortcuts!(
         [Note],
         "Open link",
         OpenLink
+    ),
+    // Note
+    ("bold", "Note", "secondary-b", [Note], "Bold", Bold),
+    ("italic", "Note", "secondary-i", [Note], "Italic", Italic),
+    (
+        "insert-wiki-link",
+        "Note",
+        "secondary-k",
+        [Note],
+        "Insert wiki link",
+        InsertWikiLink
     ),
     // Tabs
     (
