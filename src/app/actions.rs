@@ -73,6 +73,11 @@ actions!(
         EditTaskDate,
         CollapseTask,
         ExpandTask,
+        NextView,
+        PreviousView,
+        ZoomIn,
+        ZoomOut,
+        ResetZoom,
     ]
 );
 

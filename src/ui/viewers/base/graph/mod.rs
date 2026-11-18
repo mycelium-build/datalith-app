@@ -100,6 +100,23 @@ impl GraphState {
         cx.notify();
     }
 
+    /// Zooms around the center of the canvas.
+    pub(super) fn zoom_by(&mut self, factor: f32, cx: &mut Context<Self>) {
+        let Some(viewport) = self.viewport() else {
+            return;
+        };
+        let center = point(viewport.x / 2.0, viewport.y / 2.0);
+        self.camera
+            .zoom_at(self.camera.zoom * factor, center, viewport);
+        cx.notify();
+    }
+
+    /// Fits the camera to the nodes again on the next layout.
+    pub(super) fn reset_zoom(&mut self, cx: &mut Context<Self>) {
+        self.camera_fitted = false;
+        cx.notify();
+    }
+
     fn viewport(&self) -> Option<Point<f32>> {
         self.canvas_bounds
             .map(|bounds| point(f32::from(bounds.size.width), f32::from(bounds.size.height)))

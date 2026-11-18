@@ -87,6 +87,16 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 
 On a priority, `↑` and `↓` change it. In a date, Escape restores the saved one.
 
+# Base
+
+| Action | Shortcut |
+| --- | --- |
+| Next / previous view | `Cmd/Ctrl+Alt+→` / `Cmd/Ctrl+Alt+←` |
+| Zoom in / out graph | `Cmd/Ctrl+=` / `Cmd/Ctrl+-` |
+| Reset graph zoom | `Cmd/Ctrl+0` |
+
+In a graph view, `Cmd/Ctrl+0` resets the zoom instead of focusing the sidebar.
+
 # Help
 
 | Action | Shortcut |
