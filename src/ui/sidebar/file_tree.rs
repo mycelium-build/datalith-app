@@ -3,15 +3,17 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::{
-    ActiveTheme, Icon, IconName, StyledExt, h_flex,
+    ActiveTheme, Icon, IconName, Selectable as _, StyledExt, h_flex,
     input::{Input, InputState},
     list::ListItem,
-    tree::{self, TreeEntry, TreeItem, TreeState},
+    menu::ContextMenuExt as _,
+    scroll::ScrollableElement as _,
+    tree::{TreeEntry, TreeItem, TreeState},
 };
 use gpui_kit::{
     App, AppContext, ClickEvent, Context, Entity, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, SharedString, StatefulInteractiveElement,
-    Styled, div, px,
+    StyleRefinement, Styled, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -102,45 +104,66 @@ impl DatalithView {
         active_read_only: bool,
     ) -> impl IntoElement {
         let view = cx.entity();
-        tree::tree(tree_state_entity, {
-            let view = view.clone();
-            move |ix, entry, selected, window, cx| {
-                // The selection keeps its fill wherever the focus is; a ring
-                // frames it while the tree has keyboard focus, so it shows
-                // whether the Sidebar shortcuts will act.
+        let tree_state = tree_state_entity.clone();
+        let scroll = tree_state.read(cx).scroll_handle().clone();
+        // The styled Tree paints its keyboard selection as active. Own the row
+        // styling here so the open tab and the keyboard cursor can be distinct.
+        let tree = gpui_kit::base::Tree::new(tree_state_entity)
+            .list_style(StyleRefinement::default().size_full())
+            .size_full()
+            .item(move |ix, entry, state, window, cx| {
                 let focused = view
                     .read(cx)
                     .sidebar_focus_handle
                     .contains_focused(window, cx);
-                // Every row has the border, so framing one doesn't shift it.
-                let frame = if selected && focused {
+                let frame = if state.is_selected() && focused {
                     cx.theme().ring
                 } else {
                     gpui_kit::transparent_black()
                 };
-                Self::render_tree_item(&view, ix, entry, selected, drop_box, cx)
+                let item = Self::render_tree_item(&view, ix, entry, drop_box, cx)
+                    .disabled(entry.is_disabled())
+                    .secondary_selected(state.is_right_clicked())
                     .border_1()
-                    .border_color(frame)
-            }
-        })
-        .context_menu(move |_ix, entry, menu, _window, cx| {
-            let path = Self::path_from_id(&entry.item().id);
-            view.update(cx, |v, _| {
-                v.context_menu_target = Some(path.clone());
+                    .border_color(frame);
+                let id = entry.item().id.clone();
+                let tree_state = tree_state.clone();
+                let view = view.clone();
+                div()
+                    .child(item)
+                    .context_menu(move |menu, _, cx| {
+                        if !tree_state
+                            .read(cx)
+                            .entry(ix)
+                            .is_some_and(|entry| entry.item().id == id && !entry.is_disabled())
+                        {
+                            return menu;
+                        }
+                        let path = Self::path_from_id(&id);
+                        view.update(cx, |v, _| v.context_menu_target = Some(path));
+                        super::new_entries(menu, active_read_only)
+                            .separator()
+                            .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
+                            .menu_with_disabled("Delete", Box::new(Delete), active_read_only)
+                            .menu_with_disabled("Duplicate", Box::new(Duplicate), active_read_only)
+                            .separator()
+                            .menu_with_disabled(
+                                "Open in Explorer",
+                                Box::new(OpenInExplorer),
+                                active_read_only,
+                            )
+                            .menu("Copy Path", Box::new(CopyPath))
+                    })
+                    .into_any_element()
             });
-            super::new_entries(menu, active_read_only)
-                .separator()
-                .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
-                .menu_with_disabled("Delete", Box::new(Delete), active_read_only)
-                .menu_with_disabled("Duplicate", Box::new(Duplicate), active_read_only)
-                .separator()
-                .menu_with_disabled(
-                    "Open in Explorer",
-                    Box::new(OpenInExplorer),
-                    active_read_only,
-                )
-                .menu("Copy Path", Box::new(CopyPath))
-        })
+        div()
+            .size_full()
+            .child(gpui_kit::base::ScrollBounce::new(
+                "tree-scroll-bounce",
+                &scroll,
+                tree,
+            ))
+            .vertical_scrollbar(&scroll)
     }
 
     /// Drops stale hover state once the drag ends, then reports the highlighted rows.
@@ -264,7 +287,6 @@ impl DatalithView {
         view: &Entity<Self>,
         ix: usize,
         entry: &TreeEntry,
-        selected: bool,
         drop_box: Option<(usize, usize)>,
         cx: &mut App,
     ) -> ListItem {
@@ -287,7 +309,6 @@ impl DatalithView {
                 depth,
                 is_folder,
                 is_expanded,
-                selected,
                 drop_box,
             )
         })
@@ -307,17 +328,16 @@ impl DatalithView {
         depth: usize,
         is_folder: bool,
         is_expanded: bool,
-        selected: bool,
         drop_box: Option<(usize, usize)>,
     ) -> ListItem {
         let is_renaming = this.rename_target.as_ref().is_some_and(|p| *p == path);
 
         let icon = this.tree_row_icon(path, is_folder, is_expanded);
 
-        // Not ListItem's selected style: the theme's tint can be too faint
-        // to find the selection when the tree has lost focus.
+        let is_open = this.tabs.active_path() == Some(path);
         let mut list_item = ListItem::new(ix)
-            .when(selected, |item| item.bg(cx.theme().selection))
+            .confirmed(is_open)
+            .when(is_open, |item| item.bg(cx.theme().selection))
             .text_color(cx.theme().sidebar_foreground)
             .pl(px(depth
                 .approx_as::<f32>()
