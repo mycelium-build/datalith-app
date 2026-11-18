@@ -46,20 +46,6 @@ Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file select
 
 In a text field, `Cmd/Ctrl+[` and `Cmd/Ctrl+]` change indentation. Open link works in notes.
 
-# Note
-
-| Action | Shortcut |
-| --- | --- |
-| Bold | `Cmd/Ctrl+B` |
-| Italic | `Cmd/Ctrl+I` |
-| Insert wiki link | `Cmd/Ctrl+K` |
-
-They wrap the selection, or remove the wrapping when the selection already has it.
-
-# Wiki links
-
-Type `[[` and three characters to open link suggestions. Use the arrow keys, Enter and Escape to pick or dismiss one.
-
 # Tabs
 
 | Action | Shortcut |
@@ -80,6 +66,29 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 | Toggle theme | `Cmd/Ctrl+Shift+D` |
 | Open settings | `Cmd/Ctrl+,` |
 | Open themes | `Cmd/Ctrl+Alt+,` |
+| Open shortcuts | `Cmd/Ctrl+/` |
+
+The scope of **Toggle edit / view** is fixed to **Everywhere** so the same shortcut works in both notes and bases.
+
+# Help
+
+| Action | Shortcut |
+| --- | --- |
+| Documentation | `F1` |
+
+# Note
+
+| Action | Shortcut |
+| --- | --- |
+| Bold | `Cmd/Ctrl+B` |
+| Italic | `Cmd/Ctrl+I` |
+| Insert wiki link | `Cmd/Ctrl+K` |
+
+They wrap the selection, or remove the wrapping when the selection already has it.
+
+# Wiki links
+
+Type `[[` and three characters to open link suggestions. Use the arrow keys, Enter and Escape to pick or dismiss one.
 
 # Todo list
 
@@ -88,7 +97,6 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 | Complete task | `↩` |
 | Add subtask | `Shift+↩` |
 | Delete task | `Cmd/Ctrl+Shift+Backspace` |
-| Previous / next task | `↑` / `↓` |
 | Search tasks | `Cmd/Ctrl+F` |
 | New task | `Cmd/Ctrl+N` |
 | Raise / lower priority | `Alt+↑` / `Alt+↓` |
@@ -103,24 +111,16 @@ On a priority, `↑` and `↓` change it. In a date, Escape restores the saved o
 | --- | --- |
 | Next / previous view | `Cmd/Ctrl+Alt+→` / `Cmd/Ctrl+Alt+←` |
 | Zoom in / out graph | `Cmd/Ctrl+=` / `Cmd/Ctrl+-` |
-| Reset graph zoom | `Cmd/Ctrl+0` |
-
-In a graph view, `Cmd/Ctrl+0` resets the zoom instead of focusing the sidebar.
+| Reset graph zoom | `Cmd/Ctrl+Alt+0` |
 
 # Fixed keys
 
 These keys aren't listed in the Shortcuts tab and can't be changed.
 
 - In a note being read, and in list, table and cards views, the arrow keys, Page Up / Page Down, Space / Shift+Space and Home / End scroll.
+- In a todo list, ↑ and ↓ move between tasks.
 - In a graph view, the arrow keys move the view.
 - In the sidebar, the arrow keys move the selection, Home / End jump to the first or last item, and Page Up / Page Down move ten items.
 - Escape closes panels, the palette, link suggestions, a full-screen card image, and cancels a rename or a cell edit.
-
-# Help
-
-| Action | Shortcut |
-| --- | --- |
-| Show shortcuts | `Cmd/Ctrl+/` |
-| Documentation | `F1` |
 
 See [[Basics]] if you are new to the app.
