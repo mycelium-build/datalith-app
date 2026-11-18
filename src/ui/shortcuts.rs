@@ -1,8 +1,5 @@
 //! Shortcut reference and remapping controls in a dedicated workspace tab.
 
-use gpui_kit::base::actions::{
-    SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
-};
 use gpui_kit::component::{
     ActiveTheme, ChildElement, Disableable, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariants as _},
@@ -16,9 +13,8 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement,
-    KeyBinding, Keystroke, KeystrokeEvent, ParentElement, Render, RenderOnce, ScrollHandle,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, point, px,
-    rems,
+    Keystroke, KeystrokeEvent, ParentElement, Render, RenderOnce, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
 
 use crate::app::keymap::{self, Shortcut, ShortcutRegistry, ShortcutZone};
@@ -57,31 +53,6 @@ impl RenderOnce for ShortcutRow {
             .w_full()
             .child(self.row)
     }
-}
-
-const SHORTCUTS_TAB_CONTEXT: &str = "ShortcutsTab";
-
-/// Binds the tab's scrolling keys, which aren't customizable.
-pub fn bind_keys(cx: &mut App) {
-    let context = Some(SHORTCUTS_TAB_CONTEXT);
-    cx.bind_keys([
-        KeyBinding::new("down", SelectDown, context),
-        KeyBinding::new("up", SelectUp, context),
-        KeyBinding::new("pagedown", SelectPageDown, context),
-        KeyBinding::new("pageup", SelectPageUp, context),
-        KeyBinding::new("home", SelectFirst, context),
-        KeyBinding::new("end", SelectLast, context),
-    ]);
-}
-
-#[derive(Clone, Copy)]
-enum ScrollStep {
-    LineDown,
-    LineUp,
-    PageDown,
-    PageUp,
-    Top,
-    Bottom,
 }
 
 struct ShortcutCapture {
@@ -136,24 +107,6 @@ impl ShortcutsView {
         clippy::arithmetic_side_effects,
         reason = "floating-point pixel arithmetic; scroll offsets are clamped to bounds"
     )]
-    fn scroll(&self, step: ScrollStep, window: &Window, cx: &mut Context<Self>) {
-        let current = self.scroll.offset();
-        let max = self.scroll.max_offset().y;
-        let line = window.rem_size() * 2.0;
-        let page = self.scroll.bounds().size.height * 0.85;
-        let next = match step {
-            ScrollStep::LineDown => current.y - line,
-            ScrollStep::LineUp => current.y + line,
-            ScrollStep::PageDown => current.y - page,
-            ScrollStep::PageUp => current.y + page,
-            ScrollStep::Top => px(0.),
-            ScrollStep::Bottom => -max,
-        };
-        self.scroll
-            .set_offset(point(current.x, next.clamp(-max, px(0.))));
-        cx.notify();
-    }
-
     fn intercept_keystroke(
         &mut self,
         event: &KeystrokeEvent,
@@ -610,28 +563,8 @@ impl Focusable for ShortcutsView {
 
 impl Render for ShortcutsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .id("shortcuts-editor")
-            .track_focus(&self.focus)
-            .key_context(SHORTCUTS_TAB_CONTEXT)
-            .on_action(cx.listener(|this, _: &SelectDown, window, cx| {
-                this.scroll(ScrollStep::LineDown, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SelectUp, window, cx| {
-                this.scroll(ScrollStep::LineUp, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SelectPageDown, window, cx| {
-                this.scroll(ScrollStep::PageDown, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SelectPageUp, window, cx| {
-                this.scroll(ScrollStep::PageUp, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SelectFirst, window, cx| {
-                this.scroll(ScrollStep::Top, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SelectLast, window, cx| {
-                this.scroll(ScrollStep::Bottom, window, cx);
-            }))
+        let root = v_flex().id("shortcuts-editor").track_focus(&self.focus);
+        super::scroll_keys::scroll_with_keys(root, &self.scroll)
             .size_full()
             .min_h_0()
             .bg(cx.theme().background)
