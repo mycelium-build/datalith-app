@@ -207,7 +207,7 @@ impl ShortcutDefinition {
 
     fn default_binding(&self) -> Binding {
         Binding {
-            keys: (!self.binding.is_empty()).then(|| self.binding.to_owned()),
+            keys: Some(self.binding.to_owned()),
             zone: self.zone,
         }
     }
@@ -417,7 +417,7 @@ impl ShortcutRegistry {
 }
 
 macro_rules! shortcuts {
-    ($(($id:literal, $category:literal, $keys:literal, [$zone:ident $(, $zones:ident)*], $description:literal, $action:ident)),* $(,)?) => {
+    ($(($id:literal, $category:literal, $keys:expr, [$zone:ident $(, $zones:ident)*], $description:literal, $action:ident)),* $(,)?) => {
         const SHORTCUTS: &[ShortcutDefinition] = &[
             $(ShortcutDefinition {
                 id: $id,
@@ -438,7 +438,6 @@ macro_rules! shortcuts {
 
 shortcuts!(
     // `secondary` resolves to Command on macOS and Ctrl on Linux/Windows.
-    // An empty binding means no default shortcut.
     // File
     ("quit", "File", "secondary-q", [Global], "Quit", Quit),
     (
@@ -452,7 +451,7 @@ shortcuts!(
     (
         "new-todo-list",
         "File",
-        "",
+        "secondary-alt-n",
         [Global, Sidebar],
         "New todo list",
         NewTodoList
@@ -460,7 +459,7 @@ shortcuts!(
     (
         "new-base",
         "File",
-        "",
+        "secondary-alt-b",
         [Global, Sidebar],
         "New base",
         NewBase
@@ -477,7 +476,12 @@ shortcuts!(
     (
         "delete",
         "File",
-        "secondary-backspace",
+        // The file managers' key: Delete, or Cmd+Backspace in Finder.
+        if cfg!(target_os = "macos") {
+            "secondary-backspace"
+        } else {
+            "delete"
+        },
         [Sidebar, Global],
         "Delete",
         Delete
