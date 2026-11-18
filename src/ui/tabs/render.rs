@@ -95,10 +95,7 @@ impl DatalithView {
                 )
             })
             .on_click({
-                let tree_state = self.tree_state.clone();
                 cx.listener(move |view, index, window, cx| {
-                    tree_state.update(cx, |state, cx| state.set_selected_index(None, cx));
-                    view.last_sidebar_selection = None;
                     view.tabs.select(*index);
                     view.focus_active_tab(window, cx);
                     cx.notify();
