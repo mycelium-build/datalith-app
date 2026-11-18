@@ -1,4 +1,4 @@
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::Selectable as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -105,15 +105,14 @@ impl DatalithView {
         tree::tree(tree_state_entity, {
             let view = view.clone();
             move |ix, entry, selected, window, cx| {
-                // The selection takes the accent color only while the tree has
-                // focus, so it shows whether the Sidebar shortcuts will act.
+                // Outline the selection while the tree has focus, so it shows
+                // whether the Sidebar shortcuts will act.
                 let focused = view
                     .read(cx)
                     .sidebar_focus_handle
                     .contains_focused(window, cx);
-                let unfocused_selection = cx.theme().sidebar_accent;
-                Self::render_tree_item(&view, ix, entry, selected && focused, drop_box, cx)
-                    .when(selected && !focused, |item| item.bg(unfocused_selection))
+                Self::render_tree_item(&view, ix, entry, selected, drop_box, cx)
+                    .secondary_selected(selected && focused)
             }
         })
         .context_menu(move |_ix, entry, menu, _window, cx| {
