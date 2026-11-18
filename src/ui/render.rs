@@ -119,8 +119,18 @@ impl Render for DatalithView {
             layout = layout.child(self.licenses.render_overlay(cx));
         }
 
+        let vault_selector = self.vault_selector_focus_handle.clone();
         v_flex()
             .track_focus(&self.workspace_focus_handle)
+            .on_action(
+                move |_: &crate::app::actions::OpenVaultSelector, window, cx| {
+                    vault_selector.dispatch_action(
+                        &gpui_kit::base::actions::Confirm { secondary: false },
+                        window,
+                        cx,
+                    );
+                },
+            )
             .key_context(keymap::WORKSPACE_CONTEXT)
             .size_full()
             .relative()
