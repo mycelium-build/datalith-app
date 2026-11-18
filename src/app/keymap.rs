@@ -123,7 +123,7 @@ fn is_secondary(modifiers: Modifiers) -> bool {
 
 use super::settings::ShortcutOverride;
 
-use super::actions::{AddSubtask, DeleteTask, NextTask, PreviousTask, SearchTasks, ToggleTask};
+use super::actions::{AddSubtask, DeleteTask, SearchTasks, ToggleTask};
 use super::actions::{Bold, InsertWikiLink, Italic};
 use super::actions::{
     CloseTab, CopyPath, Delete, Duplicate, FocusSidebar, GoBack, GoForward, NewBase, NewFile,
@@ -158,8 +158,6 @@ const DEFAULTS_OVER_FIELDS: &[&str] = &[
     "toggle-task",
     "add-subtask",
     "delete-task",
-    "previous-task",
-    "next-task",
     "search-tasks",
     "new-task",
     "raise-priority",
@@ -391,7 +389,11 @@ impl ShortcutRegistry {
         change: impl FnOnce(&mut Binding),
         cx: &mut App,
     ) -> anyhow::Result<()> {
-        let Some(index) = SHORTCUTS.iter().position(|definition| definition.id == id) else {
+        let Some((index, definition)) = SHORTCUTS
+            .iter()
+            .enumerate()
+            .find(|(_, definition)| definition.id == id)
+        else {
             anyhow::bail!("Unknown shortcut.");
         };
         let mut next = self.bindings.clone();
@@ -399,6 +401,9 @@ impl ShortcutRegistry {
             anyhow::bail!("Unknown shortcut.");
         };
         change(&mut binding);
+        if !definition.zones.contains(&binding.zone) {
+            anyhow::bail!("This action is unavailable in that context.");
+        }
         assign(&mut next, index, binding);
         self.replace(next, cx)
     }
@@ -572,17 +577,6 @@ shortcuts!(
         "Open link",
         OpenLink
     ),
-    // Note
-    ("bold", "Note", "secondary-b", [Note], "Bold", Bold),
-    ("italic", "Note", "secondary-i", [Note], "Italic", Italic),
-    (
-        "insert-wiki-link",
-        "Note",
-        "secondary-k",
-        [Note],
-        "Insert wiki link",
-        InsertWikiLink
-    ),
     // Tabs
     (
         "new-tab",
@@ -702,7 +696,7 @@ shortcuts!(
         "toggle-editor-mode",
         "View",
         "secondary-e",
-        [Global, Note, Base],
+        [Global],
         "Toggle edit / view",
         ToggleEditorMode
     ),
@@ -730,15 +724,15 @@ shortcuts!(
         "Open themes",
         OpenThemes
     ),
-    // Help
     (
         "show-shortcuts",
-        "Help",
+        "View",
         "secondary-/",
         [Global],
-        "Show shortcuts",
+        "Open shortcuts",
         OpenShortcuts
     ),
+    // Help
     (
         "documentation",
         "Help",
@@ -746,6 +740,17 @@ shortcuts!(
         [Global],
         "Documentation",
         OpenDocumentation
+    ),
+    // Note
+    ("bold", "Note", "secondary-b", [Note], "Bold", Bold),
+    ("italic", "Note", "secondary-i", [Note], "Italic", Italic),
+    (
+        "insert-wiki-link",
+        "Note",
+        "secondary-k",
+        [Note],
+        "Insert wiki link",
+        InsertWikiLink
     ),
     // Todo list
     (
@@ -771,22 +776,6 @@ shortcuts!(
         [TodoList],
         "Delete task",
         DeleteTask
-    ),
-    (
-        "previous-task",
-        "Todo list",
-        "up",
-        [TodoList],
-        "Previous task",
-        PreviousTask
-    ),
-    (
-        "next-task",
-        "Todo list",
-        "down",
-        [TodoList],
-        "Next task",
-        NextTask
     ),
     (
         "search-tasks",
@@ -880,7 +869,7 @@ shortcuts!(
     (
         "reset-zoom",
         "Base",
-        "secondary-0",
+        "secondary-alt-0",
         [Base],
         "Reset graph zoom",
         ResetZoom
@@ -1215,6 +1204,33 @@ mod tests {
             .bindings_for_input(&ctrl_backspace, &outside_fields)
             .0;
         assert!(outside[0].action().partial_eq(&Quit));
+    }
+
+    #[test]
+    fn only_the_sidebar_uses_primary_zero_by_default() {
+        let actions = SHORTCUTS
+            .iter()
+            .filter(|definition| super::same_binding(definition.binding, "secondary-0"))
+            .map(|definition| definition.id)
+            .collect::<Vec<_>>();
+        assert_eq!(actions, ["focus-sidebar"]);
+    }
+
+    #[test]
+    fn saved_editor_mode_keys_apply_to_both_notes_and_bases() {
+        for zone in ["note", "base"] {
+            let overrides = BTreeMap::from([(
+                "toggle-editor-mode".into(),
+                ShortcutOverride {
+                    keys: Some("secondary-alt-e".into()),
+                    zone: Some(zone.into()),
+                },
+            )]);
+            let bindings = effective_bindings(&overrides);
+            let binding = &bindings[index("toggle-editor-mode")];
+            assert_eq!(binding.zone, ShortcutZone::Global);
+            assert_eq!(binding.keys.as_deref(), Some("secondary-alt-e"));
+        }
     }
 
     #[test]

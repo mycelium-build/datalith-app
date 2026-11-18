@@ -48,10 +48,15 @@ fn render_pill(label: &str, color: Hsla) -> AnyElement {
         .into_any_element()
 }
 
-/// Binds the priority and date keys, which aren't customizable. They sit
-/// above the task fields, which let these keys through.
+/// Fixed navigation and editing keys for the todo list.
 pub fn bind_keys(cx: &mut gpui_kit::App) {
+    use crate::app::actions::{NextTask, PreviousTask};
+    use crate::app::keymap::TODO_LIST_CONTEXT;
+
+    let task_fields = format!("{TODO_LIST_CONTEXT} > Input || {TODO_LIST_CONTEXT}");
     cx.bind_keys([
+        gpui_kit::KeyBinding::new("up", PreviousTask, Some(&task_fields)),
+        gpui_kit::KeyBinding::new("down", NextTask, Some(&task_fields)),
         gpui_kit::KeyBinding::new(
             "up",
             gpui_kit::base::actions::SelectUp,
