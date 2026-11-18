@@ -24,6 +24,8 @@ pub const WORKSPACE_CONTEXT: &str = "Workspace";
 pub const NOTE_CONTEXT: &str = "Note";
 pub const TODO_LIST_CONTEXT: &str = "TodoList";
 pub const BASE_CONTEXT: &str = "Base";
+pub const BASE_GRAPH_CONTEXT: &str = "BaseGraph";
+pub const BASE_VIEWER_CONTEXT: &str = "BaseViewer";
 /// Key context of the file tree in the sidebar.
 pub const FILE_TREE_CONTEXT: &str = "FileTree";
 /// Key context of the modal panels (settings, licenses, palette).
@@ -148,6 +150,15 @@ const PLACES: &[(&str, &[&str])] = &[
         &[WORKSPACE_CONTEXT, TODO_LIST_CONTEXT, "Input"],
     ),
     ("in bases", &[WORKSPACE_CONTEXT, BASE_CONTEXT]),
+    (
+        "in base graphs",
+        &[
+            WORKSPACE_CONTEXT,
+            BASE_CONTEXT,
+            BASE_VIEWER_CONTEXT,
+            BASE_GRAPH_CONTEXT,
+        ],
+    ),
     ("in the sidebar", &[WORKSPACE_CONTEXT, FILE_TREE_CONTEXT]),
 ];
 
@@ -944,6 +955,10 @@ fn effective_bindings(overrides: &BTreeMap<String, ShortcutOverride>) -> Vec<Bin
             continue;
         };
         let keys = match shortcut.keys.as_deref() {
+            // Built-in keys such as Ctrl+Tab can be saved with a custom zone.
+            Some(keys) if same_binding(keys, definition.binding) => {
+                Some(definition.binding.to_owned())
+            }
             Some(keys) => match normalize_binding(keys) {
                 Some(keys) => Some(keys),
                 None => continue,
@@ -1144,6 +1159,9 @@ mod tests {
         bindings[index("new-note")].keys = Some("secondary-x".into());
         bindings[index("new-folder")].keys = None;
         bindings[index("rename")].zone = ShortcutZone::Global;
+        for id in ["next-tab", "previous-tab"] {
+            bindings[index(id)].zone = ShortcutZone::Sidebar;
+        }
         let overrides = overrides_for(&bindings);
         assert_eq!(effective_bindings(&overrides), bindings);
     }

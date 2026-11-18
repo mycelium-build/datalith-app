@@ -12,13 +12,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, AppContext, ClickEvent, Context, Entity, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, ParentElement, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, div, px,
+    MouseMoveEvent, ParentElement, SharedString, StatefulInteractiveElement, StyleRefinement,
+    Styled, div, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
 
-use crate::app::actions::{CopyPath, Delete, Duplicate, OpenInExplorer, Rename};
 use crate::vault;
 use crate::vault::path::display_name;
 
@@ -128,7 +127,6 @@ impl DatalithView {
                     .border_color(frame);
                 let id = entry.item().id.clone();
                 let tree_state = tree_state.clone();
-                let view = view.clone();
                 div()
                     .child(item)
                     .context_menu(move |menu, _, cx| {
@@ -140,19 +138,7 @@ impl DatalithView {
                             return menu;
                         }
                         let path = Self::path_from_id(&id);
-                        view.update(cx, |v, _| v.context_menu_target = Some(path));
-                        super::new_entries(menu, active_read_only)
-                            .separator()
-                            .menu_with_disabled("Rename", Box::new(Rename), active_read_only)
-                            .menu_with_disabled("Delete", Box::new(Delete), active_read_only)
-                            .menu_with_disabled("Duplicate", Box::new(Duplicate), active_read_only)
-                            .separator()
-                            .menu_with_disabled(
-                                "Open in Explorer",
-                                Box::new(OpenInExplorer),
-                                active_read_only,
-                            )
-                            .menu("Copy Path", Box::new(CopyPath))
+                        super::file_menu(menu, Some(&path), true, active_read_only)
                     })
                     .into_any_element()
             });
@@ -364,15 +350,6 @@ impl DatalithView {
 
         let mut row = h_flex()
             .id(("file-tree-row", ix))
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener({
-                    let path = path.to_path_buf();
-                    move |this, _event: &MouseDownEvent, _window, _cx| {
-                        this.context_menu_target = Some(path.clone());
-                    }
-                }),
-            )
             .gap_2()
             .child(Icon::new(icon).size_4())
             .child(

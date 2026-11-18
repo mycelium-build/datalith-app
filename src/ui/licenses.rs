@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use gpui_kit::base::actions::Cancel;
+use gpui_kit::base::{FocusTrapElement as _, actions::Cancel};
 use gpui_kit::component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
@@ -10,7 +10,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     App, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
-    UniformListScrollHandle, div, px, uniform_list,
+    UniformListScrollHandle, Window, div, px, uniform_list,
 };
 
 use super::{DatalithView, modal};
@@ -85,6 +85,7 @@ pub fn corresponding_source_url() -> String {
 pub struct LicensesView {
     open: bool,
     focus_handle: FocusHandle,
+    return_focus: Option<FocusHandle>,
     scroll_handle: UniformListScrollHandle,
 }
 
@@ -92,17 +93,25 @@ impl LicensesView {
     pub fn new(cx: &App) -> Self {
         Self {
             open: false,
+            return_focus: None,
             focus_handle: cx.focus_handle(),
             scroll_handle: UniformListScrollHandle::new(),
         }
     }
 
-    pub const fn open(&mut self) {
+    pub fn open(&mut self, window: &mut Window, cx: &mut App) {
+        if !self.open {
+            self.return_focus = window.focused(cx);
+        }
+        self.focus_handle.focus(window, cx);
         self.open = true;
     }
 
-    pub const fn close(&mut self) {
+    fn close(&mut self, window: &mut Window, cx: &mut App) {
         self.open = false;
+        if let Some(focus) = self.return_focus.take() {
+            focus.focus(window, cx);
+        }
     }
 
     pub(crate) const fn is_open(&self) -> bool {
@@ -111,15 +120,19 @@ impl LicensesView {
 
     pub fn render_overlay(&self, cx: &Context<DatalithView>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
-        modal::backdrop("licenses-backdrop", cx, |view, _, _| view.licenses.close()).child(
+        modal::backdrop("licenses-backdrop", cx, |view, window, cx| {
+            view.licenses.close(window, cx);
+        })
+        .child(
             modal::panel("licenses-panel", cx)
                 .w(px(760.))
                 .h(px(620.))
-                .track_focus(&focus_handle)
-                .on_action(cx.listener(|view: &mut DatalithView, _: &Cancel, _, cx| {
-                    view.licenses.close();
-                    cx.notify();
-                }))
+                .on_action(
+                    cx.listener(|view: &mut DatalithView, _: &Cancel, window, cx| {
+                        view.licenses.close(window, cx);
+                        cx.notify();
+                    }),
+                )
                 .child(
                     v_flex()
                         .size_full()
@@ -138,8 +151,8 @@ impl LicensesView {
                                         .ghost()
                                         .small()
                                         .icon(IconName::Close)
-                                        .on_click(cx.listener(|view, _, _, cx| {
-                                            view.licenses.close();
+                                        .on_click(cx.listener(|view, _, window, cx| {
+                                            view.licenses.close(window, cx);
                                             cx.notify();
                                         })),
                                 ),
@@ -168,7 +181,8 @@ impl LicensesView {
                                     ),
                                 ),
                         ),
-                ),
+                )
+                .focus_trap("licenses-focus", &focus_handle),
         )
     }
 }

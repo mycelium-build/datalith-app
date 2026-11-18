@@ -99,9 +99,10 @@ impl DatalithView {
         }
     }
 
-    fn on_file_tree_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_file_tree_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
         if self.rename_target.is_some() {
             self.cancel_rename(cx);
+            self.sidebar_focus_handle.focus(window, cx);
         } else {
             cx.propagate();
         }
@@ -255,7 +256,7 @@ impl DatalithView {
             }
 
             if self.tree_state.read(cx).selected_entry().is_none()
-                && self.visible_tree_entry_count() > 0
+                && self.tree_state.read(cx).entry(0).is_some()
             {
                 self.tree_state.update(cx, |state, cx| {
                     state.set_selected_index(Some(0), cx);
@@ -272,7 +273,7 @@ impl DatalithView {
     }
 
     fn navigate_tree_up(&mut self, cx: &mut Context<Self>) {
-        let count = self.visible_tree_entry_count();
+        let count = self.visible_tree_entry_count(cx);
         self.tree_state.update(cx, |state, cx| {
             if let Some(ix) = state.selected_index() {
                 let new_ix = ix.checked_sub(1).unwrap_or_else(|| count.saturating_sub(1));
@@ -285,7 +286,7 @@ impl DatalithView {
 
     /// Selects the row `target` picks from the selected row and the row count.
     fn jump_in_tree(&mut self, target: fn(usize, usize) -> usize, cx: &mut Context<Self>) {
-        let count = self.visible_tree_entry_count();
+        let count = self.visible_tree_entry_count(cx);
         if count == 0 {
             return;
         }

@@ -459,7 +459,7 @@ impl BaseViewState {
             pan(-GRAPH_PAN_STEP, 0.0),
         );
         element
-            .key_context(cells::GRAPH_CONTEXT)
+            .key_context(crate::app::keymap::BASE_GRAPH_CONTEXT)
             .on_action(cx.listener(move |this, _: &SelectUp, _, cx| up(this, cx)))
             .on_action(cx.listener(move |this, _: &SelectDown, _, cx| down(this, cx)))
             .on_action(cx.listener(move |this, _: &SelectLeft, _, cx| left(this, cx)))
@@ -647,7 +647,7 @@ impl Render for BaseViewState {
             .relative()
             .overflow_hidden()
             .track_focus(&self.focus_handle)
-            .key_context(cells::VIEWER_CONTEXT)
+            .key_context(crate::app::keymap::BASE_VIEWER_CONTEXT)
             .on_action(cx.listener(|this, _: &Cancel, _, cx| {
                 if this.fullscreen_image.take().is_some() {
                     cx.notify();

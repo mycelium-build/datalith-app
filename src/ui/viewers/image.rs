@@ -9,22 +9,25 @@ pub const IMAGE_MAX_WIDTH: f32 = 800.0;
 
 pub struct ImageViewer {
     file_path: PathBuf,
+    focus: FocusHandle,
 }
 
 impl ImageViewer {
-    pub const fn new(file_path: PathBuf) -> Self {
-        Self { file_path }
+    pub fn new(file_path: PathBuf, cx: &App) -> Self {
+        Self {
+            file_path,
+            focus: cx.focus_handle(),
+        }
     }
 
-    // Kept as a method so every viewer exposes the same focus_handle(&self, cx) signature.
-    #[allow(clippy::unused_self)]
-    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
-        cx.focus_handle()
+    pub fn focus_handle(&self) -> FocusHandle {
+        self.focus.clone()
     }
 
     pub fn render(&self, _cx: &mut App) -> AnyElement {
         div()
             .id("image-viewer")
+            .track_focus(&self.focus)
             .flex_1()
             .overflow_y_scroll()
             .flex()
