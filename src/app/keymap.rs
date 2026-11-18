@@ -131,6 +131,7 @@ use super::actions::{
     SelectTab5, SelectTab6, SelectTab7, SelectTab8, ToggleEditorMode, ToggleQuickSwitcher,
     ToggleSearch, ToggleTheme,
 };
+use super::actions::{OpenDocumentation, OpenThemes, OpenVault};
 
 /// Representative context stacks, to find where another binding takes a
 /// shortcut's keys: a text field's own keys, or a more specific zone.
@@ -513,6 +514,14 @@ shortcuts!(
     ),
     // Navigation
     (
+        "open-vault",
+        "Navigation",
+        "secondary-o",
+        [Global],
+        "Open vault",
+        OpenVault
+    ),
+    (
         "quick-switcher",
         "Navigation",
         "secondary-p",
@@ -691,6 +700,14 @@ shortcuts!(
         "Open settings",
         OpenSettings
     ),
+    (
+        "open-themes",
+        "View",
+        "secondary-alt-,",
+        [Global],
+        "Open themes",
+        OpenThemes
+    ),
     // Help
     (
         "show-shortcuts",
@@ -699,6 +716,14 @@ shortcuts!(
         [Global],
         "Show shortcuts",
         OpenShortcuts
+    ),
+    (
+        "documentation",
+        "Help",
+        "f1",
+        [Global],
+        "Documentation",
+        OpenDocumentation
     ),
     // Todo list
     (

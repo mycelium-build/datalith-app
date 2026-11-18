@@ -37,6 +37,7 @@ Rename, Delete, Duplicate, Open in Explorer and Copy path act on the file select
 
 | Action | Shortcut |
 | --- | --- |
+| Open vault | `Cmd/Ctrl+O` |
 | Quick switcher | `Cmd/Ctrl+P` |
 | Focus sidebar | `Cmd/Ctrl+0` |
 | Navigate back | `Cmd/Ctrl+[` |
@@ -68,6 +69,7 @@ Type `[[` and three characters to open link suggestions. Use the arrow keys, Ent
 | Toggle edit / view | `Cmd/Ctrl+E` |
 | Toggle theme | `Cmd/Ctrl+Shift+D` |
 | Open settings | `Cmd/Ctrl+,` |
+| Open themes | `Cmd/Ctrl+Alt+,` |
 
 # Todo list
 
@@ -86,5 +88,6 @@ On a priority, `↑` and `↓` change it. In a date, Escape restores the saved o
 | Action | Shortcut |
 | --- | --- |
 | Show shortcuts | `Cmd/Ctrl+/` |
+| Documentation | `F1` |
 
 See [[Basics]] if you are new to the app.
