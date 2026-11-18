@@ -31,7 +31,7 @@ Before submitting a pull request, please ensure that:
 
 ## Third-Party Notices
 
-When adding a Rust dependency, update `Cargo.toml` and `Cargo.lock`. 
+When adding a Rust dependency, update the workspace and package manifests and the root `Cargo.lock`.
 When adding a bundled asset, add it to `assets/licenses.toml` and include its license file.
 Do not edit `THIRD-PARTY-NOTICES.md` by hand; regenerate it with:
 
@@ -115,7 +115,7 @@ Renovate updates the dependencies of datalith-app, the website and the clipper. 
 
 ### Development Workflow
 
-1. Make changes to the source code in the `src/` directory.
+1. Make changes to the source code in `apps/desktop/src/` or the relevant library under `crates/`.
 
 2. Run tests:
     ```bash
