@@ -23,6 +23,10 @@ gpui_kit::actions!(
         ResetZoom,
         Bold,
         Italic,
+        Strikethrough,
         InsertWikiLink,
+        InsertTag,
+        ToggleHeading,
+        ToggleChecklist,
     ]
 );
