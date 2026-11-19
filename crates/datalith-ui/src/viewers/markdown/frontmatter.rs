@@ -2,7 +2,7 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::{ActiveTheme, Disableable};
 use gpui_kit::{
     AnyElement, App, ClickEvent, ElementId, Entity, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, div, px,
+    ParentElement, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder as _, px,
 };
 
 use conv::{ConvUtil, UnwrapOrInf};
@@ -28,8 +28,29 @@ pub(super) fn render_frontmatter(
         .map(|property| property.key.len())
         .max()
         .unwrap_or(0);
-    let font_size = base_font_size * MD_FRONTMATTER_FONT_SCALE;
+    // On a phone the properties are read at arm's length: near body size, one
+    // spaced row each, with the value in the main text color.
+    let touch = cfg!(any(target_os = "ios", target_os = "android"));
+    let font_size = base_font_size
+        * if touch {
+            0.9
+        } else {
+            MD_FRONTMATTER_FONT_SCALE
+        };
     let line_h = px(font_size * MD_LINE_HEIGHT);
+    let (key_color, key_weight, value_color) = if touch {
+        (
+            cx.theme().muted_foreground,
+            FontWeight::NORMAL,
+            cx.theme().foreground,
+        )
+    } else {
+        (
+            cx.theme().foreground,
+            FontWeight::BOLD,
+            cx.theme().muted_foreground,
+        )
+    };
     let key_width = px(font_size * max_key_len.approx_as::<f32>().unwrap_or_inf() * 0.6);
     let mut rows: Vec<AnyElement> = Vec::new();
 
@@ -49,41 +70,22 @@ pub(super) fn render_frontmatter(
     }
 
     for (property_index, property) in frontmatter.properties.iter().enumerate() {
-        let mut values: Vec<AnyElement> = Vec::new();
-        for (value_index, value) in property.values.iter().enumerate() {
-            let id = u64::try_from(property_index)
-                .unwrap_or_default()
-                .saturating_mul(1000)
-                .saturating_add(u64::try_from(value_index).unwrap_or_default());
-            let element = match value {
-                FrontmatterValue::Boolean(value) => {
-                    Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
-                        .checked(*value)
-                        .disabled(true)
-                        .tab_stop(false)
-                        .into_any_element()
-                }
-                FrontmatterValue::Link { label, target } => {
-                    render_link(label, target, id, handler.clone(), cx)
-                }
-                FrontmatterValue::Text(value) => div().child(value.clone()).into_any_element(),
-            };
-            values.push(element);
-        }
+        let values = render_values(property_index, &property.values, &handler, cx);
 
         rows.push(
             div()
                 .flex()
                 .items_start()
                 .gap_1()
+                .when(touch, |row| row.py(px(3.)))
                 .child(
                     div()
                         .w(key_width)
                         .flex_shrink_0()
                         .text_size(px(font_size))
                         .line_height(line_h)
-                        .text_color(cx.theme().foreground)
-                        .font_weight(FontWeight::BOLD)
+                        .text_color(key_color)
+                        .font_weight(key_weight)
                         .child(property.key.clone()),
                 )
                 .child(
@@ -94,7 +96,7 @@ pub(super) fn render_frontmatter(
                         .flex_col()
                         .text_size(px(font_size))
                         .line_height(line_h)
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(value_color)
                         .children(values),
                 )
                 .into_any_element(),
@@ -108,6 +110,36 @@ pub(super) fn render_frontmatter(
         .mt(px(margin_top))
         .children(rows)
         .into_any_element()
+}
+
+fn render_values(
+    property_index: usize,
+    property_values: &[FrontmatterValue],
+    handler: &Entity<FileHandler>,
+    cx: &App,
+) -> Vec<AnyElement> {
+    let mut values: Vec<AnyElement> = Vec::new();
+    for (value_index, value) in property_values.iter().enumerate() {
+        let id = u64::try_from(property_index)
+            .unwrap_or_default()
+            .saturating_mul(1000)
+            .saturating_add(u64::try_from(value_index).unwrap_or_default());
+        let element = match value {
+            FrontmatterValue::Boolean(value) => {
+                Checkbox::new(ElementId::NamedInteger("frontmatter-bool".into(), id))
+                    .checked(*value)
+                    .disabled(true)
+                    .tab_stop(false)
+                    .into_any_element()
+            }
+            FrontmatterValue::Link { label, target } => {
+                render_link(label, target, id, handler.clone(), cx)
+            }
+            FrontmatterValue::Text(value) => div().child(value.clone()).into_any_element(),
+        };
+        values.push(element);
+    }
+    values
 }
 
 fn render_link(

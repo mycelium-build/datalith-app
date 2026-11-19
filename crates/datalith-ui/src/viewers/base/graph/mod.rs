@@ -5,6 +5,7 @@ pub(super) mod model;
 mod paint;
 mod physics;
 mod snapshot;
+mod touch;
 
 use std::path::PathBuf;
 
@@ -27,6 +28,29 @@ use self::physics::Simulation;
 
 use paint::HOVER_DIM_OPACITY;
 
+/// Which notes the touch list offers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NoteChoice {
+    All,
+    /// The notes connected to node `ix`.
+    Connections(usize),
+}
+
+impl NoteChoice {
+    const fn new(source: Option<usize>) -> Self {
+        match source {
+            Some(ix) => Self::Connections(ix),
+            None => Self::All,
+        }
+    }
+    const fn source(self) -> Option<usize> {
+        match self {
+            Self::Connections(ix) => Some(ix),
+            Self::All => None,
+        }
+    }
+}
+
 /// Owns camera, simulation, and pointer state for one embedded graph view.
 pub(super) struct GraphState {
     /// Theme previews disable link navigation.
@@ -39,6 +63,9 @@ pub(super) struct GraphState {
     canvas_bounds: Option<Bounds<Pixels>>,
     pointer_position: Option<Point<f32>>,
     hovered_node: Option<usize>,
+    selected: Option<PathBuf>,
+    /// The open touch note list, if any.
+    choosing_note: Option<NoteChoice>,
     interaction: Option<PointerInteraction>,
     simulation: Simulation,
 }
@@ -70,6 +97,8 @@ impl GraphState {
             canvas_bounds: None,
             pointer_position: None,
             hovered_node: None,
+            selected: None,
+            choosing_note: None,
             interaction: None,
             simulation: Simulation::default(),
         }
@@ -84,7 +113,7 @@ impl GraphState {
     /// The simulation always restarts so the new layout settles from scratch.
     pub(super) fn set_snapshot(
         &mut self,
-        snapshot: Option<GraphSnapshot>,
+        mut snapshot: Option<GraphSnapshot>,
         reset_view: bool,
         cx: &mut Context<Self>,
     ) {
@@ -95,6 +124,21 @@ impl GraphState {
         self.pointer_position = None;
         self.hovered_node = None;
         self.interaction = None;
+        if cfg!(any(target_os = "ios", target_os = "android"))
+            && !reset_view
+            && let (Some(previous), Some(next)) = (&self.snapshot, &mut snapshot)
+        {
+            let positions: std::collections::HashMap<_, _> = previous
+                .nodes
+                .iter()
+                .map(|n| (&n.relative_path, n.position))
+                .collect();
+            for node in &mut next.nodes {
+                if let Some(position) = positions.get(&node.relative_path) {
+                    node.position = *position;
+                }
+            }
+        }
         self.snapshot = snapshot;
         self.simulation = Simulation::default();
         cx.notify();
@@ -269,7 +313,7 @@ impl GraphState {
             match &mut self.snapshot {
                 Some(snapshot) => snapshot.nodes.get_mut(index).map(|node| {
                     node.velocity = Point::default();
-                    node.relative_path.to_string_lossy().replace('\\', "/")
+                    node.relative_path.clone()
                 }),
                 None => None,
             }
@@ -282,7 +326,7 @@ impl GraphState {
         {
             let new_tab = event.modifiers.secondary(cx);
             if let Err(error) = self.handler.update(cx, |_handler, cx| {
-                cx.emit(FileHandlerEvent::LinkClicked(target, new_tab));
+                cx.emit(FileHandlerEvent::VaultFileRequested(target, new_tab));
             }) {
                 window.push_notification(notifications::graph_link_open_failed(&error), cx);
             }
@@ -307,6 +351,20 @@ impl GraphState {
         cx.notify();
     }
 
+    fn canvas_events(
+        root: gpui_kit::Stateful<gpui_kit::Div>,
+        touch: bool,
+        cx: &Context<Self>,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        if touch {
+            touch::canvas_events(root, cx)
+        } else {
+            root.on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
+                .on_mouse_move(cx.listener(Self::handle_mouse_move))
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
+                .on_scroll(cx.listener(Self::handle_scroll))
+        }
+    }
     pub(super) fn render_canvas(&mut self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let pinned = self.interaction.and_then(|interaction| interaction.node);
@@ -318,20 +376,26 @@ impl GraphState {
         let Some(snapshot) = &mut self.snapshot else {
             return div().into_any_element();
         };
-        self.simulation.step(snapshot, pinned);
+        let touch = cfg!(any(target_os = "ios", target_os = "android")) && !self.preview;
+        let running = !touch || (self.selected.is_none() && self.interaction.is_none());
+        if running {
+            self.simulation.step(snapshot, pinned);
+        }
         if let Some((pointer, viewport)) = hover_query {
             let world = self.camera.screen_to_world(pointer, viewport);
             self.hovered_node = hit_test_nodes(&snapshot.nodes, world);
         }
-        if !self.simulation.is_sleeping() {
+        if running && !self.simulation.is_sleeping() {
             window.request_animation_frame();
         }
 
-        let active_hover = self
-            .interaction
-            .is_none()
-            .then_some(self.hovered_node)
-            .flatten();
+        let active_hover = if touch {
+            touch::selected_index(snapshot, self.selected.as_deref())
+        } else if self.interaction.is_none() {
+            self.hovered_node
+        } else {
+            None
+        };
         let snapshot_for_paint = snapshot.clone();
         let camera_for_paint = self.camera;
         let hovered_for_paint = active_hover;
@@ -344,10 +408,6 @@ impl GraphState {
             .overflow_hidden()
             .bg(theme.background)
             .track_focus(&self.focus_handle)
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
-            .on_mouse_move(cx.listener(Self::handle_mouse_move))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
-            .on_scroll(cx.listener(Self::handle_scroll))
             .on_prepaint(move |bounds, _window, cx| update_canvas_bounds(&entity, bounds, cx))
             .child(
                 gpui_kit::canvas(
@@ -367,6 +427,7 @@ impl GraphState {
                 .size_full(),
             );
 
+        root = Self::canvas_events(root, touch, cx);
         if let Some(bounds) = self.canvas_bounds {
             let viewport = point(f32::from(bounds.size.width), f32::from(bounds.size.height));
             let focus = active_hover.map(|source| GraphFocus::new(snapshot, source));
@@ -398,7 +459,9 @@ impl GraphState {
             }
         }
 
-        if let Some(overlay) = render_overlay(&snapshot.legend, &snapshot.summaries, &theme) {
+        if !touch
+            && let Some(overlay) = render_overlay(&snapshot.legend, &snapshot.summaries, &theme)
+        {
             root = root.child(overlay);
         }
 
@@ -490,7 +553,12 @@ pub(super) fn build_graph_snapshot(
 impl Render for GraphState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.snapshot.is_some() {
-            self.render_canvas(window, cx)
+            let canvas = self.render_canvas(window, cx);
+            if cfg!(any(target_os = "ios", target_os = "android")) && !self.preview {
+                self.touch_layout(canvas, cx)
+            } else {
+                canvas
+            }
         } else {
             div().into_any_element()
         }

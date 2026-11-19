@@ -22,7 +22,7 @@ pub fn create(target: &Path, base_name: &str, content: &str) -> Result<PathBuf> 
     let directory = parent_dir(target);
     let path = unique_path(&directory, base_name);
     source::ensure_writable(&path)?;
-    fs::write(&path, content)
+    source::save_version(&path, None, content.as_bytes())
         .with_context(|| format!("Failed to create file {}", path.display()))?;
     Ok(path)
 }
@@ -35,7 +35,8 @@ pub fn create_folder(target: &Path) -> Result<PathBuf> {
 
     let directory = parent_dir(target);
     let path = unique_path(&directory, "New Folder");
-    fs::create_dir(&path).with_context(|| format!("Failed to create folder {}", path.display()))?;
+    source::create_dir(&path)
+        .with_context(|| format!("Failed to create folder {}", path.display()))?;
     Ok(path)
 }
 
@@ -45,6 +46,10 @@ pub fn create_folder(target: &Path) -> Result<PathBuf> {
 pub fn update(path: &Path, content: &str) -> Result<()> {
     source::ensure_writable(path)?;
 
+    if source::is_provider(path) {
+        let base = source::read(path)?;
+        return Ok(source::save_version(path, Some(&base), content.as_bytes())?);
+    }
     fs::write(path, content).with_context(|| format!("Failed to update {}", path.display()))
 }
 
@@ -61,6 +66,19 @@ const FRONTMATTER_SCAN_CAP_BYTES: usize = 1024 * 1024;
 pub fn update_frontmatter(path: &Path, key: &str, value: Option<&serde_json::Value>) -> Result<()> {
     source::ensure_writable(path)?;
 
+    if source::is_provider(path) {
+        let bytes = source::read(path)?;
+        let prefix = bytes.get(..FRONTMATTER_SCAN_CAP_BYTES).unwrap_or(&bytes);
+        let (range, offset) = locate_frontmatter(prefix);
+        let mut updated = frontmatter_prefix(path, prefix, range, key, value)?;
+        let tail = bytes.get(offset..).unwrap_or_default();
+        updated.extend_from_slice(if range.is_some() {
+            tail.strip_prefix(b"\r\n").unwrap_or(tail)
+        } else {
+            tail
+        });
+        return Ok(source::save_version(path, Some(&bytes), &updated)?);
+    }
     let mut file =
         fs::File::open(path).with_context(|| format!("Failed to read {}", path.display()))?;
     // Read only the scan prefix (at most 1 MiB) to locate the closing `\n---`.
@@ -74,42 +92,7 @@ pub fn update_frontmatter(path: &Path, key: &str, value: Option<&serde_json::Val
     prefix.truncate(scanned);
 
     let (frontmatter_range, body_offset) = locate_frontmatter(&prefix);
-
-    let mut mapping: Vec<(yaml_serde::Value, yaml_serde::Value)> =
-        if let Some(range) = frontmatter_range {
-            let content = String::from_utf8_lossy(prefix.get(range.0..range.1).unwrap_or(&[]))
-                .trim()
-                .to_string();
-            match yaml_serde::from_str::<yaml_serde::Value>(&content) {
-                Ok(yaml_serde::Value::Mapping(entries)) => entries.into_iter().collect(),
-                _ => bail!("Invalid YAML frontmatter in {}", path.display()),
-            }
-        } else {
-            Vec::new()
-        };
-
-    mapping.retain(|(k, _)| k.as_str() != Some(key));
-    if let Some(value) = value {
-        mapping.push((
-            yaml_serde::Value::String(key.to_string()),
-            yaml_serde::to_value(value)?,
-        ));
-    }
-
-    let new_prefix: Vec<u8> = if mapping.is_empty() {
-        Vec::new()
-    } else {
-        let mut new_mapping = yaml_serde::Mapping::new();
-        for (k, v) in mapping {
-            new_mapping.insert(k, v);
-        }
-        let dumped = yaml_serde::to_string(&yaml_serde::Value::Mapping(new_mapping))
-            .with_context(|| format!("Failed to serialize frontmatter for {}", path.display()))?;
-        let mut block = String::from("---\n");
-        block.push_str(dumped.trim());
-        block.push_str("\n---\n");
-        block.into_bytes()
-    };
+    let new_prefix = frontmatter_prefix(path, &prefix, frontmatter_range, key, value)?;
 
     // Write to a temp sibling, then atomically replace.
     let temp_name = format!(
@@ -151,6 +134,52 @@ pub fn update_frontmatter(path: &Path, key: &str, value: Option<&serde_json::Val
         return Err(error).with_context(|| format!("Failed to write {}", path.display()));
     }
     Ok(())
+}
+
+fn frontmatter_prefix(
+    path: &Path,
+    prefix: &[u8],
+    frontmatter_range: Option<(usize, usize)>,
+    key: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<Vec<u8>> {
+    let mut mapping: Vec<(yaml_serde::Value, yaml_serde::Value)> =
+        if let Some(range) = frontmatter_range {
+            let content = String::from_utf8_lossy(prefix.get(range.0..range.1).unwrap_or(&[]))
+                .trim()
+                .to_string();
+            match yaml_serde::from_str::<yaml_serde::Value>(&content) {
+                Ok(yaml_serde::Value::Mapping(entries)) => entries.into_iter().collect(),
+                _ => bail!("Invalid YAML frontmatter in {}", path.display()),
+            }
+        } else {
+            Vec::new()
+        };
+
+    mapping.retain(|(k, _)| k.as_str() != Some(key));
+    if let Some(value) = value {
+        mapping.push((
+            yaml_serde::Value::String(key.to_string()),
+            yaml_serde::to_value(value)?,
+        ));
+    }
+
+    let new_prefix: Vec<u8> = if mapping.is_empty() {
+        Vec::new()
+    } else {
+        let mut new_mapping = yaml_serde::Mapping::new();
+        for (k, v) in mapping {
+            new_mapping.insert(k, v);
+        }
+        let dumped = yaml_serde::to_string(&yaml_serde::Value::Mapping(new_mapping))
+            .with_context(|| format!("Failed to serialize frontmatter for {}", path.display()))?;
+        let mut block = String::from("---\n");
+        block.push_str(dumped.trim());
+        block.push_str("\n---\n");
+        block.into_bytes()
+    };
+
+    Ok(new_prefix)
 }
 
 /// Returns `((frontmatter_content_start, closing_newline_index), body_offset)`
@@ -206,7 +235,7 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
 
     let total_sources = by_source.len();
 
-    fs::rename(old_path, new_path).with_context(|| {
+    source::rename(old_path, new_path).with_context(|| {
         format!(
             "Failed to rename {} to {}",
             old_path.display(),
@@ -220,11 +249,18 @@ pub fn rename(catalog: &VaultCatalog, old_path: &Path, new_path: &Path) -> Resul
             let source_path = source_path
                 .strip_prefix(old_path)
                 .map_or_else(|_| source_path.clone(), |suffix| new_path.join(suffix));
-            let Ok(content) = fs::read_to_string(&source_path) else {
+            let Ok(content) = source::read_to_string(&source_path) else {
                 return None;
             };
             let rewritten = links::rewrite(&content, &replacements);
-            (rewritten == content || update(&source_path, &rewritten).is_ok()).then_some(())
+            (rewritten == content
+                || source::save_version(
+                    &source_path,
+                    Some(content.as_bytes()),
+                    rewritten.as_bytes(),
+                )
+                .is_ok())
+            .then_some(())
         })
         .count();
     Ok(RenameResult {
@@ -253,6 +289,27 @@ fn deleted_dir(vault_root: &Path) -> Result<PathBuf> {
 /// Returns an error if the target is read-only or cannot be moved to the deleted folder.
 pub fn delete(vault_root: &Path, target: &Path) -> Result<Deleted> {
     source::ensure_writable(target)?;
+    if source::is_provider(vault_root) {
+        let mut directory = vault_root.to_owned();
+        for element in [crate::DATALITH_DIR_NAME, "deleted"] {
+            directory.push(element);
+            if !source::is_dir(&directory) {
+                source::create_dir(&directory)?;
+            }
+        }
+        directory.push(format!(
+            "{}-{:016x}",
+            unix_seconds(std::time::SystemTime::now()),
+            rand::random::<u64>()
+        ));
+        source::create_dir(&directory)?;
+        let staged = directory.join(target.file_name().context("Missing filename")?);
+        source::rename(target, &staged)?;
+        return Ok(Deleted {
+            original: target.to_owned(),
+            staged,
+        });
+    }
     let directory = deleted_dir(vault_root)?;
     purge_deleted(&directory, DELETED_RETENTION);
     fs::create_dir_all(&directory)
@@ -277,10 +334,13 @@ pub fn delete(vault_root: &Path, target: &Path) -> Result<Deleted> {
 /// Returns an error if the original path is occupied or moving the item back fails.
 pub fn restore(deleted: &Deleted) -> Result<()> {
     ensure!(
-        !deleted.original.exists(),
+        !source::exists(&deleted.original),
         "{} already exists",
         deleted.original.display()
     );
+    if source::is_provider(&deleted.original) {
+        return Ok(source::rename(&deleted.staged, &deleted.original)?);
+    }
     if let Some(parent) = deleted.original.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -330,6 +390,10 @@ pub fn duplicate(target: &Path) -> Result<PathBuf> {
         .and_then(|name| name.to_str())
         .unwrap_or("copy");
     let new_path = unique_path(parent, name);
+    if source::is_provider(target) {
+        copy_provider(target, &new_path)?;
+        return Ok(new_path);
+    }
     if source::is_dir(target) {
         copy_dir(target, &new_path)
             .with_context(|| format!("Failed to duplicate dir {}", target.display()))?;
@@ -338,6 +402,21 @@ pub fn duplicate(target: &Path) -> Result<PathBuf> {
             .with_context(|| format!("Failed to duplicate file {}", target.display()))?;
     }
     Ok(new_path)
+}
+
+fn copy_provider(from: &Path, to: &Path) -> Result<()> {
+    if source::is_dir(from) {
+        source::create_dir(to)?;
+        for child in source::read_dir(from)? {
+            copy_provider(
+                &child,
+                &to.join(child.file_name().context("Missing filename")?),
+            )?;
+        }
+    } else {
+        source::save_version(to, None, &source::read(from)?)?;
+    }
+    Ok(())
 }
 
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -434,6 +513,7 @@ mod tests {
         ));
         fs::create_dir_all(&personal).unwrap();
         let catalog = VaultCatalog::open(&personal, RegisteredFileTypes::new([])).unwrap();
+        catalog.wait_until_ready(std::time::Duration::from_secs(5));
         assert!(create(&root, "New Note.md", "").is_err());
         assert!(create_folder(&root).is_err());
         assert!(update(&note, "changed").is_err());

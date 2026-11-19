@@ -6,6 +6,8 @@ mod list;
 mod preview;
 mod snapshot;
 mod table;
+mod touch;
+mod touch_choice;
 
 use cells::centered_message;
 use cells::{format_scalar_text, render_property_cell};
@@ -43,6 +45,43 @@ pub struct BaseViewer {
 }
 
 impl BaseViewer {
+    pub(crate) fn dismiss_control(&self, cx: &mut App) -> bool {
+        self.state.update(cx, |s, cx| {
+            let dismissed = if s.choosing_view {
+                s.choosing_view = false;
+                true
+            } else if let Some(rows) = s
+                .selected_view
+                .as_ref()
+                .and_then(|name| s.touch_rows.get_mut(name))
+                .filter(|rows| rows.choosing_property)
+            {
+                rows.choosing_property = false;
+                true
+            } else if let Some(graph) = s.graph.clone()
+                && graph.update(cx, graph::GraphState::close_note_choice)
+            {
+                true
+            } else if s.fullscreen_image.take().is_some() {
+                true
+            } else if let Some(graph) = s.graph.clone()
+                && graph.update(cx, graph::GraphState::clear_selection)
+            {
+                true
+            } else {
+                s.selected_view
+                    .as_ref()
+                    .and_then(|name| s.touch_rows.get_mut(name))
+                    .and_then(|rows| rows.detail.take())
+                    .is_some()
+            };
+            if dismissed {
+                cx.notify();
+            }
+            dismissed
+        })
+    }
+
     pub(crate) fn new(
         input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
@@ -96,6 +135,10 @@ pub struct BaseViewState {
     /// graph camera/simulation reset only when this changes.
     last_source: String,
     selected_view: Option<String>,
+    choosing_view: bool,
+    touch_rows: std::collections::HashMap<String, touch::Rows>,
+    view_states: std::collections::HashMap<String, touch::SavedView>,
+    active_state: Option<String>,
     generation: u64,
     /// Monotonic identity handed to each stored snapshot,
     /// so viewers can cache derived data per snapshot instead of per render.
@@ -126,6 +169,10 @@ impl BaseViewState {
             fullscreen_image: None,
             last_source: String::new(),
             selected_view: None,
+            choosing_view: false,
+            touch_rows: std::collections::HashMap::new(),
+            view_states: std::collections::HashMap::new(),
+            active_state: None,
             generation: 0,
             next_snapshot_id: 0,
             build_task: Task::ready(()),
@@ -182,11 +229,17 @@ impl BaseViewState {
                         state.next_snapshot_id = state.next_snapshot_id.wrapping_add(1);
                         snapshot.id = state.next_snapshot_id;
                         state.last_source.clone_from(&source);
+                        state.restore_mobile_view(&snapshot);
                         state.selected_view = snapshot
                             .definition
                             .views
                             .get(snapshot.view_index)
                             .map(|view| view.name.clone());
+                        if cfg!(any(target_os = "ios", target_os = "android"))
+                            && let Some(name) = &state.selected_view
+                        {
+                            state.touch_rows.entry(name.clone()).or_default();
+                        }
                         match snapshot.definition.views.get(snapshot.view_index) {
                             Some(view) if view.view_type == ViewType::List => {
                                 state
@@ -541,6 +594,9 @@ impl BaseViewState {
         let active = selected_name
             .map(str::to_string)
             .or_else(|| definition.views.first().map(|view| view.name.clone()));
+        if cfg!(any(target_os = "ios", target_os = "android")) && !self.preview {
+            return self.touch_view_switcher(definition, active.as_deref(), cx);
+        }
         h_flex()
             .gap_1()
             .px_2()
@@ -578,6 +634,75 @@ impl BaseViewState {
             .into_any_element()
     }
 
+    fn touch_view_switcher(
+        &self,
+        definition: &BaseDefinition,
+        active: Option<&str>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let current = active.unwrap_or("Views");
+        // A table compares one property at a time; its column choice shares
+        // the view's line so the two choosers cost one row.
+        let table = definition
+            .views
+            .iter()
+            .find(|v| Some(v.name.as_str()) == active)
+            .filter(|v| v.view_type == ViewType::Table)
+            .and_then(|v| Some((v, self.touch_rows.get(&v.name)?)));
+        let view_trigger = touch_choice::trigger(
+            "choose-base-view",
+            current.to_owned(),
+            "Choose view",
+            self.choosing_view,
+        )
+        .flex_1()
+        .min_w_0()
+        .on_click(cx.listener(|state, _, _, cx| {
+            state.choosing_view = !state.choosing_view;
+            if let Some(rows) = state
+                .selected_view
+                .as_ref()
+                .and_then(|name| state.touch_rows.get_mut(name))
+            {
+                rows.choosing_property = false;
+            }
+            cx.notify();
+        }));
+        let mut chooser = v_flex()
+            .flex_shrink_0()
+            .px_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(h_flex().w_full().gap_1().child(view_trigger).children(
+                table.map(|(view, rows)| Self::property_picker(definition, view, rows, cx)),
+            ));
+        if let Some((view, rows)) = table.filter(|(_, rows)| rows.choosing_property) {
+            chooser = chooser.child(Self::property_options(definition, view, rows.property, cx));
+        }
+        if self.choosing_view {
+            let rows = touch_choice::options(
+                "base-view-options",
+                definition.views.iter().map(|view| {
+                    let name = view.name.clone();
+                    touch_choice::option(
+                        ElementId::Name(format!("base-option-{name}").into()),
+                        name.clone(),
+                        active == Some(name.as_str()),
+                    )
+                    .on_click(cx.listener(move |state, _, _, cx| {
+                        state.choosing_view = false;
+                        if state.selected_view.as_deref() != Some(&name) {
+                            state.select_view(name.clone(), cx);
+                        }
+                        cx.notify();
+                    }))
+                }),
+            );
+            chooser = chooser.child(rows);
+        }
+        chooser.into_any_element()
+    }
+
     fn render_content(
         &self,
         snapshot: &BaseSnapshot,
@@ -587,6 +712,12 @@ impl BaseViewState {
         let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
             return centered_message("Base view is missing", cx);
         };
+        if cfg!(any(target_os = "ios", target_os = "android"))
+            && !self.preview
+            && matches!(view.view_type, ViewType::List | ViewType::Table)
+        {
+            return self.render_touch_rows(snapshot, view, cx);
+        }
         match view.view_type {
             ViewType::List => self.render_list(snapshot, view, cx),
             ViewType::Table => self.render_table(snapshot, view, window, cx),

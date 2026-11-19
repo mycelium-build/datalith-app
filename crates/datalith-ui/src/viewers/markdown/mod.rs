@@ -142,11 +142,16 @@ impl MarkdownViewer {
         let document = parse_markdown(content);
         let mut elements = Vec::new();
         let mut element_id = 0usize;
-        elements.push(self.render_title(fonts.headings()));
+        let font_size = if cfg!(any(target_os = "ios", target_os = "android")) {
+            f32::from(appearance.font_size)
+        } else {
+            BASE_FONT_SIZE
+        };
+        elements.push(self.render_title(fonts.headings(), font_size));
         if let (Some(frontmatter), Some(handler)) = (&document.frontmatter, &handler) {
             elements.push(render_frontmatter(
                 frontmatter,
-                BASE_FONT_SIZE,
+                font_size,
                 MD_TITLE_MARGIN,
                 handler,
                 cx,
@@ -171,7 +176,8 @@ impl MarkdownViewer {
             .bg(appearance.background)
             .text_color(appearance.foreground)
             .font_family(fonts.reading().clone())
-            .line_height(px(BASE_FONT_SIZE * MD_LINE_HEIGHT))
+            .text_size(px(font_size))
+            .line_height(px(font_size * MD_LINE_HEIGHT))
             .child(div().w_full().min_w_0().children(elements));
         let Some((focus, scroll)) = &self.keyboard else {
             return page.overflow_y_scrollbar().into_any_element();
@@ -193,7 +199,7 @@ impl MarkdownViewer {
             .into_any_element()
     }
 
-    fn render_title(&self, headings: &SharedString) -> AnyElement {
+    fn render_title(&self, headings: &SharedString, font_size: f32) -> AnyElement {
         let name = self
             .file_path
             .file_stem()
@@ -206,9 +212,9 @@ impl MarkdownViewer {
             .flex_wrap()
             .font_family(headings.clone())
             .font_weight(FontWeight::BOLD)
-            .text_size(px(BASE_FONT_SIZE * MD_TITLE_SIZE))
-            .line_height(px(BASE_FONT_SIZE * MD_TITLE_SIZE * MD_LINE_HEIGHT))
-            .child(name);
+            .text_size(px(font_size * MD_TITLE_SIZE))
+            .line_height(px(font_size * MD_TITLE_SIZE * MD_LINE_HEIGHT))
+            .child(div().w_full().whitespace_normal().child(name));
         title.into_any_element()
     }
 
@@ -232,16 +238,21 @@ impl MarkdownViewer {
         ctx: &mut BlockContext,
     ) -> AnyElement {
         let size = Self::heading_size(level);
+        let font_size = if cfg!(any(target_os = "ios", target_os = "android")) {
+            f32::from(ctx.appearance.font_size)
+        } else {
+            BASE_FONT_SIZE
+        };
         div()
             .w_full()
             .min_w_0()
             .flex()
             .flex_wrap()
             .font_family(ctx.headings_font.clone())
-            .text_size(px(BASE_FONT_SIZE * size))
+            .text_size(px(font_size * size))
             //.font_weight(FontWeight::BOLD)
             .mt(px(margin_top))
-            .line_height(px(BASE_FONT_SIZE * size * MD_LINE_HEIGHT))
+            .line_height(px(font_size * size * MD_LINE_HEIGHT))
             .children(self.render_inlines(content, InlineStyle::default(), ctx))
             .into_any_element()
     }

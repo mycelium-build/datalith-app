@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "apps/desktop",
+  "apps/mobile",
   "crates/datalith-core",
   "crates/datalith-server",
   "crates/datalith-ui",

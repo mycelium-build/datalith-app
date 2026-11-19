@@ -1,3 +1,4 @@
+use gpui_kit::StatefulInteractiveElement as _;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -307,6 +308,9 @@ impl Render for WikiLinkAutocomplete {
                     .gap(px(1.))
                     .px_2()
                     .py_1()
+                    .when(cfg!(any(target_os = "ios", target_os = "android")), |row| {
+                        row.min_h(px(44.)).justify_center()
+                    })
                     .rounded(radius)
                     .when(selected, |this| this.bg(selected_background))
                     .hover(move |this| this.bg(hover_background))
@@ -335,9 +339,12 @@ impl Render for WikiLinkAutocomplete {
 
         let popup = div()
             .id("wikilink-popup")
-            .w(px(POPUP_WIDTH))
+            .w(px(POPUP_WIDTH).min(window.fully_visible_bounds().size.width))
             .occlude()
-            .overflow_hidden()
+            .max_h(px(
+                f32::from(window.fully_visible_bounds().size.height) * 0.45
+            ))
+            .overflow_y_scroll()
             .bg(popover_background)
             .text_color(foreground)
             .border_1()

@@ -6,8 +6,10 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Styled, Window, div, px,
 };
 
-use crate::actions::{Bold, InsertWikiLink, Italic};
-use crate::{BASE_FONT_SIZE, LINE_HEIGHT};
+use crate::LINE_HEIGHT;
+use crate::actions::{
+    Bold, InsertTag, InsertWikiLink, Italic, Strikethrough, ToggleChecklist, ToggleHeading,
+};
 use datalith_vault::VaultCatalog;
 
 mod wikilink;
@@ -63,8 +65,8 @@ impl MarkdownEditor {
         &self.input
     }
 
-    pub fn render(&self, _cx: &mut App) -> AnyElement {
-        let base_font_size = BASE_FONT_SIZE;
+    pub fn render(&self, cx: &mut App) -> AnyElement {
+        let base_font_size = crate::fonts::editor_font_size(cx);
         let line_height = LINE_HEIGHT;
 
         let mut container = div().relative().size_full();
@@ -92,7 +94,11 @@ impl MarkdownEditor {
 
             container = wrap_on::<Bold>(container, &self.input, "**", "**");
             container = wrap_on::<Italic>(container, &self.input, "*", "*");
+            container = wrap_on::<Strikethrough>(container, &self.input, "~~", "~~");
             container = wrap_on::<InsertWikiLink>(container, &self.input, "[[", "]]");
+            container = wrap_on::<InsertTag>(container, &self.input, "#", "");
+            container = line_prefix_on::<ToggleHeading>(container, &self.input, "# ");
+            container = line_prefix_on::<ToggleChecklist>(container, &self.input, "- [ ] ");
 
             let autocomplete = self.autocomplete.clone();
             container = container.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -148,6 +154,57 @@ fn wrap_on<A: Action + 'static>(
     })
 }
 
+/// Adds `prefix` at the start of the cursor's line, or removes it when the
+/// line already starts with it, keeping the cursor on the same character.
+fn line_prefix_on<A: Action + 'static>(
+    container: Div,
+    input: &Entity<EditorState>,
+    prefix: &'static str,
+) -> Div {
+    let input = input.clone();
+    container.on_action(move |_: &A, window, cx| {
+        input.update(cx, |state, cx| {
+            let text = state.value();
+            let cursor = state.selected_range().start;
+            let edit = toggle_line_prefix(&text, cursor, prefix);
+            state.set_selected_range(edit.range, cx);
+            state.replace(edit.replacement, window, cx);
+            state.set_selected_range(edit.cursor..edit.cursor, cx);
+        });
+    })
+}
+
+/// One text edit: replace `range` with `replacement`, then put the cursor at `cursor`.
+#[derive(Debug, PartialEq, Eq)]
+struct LineEdit {
+    range: std::ops::Range<usize>,
+    replacement: &'static str,
+    cursor: usize,
+}
+
+/// The edit that toggles `prefix` on the line holding byte offset `cursor`.
+fn toggle_line_prefix(text: &str, cursor: usize, prefix: &'static str) -> LineEdit {
+    let cursor = cursor.min(text.len());
+    let start = text
+        .get(..cursor)
+        .and_then(|before| before.rfind('\n'))
+        .map_or(0, |newline| newline.saturating_add(1));
+    let end = start.saturating_add(prefix.len());
+    if text.get(start..end) == Some(prefix) {
+        LineEdit {
+            range: start..end,
+            replacement: "",
+            cursor: cursor.saturating_sub(prefix.len()).max(start),
+        }
+    } else {
+        LineEdit {
+            range: start..start,
+            replacement: prefix,
+            cursor: cursor.saturating_add(prefix.len()),
+        }
+    }
+}
+
 /// The text replacing `selected`, and the range of its inner text.
 fn toggle_wrap(selected: &str, open: &str, close: &str) -> (String, std::ops::Range<usize>) {
     let unwrapped = selected
@@ -182,6 +239,25 @@ fn capture_menu_key<A: Action + 'static>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_line_prefix_is_added_at_the_line_start_and_removed_when_present() {
+        let text = "first\nsecond line";
+        let add = super::toggle_line_prefix(text, 9, "# ");
+        assert_eq!(add.range, 6..6);
+        assert_eq!(add.replacement, "# ");
+        assert_eq!(add.cursor, 11);
+
+        let text = "first\n# second line";
+        let remove = super::toggle_line_prefix(text, 11, "# ");
+        assert_eq!(remove.range, 6..8);
+        assert_eq!(remove.replacement, "");
+        assert_eq!(remove.cursor, 9);
+
+        let start = super::toggle_line_prefix("- [ ] task", 2, "- [ ] ");
+        assert_eq!((start.range, start.cursor), (0..6, 0));
+    }
+
     use super::toggle_wrap;
 
     #[test]

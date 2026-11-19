@@ -36,6 +36,7 @@ pub enum ViewMode {
 
 pub enum FileHandlerEvent {
     LinkClicked(String, bool),
+    VaultFileRequested(std::path::PathBuf, bool),
 }
 
 pub struct FileHandler {
@@ -100,6 +101,11 @@ impl FileHandler {
             cx.notify();
         }
         Ok(outcome)
+    }
+
+    pub fn dismiss_view_control(&self, cx: &mut App) -> bool {
+        self.mode == ViewMode::View
+            && matches!(&self.viewer, Some(ViewerKind::Base(base)) if base.dismiss_control(cx))
     }
 
     #[must_use]

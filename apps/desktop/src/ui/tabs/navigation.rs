@@ -108,6 +108,25 @@ impl DatalithView {
         }
     }
 
+    fn open_catalog_file(
+        &mut self,
+        relative: &Path,
+        new_tab: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(root) = &self.root_path else { return };
+        let path = root.join(relative);
+        if self.is_openable(&path) {
+            self.open_file(path, new_tab, window, cx);
+        } else {
+            window.push_notification(
+                notifications::link_target_not_found(&relative.to_string_lossy()),
+                cx,
+            );
+        }
+    }
+
     fn is_openable(&self, path: &Path) -> bool {
         datalith_vault::source::is_file(path) && self.registry.is_supported(path)
     }
@@ -251,6 +270,9 @@ impl DatalithView {
             &handler,
             window,
             move |view, _handler, event: &FileHandlerEvent, window, cx| match event {
+                FileHandlerEvent::VaultFileRequested(relative, new_tab) => {
+                    view.open_catalog_file(relative, *new_tab, window, cx);
+                }
                 FileHandlerEvent::LinkClicked(url, new_tab) => {
                     view.open_link_target(url, *new_tab, &link_source, window, cx);
                 }

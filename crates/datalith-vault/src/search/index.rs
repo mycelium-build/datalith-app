@@ -119,7 +119,7 @@ pub fn file_fingerprint(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
-    if source::is_read_only(path) {
+    if source::is_read_only(path) || source::is_provider(path) {
         if let Ok(contents) = source::read(path) {
             contents.as_ref().hash(&mut hasher);
         }

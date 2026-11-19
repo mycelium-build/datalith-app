@@ -6,4 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# The NativeActivity bridge has a separate lockfile for its patched GPUI backend.
+apps/mobile/android/prepare-backend.sh
+cargo metadata --manifest-path apps/mobile/android/Cargo.toml --format-version=1 > /dev/null
 scripts/licenses/generate.sh

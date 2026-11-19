@@ -45,6 +45,21 @@ cargo about generate --manifest-path "$REPO_ROOT/apps/desktop/Cargo.toml" \
     --output-file "$TMP_DIR/rust.md" \
     "$SCRIPTS_DIR/about.hbs"
 
+# Compare by exact license text as well as package identity. Platform builds
+# can embed different copyright notices under the same SPDX identifier.
+apps/mobile/android/prepare-backend.sh
+license_graph() {
+    local name="$1" manifest="$2"
+    shift 2
+    cargo about generate --locked --fail --manifest-path "$manifest" \
+        --config "$SCRIPTS_DIR/about.toml" --format json "$@" \
+        --output-file "$TMP_DIR/$name.json"
+}
+license_graph desktop apps/desktop/Cargo.toml
+license_graph ios apps/mobile/Cargo.toml --target aarch64-apple-ios
+license_graph android apps/mobile/android/Cargo.toml --target aarch64-linux-android
+python3 "$SCRIPTS_DIR/mobile_notices.py" "$TMP_DIR" > "$TMP_DIR/mobile.md"
+
 # 6. Combine into the final documents.
 {
     cat "$SCRIPTS_DIR/notices-intro.md"
@@ -52,6 +67,7 @@ cargo about generate --manifest-path "$REPO_ROOT/apps/desktop/Cargo.toml" \
     cat "$TMP_DIR/assets.md"
     printf '\n'
     cat "$TMP_DIR/rust.md"
+    cat "$TMP_DIR/mobile.md"
 } > "$TMP_DIR/notices.md"
 
 # Some upstream license texts contain CRLF line endings. Normalize the final

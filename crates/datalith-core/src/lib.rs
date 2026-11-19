@@ -23,3 +23,5 @@ pub mod file_types;
 pub mod filter;
 pub mod links;
 pub mod markdown;
+
+pub mod deeplink;

@@ -29,6 +29,7 @@ pub(super) fn build(
         }
         nodes.push(GraphCandidate {
             path: source,
+            relative,
             class_index: class_hits.iter().position(|hit| *hit),
         });
     }
@@ -113,6 +114,7 @@ pub(super) fn build(
 
 /// One node candidate returned by the catalog.
 struct GraphCandidate {
+    relative: PathBuf,
     /// Absolute path under the vault root.
     path: PathBuf,
     /// Index of the first matching class, or `None` for the default style.
@@ -183,7 +185,7 @@ fn view_node(
         .to_string();
     ViewNode {
         label,
-        relative_path: node.path.clone(),
+        relative_path: node.relative.clone(),
         orphan,
         color: style.color,
         border_color: style.border.color,

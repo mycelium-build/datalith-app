@@ -6,7 +6,7 @@ use gpui_kit::{
     Styled, Window, div, px,
 };
 
-use crate::{BASE_FONT_SIZE, LINE_HEIGHT};
+use crate::LINE_HEIGHT;
 
 pub struct BaseEditor {
     input: Entity<EditorState>,
@@ -35,7 +35,8 @@ impl BaseEditor {
         &self.input
     }
 
-    pub fn render(&self, _cx: &mut App) -> AnyElement {
+    pub fn render(&self, cx: &mut App) -> AnyElement {
+        let base_font_size = crate::fonts::editor_font_size(cx);
         div()
             .size_full()
             .child(
@@ -43,8 +44,8 @@ impl BaseEditor {
                     .h_full()
                     .appearance(false)
                     .readonly(self.read_only)
-                    .text_size(px(BASE_FONT_SIZE))
-                    .line_height(px(BASE_FONT_SIZE * LINE_HEIGHT)),
+                    .text_size(px(base_font_size))
+                    .line_height(px(base_font_size * LINE_HEIGHT)),
             )
             .into_any_element()
     }

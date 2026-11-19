@@ -10,6 +10,7 @@ use crate::handler::ReloadOutcome;
 
 pub struct TodoTxtWorkspace {
     todo: TodoTxt,
+    external: Option<datalith_vault::draft::Edit>,
     path: PathBuf,
     search_query: String,
     filter: FilterKind,
@@ -26,18 +27,30 @@ impl TodoTxtWorkspace {
     pub fn open(path: &Path) -> Self {
         let path = path.to_path_buf();
         let read_only = datalith_vault::source::is_read_only(&path);
+        let provider = datalith_vault::source::is_provider(&path);
+        let mut external = None;
         let mut todo = {
             let options = TodoOptions {
-                file_path: (!read_only).then(|| path.to_string_lossy().to_string()),
-                auto_save: !read_only,
+                file_path: (!read_only && !provider).then(|| path.to_string_lossy().to_string()),
+                auto_save: !read_only && !provider,
                 ..Default::default()
             };
             // `TodoTxt::new` only fails when a configured extension fails to initialize; the default options register no extensions.
             #[allow(clippy::expect_used)]
             TodoTxt::new(options).expect("Failed to create TodoTxt")
         };
-        let parse_errors = if read_only {
-            match datalith_vault::source::read_to_string(&path) {
+        let parse_errors = if read_only || provider {
+            match (|| -> anyhow::Result<String> {
+                let contents = datalith_vault::source::read_to_string(&path)?;
+                if provider {
+                    let edit = datalith_vault::draft::Edit::open(&path, contents.clone())?;
+                    let restored = edit.pending.clone();
+                    external = Some(edit);
+                    Ok(restored.unwrap_or(contents))
+                } else {
+                    Ok(contents)
+                }
+            })() {
                 Ok(contents) => match TodoTxtParser::new().parse_file(&contents) {
                     Ok(tasks) => {
                         todo.tasks = tasks;
@@ -62,6 +75,7 @@ impl TodoTxtWorkspace {
             .collect();
         Self {
             todo,
+            external,
             path,
             search_query: String::new(),
             filter: FilterKind::All,
@@ -69,8 +83,8 @@ impl TodoTxtWorkspace {
             sort_descending: false,
             expanded,
             selected: None,
+            read_only: read_only || (provider && !parse_errors.is_empty()),
             parse_errors,
-            read_only,
         }
     }
 
@@ -81,6 +95,7 @@ impl TodoTxtWorkspace {
         Ok(Self {
             todo,
             path: PathBuf::new(),
+            external: None,
             search_query: String::new(),
             filter: FilterKind::All,
             sort: Some(SortKind::DateCreated),
@@ -155,6 +170,15 @@ impl TodoTxtWorkspace {
         if self.read_only {
             return Ok(ReloadOutcome::Unchanged);
         }
+        if let Some(edit) = &mut self.external {
+            let Some(text) = edit.refresh()? else {
+                return Ok(ReloadOutcome::Unchanged);
+            };
+            self.todo.tasks = TodoTxtParser::new().parse_file(&text)?;
+            self.selected = None;
+            self.expanded.clear();
+            return Ok(ReloadOutcome::Reloaded);
+        }
         let disk_content = datalith_vault::source::read_to_string(&self.path)?;
         let current_content = TodoTxtSerializer::new()
             .serialize_tasks(&self.todo.tasks)
@@ -183,6 +207,32 @@ impl TodoTxtWorkspace {
         Ok(ReloadOutcome::Reloaded)
     }
 
+    fn persist_external(&mut self) -> anyhow::Result<()> {
+        if let Some(edit) = &mut self.external {
+            let text = TodoTxtSerializer::new().serialize_tasks(&self.todo.tasks)?;
+            edit.save(&text)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn has_draft(&self) -> bool {
+        self.external.as_ref().is_some_and(|e| e.pending.is_some())
+    }
+    pub(crate) fn resolve_draft(&mut self, copy: bool) {
+        let result = if copy {
+            self.external
+                .as_mut()
+                .map(datalith_vault::draft::Edit::keep_both)
+                .transpose()
+                .map(|_| {
+                    *self = Self::open(&self.path);
+                })
+        } else {
+            self.persist_external()
+        };
+        if let Err(e) = result {
+            self.parse_errors.push(e.to_string());
+        }
+    }
     pub fn add_task(&mut self, description: &str) {
         if self.read_only {
             return;
@@ -193,6 +243,8 @@ impl TodoTxtWorkspace {
         }
         if let Err(error) = self.todo.add(format!("{} {description}", today_string())) {
             self.parse_errors.push(format!("Add task failed: {error}"));
+        } else if let Err(e) = self.persist_external() {
+            self.parse_errors.push(e.to_string());
         }
     }
 
@@ -207,7 +259,7 @@ impl TodoTxtWorkspace {
                 self.todo.mark([index_as_i64(index)])?;
             }
         }
-        Ok(())
+        self.persist_external()
     }
 
     pub fn add_subtask(&mut self, parent_index: usize) -> MutationOutcome {
@@ -229,6 +281,9 @@ impl TodoTxtWorkspace {
                 .push(format!("Add subtask failed: {error}"));
             return MutationOutcome::default();
         }
+        if let Err(e) = self.persist_external() {
+            self.parse_errors.push(e.to_string());
+        }
         self.shift_expanded_after_insert(insert_at);
         self.expanded.insert(parent_index);
         if self.selected.is_some_and(|selected| selected >= insert_at) {
@@ -245,6 +300,7 @@ impl TodoTxtWorkspace {
         }
         let old_len = self.task_count();
         self.todo.remove([index_as_i64(index)])?;
+        self.persist_external()?;
         let new_len = self.task_count();
         let removed = old_len.saturating_sub(new_len);
 
@@ -333,6 +389,8 @@ impl TodoTxtWorkspace {
         }
         if let Err(error) = self.todo.update(index_as_i64(index), patch) {
             self.parse_errors.push(format!("Save failed: {error}"));
+        } else if let Err(e) = self.persist_external() {
+            self.parse_errors.push(e.to_string());
         }
     }
 

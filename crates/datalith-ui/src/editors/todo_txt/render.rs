@@ -115,14 +115,7 @@ impl Render for TodoTxtState {
 }
 
 impl TodoTxtState {
-    fn render_header(&self, cx: &Context<Self>) -> AnyElement {
-        let search = Input::new(&self.search_input)
-            .cleanable(true)
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground);
-        let filter_select = self.render_select(PreviewSelectKind::Filter, cx);
-        let sort_select = self.render_select(PreviewSelectKind::Sort, cx);
-
+    fn header_buttons(&self, cx: &Context<Self>) -> (Icon, Option<Button>) {
         let sort_icon = if self.workspace.sort_descending() {
             Icon::new(DatalithIcon::ArrowDownAz).size_4()
         } else {
@@ -138,6 +131,50 @@ impl TodoTxtState {
                 }))
         });
 
+        (sort_icon, add_button)
+    }
+    fn render_header(&self, cx: &Context<Self>) -> AnyElement {
+        let search = Input::new(&self.search_input)
+            .cleanable(true)
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground);
+        #[cfg(target_os = "ios")]
+        let search = div()
+            .child(search)
+            .child(crate::ios_input::registration(&self.search_input));
+        let filter_select = self.render_select(PreviewSelectKind::Filter, cx);
+        let sort_select = self.render_select(PreviewSelectKind::Sort, cx);
+
+        let (sort_icon, add_button) = self.header_buttons(cx);
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            return v_flex()
+                .px_2()
+                .gap_1()
+                .child(
+                    h_flex()
+                        .child(div().flex_1().child(search))
+                        .children(add_button),
+                )
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(div().flex_1().min_w_0().child(filter_select))
+                        .child(div().flex_1().min_w_0().child(sort_select))
+                        .child(
+                            Button::new("touch-sort-direction")
+                                .ghost()
+                                .h(px(48.))
+                                .icon(sort_icon)
+                                .accessibility_label("Reverse sort order")
+                                .on_click(cx.listener(|s, _, _, cx| {
+                                    s.workspace.toggle_sort_direction();
+                                    s.refresh_item_sizes();
+                                    cx.notify();
+                                })),
+                        ),
+                )
+                .into_any_element();
+        }
         h_flex()
             .h(px(TODO_HEADER_HEIGHT))
             .w_full()
@@ -249,6 +286,30 @@ impl TodoTxtState {
     }
 
     fn render_error_banner(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        if self.workspace.has_draft() {
+            return Some(
+                h_flex()
+                    .child("Unsaved local edits")
+                    .child(
+                        Button::new("retry-task-save")
+                            .label("Retry")
+                            .on_click(cx.listener(|s, _, _, cx| {
+                                s.workspace.resolve_draft(false);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("keep-task-copy")
+                            .label("Keep both")
+                            .on_click(cx.listener(|s, _, _, cx| {
+                                s.workspace.resolve_draft(true);
+                                s.refresh_item_sizes();
+                                cx.notify();
+                            })),
+                    )
+                    .into_any_element(),
+            );
+        }
         if self.workspace.parse_error_count() == 0 {
             return None;
         }
@@ -316,6 +377,7 @@ impl TodoTxtState {
                             .collect()
                     },
                 )
+                .w_full()
                 .with_sizing_behavior(ListSizingBehavior::Infer)
                 .flex_shrink_1()
                 .min_h_0()
@@ -333,6 +395,14 @@ impl TodoTxtState {
                 .flex_shrink_0()
                 .into_any_element();
         }
+        let input = Input::new(&self.new_task_input)
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .appearance(false);
+        #[cfg(target_os = "ios")]
+        let input = div()
+            .child(input)
+            .child(crate::ios_input::registration(&self.new_task_input));
         h_flex()
             .h(px(TODO_NEW_ROW_HEIGHT))
             .w_full()
@@ -346,12 +416,7 @@ impl TodoTxtState {
                 div()
                     .flex_1()
                     .id("new-task-input-wrap")
-                    .child(
-                        Input::new(&self.new_task_input)
-                            .bg(cx.theme().background)
-                            .text_color(cx.theme().foreground)
-                            .appearance(false),
-                    )
+                    .child(input)
                     // Enter adds the task through the input's PressEnter event.
                     .on_action(cx.listener(|this, _: &PreviousTask, window, cx| {
                         let visible = this.workspace.visible_tasks();

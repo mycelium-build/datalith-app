@@ -1,5 +1,5 @@
 pub mod actions;
-pub mod assets;
+pub use datalith_ui::assets;
 mod atomic_file;
 pub mod deeplink;
 #[cfg(all(target_os = "macos", datalith_dev))]

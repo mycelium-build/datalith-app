@@ -18,6 +18,7 @@
 )]
 
 pub mod catalog;
+pub mod draft;
 pub mod environment;
 pub mod file_ops;
 pub mod path;

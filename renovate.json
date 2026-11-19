@@ -15,7 +15,8 @@
         ],
         "fileFilters": [
           "THIRD-PARTY-NOTICES.md",
-          "scripts/licenses/about.toml"
+          "scripts/licenses/about.toml",
+          "apps/mobile/android/Cargo.lock"
         ],
         "executionMode": "branch"
       },
@@ -23,7 +24,9 @@
         "Cargo.toml",
         "crates/*/Cargo.toml",
         "apps/*/Cargo.toml",
-        "Cargo.lock"
+        "Cargo.lock",
+        "apps/mobile/android/Cargo.toml",
+        "apps/mobile/android/Cargo.lock"
       ]
     },
     {

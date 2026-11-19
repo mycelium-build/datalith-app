@@ -2,13 +2,15 @@
 
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::{
-    ActiveTheme, Sizable,
+    ActiveTheme, ElementExt, IconName, Sizable,
     button::{Button, ButtonVariants},
-    h_flex, v_flex,
+    h_flex,
+    menu::{DropdownMenu as _, PopupMenuItem},
+    v_flex,
 };
 use gpui_kit::{
     AnyElement, AppContext, Context, ElementId, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
+    ParentElement, Pixels, Render, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder, px,
 };
 
@@ -26,6 +28,8 @@ use std::path::{Path, PathBuf};
 pub(super) struct KanbanState {
     pub(super) h_scroll_handle: ScrollHandle,
     column_scroll_handles: Vec<ScrollHandle>,
+    viewport_width: Pixels,
+    active_column: Option<serde_json::Value>,
 }
 
 impl KanbanState {
@@ -33,6 +37,8 @@ impl KanbanState {
         Self {
             h_scroll_handle: ScrollHandle::new(),
             column_scroll_handles: Vec::new(),
+            viewport_width: px(0.),
+            active_column: None,
         }
     }
 
@@ -174,7 +180,50 @@ impl BaseViewState {
         };
         let column_width = config.column_width;
         let columns = build_columns(snapshot, view);
-        let column_handles = kanban_state.column_scroll_handles.clone();
+        let column_handles = &kanban_state.column_scroll_handles;
+        if cfg!(any(target_os = "ios", target_os = "android")) && !self.preview {
+            let width = kanban_state.viewport_width;
+            let viewport = kanban_viewport(width, cx);
+            if width < px(column_width.mul_add(2., 36.))
+                && let Some(current) = columns
+                    .iter()
+                    .find(|col| Some(&col.raw) == kanban_state.active_column.as_ref())
+                    .or_else(|| columns.first())
+            {
+                let selector = column_picker(&columns, current, cx);
+                return viewport
+                    .child(v_flex().size_full().child(selector).child(
+                        div().min_h_0().flex_1().child(render_column(
+                            current,
+                            snapshot,
+                            view,
+                            &config,
+                            width.into(),
+                            column_handles.get(current.ordinal),
+                            self,
+                            cx,
+                        )),
+                    ))
+                    .into_any_element();
+            }
+            return viewport
+                .child(self.kanban_board(snapshot, view, &config, &columns, kanban_state, cx))
+                .into_any_element();
+        }
+        self.kanban_board(snapshot, view, &config, &columns, kanban_state, cx)
+    }
+
+    fn kanban_board(
+        &self,
+        snapshot: &BaseSnapshot,
+        view: &BaseView,
+        config: &datalith_core::base::KanbanConfig,
+        columns: &[Column],
+        kanban_state: &KanbanState,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let column_width = config.column_width;
+        let column_handles = &kanban_state.column_scroll_handles;
         let board = h_flex()
             .gap_3()
             .p_3()
@@ -184,7 +233,7 @@ impl BaseViewState {
                     column,
                     snapshot,
                     view,
-                    &config,
+                    config,
                     column_width,
                     column_handles.get(column.ordinal),
                     self,
@@ -477,7 +526,9 @@ fn render_card(
         .gap_1()
         .p_3()
         .when(has_properties, |flex| flex.children(properties));
-    if card_draggable(state, view, row) {
+    if cfg!(any(target_os = "ios", target_os = "android")) && !state.preview {
+        body = body.child(card_actions(index, row, state, view, cx));
+    } else if card_draggable(state, view, row) {
         body = body.on_drag(
             DragCard {
                 path: row.path.clone(),
@@ -489,6 +540,139 @@ fn render_card(
         );
     }
     card.child(body).into_any_element()
+}
+
+fn kanban_viewport(width: Pixels, cx: &Context<BaseViewState>) -> gpui_kit::Div {
+    let entity = cx.entity();
+    div().size_full().on_prepaint(move |bounds, window, cx| {
+        let measured = bounds.size.width;
+        if measured != width {
+            window.defer(cx, move |_, cx| {
+                entity.update(cx, |state, cx| {
+                    if let Some(board) = state.kanban.as_mut()
+                        && board.viewport_width != measured
+                    {
+                        board.viewport_width = measured;
+                        cx.notify();
+                    }
+                });
+            });
+        }
+    })
+}
+
+fn column_picker(
+    columns: &[Column],
+    current: &Column,
+    cx: &Context<BaseViewState>,
+) -> impl IntoElement + use<> {
+    let options: Vec<_> = columns
+        .iter()
+        .map(|col| (col.label.clone(), col.raw.clone()))
+        .collect();
+    let state = cx.weak_entity();
+    let selected = current.raw.clone();
+    Button::new("kanban-column-picker")
+        .ghost()
+        .w_full()
+        .h(px(48.))
+        .dropdown_caret(true)
+        .label(current.label.clone())
+        .accessibility_label(format!("Choose column, current column {}", current.label))
+        .dropdown_menu(move |mut menu, _, _| {
+            for (label, raw) in &options {
+                let state = state.clone();
+                let raw = raw.clone();
+                menu = menu.item(
+                    PopupMenuItem::new(label.clone())
+                        .checked(raw == selected)
+                        .on_click(move |_, _, cx| {
+                            let _ = state.update(cx, |state, cx| {
+                                if let Some(board) = state.kanban.as_mut() {
+                                    board.active_column = Some(raw.clone());
+                                    cx.notify();
+                                }
+                            });
+                        }),
+                );
+            }
+            menu
+        })
+}
+
+fn card_actions(
+    index: usize,
+    row: &BaseRow,
+    state: &BaseViewState,
+    view: &BaseView,
+    cx: &Context<BaseViewState>,
+) -> impl IntoElement + use<> {
+    let relative = row.path.clone();
+    let handler = state.handler.clone();
+    let open = Button::new(("open-kanban-note", index))
+        .ghost()
+        .h(px(48.))
+        .icon(IconName::ArrowRight)
+        .label(
+            relative
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .accessibility_label(format!("Open {}", relative.display()))
+        .on_click(move |_, _, cx| {
+            let _ = handler.update(cx, |_, cx| {
+                cx.emit(crate::handler::FileHandlerEvent::VaultFileRequested(
+                    relative.clone(),
+                    false,
+                ));
+            });
+        });
+    let mut actions = h_flex().w_full().child(open.flex_1());
+    if card_draggable(state, view, row) {
+        let state = cx.weak_entity();
+        let note = row.path.clone();
+        actions = actions.child(
+            Button::new(("move-kanban-note", index))
+                .ghost()
+                .w(px(48.))
+                .h(px(48.))
+                .icon(IconName::Ellipsis)
+                .accessibility_label(format!("Move {} to column", note.display()))
+                .dropdown_menu(move |mut menu, _, cx| {
+                    let Some(entity) = state.upgrade() else {
+                        return menu;
+                    };
+                    let board = entity.read(cx);
+                    let BaseStatus::Ready(snapshot) = &board.status else {
+                        return menu;
+                    };
+                    let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
+                        return menu;
+                    };
+                    for col in build_columns(snapshot, view) {
+                        if col
+                            .rows
+                            .iter()
+                            .any(|&ix| snapshot.rows.get(ix).is_some_and(|row| row.path == note))
+                        {
+                            continue;
+                        }
+                        let note = note.clone();
+                        let state = state.clone();
+                        menu =
+                            menu.item(PopupMenuItem::new(col.label).on_click(move |_, _, cx| {
+                                let _ = state.update(cx, |board, cx| {
+                                    board.drop_card_on_column(&note, &col.raw, cx);
+                                });
+                            }));
+                    }
+                    menu
+                }),
+        );
+    }
+    actions
 }
 
 #[cfg(test)]

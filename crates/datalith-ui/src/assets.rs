@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use gpui_kit::{AssetSource, Result, SharedString};
 
-use datalith_ui::icons::ICON_ASSETS;
+use crate::icons::ICON_ASSETS;
 
 pub struct DatalithAssets;
 
@@ -10,6 +10,11 @@ impl AssetSource for DatalithAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         if let Some((_, bytes)) = ICON_ASSETS.iter().find(|(icon, _)| *icon == path) {
             return Ok(Some(Cow::Borrowed(bytes.as_bytes())));
+        }
+        if datalith_vault::source::is_provider(std::path::Path::new(path)) {
+            return Ok(Some(datalith_vault::source::read(std::path::Path::new(
+                path,
+            ))?));
         }
         if let Some(bytes) = datalith_vault::source::embedded_bytes(std::path::Path::new(path)) {
             return Ok(Some(Cow::Borrowed(bytes)));

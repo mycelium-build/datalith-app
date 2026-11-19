@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "datalith-android"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+datalith-mobile = { path = ".." }
+gpui-kit = "=0.9.1"
+gpui-mobile = { package = "gpui-pre-mobile", path = "../../../target/android/gpui-mobile", default-features = false }
+android-activity = { version = "0.6", features = ["native-activity"] }

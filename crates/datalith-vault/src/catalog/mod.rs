@@ -346,17 +346,30 @@ fn spawn_reconciler(
             while let Ok(event) = receiver.recv() {
                 let Some(inner) = weak.upgrade() else { break };
                 let Ok(event) = event else { continue };
-                let mut event_paths = event.paths;
+                let mut event_paths = changed_paths(event);
                 while let Ok(next) = receiver.try_recv() {
                     if let Ok(next) = next {
-                        event_paths.extend(next.paths);
+                        event_paths.extend(changed_paths(next));
                     }
                 }
-                reconcile_paths(&inner, event_paths);
+                if !event_paths.is_empty() {
+                    reconcile_paths(&inner, event_paths);
+                }
             }
         })
         .context("Failed to start Vault Catalog reconciler")?;
     Ok(())
+}
+
+/// The paths an event may have changed. On Linux and Android, inotify also
+/// reports files being opened and read; the catalog reads files while
+/// reconciling, so treating those as changes would reconcile forever.
+fn changed_paths(event: notify::Event) -> Vec<PathBuf> {
+    if matches!(event.kind, notify::EventKind::Access(_)) {
+        Vec::new()
+    } else {
+        event.paths
+    }
 }
 
 fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
@@ -372,7 +385,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
         if !path.starts_with(&root) || path.starts_with(root.join(DATALITH_DIR_NAME)) {
             continue;
         }
-        if path.is_dir() {
+        if crate::source::is_dir(&path) {
             let Ok(current) = walk_tracked_files(&path, &inner.file_types) else {
                 continue;
             };
@@ -385,7 +398,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
                     })
                     .cloned(),
             );
-        } else if path.is_file() && inner.file_types.is_tracked(&path) {
+        } else if crate::source::is_file(&path) && inner.file_types.is_tracked(&path) {
             changed.insert(path);
         } else {
             removed.extend(
@@ -468,6 +481,21 @@ fn walk_tracked_files(root: &Path, file_types: &RegisteredFileTypes) -> Result<B
 mod tests {
     use super::*;
     use datalith_core::file_types::FileTypeCapabilities;
+
+    #[test]
+    fn reading_a_file_is_not_a_change_but_writing_one_is() {
+        use notify::event::{AccessKind, AccessMode, DataChange, ModifyKind};
+        let path = PathBuf::from("vault/Note.md");
+        let event = |kind| notify::Event::new(kind).add_path(path.clone());
+        for read in [
+            notify::EventKind::Access(AccessKind::Open(AccessMode::Read)),
+            notify::EventKind::Access(AccessKind::Close(AccessMode::Read)),
+        ] {
+            assert_eq!(changed_paths(event(read)), Vec::<PathBuf>::new());
+        }
+        let write = notify::EventKind::Modify(ModifyKind::Data(DataChange::Content));
+        assert_eq!(changed_paths(event(write)), vec![path.clone()]);
+    }
 
     fn searched_paths(hits: Vec<SearchHit>) -> Vec<PathBuf> {
         hits.into_iter().map(|hit| hit.path).collect()

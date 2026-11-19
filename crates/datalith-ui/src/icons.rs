@@ -32,6 +32,11 @@ pub enum DatalithIcon {
     Shortcuts,
     Palette,
     Contrast,
+    Lock,
+    Redo,
+    Heading,
+    Hash,
+    Strikethrough,
 }
 
 impl DatalithIcon {
@@ -55,6 +60,11 @@ impl DatalithIcon {
             Self::Shortcuts => icon_asset!("icons/shortcuts.svg"),
             Self::Palette => icon_asset!("icons/palette.svg"),
             Self::Contrast => icon_asset!("icons/contrast.svg"),
+            Self::Lock => icon_asset!("icons/lock.svg"),
+            Self::Redo => icon_asset!("icons/redo.svg"),
+            Self::Heading => icon_asset!("icons/heading.svg"),
+            Self::Hash => icon_asset!("icons/hash.svg"),
+            Self::Strikethrough => icon_asset!("icons/strikethrough.svg"),
         }
     }
 }
@@ -85,6 +95,11 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     DatalithIcon::Shortcuts.asset(),
     DatalithIcon::Palette.asset(),
     DatalithIcon::Contrast.asset(),
+    DatalithIcon::Lock.asset(),
+    DatalithIcon::Redo.asset(),
+    DatalithIcon::Heading.asset(),
+    DatalithIcon::Hash.asset(),
+    DatalithIcon::Strikethrough.asset(),
     // Overrides of gpui-component's lucide icons.
     icon_asset!("icons/menu.svg"),
     icon_asset!("icons/search.svg"),
@@ -105,6 +120,8 @@ pub const ICON_ASSETS: &[(&str, &str)] = &[
     icon_asset!("icons/triangle-alert.svg"),
     icon_asset!("icons/check.svg"),
     icon_asset!("icons/ellipsis.svg"),
+    icon_asset!("icons/ellipsis-vertical.svg"),
+    icon_asset!("icons/minus.svg"),
     icon_asset!("icons/sun.svg"),
     icon_asset!("icons/moon.svg"),
     icon_asset!("icons/eye.svg"),
