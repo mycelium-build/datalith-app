@@ -1,3 +1,4 @@
+use datalith_ui::touch::TouchSize as _;
 use std::path::{Component, PathBuf};
 use std::sync::LazyLock;
 
@@ -27,14 +28,6 @@ pub(super) enum Page {
     Notices,
 }
 impl Page {
-    pub(super) const fn parent(self) -> Option<Self> {
-        match self {
-            Self::Notices | Self::License => Some(Self::About),
-            Self::About => Some(Self::Settings),
-            Self::Settings | Self::Documents | Self::Drafts => Some(Self::Library),
-            Self::Library => None,
-        }
-    }
     const fn title(self) -> &'static str {
         match self {
             Self::Library => "Vaults",
@@ -227,7 +220,7 @@ impl Workspace {
         self.deleted_document = None;
         self.search.folder_only = false;
         self.search.recent.clear();
-        self.page = None;
+        self.close_pages();
         self.message = None;
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if self.external.as_ref().is_some_and(|f| f.path != root) {
@@ -260,9 +253,19 @@ impl Workspace {
     pub(super) fn open_page(&mut self, page: Page, w: &Window, cx: &mut Context<Self>) {
         w.dismiss_virtual_keyboard();
         self.file_form = None;
-        self.page = Some(page);
+        if let Some(previous) = self.page.replace(page)
+            && previous != page
+        {
+            self.page_trail.retain(|p| *p != page);
+            self.page_trail.push(previous);
+        }
         self.advance(false);
         cx.notify();
+    }
+    /// Leaves every page, back to the folder or document beneath them.
+    pub(super) fn close_pages(&mut self) {
+        self.page = None;
+        self.page_trail.clear();
     }
     pub(crate) fn show_library(&mut self, w: &Window, cx: &mut Context<Self>) {
         self.open_page(Page::Library, w, cx);
@@ -326,7 +329,7 @@ impl Workspace {
             body = body.child(
                 Button::new("page-back")
                     .ghost()
-                    .h(px(48.))
+                    .touch_h(48.)
                     .icon(IconName::ChevronLeft)
                     .accessibility_label("Back")
                     .on_click(cx.listener(|s, _, w, cx| s.back(w, cx))),
@@ -435,7 +438,7 @@ impl Workspace {
             body = body.child(
                 Button::new(format!("open-{label}"))
                     .ghost()
-                    .h(px(48.))
+                    .touch_h(48.)
                     .label(label)
                     .on_click(cx.listener(move |s, _, w, cx| s.open(path.clone(), w, cx))),
             );
@@ -456,7 +459,7 @@ impl Workspace {
                     body = body.child(
                         Button::new(("recover-draft", ix))
                             .ghost()
-                            .h(px(48.))
+                            .touch_h(48.)
                             .label(name(&path))
                             .on_click(cx.listener(move |s, _, w, cx| {
                                 if let Err(e) = s.recover_copy(&path, w, cx) {
@@ -493,8 +496,7 @@ impl Workspace {
             let limit = if delta < 0 { size <= 12 } else { size >= 26 };
             Button::new(id)
                 .ghost()
-                .h(px(48.))
-                .w(px(48.))
+                .touch_size(48.)
                 .icon(icon)
                 .accessibility_label(label)
                 .disabled(limit)
@@ -550,8 +552,7 @@ impl Workspace {
                 .map(|(id, icon, label, next)| {
                     Button::new(id)
                         .ghost()
-                        .h(px(48.))
-                        .w(px(48.))
+                        .touch_size(48.)
                         .icon(icon)
                         .accessibility_label(label)
                         .on_click(cx.listener(move |s, _, _, cx| {
@@ -638,8 +639,6 @@ fn vault_row(
         label.clone()
     };
     ListItem::new(id)
-        .flex_1()
-        .min_w_0()
         .min_h(px(48.))
         .px_2()
         .accessibility_label(spoken)
@@ -693,6 +692,8 @@ impl Workspace {
                             current,
                             cx,
                         )
+                        .flex_1()
+                        .min_w_0()
                         .on_click(cx.listener(move |s, _, w, cx| {
                             if let Err(e) = s.open_bookmark(&grant, false, w, cx) {
                                 s.message = Some(e.to_string());
@@ -706,8 +707,7 @@ impl Workspace {
                             id.display()
                         )))
                         .ghost()
-                        .w(px(48.))
-                        .h(px(48.))
+                        .touch_size(48.)
                         .text_color(cx.theme().muted_foreground)
                         .icon(IconName::Ellipsis)
                         .accessibility_label(format!("Actions for {menu_title}"))

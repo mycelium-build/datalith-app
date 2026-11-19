@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use datalith_ui::fonts::ResolvedFonts;
+use datalith_ui::touch::TouchSize as _;
 use datalith_vault::{CatalogState, source};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::{
@@ -57,7 +58,11 @@ impl Folder {
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement + use<> {
-        let label = name(path);
+        let label = if folder {
+            name(path)
+        } else {
+            super::workspace::title(path)
+        };
         let icon = if folder {
             Icon::new(IconName::Folder)
         } else {
@@ -249,7 +254,7 @@ impl Folder {
                         .child(
                             Button::new("search-everywhere")
                                 .outline()
-                                .h(px(44.))
+                                .touch_h(44.)
                                 .label("Search entire vault")
                                 .on_click(cx.listener(|s, _, _, cx| s.set_search_scope(false, cx))),
                         )
@@ -266,23 +271,26 @@ impl Folder {
         workspace: &Workspace,
         cx: &Context<Workspace>,
     ) -> Option<impl IntoElement + use<>> {
-        if workspace.root.as_ref() == Some(&self.path) {
+        let folder_only = workspace.search.folder_only;
+        // Only while searching: browsing a folder needs no scope control.
+        if workspace.root.as_ref() == Some(&self.path)
+            || (!folder_only && workspace.search.query(cx).trim().is_empty())
+        {
             return None;
         }
-        let folder_only = workspace.search.folder_only;
         Some(
             div().px_3().pb_1().child(
                 ButtonGroup::new("search-scope")
                     .outline()
                     .child(
                         Button::new("scope-vault")
-                            .h(px(36.))
+                            .touch_h(36.)
                             .label("Vault")
                             .selected(!folder_only),
                     )
                     .child(
                         Button::new("scope-folder")
-                            .h(px(36.))
+                            .touch_h(36.)
                             .label(workspace.folder_name(&self.path))
                             .selected(folder_only),
                     )

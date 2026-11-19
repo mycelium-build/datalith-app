@@ -4,6 +4,7 @@
 //! platform's action sheet so Delete never sits next to Edit.
 use super::{Choice, Command, ScreenControls, Workspace};
 use datalith_ui::icons::DatalithIcon;
+use datalith_ui::touch::TouchSize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex};
 use gpui_kit::prelude::*;
@@ -12,8 +13,7 @@ use gpui_kit::{Context, div, px};
 fn icon_button(id: &'static str, label: &str) -> Button {
     Button::new(id)
         .ghost()
-        .w(px(48.))
-        .h(px(48.))
+        .touch_size(48.)
         .accessibility_label(label.to_owned())
 }
 

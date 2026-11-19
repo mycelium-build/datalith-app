@@ -23,6 +23,7 @@ pub mod registry;
 pub mod scroll;
 pub mod theme_scope;
 mod todo_txt;
+pub mod touch;
 pub mod viewers;
 
 pub mod fonts;

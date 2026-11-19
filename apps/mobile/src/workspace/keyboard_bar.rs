@@ -4,6 +4,7 @@
 use super::Workspace;
 use datalith_ui::actions::{Bold, InsertWikiLink, Italic};
 use datalith_ui::icons::DatalithIcon;
+use datalith_ui::touch::TouchSize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex};
 use gpui_kit::prelude::*;
@@ -12,8 +13,8 @@ use gpui_kit::{Action, Context, FontWeight, Window, div, px};
 fn key(id: &'static str, label: &'static str) -> Button {
     Button::new(id)
         .ghost()
-        .w(px(48.))
-        .h(px(44.))
+        .touch_w(48.)
+        .touch_h(44.)
         .accessibility_label(label)
 }
 

@@ -1,3 +1,4 @@
+use datalith_ui::touch::TouchSize as _;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "ios"))]
@@ -46,6 +47,9 @@ pub struct Workspace {
     restoring: bool,
     session_save: Option<gpui_kit::Task<()>>,
     page: Option<Page>,
+    /// Pages under the current one, most recent last: Back returns to them
+    /// in the order they were opened.
+    page_trail: Vec<Page>,
     preferences: Preferences,
     choice: Option<(Choice, Vec<String>)>,
     notice_index: usize,
@@ -105,6 +109,7 @@ impl Workspace {
             session_save: None,
             documents: BTreeMap::new(),
             page: None,
+            page_trail: Vec::new(),
             notice_index: 0,
             file_form: None,
             preferences: Preferences::load(),
@@ -210,7 +215,7 @@ impl Workspace {
         self.message = None;
         self.advance(false);
         self.deleted_document = None;
-        self.page = None;
+        self.close_pages();
         if !self.restoring {
             search::remember(&mut self.search.recent, path.clone());
         }
@@ -500,8 +505,8 @@ impl Workspace {
             cx.notify();
             return;
         }
-        if let Some(page) = self.page.take() {
-            self.page = page.parent();
+        if self.page.take().is_some() {
+            self.page = self.page_trail.pop();
             cx.notify();
             return;
         }
@@ -573,6 +578,19 @@ pub fn name(path: &Path) -> String {
         .into_owned()
 }
 
+/// The name people read for a document: Markdown notes drop `.md`, as wiki
+/// links do; other files keep their extension so their type stays visible.
+pub fn title(path: &Path) -> String {
+    let name = name(path);
+    let cut = name.len().saturating_sub(3);
+    match (name.get(..cut), name.get(cut..)) {
+        (Some(stem), Some(ext)) if !stem.is_empty() && ext.eq_ignore_ascii_case(".md") => {
+            stem.to_owned()
+        }
+        _ => name,
+    }
+}
+
 impl Workspace {
     fn feedback(&self, mut panel: gpui_kit::Div, cx: &Context<Self>) -> gpui_kit::Div {
         if let Some(error) = &self.message {
@@ -629,7 +647,7 @@ impl Workspace {
                     .child(
                         Button::new("undo")
                             .label("Undo")
-                            .h(px(44.))
+                            .touch_h(44.)
                             .on_click(cx.listener(|v, _, w, cx| v.undo(w, cx))),
                     ),
             );
@@ -667,7 +685,7 @@ impl Workspace {
     #[cfg(not(target_os = "ios"))]
     pub(super) fn place_title(&self) -> String {
         if let Some(doc) = self.current() {
-            return name(&doc.path);
+            return title(&doc.path);
         }
         self.folders
             .last()
@@ -708,7 +726,7 @@ impl Workspace {
             title: self
                 .current()
                 .filter(|_| surface == Surface::Document)
-                .map(|doc| name(&doc.path)),
+                .map(|doc| title(&doc.path)),
             can_back: self.can_back(),
             can_forward: self.history.can_forward(),
             vault_writable: self.root.as_ref().is_some_and(|r| !source::is_read_only(r)),
@@ -836,7 +854,8 @@ impl Render for Workspace {
             .h(bounds.size.height)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground);
-        let wide = bounds.size.width >= px(700.);
+        // In rems, so a larger text size keeps one column where two would be cramped.
+        let wide = bounds.size.width >= gpui_kit::rems(44.).to_pixels(window.rem_size());
         let surface = self.surface();
         let controls = self.screen_controls(cx);
         #[cfg(target_os = "ios")]
@@ -854,7 +873,10 @@ impl Render for Workspace {
             let browser = v_flex()
                 .min_w_0()
                 .when(wide, |el| {
-                    el.w(px(272.)).border_r_1().border_color(cx.theme().border)
+                    el.w(gpui_kit::rems(17.))
+                        .max_w(gpui_kit::relative(0.4))
+                        .border_r_1()
+                        .border_color(cx.theme().border)
                 })
                 .when(!wide, gpui_kit::Styled::flex_1);
             content = content.child(browser.child(folder.render(
@@ -891,5 +913,19 @@ impl Render for Workspace {
                     }
                 }))
             })
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::title;
+    use std::path::Path;
+
+    #[test]
+    fn notes_drop_md_and_other_files_keep_their_extension() {
+        assert_eq!(title(Path::new("a/Deep Work.md")), "Deep Work");
+        assert_eq!(title(Path::new("README.MD")), "README");
+        assert_eq!(title(Path::new("Library.base")), "Library.base");
+        assert_eq!(title(Path::new(".md")), ".md");
     }
 }

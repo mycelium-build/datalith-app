@@ -1,5 +1,6 @@
 use super::{Command, Workspace, name};
 use datalith_ui::fonts::ResolvedFonts;
+use datalith_ui::touch::TouchSize as _;
 use datalith_vault::{file_ops, source};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName,
@@ -10,7 +11,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AppContext as _, Context, Entity, Focusable as _, IntoElement, ParentElement, Styled, Window,
-    div, prelude::*, px,
+    div, prelude::*,
 };
 use std::path::{Component, Path, PathBuf};
 
@@ -107,8 +108,7 @@ impl Workspace {
             path.display()
         )))
         .ghost()
-        .w(px(48.))
-        .h(px(48.))
+        .touch_size(48.)
         .text_color(cx.theme().muted_foreground)
         .icon(IconName::Ellipsis)
         .accessibility_label(format!("Actions for {}", name(&path)))
@@ -272,7 +272,7 @@ impl Workspace {
                 body = body.child(
                     Button::new("up-destination")
                         .ghost()
-                        .h(px(48.))
+                        .touch_h(48.)
                         .icon(IconName::ChevronLeft)
                         .label("Enclosing folder")
                         .on_click(
@@ -288,7 +288,7 @@ impl Workspace {
                         dir.display()
                     )))
                     .ghost()
-                    .h(px(48.))
+                    .touch_h(48.)
                     .icon(IconName::Folder)
                     .label(name(dir))
                     .on_click(cx.listener(move |s, _, _, cx| s.move_directory(path.clone(), cx))),
@@ -327,14 +327,14 @@ impl Workspace {
             .child(
                 Button::new("cancel-file")
                     .ghost()
-                    .h(px(44.))
+                    .touch_h(44.)
                     .label("Cancel")
                     .on_click(cx.listener(|s, _, w, cx| s.back(w, cx))),
             )
             .child(
                 Button::new("file-submit")
                     .primary()
-                    .h(px(44.))
+                    .touch_h(44.)
                     .label(form.action.submit())
                     .disabled(unchanged)
                     .on_click(cx.listener(|s, _, w, cx| s.submit_file(w, cx))),
@@ -393,7 +393,7 @@ impl Workspace {
         if matches!(action, Action::Rename | Action::Move) {
             self.forget_files(&old);
         }
-        self.page = None;
+        self.close_pages();
         self.file_form = None;
         self.message = None;
         w.dismiss_virtual_keyboard();

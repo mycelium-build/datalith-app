@@ -3,6 +3,7 @@ use super::{
     table::table_cell_text, touch_choice,
 };
 use crate::handler::FileHandlerEvent;
+use crate::touch::TouchSize as _;
 use datalith_core::base::{BaseDefinition, BaseView, ViewType};
 use gpui_kit::component::{
     ActiveTheme, ElementExt, IconName,
@@ -101,7 +102,7 @@ impl BaseViewState {
                         div()
                             .w(gpui_kit::relative(0.44))
                             .flex_shrink_0()
-                            .child("File"),
+                            .child("Name"),
                     )
                     .child(div().flex_1().min_w_0().truncate().child(
                         view.order.get(rows.property).map_or_else(String::new, |p| {
@@ -140,10 +141,17 @@ impl BaseViewState {
         // and scrollable above it.
         layout
             .child(list)
-            .children(
-                summary_inline_line(&snap.summaries)
-                    .map(|s| div().px_3().text_sm().truncate().child(s)),
-            )
+            .children(summary_inline_line(&snap.summaries).map(|s| {
+                div()
+                    .px_3()
+                    .py_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .whitespace_normal()
+                    .child(s)
+            }))
             .children(selected.map(|row| self.touch_detail(snap, view, row, cx)))
             .into_any_element()
     }
@@ -177,6 +185,31 @@ impl BaseViewState {
             });
         })
     }
+    /// A group heading: its value and count, then its summaries in small muted text.
+    fn touch_header(
+        snapshot: &BaseSnapshot,
+        label: &str,
+        count: usize,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let summary = summary_inline_line(snapshot.group_summaries_for(label));
+        v_flex()
+            .justify_center()
+            .px_3()
+            .touch_h(56.)
+            .bg(cx.theme().secondary)
+            .child(format!("{label} ({count})"))
+            .children(summary.map(|v| {
+                div()
+                    .w_full()
+                    .truncate()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(v)
+            }))
+            .into_any_element()
+    }
+
     fn touch_result(
         &self,
         snapshot: &BaseSnapshot,
@@ -189,24 +222,20 @@ impl BaseViewState {
         let property = rows.property;
         Some(match snapshot.items.get(ix)? {
             BaseItem::Header { label, count, .. } => {
-                let summary = summary_inline_line(snapshot.group_summaries_for(label));
-                v_flex()
-                    .justify_center()
-                    .px_3()
-                    .h(px(56.))
-                    .bg(cx.theme().secondary)
-                    .child(format!("{label} ({count})"))
-                    .children(summary.map(|v| div().w_full().truncate().text_sm().child(v)))
-                    .into_any_element()
+                Self::touch_header(snapshot, label, *count, cx)
             }
             BaseItem::Row { index, .. } => {
                 let row = snapshot.rows.get(*index)?;
                 let path = row.path.clone();
                 let name = super::file_name(&path).unwrap_or_default().to_string();
                 let value = if table {
+                    // A column that repeats the name, such as a title property,
+                    // would show every row twice on a narrow screen.
                     view.order
                         .get(property)
-                        .map_or_default(|p| table_cell_text(snapshot, p, row))
+                        .map(|p| table_cell_text(snapshot, p, row))
+                        .filter(|v| v != &name)
+                        .unwrap_or_default()
                 } else {
                     view.order
                         .iter()
@@ -217,13 +246,18 @@ impl BaseViewState {
                         .join(" · ")
                 };
                 let title = div().min_w_0().truncate().child(name);
-                let field = div().flex_1().min_w_0().truncate().child(value);
+                let field = (!value.is_empty())
+                    .then(|| div().flex_1().min_w_0().truncate().child(value.clone()));
                 let body = if table {
                     h_flex()
                         .w_full()
                         .gap_3()
-                        .child(title.w(gpui_kit::relative(0.44)).flex_shrink_0())
-                        .child(field)
+                        .child(if value.is_empty() {
+                            title.flex_1()
+                        } else {
+                            title.w(gpui_kit::relative(0.44)).flex_shrink_0()
+                        })
+                        .children(field)
                         .children(other_columns(view, property, rows.extra_columns).map(|p| {
                             div()
                                 .flex_1()
@@ -236,7 +270,7 @@ impl BaseViewState {
                     v_flex()
                         .w_full()
                         .child(title)
-                        .child(field)
+                        .children(field)
                         .into_any_element()
                 };
                 let entity = cx.entity();
@@ -249,7 +283,7 @@ impl BaseViewState {
                         path.display()
                     )))
                     .w_full()
-                    .h(px(56.))
+                    .touch_h(56.)
                     .px_3()
                     .flex()
                     .items_center()
@@ -373,7 +407,7 @@ impl BaseViewState {
             .child(
                 Button::new("open-row")
                     .primary()
-                    .h(px(44.))
+                    .touch_h(44.)
                     .label("Open note")
                     .on_click(move |_, _, cx| {
                         let _ = handler.update(cx, |_, cx| {
@@ -384,8 +418,7 @@ impl BaseViewState {
             .child(
                 Button::new("dismiss-row")
                     .ghost()
-                    .w(px(44.))
-                    .h(px(44.))
+                    .touch_size(44.)
                     .icon(IconName::Close)
                     .accessibility_label("Close")
                     .on_click(cx.listener(move |s, _, _, cx| {

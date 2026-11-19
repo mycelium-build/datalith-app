@@ -231,7 +231,7 @@ impl Workspace {
         }
         self.search.folder_only = route.folder_only;
         self.active = None;
-        self.page = None;
+        self.close_pages();
         self.file_form = None;
         self.deleted_document = None;
         if let Some(p) = doc {

@@ -1,6 +1,7 @@
 use super::super::touch_choice;
 use super::{GraphFocus, GraphState, NoteChoice};
 use crate::handler::FileHandlerEvent;
+use crate::touch::TouchSize as _;
 use gpui_kit::component::{
     ActiveTheme, IconName,
     button::{Button, ButtonVariants},
@@ -68,8 +69,7 @@ impl GraphState {
             controls = controls.child(
                 Button::new(id)
                     .ghost()
-                    .w(px(48.))
-                    .h(px(48.))
+                    .touch_size(48.)
                     .icon(icon)
                     .accessibility_label(name)
                     .on_click(cx.listener(move |state, _, _, cx| {
@@ -144,8 +144,7 @@ impl GraphState {
                     .child(
                         Button::new("close-selection")
                             .ghost()
-                            .w(px(44.))
-                            .h(px(44.))
+                            .touch_size(44.)
                             .icon(IconName::Close)
                             .accessibility_label("Clear selection")
                             .on_click(cx.listener(|s, _, _, cx| {
@@ -160,7 +159,7 @@ impl GraphState {
                     .child(
                         Button::new("open-graph-note")
                             .primary()
-                            .h(px(44.))
+                            .touch_h(44.)
                             .label("Open note")
                             .on_click(move |_, _, cx| {
                                 let _ = handler.update(cx, |_, cx| {
