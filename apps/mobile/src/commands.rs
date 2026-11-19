@@ -64,3 +64,44 @@ pub use crate::android_folder::show_options as show;
 pub fn show(_: &str, _: &[String], _: i32) -> anyhow::Result<()> {
     anyhow::bail!("A mobile host is required")
 }
+
+/// Presents commands in the platform's action sheet. The chosen index comes
+/// back through the same channel as a value choice.
+#[cfg(target_os = "ios")]
+pub fn actions(
+    title: &str,
+    items: &[crate::workspace::Item],
+    anchor: gpui_kit::Point<gpui_kit::Pixels>,
+) -> anyhow::Result<()> {
+    use std::ffi::{CString, c_char};
+    unsafe extern "C" {
+        fn datalith_actions(title: *const c_char, json: *const c_char, x: f64, y: f64);
+    }
+    let title = CString::new(title)?;
+    let json = CString::new(serde_json::to_string(items)?)?;
+    unsafe {
+        datalith_actions(
+            title.as_ptr(),
+            json.as_ptr(),
+            f64::from(f32::from(anchor.x)),
+            f64::from(f32::from(anchor.y)),
+        );
+    }
+    Ok(())
+}
+#[cfg(target_os = "android")]
+pub fn actions(
+    title: &str,
+    items: &[crate::workspace::Item],
+    _: gpui_kit::Point<gpui_kit::Pixels>,
+) -> anyhow::Result<()> {
+    crate::android_folder::show_actions(title, items)
+}
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub fn actions(
+    _: &str,
+    _: &[crate::workspace::Item],
+    _: gpui_kit::Point<gpui_kit::Pixels>,
+) -> anyhow::Result<()> {
+    anyhow::bail!("A mobile host is required")
+}

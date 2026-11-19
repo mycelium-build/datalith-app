@@ -65,12 +65,8 @@ impl Workspace {
         if self.restoring {
             return;
         }
-        if let Some(previous) = previous
-            && Some(&previous) != self.route(cx).as_ref()
-        {
-            self.backward.push(previous);
-            self.forward.clear();
-        }
+        let current = self.route(cx);
+        self.history.record(previous, current.as_ref());
     }
     pub(super) fn persist_session(&mut self, cx: &Context<Self>) {
         if self.restoring {
@@ -106,8 +102,8 @@ impl Workspace {
             Session {
                 current,
                 documents,
-                back: self.backward.clone(),
-                forward: self.forward.clone(),
+                back: self.history.backward.clone(),
+                forward: self.history.forward.clone(),
             },
         );
         if let Err(e) = self.preferences.save() {
@@ -133,8 +129,10 @@ impl Workspace {
             self.open(path.clone(), w, cx);
             self.restore_document(&path, state, cx);
         }
-        self.backward = session.back;
-        self.forward = session.forward;
+        self.history = super::navigation::History {
+            backward: session.back,
+            forward: session.forward,
+        };
         self.active = None;
         if !self.visit(&session.current, w, cx) {
             let mut fallback = session.current;
@@ -220,25 +218,44 @@ impl Workspace {
     pub(super) fn travel(&mut self, forward: bool, w: &mut Window, cx: &mut Context<Self>) {
         let previous = self.route(cx);
         self.restoring = true;
-        while let Some(route) = if forward {
-            self.forward.pop()
-        } else {
-            self.backward.pop()
-        } {
-            if self.visit(&route, w, cx) {
-                if let Some(previous) = previous {
-                    if forward {
-                        self.backward.push(previous);
-                    } else {
-                        self.forward.push(previous);
-                    }
-                }
-                break;
-            }
-        }
+        let mut history = std::mem::take(&mut self.history);
+        history.step(forward, previous, |route| self.visit(route, w, cx));
+        self.history = history;
         self.restoring = false;
         self.advance(!forward);
         self.persist_session(cx);
+        cx.notify();
+    }
+    /// Shows the folder that holds `path`, as a new step in the history.
+    pub(super) fn reveal(&mut self, path: &Path, w: &mut Window, cx: &mut Context<Self>) {
+        if let Some(folder) = path.parent() {
+            self.show_folder(folder, w, cx);
+        }
+    }
+    /// Shows `folder` (inside the vault) as a new step in the history.
+    pub(super) fn show_folder(&mut self, folder: &Path, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(folder) = self
+            .root
+            .as_ref()
+            .and_then(|root| folder.strip_prefix(root).ok())
+            .map(Path::to_owned)
+        else {
+            return;
+        };
+        let previous = self.route(cx);
+        let route = Route {
+            folder,
+            whole: self.whole_vault,
+            ..Route::default()
+        };
+        self.restoring = true;
+        let visited = self.visit(&route, w, cx);
+        self.restoring = false;
+        if visited {
+            self.record_route(previous, cx);
+            self.advance(false);
+            self.persist_session(cx);
+        }
         cx.notify();
     }
     pub fn go_forward(&mut self, w: &mut Window, cx: &mut Context<Self>) {

@@ -107,5 +107,5 @@ extern "C" fn datalith_folder_picked(bookmark: *const c_char, error: *const c_ch
             .into_owned())
     };
     PICKED.with_borrow_mut(|slot| *slot = Some(result));
-    super::ios::datalith_mobile_action(5);
+    super::ios::dispatch(super::ios::FOLDER_PICKED);
 }

@@ -1,5 +1,5 @@
 //! The Activity returns a persisted tree grant. Attach each catalog or editor
-//! thread to the VM for the duration of its ContentResolver call.
+//! thread to the VM for the duration of its `ContentResolver` call.
 use datalith_vault::source::provider::{DocumentProvider, Mount};
 use futures_channel::oneshot;
 use jni::{
@@ -74,11 +74,11 @@ extern "system" fn Java_build_mycelium_datalith_DatalithActivity_folderPicked(
             Some(env.get_string(&uri)?.into())
         })
     })();
-    if let Some(tx) = PICKER
+    let waiting = PICKER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .take()
-    {
+        .take();
+    if let Some(tx) = waiting {
         let _ = tx.send(result);
     }
 }
@@ -218,6 +218,38 @@ pub fn show_options(title: &str, items: &[String], selected: i32) -> anyhow::Res
                 JValue::Object(&title),
                 JValue::Object(&array),
                 JValue::Int(selected),
+            ],
+        )?;
+        Ok(())
+    })
+}
+/// Lists commands with `AlertDialog.setItems`: plain rows, no radio buttons.
+/// The destructive command is marked so the host can tint it.
+pub fn show_actions(title: &str, items: &[crate::workspace::Item]) -> anyhow::Result<()> {
+    activity(|env, app| {
+        let title = env.new_string(title)?;
+        let array = env.new_object_array(
+            i32::try_from(items.len())?,
+            "java/lang/String",
+            JObject::null(),
+        )?;
+        let mut destructive = -1;
+        for (index, item) in items.iter().enumerate() {
+            let value = env.new_string(item.label)?;
+            env.set_object_array_element(&array, i32::try_from(index)?, &value)?;
+            env.delete_local_ref(value)?;
+            if item.destructive {
+                destructive = i32::try_from(index)?;
+            }
+        }
+        env.call_method(
+            app,
+            "chooseActions",
+            "(Ljava/lang/String;[Ljava/lang/String;I)V",
+            &[
+                JValue::Object(&title),
+                JValue::Object(&array),
+                JValue::Int(destructive),
             ],
         )?;
         Ok(())

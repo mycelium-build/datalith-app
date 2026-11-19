@@ -1,8 +1,14 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+#[cfg(not(target_os = "ios"))]
+mod bar;
+mod controls;
+mod navigation;
 mod panels;
 mod session;
+pub use controls::{Command, Item, ScreenControls};
 use datalith_vault::source;
+use navigation::Surface;
 pub use panels::{Choice, FontCatalog};
 use panels::{Page, Preferences};
 
@@ -34,8 +40,7 @@ pub struct Workspace {
     pub(super) registry: FileRegistry,
     documents: BTreeMap<PathBuf, Document>,
     active: Option<PathBuf>,
-    backward: Vec<session::Route>,
-    forward: Vec<session::Route>,
+    history: navigation::History<session::Route>,
     restoring: bool,
     session_save: Option<gpui_kit::Task<()>>,
     page: Option<Page>,
@@ -95,8 +100,7 @@ impl Workspace {
             catalog: None,
             registry: default_registry(),
             active: None,
-            backward: Vec::new(),
-            forward: Vec::new(),
+            history: navigation::History::default(),
             restoring: false,
             session_save: None,
             documents: BTreeMap::new(),
@@ -506,7 +510,7 @@ impl Workspace {
 
         if self.deleted_document.is_some() {
             self.deleted_document = None;
-        } else if !self.backward.is_empty() {
+        } else if self.history.can_back() {
             self.travel(false, window, cx);
             return;
         } else if self.active.take().is_none() && self.folders.len() > 1 {
@@ -539,12 +543,6 @@ impl Workspace {
             });
             self.persist_session(cx);
             cx.notify();
-        }
-    }
-
-    pub(super) fn delete(&mut self, cx: &mut Context<Self>) {
-        if let Some(path) = self.current().map(|doc| doc.path.clone()) {
-            self.remove_file(&path, cx);
         }
     }
 
@@ -662,82 +660,130 @@ impl Workspace {
         }
     }
 
-    fn detail(&self, wide: bool, has_detail: bool, cx: &Context<Self>) -> impl IntoElement {
-        let mut detail = v_flex().flex_1().min_w_0();
-        let mut bar = h_flex()
-            .gap_1()
-            .px_2()
-            .min_h(px(48.))
-            .border_b_1()
-            .border_color(cx.theme().border);
-        if has_detail && (!wide || !self.backward.is_empty()) {
-            bar = bar.child(
-                Button::new("back")
-                    .ghost()
-                    .h(px(48.))
-                    .icon(gpui_kit::component::IconName::ChevronLeft)
-                    .w(px(48.))
-                    .accessibility_label("Back")
-                    .on_click(cx.listener(|v, _, w, cx| v.back(w, cx))),
-            );
-        }
+    /// The name of what the screen shows, for sheet titles.
+    #[cfg(not(target_os = "ios"))]
+    pub(super) fn place_title(&self) -> String {
         if let Some(doc) = self.current() {
+            return name(&doc.path);
+        }
+        self.folders
+            .last()
+            .map_or_else(String::new, |f| self.folder_name(&f.path))
+    }
+
+    pub(super) fn surface(&self) -> Surface {
+        if self.file_form.is_some() {
+            Surface::Form
+        } else if self.page.is_some() {
+            Surface::Page
+        } else if self.deleted_document.is_some() {
+            Surface::Deleted
+        } else if self.current().is_some() {
+            Surface::Document
+        } else {
+            Surface::Folder
+        }
+    }
+
+    fn can_back(&self) -> bool {
+        self.surface() != Surface::Folder || self.history.can_back() || self.folders.len() > 1
+    }
+
+    pub(super) fn screen_controls(&self, cx: &gpui_kit::App) -> ScreenControls {
+        let surface = self.surface();
+        let document = self.current().map(|doc| {
             let h = doc.handler.read(cx);
-            bar = bar
-                .child(div().flex_1().truncate().child(name(&doc.path)))
-                .child(Self::library_menu(cx));
-            if h.can_toggle_mode() {
-                bar = bar.child(
-                    Button::new("mode")
-                        .ghost()
-                        .icon(gpui_kit::component::Icon::new(if h.is_editing() {
-                            datalith_ui::icons::DatalithIcon::Book
-                        } else {
-                            datalith_ui::icons::DatalithIcon::Pen
-                        }))
-                        .w(px(48.))
-                        .accessibility_label(if h.is_editing() { "Read" } else { "Edit" })
-                        .h(px(48.))
-                        .on_click(cx.listener(|v, _, w, cx| v.toggle_mode(w, cx))),
-                );
+            controls::DocumentControls {
+                writable: !h.is_read_only(),
+                can_toggle: h.can_toggle_mode(),
+                editing: h.is_editing(),
             }
-            if !h.is_read_only() {
-                bar = bar.child(
-                    Button::new("delete")
-                        .ghost()
-                        .icon(gpui_kit::component::IconName::Delete)
-                        .w(px(48.))
-                        .accessibility_label("Delete")
-                        .h(px(48.))
-                        .on_click(cx.listener(|v, _, _, cx| v.delete(cx))),
-                );
+        });
+        ScreenControls::new(&controls::Screen {
+            surface,
+            title: self
+                .current()
+                .filter(|_| surface == Surface::Document)
+                .map(|doc| name(&doc.path)),
+            can_back: self.can_back(),
+            can_forward: self.history.can_forward(),
+            vault_writable: self.root.as_ref().is_some_and(|r| !source::is_read_only(r)),
+            document,
+        })
+    }
+
+    /// Runs a command chosen in a native bar, a GPUI bar or an action sheet.
+    /// File commands act on `target`, or on the open document without one.
+    pub fn run(
+        &mut self,
+        command: Command,
+        target: Option<PathBuf>,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            Command::Back => self.back(w, cx),
+            Command::Forward => self.go_forward(w, cx),
+            Command::ToggleMode => self.toggle_mode(w, cx),
+            Command::NewNote | Command::NewFolder => {
+                self.begin_creation(command == Command::NewFolder, w, cx);
             }
+            Command::Rename
+            | Command::Move
+            | Command::Duplicate
+            | Command::Reveal
+            | Command::Delete => {
+                if let Some(path) = target.or_else(|| self.current().map(|d| d.path.clone())) {
+                    self.perform_file_action(path, command, w, cx);
+                }
+            }
+            Command::Vaults => self.show_library(w, cx),
+            Command::Documents => self.open_page(Page::Documents, w, cx),
+            Command::Drafts => self.open_page(Page::Drafts, w, cx),
+            Command::Settings => self.open_page(Page::Settings, w, cx),
+        }
+    }
+
+    fn detail(&self, cx: &Context<Self>) -> impl IntoElement {
+        let detail = v_flex().flex_1().min_w_0();
+        if let Some(doc) = self.current() {
             let body = div().flex_1().min_h_0().child(doc.handler.clone());
             #[cfg(target_os = "ios")]
-            let body = body.when(h.is_editing() && !h.is_read_only(), |el| {
-                el.children(h.input().map(super::ios_input::registration))
-            });
-            detail = detail
-                .when(!cfg!(target_os = "ios"), |el| el.child(bar))
-                .child(body);
+            let body = {
+                let h = doc.handler.read(cx);
+                body.when(h.is_editing() && !h.is_read_only(), |el| {
+                    el.children(h.input().map(super::ios_input::registration))
+                })
+            };
+            detail.child(body)
         } else {
-            detail = detail
-                .when(has_detail && !cfg!(target_os = "ios"), |el| el.child(bar))
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(if self.deleted_document.is_some() {
-                            "File deleted"
-                        } else {
-                            "Select a file"
-                        }),
-                );
+            detail.child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(if self.deleted_document.is_some() {
+                        "File deleted"
+                    } else {
+                        "Select a file"
+                    }),
+            )
         }
-        detail
+    }
+
+    /// Escape leaves the editor first, then steps back.
+    fn escape(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        let editing = self.surface() == Surface::Document
+            && self
+                .current()
+                .is_some_and(|d| d.handler.read(cx).is_editing());
+        if editing {
+            self.toggle_mode(w, cx);
+        } else if self.can_back() {
+            self.back(w, cx);
+        }
     }
 }
 
@@ -753,56 +799,28 @@ impl Render for Workspace {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground);
         let wide = bounds.size.width >= px(700.);
-        let has_detail = self.current().is_some()
-            || self.deleted_document.is_some()
-            || self.page.is_some()
-            || self.file_form.is_some();
-        let can_back = has_detail || self.folders.len() > 1 || !self.backward.is_empty();
+        let surface = self.surface();
+        let controls = self.screen_controls(cx);
         #[cfg(target_os = "ios")]
-        super::ios::update(
-            can_back,
-            !self.forward.is_empty(),
-            self.current()
-                .filter(|_| self.page.is_none() && self.file_form.is_none())
-                .map(|d| d.handler.read(cx)),
-            cx.theme().background,
-        );
-        let show_browser = self.file_form.is_none() && self.page.is_none() && (wide || !has_detail);
+        super::ios::update(&controls, cx.theme().background);
+        #[cfg(not(target_os = "ios"))]
+        {
+            panel = panel.child(bar::render(&controls, cx));
+        }
+        let show_browser = matches!(
+            surface,
+            Surface::Folder | Surface::Document | Surface::Deleted
+        ) && (wide || surface == Surface::Folder);
         let mut content = h_flex().flex_1().min_h_0().items_stretch();
         if show_browser && let Some(folder) = self.folders.last() {
-            let mut browser = v_flex()
+            let browser = v_flex()
                 .min_w_0()
                 .when(wide, |el| {
                     el.w(px(272.)).border_r_1().border_color(cx.theme().border)
                 })
                 .when(!wide, gpui_kit::Styled::flex_1);
-            if self.folders.len() > 1 && (!cfg!(target_os = "ios") || (wide && has_detail)) {
-                browser = browser.child(
-                    h_flex().px_2().child(
-                        Button::new("parent")
-                            .ghost()
-                            .h(px(48.))
-                            .icon(gpui_kit::component::IconName::ChevronLeft)
-                            .w(px(48.))
-                            .accessibility_label("Back")
-                            .on_click(cx.listener(|v, _, w, cx| {
-                                let previous = v.route(cx);
-                                w.dismiss_virtual_keyboard();
-                                v.active = None;
-                                v.deleted_document = None;
-                                v.folders.pop();
-                                v.refresh_folder();
-                                v.record_route(previous, cx);
-                                v.search_changed(cx);
-                                v.persist_session(cx);
-                                cx.notify();
-                            })),
-                    ),
-                );
-            }
             content = content.child(browser.child(folder.render(
                 self,
-                wide || !cfg!(target_os = "ios"),
                 self.current().map(|d| d.path.as_path()),
                 cx,
             )));
@@ -811,27 +829,26 @@ impl Render for Workspace {
             content = content.child(self.render_form(form, cx));
         } else if let Some(page) = &self.page {
             content = content.child(self.render_page(*page, cx));
-        } else if wide || has_detail {
-            content = content.child(self.detail(wide, has_detail, cx));
+        } else if wide || surface != Surface::Folder {
+            content = content.child(self.detail(cx));
         }
         panel = panel
             .overflow_hidden()
             .child(self.navigation_content(content, wide, cx));
         panel = panel.track_focus(&self.focus);
         panel = self.feedback(panel, cx);
-        panel.when(can_back, |el| {
-            el.on_key_down(cx.listener(|v, event: &gpui_kit::KeyDownEvent, w, cx| {
+        panel
+            .on_key_down(cx.listener(|v, event: &gpui_kit::KeyDownEvent, w, cx| {
                 if event.keystroke.key == "escape" {
-                    v.back(w, cx);
+                    v.escape(w, cx);
                 }
             }))
-            .on_back_gesture(cx.listener(
-                |v, event: &gpui_kit::BackGestureEvent, w, cx| {
+            .when(self.can_back(), |el| {
+                el.on_back_gesture(cx.listener(|v, event: &gpui_kit::BackGestureEvent, w, cx| {
                     if event.phase == BackGesturePhase::Committed {
                         v.back(w, cx);
                     }
-                },
-            ))
-        })
+                }))
+            })
     }
 }

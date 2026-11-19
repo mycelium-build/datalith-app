@@ -100,7 +100,7 @@ impl Folder {
         } else {
             &self.files
         };
-        for (index, (path, folder)) in entries.iter().enumerate() {
+        for (path, folder) in entries {
             let name = super::workspace::name(path);
             if !global && !name.to_lowercase().contains(query) {
                 continue;
@@ -135,12 +135,14 @@ impl Folder {
                         .child(p)
                 }));
             let path = path.clone();
-            let menu = (!source::is_read_only(&path)).then(|| Workspace::file_menu(&path, cx));
+            let menu =
+                (!source::is_read_only(&path)).then(|| Workspace::file_menu(&path, *folder, cx));
+            let id = gpui_kit::SharedString::from(format!("entry:{}", path.display()));
             rows = rows.child(
                 h_flex()
                     .w_full()
                     .child(
-                        ListItem::new(("entry", index))
+                        ListItem::new(id)
                             .flex_1()
                             .min_w_0()
                             .accessibility_label(name)
@@ -178,10 +180,73 @@ impl Folder {
         }
         rows
     }
+    /// Names the place: the vault or folder, with a lock for read-only
+    /// vaults. Touching it lists the enclosing folders, which is the only way
+    /// up the tree; Back always returns to the previous place.
+    fn header(&self, workspace: &Workspace, cx: &Context<Workspace>) -> impl IntoElement + use<> {
+        let mut ancestors: Vec<PathBuf> = workspace.root.as_ref().map_or_else(Vec::new, |root| {
+            self.path
+                .ancestors()
+                .skip(1)
+                .take_while(|p| p.starts_with(root))
+                .map(Path::to_owned)
+                .collect()
+        });
+        ancestors.reverse();
+        let read_only = workspace.root.as_deref().is_some_and(source::is_read_only);
+        let name = workspace.folder_name(&self.path);
+        let title = h_flex()
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .font_family(cx.global::<ResolvedFonts>().headings.clone())
+                    .text_xl()
+                    .child(name.clone()),
+            )
+            .when(!ancestors.is_empty(), |el| {
+                el.child(
+                    Icon::new(IconName::ChevronDown)
+                        .size_4()
+                        .text_color(cx.theme().muted_foreground),
+                )
+            })
+            .child(div().flex_1())
+            .when(read_only, |el| {
+                el.child(
+                    h_flex()
+                        .gap_1()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(Icon::new(datalith_ui::icons::DatalithIcon::Lock).size_4())
+                        .child("Read only"),
+                )
+            });
+        if ancestors.is_empty() {
+            return div().px_4().py_2().child(title).into_any_element();
+        }
+        div()
+            .px_2()
+            .child(
+                Button::new("folder-header")
+                    .ghost()
+                    .w_full()
+                    .min_h(px(48.))
+                    .accessibility_label(format!("{name}, show enclosing folders"))
+                    .child(title)
+                    .on_click(cx.listener(move |s, _, w, cx| {
+                        s.choose(super::workspace::Choice::Ancestor(ancestors.clone()), w, cx);
+                    })),
+            )
+            .into_any_element()
+    }
+
     pub fn render(
         &self,
         workspace: &Workspace,
-        show_title: bool,
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement {
@@ -197,21 +262,8 @@ impl Folder {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .when(show_title, |el| {
-                el.child(
-                    div()
-                        .px_4()
-                        .py_2()
-                        .font_family(cx.global::<ResolvedFonts>().headings.clone())
-                        .text_xl()
-                        .child(workspace.folder_name(&self.path)),
-                )
-            })
-            .child(
-                h_flex()
-                    .child(div().flex_1().min_w_0().child(search))
-                    .child(Workspace::library_menu(cx)),
-            )
+            .child(self.header(workspace, cx))
+            .child(search)
             .when(!query.is_empty() || workspace.whole_vault, |el| {
                 el.child(
                     h_flex().px_2().child(

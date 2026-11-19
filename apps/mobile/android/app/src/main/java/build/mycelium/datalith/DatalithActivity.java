@@ -38,6 +38,30 @@ public final class DatalithActivity extends GpuiInputActivity {
             .setOnCancelListener(dialog -> choseOption(-1)).show());
     }
 
+    /** Commands on one object. Rows are actions, so no radio buttons; the destructive one is tinted. */
+    public void chooseActions(String title, String[] actions, int destructive) {
+        runOnUiThread(() -> {
+            CharSequence[] rows = new CharSequence[actions.length];
+            for (int i = 0; i < actions.length; i++) {
+                if (i == destructive) {
+                    android.text.SpannableString text = new android.text.SpannableString(actions[i]);
+                    android.util.TypedValue error = new android.util.TypedValue();
+                    int color = getTheme().resolveAttribute(android.R.attr.colorError, error, true)
+                        ? error.data : 0xFFB3261E;
+                    text.setSpan(new android.text.style.ForegroundColorSpan(color), 0, text.length(), 0);
+                    rows[i] = text;
+                } else {
+                    rows[i] = actions[i];
+                }
+            }
+            new android.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setItems(rows, (dialog, index) -> choseOption(index))
+                .setNegativeButton(android.R.string.cancel, (dialog, button) -> choseOption(-1))
+                .setOnCancelListener(dialog -> choseOption(-1)).show();
+        });
+    }
+
     public void chooseVault() {
         runOnUiThread(() -> {
             try {

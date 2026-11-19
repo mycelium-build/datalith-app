@@ -1,4 +1,4 @@
-use super::{Page, THEMES, Workspace};
+use super::{THEMES, Workspace};
 use datalith_ui::fonts::ResolvedFonts;
 use gpui_kit::component::{
     ActiveTheme as _,
@@ -29,8 +29,14 @@ pub enum Choice {
     Theme,
     Variant,
     Font(&'static str),
-    Navigation,
-    File(std::path::PathBuf),
+    /// Commands shown in a native action sheet, acting on `target`.
+    Actions {
+        title: String,
+        target: Option<std::path::PathBuf>,
+        commands: Vec<super::super::Command>,
+    },
+    /// The folders above the current one, from the vault root down.
+    Ancestor(Vec<std::path::PathBuf>),
 }
 impl Workspace {
     pub(super) fn appearance_controls(&self, cx: &Context<Self>) -> Vec<Button> {
@@ -66,14 +72,9 @@ impl Workspace {
             })
             .collect()
     }
-    pub(in crate::workspace) fn choose(
-        &mut self,
-        choice: Choice,
-        w: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn choose(&mut self, choice: Choice, w: &Window, cx: &mut Context<Self>) {
         let p = &self.preferences;
-        let (title, items, current) = match choice {
+        let (title, items, current): (&str, Vec<String>, Option<String>) = match choice {
             Choice::Theme => (
                 "Theme",
                 THEMES.iter().map(|s| s.name.to_string()).collect(),
@@ -104,20 +105,29 @@ impl Workspace {
                         .unwrap_or_else(|| "Theme default".into()),
                 ),
             ),
-            Choice::File(_) => (
-                "File actions",
-                ["Rename", "Move", "Duplicate", "Delete"]
-                    .map(str::to_owned)
-                    .to_vec(),
+            Choice::Actions {
+                ref title,
+                ref commands,
+                ..
+            } => {
+                let items: Vec<super::super::Item> = commands.iter().map(|c| c.item()).collect();
+                w.dismiss_virtual_keyboard();
+                let labels = items.iter().map(|i| i.label.to_owned()).collect();
+                let anchor = w.mouse_position();
+                match crate::commands::actions(title, &items, anchor) {
+                    Ok(()) => self.choice = Some((choice, labels)),
+                    Err(e) => {
+                        self.message = Some(e.to_string());
+                        cx.notify();
+                    }
+                }
+                return;
+            }
+            Choice::Ancestor(ref folders) => (
+                "Go to folder",
+                folders.iter().map(|p| self.folder_name(p)).collect(),
                 None,
             ),
-            Choice::Navigation => {
-                let mut items = vec!["Library".into(), "Open documents".into(), "Settings".into()];
-                if !self.forward.is_empty() {
-                    items.push("Forward".into());
-                }
-                ("Actions", items, None)
-            }
         };
         let active = items
             .iter()
@@ -158,18 +168,18 @@ impl Workspace {
                     map.insert(role.into(), value.clone());
                 }
             }
-            Choice::File(path) => {
-                self.perform_file_action(path, value, w, cx);
+            Choice::Actions {
+                target, commands, ..
+            } => {
+                if let Some(command) = usize::try_from(index).ok().and_then(|i| commands.get(i)) {
+                    self.run(*command, target, w, cx);
+                }
                 return;
             }
-            Choice::Navigation => {
-                match value.as_str() {
-                    "Forward" => self.go_forward(w, cx),
-                    "Open documents" => self.page = Some(Page::Documents),
-                    "Settings" => self.page = Some(Page::Settings),
-                    _ => self.show_library(w, cx),
+            Choice::Ancestor(folders) => {
+                if let Some(path) = usize::try_from(index).ok().and_then(|i| folders.get(i)) {
+                    self.show_folder(&path.clone(), w, cx);
                 }
-                cx.notify();
                 return;
             }
         }

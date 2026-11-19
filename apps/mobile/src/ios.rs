@@ -1,16 +1,26 @@
-use super::workspace::Workspace;
+use super::workspace::{Command, ScreenControls, Workspace};
 use gpui_kit::{App, Entity, Window};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::{cell::RefCell, ffi::c_void};
+use std::{
+    cell::RefCell,
+    ffi::{CStr, CString, c_char, c_void},
+};
 
 unsafe extern "C" {
     fn UIAccessibilityIsReduceMotionEnabled() -> bool;
     fn datalith_install_controls(view: *mut c_void);
-    fn datalith_set_controls(back: bool, forward: bool, mode: i32, writable: bool, background: u32);
+    fn datalith_set_controls_json(json: *const c_char, background: u32);
 }
 
-type Dispatch = Box<dyn FnMut(i32)>;
-thread_local! { static ACTION: RefCell<Option<Dispatch>> = RefCell::default(); }
+/// Host events that are not user commands.
+pub const LAYOUT: &str = "layout";
+pub const FOLDER_PICKED: &str = "folder-picked";
+
+type Dispatch = Box<dyn FnMut(&str)>;
+thread_local! {
+    static ACTION: RefCell<Option<Dispatch>> = RefCell::default();
+    static APPLIED: RefCell<String> = RefCell::default();
+}
 
 pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
     let Ok(handle) = HasWindowHandle::window_handle(window) else {
@@ -23,18 +33,16 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
     let view = view.downgrade();
     let mut app = cx.to_async();
     ACTION.with_borrow_mut(|slot| {
-        *slot = Some(Box::new(move |action| {
+        *slot = Some(Box::new(move |id| {
             let _ = handle.update(&mut app, |_, window, cx| {
-                view.update(cx, |v, cx| match action {
-                    0 => v.back(window, cx),
-                    1 => v.toggle_mode(window, cx),
-                    2 => v.delete(cx),
-                    3 => cx.notify(),
-                    4 => v.show_library(window, cx),
-                    6 => v.go_forward(window, cx),
-                    7 | 8 => v.open_panel(action == 8, window, cx),
-                    5 => v.receive_folder(window, cx),
-                    _ => {}
+                view.update(cx, |v, cx| match id {
+                    LAYOUT => cx.notify(),
+                    FOLDER_PICKED => v.receive_folder(window, cx),
+                    id => {
+                        if let Some(command) = Command::from_id(id) {
+                            v.run(command, None, window, cx);
+                        }
+                    }
                 })
             });
         }));
@@ -45,33 +53,41 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn datalith_mobile_action(action: i32) {
+pub fn dispatch(id: &str) {
     ACTION.with_borrow_mut(|slot| {
         if let Some(dispatch) = slot {
-            dispatch(action);
+            dispatch(id);
         }
     });
 }
 
-pub fn update(
-    can_back: bool,
-    can_forward: bool,
-    handler: Option<&datalith_ui::handler::FileHandler>,
-    background: gpui_kit::Hsla,
-) {
-    let mode = handler
-        .filter(|h| h.can_toggle_mode())
-        .map_or(0, |h| if h.is_editing() { 2 } else { 1 });
-    // Called during main-thread layout. UIKit schedules and coalesces updates.
+/// Called by `Controls.m` with a command id or a host event.
+#[unsafe(no_mangle)]
+pub extern "C" fn datalith_mobile_command(id: *const c_char) {
+    if id.is_null() {
+        return;
+    }
+    let id = unsafe { CStr::from_ptr(id) }.to_string_lossy().into_owned();
+    dispatch(&id);
+}
+
+/// Sends the bar model to `UIKit` when it changes. Called during main-thread
+/// layout; `UIKit` schedules and coalesces the update.
+pub fn update(controls: &ScreenControls, background: gpui_kit::Hsla) {
+    let Ok(json) = serde_json::to_string(controls) else {
+        return;
+    };
+    let background: u32 = gpui_kit::Rgba::from(background).into();
+    let key = format!("{background}:{json}");
+    if APPLIED.with_borrow(|applied| *applied == key) {
+        return;
+    }
+    let Ok(json) = CString::new(json) else {
+        return;
+    };
+    APPLIED.with_borrow_mut(|applied| *applied = key);
     unsafe {
-        datalith_set_controls(
-            can_back,
-            can_forward,
-            mode,
-            handler.is_some_and(|h| !h.is_read_only()),
-            gpui_kit::Rgba::from(background).into(),
-        );
+        datalith_set_controls_json(json.as_ptr(), background);
     }
 }
 

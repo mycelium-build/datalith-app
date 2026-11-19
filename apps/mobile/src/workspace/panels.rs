@@ -220,8 +220,7 @@ impl Workspace {
         let saved = self.preferences.folder.clone();
         self.documents.clear();
         self.active = None;
-        self.backward.clear();
-        self.forward.clear();
+        self.history.clear();
         self.folders.clear();
         self.deleted = None;
         self.deleted_document = None;
@@ -256,31 +255,15 @@ impl Workspace {
         self.restoring = false;
         self.persist_session(cx);
     }
-    #[cfg(target_os = "ios")]
-    pub fn open_panel(&mut self, settings: bool, w: &Window, cx: &mut Context<Self>) {
+    pub(super) fn open_page(&mut self, page: Page, w: &Window, cx: &mut Context<Self>) {
         w.dismiss_virtual_keyboard();
-        self.page = Some(if settings {
-            Page::Settings
-        } else {
-            Page::Documents
-        });
+        self.file_form = None;
+        self.page = Some(page);
         self.advance(false);
         cx.notify();
     }
     pub(crate) fn show_library(&mut self, w: &Window, cx: &mut Context<Self>) {
-        w.dismiss_virtual_keyboard();
-        self.page = Some(Page::Library);
-        self.advance(false);
-        cx.notify();
-    }
-    pub(crate) fn library_menu(cx: &Context<Self>) -> impl IntoElement + use<> {
-        Button::new("library-tools")
-            .ghost()
-            .w(px(48.))
-            .h(px(48.))
-            .icon(IconName::Ellipsis)
-            .accessibility_label("Library and settings")
-            .on_click(cx.listener(|s, _, w, cx| s.choose(Choice::Navigation, w, cx)))
+        self.open_page(Page::Library, w, cx);
     }
     pub(crate) const fn is_searching(&self) -> bool {
         self.search_task.is_some()
@@ -559,12 +542,7 @@ fn page_link(page: Page, cx: &Context<Workspace>) -> Button {
         .ghost()
         .h(px(48.))
         .label(page.title())
-        .on_click(cx.listener(move |s, _, w, cx| {
-            w.dismiss_virtual_keyboard();
-            s.page = Some(page);
-            s.advance(false);
-            cx.notify();
-        }))
+        .on_click(cx.listener(move |s, _, w, cx| s.open_page(page, w, cx)))
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -577,7 +555,7 @@ impl Workspace {
         #[cfg(target_os = "ios")]
         let choose = choose.on_click(|_, _, _| crate::ios_folder::pick());
         #[cfg(target_os = "android")]
-        let choose = choose.on_click(cx.listener(|s, _, w, cx| s.pick_folder(w, cx)));
+        let choose = choose.on_click(cx.listener(|_, _, w, cx| Self::pick_folder(w, cx)));
         let mut buttons = vec![choose];
         for (ix, recent) in self.preferences.recent.iter().enumerate() {
             let grant = recent.grant.clone();
@@ -628,7 +606,7 @@ impl Workspace {
         self.save_preferences(cx);
     }
     #[cfg(target_os = "android")]
-    fn pick_folder(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+    fn pick_folder(w: &Window, cx: &Context<Self>) {
         let result = crate::android_folder::pick();
         cx.spawn_in(w, async move |this, cx| {
             let picked = match result {
@@ -638,9 +616,8 @@ impl Workspace {
                 Err(e) => Err(e),
             };
             let _ = this.update_in(cx, |s, w, cx| {
-                if let Err(e) = picked.and_then(|grant| match grant {
-                    Some(grant) => s.open_bookmark(&grant, false, w, cx),
-                    None => Ok(()),
+                if let Err(e) = picked.and_then(|grant| {
+                    grant.map_or(Ok(()), |grant| s.open_bookmark(&grant, false, w, cx))
                 }) {
                     s.message = Some(e.to_string());
                     cx.notify();

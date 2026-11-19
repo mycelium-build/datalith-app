@@ -1,22 +1,47 @@
 #import <UIKit/UIKit.h>
 
-extern void datalith_mobile_action(int32_t action);
+// Rust sends a ScreenControls model as JSON (see workspace/controls.rs) and
+// receives stable command ids back. Labels are display text only.
+extern void datalith_mobile_command(const char *identifier);
 static __weak UIViewController *surface;
-static BOOL canGoBack;
-static BOOL canGoForward;
-static int32_t editMode;
-static BOOL canDelete;
+static NSDictionary *controls;
+static NSString *appliedControls;
 static uint32_t backgroundRGBA;
 
-static UIBarButtonItem *item(NSString *label, NSString *symbol, int32_t command) {
-    UIAction *action = [UIAction actionWithTitle:label image:[UIImage systemImageNamed:symbol]
-        identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(command); }];
-    UIBarButtonItem *button = [[UIBarButtonItem alloc] initWithPrimaryAction:action];
-    button.accessibilityLabel = label;
+static void send(NSString *identifier) { datalith_mobile_command(identifier.UTF8String); }
+
+static UIAction *action(NSDictionary *entry) {
+    NSString *identifier = entry[@"id"];
+    UIAction *command = [UIAction actionWithTitle:entry[@"label"] image:[UIImage systemImageNamed:entry[@"symbol"]]
+        identifier:nil handler:^(__kindof UIAction *sender) { send(identifier); }];
+    if ([entry[@"destructive"] boolValue]) command.attributes = UIMenuElementAttributesDestructive;
+    return command;
+}
+
+static UIBarButtonItem *vertical(UIBarButtonItem *button) {
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270100
     if (@available(iOS 27.1, *)) button.axisBehavior = UIBarButtonItemAxisBehaviorVerticalPreferred;
 #endif
     return button;
+}
+
+static UIBarButtonItem *item(NSDictionary *entry) {
+    UIBarButtonItem *button = [[UIBarButtonItem alloc] initWithPrimaryAction:action(entry)];
+    button.accessibilityLabel = entry[@"label"];
+    return vertical(button);
+}
+
+static UIBarButtonItem *menu(NSString *label, NSString *symbol, NSArray<UIMenuElement *> *children) {
+    UIBarButtonItem *button = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:symbol]
+        menu:[UIMenu menuWithChildren:children]];
+    button.accessibilityLabel = label;
+    return vertical(button);
+}
+
+static NSArray<UIMenuElement *> *actions(NSArray *entries) {
+    NSMutableArray *children = [NSMutableArray array];
+    for (NSDictionary *entry in entries) [children addObject:action(entry)];
+    return children;
 }
 
 @interface DatalithNavigation : UINavigationController
@@ -34,7 +59,7 @@ static UIBarButtonItem *item(NSString *label, NSString *symbol, int32_t command)
         !UIEdgeInsetsEqualToEdgeInsets(previousInsets, view.safeAreaInsets)) {
         previousBounds = view.bounds;
         previousInsets = view.safeAreaInsets;
-        dispatch_async(dispatch_get_main_queue(), ^{ datalith_mobile_action(3); });
+        dispatch_async(dispatch_get_main_queue(), ^{ send(@"layout"); });
     }
 }
 @end
@@ -48,27 +73,29 @@ static void applyControls(void) {
     navigation.view.backgroundColor = color;
     navigation.view.window.backgroundColor = color;
     navigation.navigationBar.backgroundColor = color;
-    controller.navigationItem.leftBarButtonItem = canGoBack ? item(@"Back", @"chevron.backward", 0) : nil;
-    NSMutableArray *actions = [NSMutableArray array];
-    if (editMode) [actions addObject:editMode == 1 ? item(@"Edit", @"pencil", 1) : item(@"Read", @"book", 1)];
-    if (canGoForward) [actions addObject:item(@"Forward", @"chevron.forward", 6)];
-    if (canGoBack || editMode || canDelete) {
-        UIAction *library = [UIAction actionWithTitle:@"Library" image:[UIImage systemImageNamed:@"books.vertical"]
-            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(4); }];
-        UIAction *documents = [UIAction actionWithTitle:@"Open documents" image:[UIImage systemImageNamed:@"square.stack"]
-            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(7); }];
-        UIAction *settings = [UIAction actionWithTitle:@"Settings" image:[UIImage systemImageNamed:@"gearshape"]
-            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(8); }];
-        UIAction *remove = [UIAction actionWithTitle:@"Delete" image:[UIImage systemImageNamed:@"trash"]
-            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(2); }];
-        remove.attributes = UIMenuElementAttributesDestructive;
-        UIBarButtonItem *more = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
-            menu:[UIMenu menuWithChildren:canDelete ? @[library, documents, settings, remove] : @[library, documents, settings]]];
-        more.accessibilityLabel = @"More actions";
-        [actions addObject:more];
+    NSDictionary *model = controls;
+    id title = model[@"title"];
+    controller.navigationItem.title = [title isKindOfClass:NSString.class] ? title : nil;
+    BOOL back = [model[@"back"] boolValue];
+    controller.navigationItem.leftBarButtonItem = back
+        ? item(@{@"id": @"back", @"label": @"Back", @"symbol": @"chevron.backward"}) : nil;
+    // rightBarButtonItems run from the trailing edge: More, then New, then Edit.
+    NSMutableArray *trailing = [NSMutableArray array];
+    NSArray *sections = model[@"menu"];
+    if ([sections isKindOfClass:NSArray.class] && sections.count) {
+        NSMutableArray *groups = [NSMutableArray array];
+        for (NSArray *section in sections) {
+            [groups addObject:[UIMenu menuWithTitle:@"" image:nil identifier:nil
+                options:UIMenuOptionsDisplayInline children:actions(section)]];
+        }
+        [trailing addObject:menu(@"More actions", @"ellipsis.circle", groups)];
     }
-    controller.navigationItem.rightBarButtonItems = actions;
-    [controller.navigationController setNavigationBarHidden:!(canGoBack || actions.count) animated:NO];
+    NSArray *create = model[@"create"];
+    if ([create isKindOfClass:NSArray.class] && create.count) [trailing addObject:menu(@"New", @"plus", actions(create))];
+    id primary = model[@"primary"];
+    if ([primary isKindOfClass:NSDictionary.class]) [trailing addObject:item(primary)];
+    controller.navigationItem.rightBarButtonItems = trailing;
+    [navigation setNavigationBarHidden:!(back || trailing.count || controller.navigationItem.title) animated:NO];
 }
 
 // Keep the GPUI controller and text input view together. UIKit places only
@@ -88,14 +115,18 @@ void datalith_install_controls(void *pointer) {
     });
 }
 
-void datalith_set_controls(bool back, bool forward, int32_t mode, bool writable, uint32_t background) {
-    if (forward == canGoForward && back == canGoBack && mode == editMode && writable == canDelete && background == backgroundRGBA) return;
+void datalith_set_controls_json(const char *json, uint32_t background) {
+    NSString *text = [NSString stringWithUTF8String:json];
+    if (background == backgroundRGBA && [text isEqualToString:appliedControls]) return;
+    NSDictionary *model = [NSJSONSerialization JSONObjectWithData:[text dataUsingEncoding:NSUTF8StringEncoding]
+        options:0 error:nil];
+    if (![model isKindOfClass:NSDictionary.class]) return;
+    appliedControls = text;
     backgroundRGBA = background;
-    canGoBack = back;
-    canGoForward = forward;
-    editMode = mode;
-    canDelete = writable;
-    dispatch_async(dispatch_get_main_queue(), ^{ applyControls(); });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        controls = model;
+        applyControls();
+    });
 }
 
 UIViewController *datalith_presenter(void) { return surface; }
@@ -135,6 +166,36 @@ void datalith_choose(const char *title, const char *json, int32_t selected) {
         choices.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:choices action:@selector(cancel)];
         UINavigationController *sheet = [[UINavigationController alloc] initWithRootViewController:choices];
         sheet.presentationController.delegate = choices;
+        [surface presentViewController:sheet animated:YES completion:nil];
+    });
+}
+
+// Commands on one object: an action sheet on iPhone, a popover anchored at
+// the touch on iPad. Destructive commands keep UIKit's destructive style.
+void datalith_actions(const char *title, const char *json, double x, double y) {
+    NSString *heading = [NSString stringWithUTF8String:title];
+    NSData *data = [[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding];
+    NSArray *entries = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!surface || surface.presentedViewController || ![entries isKindOfClass:NSArray.class]) {
+            datalith_chose(-1);
+            return;
+        }
+        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:heading message:nil
+            preferredStyle:UIAlertControllerStyleActionSheet];
+        [entries enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
+            UIAlertActionStyle style = [entry[@"destructive"] boolValue] ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault;
+            UIAlertAction *choice = [UIAlertAction actionWithTitle:entry[@"label"] style:style
+                handler:^(UIAlertAction *a) { datalith_chose((int32_t)index); }];
+            [sheet addAction:choice];
+        }];
+        [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel
+            handler:^(UIAlertAction *a) { datalith_chose(-1); }]];
+        UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+        if (popover) {
+            popover.sourceView = surface.view;
+            popover.sourceRect = CGRectMake(x, y, 1, 1);
+        }
         [surface presentViewController:sheet animated:YES completion:nil];
     });
 }
