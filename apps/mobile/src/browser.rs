@@ -26,7 +26,8 @@ impl Folder {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) -> std::io::Result<Self> {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder("Search files…"));
+        let placeholder = format!("Search {}…", super::workspace::name(&path));
+        let query = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
         let change = cx.subscribe(&query, |_, _, event, cx| {
             if matches!(event, gpui_kit::component::input::InputEvent::Change) {
                 cx.notify();
@@ -62,6 +63,7 @@ impl Folder {
     pub fn render(
         &self,
         registry: &FileRegistry,
+        show_title: bool,
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement {
@@ -120,14 +122,16 @@ impl Folder {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(
-                div()
-                    .px_4()
-                    .py_2()
-                    .font_family(cx.global::<ResolvedFonts>().headings.clone())
-                    .text_xl()
-                    .child(super::workspace::name(&self.path)),
-            )
+            .when(show_title, |el| {
+                el.child(
+                    div()
+                        .px_4()
+                        .py_2()
+                        .font_family(cx.global::<ResolvedFonts>().headings.clone())
+                        .text_xl()
+                        .child(super::workspace::name(&self.path)),
+                )
+            })
             .child(
                 div()
                     .px_3()

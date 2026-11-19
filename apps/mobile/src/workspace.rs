@@ -176,7 +176,7 @@ impl Workspace {
         }
     }
 
-    fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.dismiss_virtual_keyboard();
         self.focus.focus(window, cx);
         if self.document_deleted {
@@ -264,7 +264,9 @@ impl Workspace {
                 Button::new("back")
                     .ghost()
                     .h(px(48.))
-                    .label("Back")
+                    .icon(gpui_kit::component::IconName::ChevronLeft)
+                    .w(px(48.))
+                    .accessibility_label("Back")
                     .on_click(cx.listener(|v, _, w, cx| v.back(w, cx))),
             );
         }
@@ -275,7 +277,13 @@ impl Workspace {
                 bar = bar.child(
                     Button::new("mode")
                         .ghost()
-                        .label(if h.is_editing() { "Read" } else { "Edit" })
+                        .icon(gpui_kit::component::Icon::new(if h.is_editing() {
+                            datalith_ui::icons::DatalithIcon::Book
+                        } else {
+                            datalith_ui::icons::DatalithIcon::Pen
+                        }))
+                        .w(px(48.))
+                        .accessibility_label(if h.is_editing() { "Read" } else { "Edit" })
                         .h(px(48.))
                         .on_click(cx.listener(|v, _, w, cx| v.toggle_mode(w, cx))),
                 );
@@ -284,28 +292,32 @@ impl Workspace {
                 bar = bar.child(
                     Button::new("delete")
                         .ghost()
-                        .label("Delete")
+                        .icon(gpui_kit::component::IconName::Delete)
+                        .w(px(48.))
+                        .accessibility_label("Delete")
                         .h(px(48.))
                         .on_click(cx.listener(|v, _, _, cx| v.delete(cx))),
                 );
             }
             detail = detail
-                .child(bar)
+                .when(!cfg!(target_os = "ios"), |el| el.child(bar))
                 .child(div().flex_1().min_h_0().child(doc.handler.clone()));
         } else {
-            detail = detail.when(has_detail, |el| el.child(bar)).child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(if self.document_deleted {
-                        "File deleted"
-                    } else {
-                        "Select a file"
-                    }),
-            );
+            detail = detail
+                .when(has_detail && !cfg!(target_os = "ios"), |el| el.child(bar))
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(if self.document_deleted {
+                            "File deleted"
+                        } else {
+                            "Select a file"
+                        }),
+                );
         }
         detail
     }
@@ -325,6 +337,12 @@ impl Render for Workspace {
         let wide = bounds.size.width >= px(700.);
         let has_detail = self.current().is_some() || self.document_deleted;
         let can_back = has_detail || self.folders.len() > 1;
+        #[cfg(target_os = "ios")]
+        super::ios::update(
+            can_back,
+            self.current().map(|d| d.handler.read(cx)),
+            cx.theme().background,
+        );
         let show_browser = wide || !has_detail;
         let mut content = h_flex().flex_1().min_h_0().items_stretch();
         if show_browser && let Some(folder) = self.folders.last() {
@@ -334,13 +352,15 @@ impl Render for Workspace {
                     el.w(px(272.)).border_r_1().border_color(cx.theme().border)
                 })
                 .when(!wide, gpui_kit::Styled::flex_1);
-            if self.folders.len() > 1 {
+            if self.folders.len() > 1 && (!cfg!(target_os = "ios") || (wide && has_detail)) {
                 browser = browser.child(
                     h_flex().px_2().child(
                         Button::new("parent")
                             .ghost()
                             .h(px(48.))
-                            .label("Back")
+                            .icon(gpui_kit::component::IconName::ChevronLeft)
+                            .w(px(48.))
+                            .accessibility_label("Back")
                             .on_click(cx.listener(|v, _, w, cx| {
                                 v.history.clear();
                                 v.document_deleted = false;
@@ -351,6 +371,7 @@ impl Render for Workspace {
             }
             content = content.child(browser.child(folder.render(
                 &self.registry,
+                wide || !cfg!(target_os = "ios"),
                 self.current().map(|d| d.path.as_path()),
                 cx,
             )));

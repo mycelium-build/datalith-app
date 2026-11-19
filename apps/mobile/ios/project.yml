@@ -8,6 +8,7 @@ targets:
     platform: iOS
     sources:
       - main.c
+      - Controls.m
       - path: ../../../assets/logo/stable/datalith.icon
         buildPhase: resources
         type: file

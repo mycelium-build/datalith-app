@@ -10,6 +10,8 @@ use gpui_kit::component::{ActiveTheme, Root, Theme, ThemeMode, theme::ThemeSet};
 use gpui_kit::{AppContext, Application, WindowOptions};
 
 mod browser;
+#[cfg(target_os = "ios")]
+mod ios;
 mod workspace;
 
 include!(concat!(env!("OUT_DIR"), "/docs_vault.rs"));
@@ -82,6 +84,8 @@ fn launch(app: Application, documents: PathBuf) {
         });
         if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
             let view = cx.new(|cx| workspace::Workspace::new(starter(&documents), window, cx));
+            #[cfg(target_os = "ios")]
+            ios::attach(&view, window, cx);
             cx.new(|cx| Root::new(view, window, cx))
         }) {
             eprintln!("Cannot open the mobile workspace: {error}");
