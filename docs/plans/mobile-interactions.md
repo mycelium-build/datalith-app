@@ -2,6 +2,19 @@
 
 Revue de la PR #89 au commit `06d30d2`. Ce document décrit des choix de conception à essayer. Claude Opus 5.5 a examiné le code, les parcours et la répartition des responsabilités. Le premier parcours à rendre utilisable est **retrouver une note à partir de ses liens dans un graphe, la lire et revenir au même endroit**.
 
+## Tour de Claude sur iPhone 17, iOS 27.2
+
+| Parcours effectivement joué | Observation | Conséquence pour la refonte |
+| --- | --- | --- |
+| `Overview.base → Wiki`, glissé vertical, horizontal, pincement | Le glissé vertical change le zoom. Le glissé horizontal et le pincement n’ont pas déplacé la carte. Après plusieurs gestes, Claude a dû quitter et rouvrir la Base pour retrouver les nœuds. | Priorité au panoramique et à Ajuster, accessibles immédiatement. |
+| Toucher un nœud → ouvrir sa note | Claude a obtenu « Cannot open …/formats/bases/Overview.md ». Le même fichier s’ouvrait depuis le coffre. Le bandeau d’erreur a persisté jusque dans l’éditeur. | Une seule commande d’ouverture, avec des entrées distinctes pour chemin du coffre et lien relatif au document. Tester le même fichier depuis trois origines. Rattacher l’erreur à la destination, avec fermeture accessible. |
+| Recherche depuis la racine | « Welc » retrouve Welcome.md. « Library » donne zéro résultat alors que la Base existe dans un sous-dossier. Retour conserve la requête. | Afficher la portée effective et brancher la recherche du coffre sur le catalogue. |
+| `Library.base`, table, Covers, Reading board, Cross references | Le tableau groupé défile horizontalement. Le changement de vue fonctionne. Cross references hérite du décalage de la table précédente. Sur le board, Claude a défilé dans une colonne, mais n’a pu ni atteindre la colonne reading au doigt ni ouvrir une carte. | Conserver le défilement par vue. Donner un accès direct aux colonnes et une action explicite sur chaque carte. |
+| Note Markdown, éditeur et clavier | Lecture, défilement, passage au source, saisie et effacement ont fonctionné. Le texte d’origine a été vérifié sur disque. | Préserver ce parcours pendant la refonte de la navigation et des erreurs. |
+| Navigation assistée | L’outil d’inspection a trouvé les commandes UIKit, mais pas les nœuds ou lignes GPUI dans les écrans parcourus. | Tester la sémantique exposée et faire le parcours avec VoiceOver puis TalkBack. |
+
+Claude a effectué ce tour sur un simulateur distinct après que `DEVICE_IN_USE` a bloqué le pilotage du premier iPhone 18 Pro. Les interactions Android, iPad et du téléphone physique n’ont pas été rejouées dans cet audit.
+
 ## Pourquoi le graphe échoue au toucher
 
 Le canevas écoute la souris et la molette. Le même déplacement fait bouger un nœud ou déplace la caméra selon l’endroit où le doigt tombe. Quatre unités de déplacement suffisent pour transformer un appui en glissement. La cible est le rayon dessiné dans le repère du graphe : dézoomer la rend de plus en plus petite. Le cadrage initial plafonne le zoom à 1,5 ; le rendu attend 2,5 avant d’afficher les noms sans survol. Un graphe fraîchement cadré démarre donc sans libellés persistants. Relâcher un nœud ouvre directement son document. Un utilisateur au doigt doit donc identifier une note avant de pouvoir lire son nom. [Interactions](../../crates/datalith-ui/src/viewers/base/graph/mod.rs) · [Cibles et libellés](../../crates/datalith-ui/src/viewers/base/graph/model.rs)
