@@ -12,6 +12,7 @@ datalith-core.workspace = true
 datalith-ui.workspace = true
 datalith-vault.workspace = true
 gpui-kit.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 percent-encoding.workspace = true
 tempfile = "3"
@@ -22,6 +23,3 @@ gpui-platform = { package = "gpui-pre-platform", version = "=0.3.12", default-fe
 
 [lints]
 workspace = true
-
-[target.'cfg(target_os = "ios")'.dependencies.raw-window-handle]
-version = "0.6"

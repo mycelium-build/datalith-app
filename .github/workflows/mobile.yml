@@ -11,6 +11,9 @@ on:
       - 'scripts/tool-versions.env'
       - 'docs/vault/**'
       - 'assets/logo/stable/**'
+      - 'assets/themes/datalith.json'
+      - 'assets/fonts/**'
+      - 'assets/icons/**'
       - '.github/workflows/mobile.yml'
 
 permissions:

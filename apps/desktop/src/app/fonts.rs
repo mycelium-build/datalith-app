@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use conv::ConvAsUtil as _;
 
 use gpui_kit::component::notification::Notification;
@@ -11,7 +9,7 @@ use crate::ui::notifications;
 use super::settings::{self, FontRole, ThemeKind};
 use super::themes::{ThemeDocument, ThemeLibrary};
 
-pub const PIXELOID_FONT: &str = "Pixeloid Sans";
+pub use datalith_ui::fonts::PIXELOID_FONT;
 
 pub use datalith_ui::fonts::ResolvedFonts;
 
@@ -102,10 +100,7 @@ pub fn families(cx: &App) -> ResolvedFonts {
 }
 
 pub fn load_embedded_fonts(cx: &App) -> Vec<Notification> {
-    static REGULAR: &[u8] = include_bytes!("../../../../assets/fonts/Pixeloid/PixeloidSans.ttf");
-    static BOLD: &[u8] = include_bytes!("../../../../assets/fonts/Pixeloid/PixeloidSans-Bold.ttf");
-    let fonts = vec![Cow::Borrowed(REGULAR), Cow::Borrowed(BOLD)];
-    match cx.text_system().add_fonts(fonts) {
+    match datalith_ui::fonts::load_pixeloid(cx) {
         Ok(()) => Vec::new(),
         Err(error) => vec![notifications::font_load_failed(&error)],
     }

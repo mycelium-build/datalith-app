@@ -6,11 +6,10 @@ use anyhow::Context as _;
 use datalith_ui::{assets::DatalithAssets, fonts::ResolvedFonts};
 use datalith_vault::environment::{self, VaultEnvironment};
 use datalith_vault::source::EmbeddedVault;
-use gpui_kit::component::{ActiveTheme, Root};
+use gpui_kit::component::{ActiveTheme, Root, Theme, ThemeMode, theme::ThemeSet};
 use gpui_kit::{AppContext, Application, WindowOptions};
 
-#[cfg(target_os = "ios")]
-mod ios;
+mod browser;
 mod workspace;
 
 include!(concat!(env!("OUT_DIR"), "/docs_vault.rs"));
@@ -41,15 +40,15 @@ pub fn starter(documents: &Path) -> anyhow::Result<PathBuf> {
 #[unsafe(no_mangle)]
 pub extern "C" fn datalith_ios_main() {
     if let Some(documents) = dirs::document_dir() {
-        launch(gpui_platform::application(), documents, None);
+        launch(gpui_platform::application(), documents);
     }
 }
 
-pub fn run_android(app: Application, files: &Path, selected: Option<PathBuf>) {
-    launch(app, files.join("Documents"), selected);
+pub fn run_android(app: Application, files: &Path) {
+    launch(app, files.join("Documents"));
 }
 
-fn launch(app: Application, documents: PathBuf, selected: Option<PathBuf>) {
+fn launch(app: Application, documents: PathBuf) {
     DATA.get_or_init(|| documents.clone());
     environment::init(VaultEnvironment {
         embedded_vaults: &[DOCS],
@@ -58,17 +57,31 @@ fn launch(app: Application, documents: PathBuf, selected: Option<PathBuf>) {
     });
     app.with_assets(DatalithAssets).run(move |cx| {
         gpui_kit::init(cx);
+        let theme = include_str!("../../../assets/themes/datalith.json");
+        match serde_json::from_str::<ThemeSet>(theme) {
+            Ok(set) => {
+                for config in set.themes {
+                    match config.mode {
+                        ThemeMode::Light => Theme::global_mut(cx).light_theme = config.into(),
+                        ThemeMode::Dark => Theme::global_mut(cx).dark_theme = config.into(),
+                    }
+                }
+                Theme::sync_system_appearance(None, cx);
+            }
+            Err(error) => eprintln!("Cannot load Datalith theme: {error}"),
+        }
+        let headings = match datalith_ui::fonts::load_pixeloid(cx) {
+            Ok(()) => datalith_ui::fonts::PIXELOID_FONT.into(),
+            Err(_) => cx.theme().font_family.clone(),
+        };
         cx.set_global(ResolvedFonts {
             interface: cx.theme().font_family.clone(),
-            headings: cx.theme().font_family.clone(),
+            headings,
             reading: cx.theme().font_family.clone(),
             code: cx.theme().mono_font_family.clone(),
         });
         if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
-            let view =
-                cx.new(|cx| workspace::Workspace::new(starter(&documents), selected, window, cx));
-            #[cfg(target_os = "ios")]
-            ios::attach(&view, window, cx);
+            let view = cx.new(|cx| workspace::Workspace::new(starter(&documents), window, cx));
             cx.new(|cx| Root::new(view, window, cx))
         }) {
             eprintln!("Cannot open the mobile workspace: {error}");

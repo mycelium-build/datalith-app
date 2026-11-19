@@ -8,7 +8,6 @@ targets:
     platform: iOS
     sources:
       - main.c
-      - Navigation.swift
       - path: ../../../assets/logo/stable/datalith.icon
         buildPhase: resources
         type: file

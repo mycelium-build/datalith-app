@@ -1519,7 +1519,6 @@ dependencies = [
  "datalith-mobile",
  "gpui-kit",
  "gpui-pre-mobile",
- "jni 0.21.1",
 ]
 
 [[package]]
@@ -1545,7 +1544,7 @@ dependencies = [
  "gpui-kit",
  "gpui-pre-platform",
  "percent-encoding",
- "raw-window-handle",
+ "serde_json",
  "tempfile",
 ]
 

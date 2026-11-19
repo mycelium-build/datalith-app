@@ -20,6 +20,8 @@ struct Document {
 
 pub struct Workspace {
     pub(super) root: Option<PathBuf>,
+    folders: Vec<super::browser::Folder>,
+    focus: gpui_kit::FocusHandle,
     catalog: Option<VaultCatalog>,
     registry: FileRegistry,
     history: Vec<Document>,
@@ -31,12 +33,18 @@ pub struct Workspace {
 impl Workspace {
     pub(super) fn new(
         root: anyhow::Result<PathBuf>,
-        selected: Option<PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        cx.observe_window_appearance(window, |_, window, cx| {
+            gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
+            cx.notify();
+        })
+        .detach();
         let mut view = Self {
             root: None,
+            folders: Vec::new(),
+            focus: cx.focus_handle(),
             catalog: None,
             registry: default_registry(),
             history: Vec::new(),
@@ -51,10 +59,8 @@ impl Workspace {
                     Err(error) => view.message = Some(error.to_string()),
                 }
                 view.root = Some(root.clone());
-                let path = selected.unwrap_or_else(|| root.join("Welcome.md"));
-                if path.is_file() {
-                    view.open(path, window, cx);
-                }
+                view.select(root, window, cx);
+                view.focus.focus(window, cx);
             }
             Err(error) => view.message = Some(error.to_string()),
         }
@@ -128,12 +134,6 @@ impl Workspace {
                     })
                     .or_else(|| view.catalog.as_ref()?.resolve(&target));
                 if let Some(path) = resolved {
-                    #[cfg(target_os = "ios")]
-                    {
-                        let _ = window;
-                        super::ios::show_link(&path);
-                    }
-                    #[cfg(not(target_os = "ios"))]
                     view.open(path, window, cx);
                 } else if !target.is_empty() {
                     view.message = Some(format!("Cannot open {target}"));
@@ -149,12 +149,41 @@ impl Workspace {
         cx.notify();
     }
 
-    fn back(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn select(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        window.dismiss_virtual_keyboard();
+        self.focus.focus(window, cx);
+        if path.is_dir() {
+            match super::browser::Folder::new(path, window, cx) {
+                Ok(folder) => {
+                    self.folders.push(folder);
+                    self.history.clear();
+                    self.document_deleted = false;
+                }
+                Err(error) => self.message = Some(error.to_string()),
+            }
+        } else if self.in_vault(&path) {
+            self.history.clear();
+            self.open(path, window, cx);
+        }
+        cx.notify();
+    }
+
+    fn refresh_folder(&mut self) {
+        if let Some(folder) = self.folders.last_mut()
+            && let Err(error) = folder.reload()
+        {
+            self.message = Some(error.to_string());
+        }
+    }
+
+    fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.dismiss_virtual_keyboard();
+        self.focus.focus(window, cx);
         if self.document_deleted {
             self.document_deleted = false;
-        } else if self.history.len() > 1 {
-            self.history.pop();
-            self.document_deleted = false;
+        } else if self.history.pop().is_none() && self.folders.len() > 1 {
+            self.folders.pop();
+            self.refresh_folder();
         }
         cx.notify();
     }
@@ -190,8 +219,7 @@ impl Workspace {
                 self.history.retain(|doc| doc.path != deleted.original);
                 self.document_deleted = true;
                 self.deleted = Some(deleted);
-                #[cfg(target_os = "ios")]
-                super::ios::refresh_files();
+                self.refresh_folder();
             }
             Err(error) => self.message = Some(error.to_string()),
         }
@@ -204,8 +232,7 @@ impl Workspace {
             Ok(()) => {
                 let path = deleted.original.clone();
                 self.deleted = None;
-                #[cfg(target_os = "ios")]
-                super::ios::refresh_files();
+                self.refresh_folder();
                 if self.document_deleted {
                     self.open(path, window, cx);
                 }
@@ -216,11 +243,72 @@ impl Workspace {
     }
 }
 
-fn name(path: &Path) -> String {
+pub fn name(path: &Path) -> String {
     path.file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned()
+}
+
+impl Workspace {
+    fn detail(&self, wide: bool, has_detail: bool, cx: &Context<Self>) -> impl IntoElement {
+        let mut detail = v_flex().flex_1().min_w_0();
+        let mut bar = h_flex()
+            .gap_1()
+            .px_2()
+            .min_h(px(48.))
+            .border_b_1()
+            .border_color(cx.theme().border);
+        if has_detail && (!wide || self.history.len() > 1) {
+            bar = bar.child(
+                Button::new("back")
+                    .ghost()
+                    .h(px(48.))
+                    .label("Back")
+                    .on_click(cx.listener(|v, _, w, cx| v.back(w, cx))),
+            );
+        }
+        if let Some(doc) = self.current() {
+            let h = doc.handler.read(cx);
+            bar = bar.child(div().flex_1().truncate().child(name(&doc.path)));
+            if h.can_toggle_mode() {
+                bar = bar.child(
+                    Button::new("mode")
+                        .ghost()
+                        .label(if h.is_editing() { "Read" } else { "Edit" })
+                        .h(px(48.))
+                        .on_click(cx.listener(|v, _, w, cx| v.toggle_mode(w, cx))),
+                );
+            }
+            if !h.is_read_only() {
+                bar = bar.child(
+                    Button::new("delete")
+                        .ghost()
+                        .label("Delete")
+                        .h(px(48.))
+                        .on_click(cx.listener(|v, _, _, cx| v.delete(cx))),
+                );
+            }
+            detail = detail
+                .child(bar)
+                .child(div().flex_1().min_h_0().child(doc.handler.clone()));
+        } else {
+            detail = detail.when(has_detail, |el| el.child(bar)).child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(if self.document_deleted {
+                        "File deleted"
+                    } else {
+                        "Select a file"
+                    }),
+            );
+        }
+        detail
+    }
 }
 
 impl Render for Workspace {
@@ -234,56 +322,43 @@ impl Render for Workspace {
             .h(bounds.size.height)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground);
-        #[cfg(target_os = "ios")]
-        super::ios::update_controls(self.current().map(|doc| doc.handler.read(cx)));
-        {
-            let mut bar = h_flex().gap_1().px_2().min_h(px(48.));
-            if self.history.len() > 1 {
-                bar = bar.child(
-                    Button::new("back")
-                        .ghost()
-                        .h(px(44.))
-                        .label("Back")
-                        .on_click(cx.listener(|v, _, _, cx| v.back(cx))),
+        let wide = bounds.size.width >= px(700.);
+        let has_detail = self.current().is_some() || self.document_deleted;
+        let can_back = has_detail || self.folders.len() > 1;
+        let show_browser = wide || !has_detail;
+        let mut content = h_flex().flex_1().min_h_0().items_stretch();
+        if show_browser && let Some(folder) = self.folders.last() {
+            let mut browser = v_flex()
+                .min_w_0()
+                .when(wide, |el| {
+                    el.w(px(272.)).border_r_1().border_color(cx.theme().border)
+                })
+                .when(!wide, gpui_kit::Styled::flex_1);
+            if self.folders.len() > 1 {
+                browser = browser.child(
+                    h_flex().px_2().child(
+                        Button::new("parent")
+                            .ghost()
+                            .h(px(48.))
+                            .label("Back")
+                            .on_click(cx.listener(|v, _, w, cx| {
+                                v.history.clear();
+                                v.document_deleted = false;
+                                v.back(w, cx);
+                            })),
+                    ),
                 );
             }
-            if let Some(doc) = self.current() {
-                let handler = doc.handler.clone();
-                if handler.read(cx).can_toggle_mode() {
-                    bar = bar.child(
-                        Button::new("mode")
-                            .ghost()
-                            .label(if handler.read(cx).is_editing() {
-                                "Read"
-                            } else {
-                                "Edit"
-                            })
-                            .h(px(44.))
-                            .on_click(cx.listener(|v, _, window, cx| v.toggle_mode(window, cx))),
-                    );
-                }
-                if !doc.handler.read(cx).is_read_only() {
-                    bar = bar.child(
-                        Button::new("delete")
-                            .ghost()
-                            .label("Delete")
-                            .h(px(44.))
-                            .on_click(cx.listener(|v, _, _, cx| v.delete(cx))),
-                    );
-                }
-                panel = panel
-                    .when(!cfg!(target_os = "ios"), |el| el.child(bar))
-                    .child(div().flex_1().min_h_0().child(doc.handler.clone()));
-            } else {
-                panel = panel
-                    .when(!cfg!(target_os = "ios"), |el| el.child(bar))
-                    .child(div().flex_1().child(if self.document_deleted {
-                        "File deleted"
-                    } else {
-                        "Select a file"
-                    }));
-            }
+            content = content.child(browser.child(folder.render(
+                &self.registry,
+                self.current().map(|d| d.path.as_path()),
+                cx,
+            )));
         }
+        if wide || has_detail {
+            content = content.child(self.detail(wide, has_detail, cx));
+        }
+        panel = panel.child(content).track_focus(&self.focus);
         if let Some(error) = &self.message {
             panel = panel.child(div().px_2().child(error.clone()));
         }
@@ -303,12 +378,19 @@ impl Render for Workspace {
                     ),
             );
         }
-        panel.when(!cfg!(target_os = "ios") && self.history.len() > 1, |el| {
-            el.on_back_gesture(cx.listener(|v, event: &gpui_kit::BackGestureEvent, _, cx| {
-                if event.phase == BackGesturePhase::Committed {
-                    v.back(cx);
+        panel.when(can_back, |el| {
+            el.on_key_down(cx.listener(|v, event: &gpui_kit::KeyDownEvent, w, cx| {
+                if event.keystroke.key == "escape" {
+                    v.back(w, cx);
                 }
             }))
+            .on_back_gesture(cx.listener(
+                |v, event: &gpui_kit::BackGestureEvent, w, cx| {
+                    if event.phase == BackGesturePhase::Committed {
+                        v.back(w, cx);
+                    }
+                },
+            ))
         })
     }
 }

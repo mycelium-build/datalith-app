@@ -14,4 +14,3 @@ datalith-mobile = { path = ".." }
 gpui-kit = "=0.9.1"
 gpui-mobile = { package = "gpui-pre-mobile", path = "../../../target/android/gpui-mobile", default-features = false }
 android-activity = { version = "0.6", features = ["native-activity"] }
-jni = "0.21"
