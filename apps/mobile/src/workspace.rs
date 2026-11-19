@@ -745,6 +745,13 @@ impl Workspace {
             Command::Documents => self.open_page(Page::Documents, w, cx),
             Command::Drafts => self.open_page(Page::Drafts, w, cx),
             Command::Settings => self.open_page(Page::Settings, w, cx),
+            Command::RemoveRecent =>
+            {
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                if let Some(id) = target {
+                    self.forget_folder(&id, w, cx);
+                }
+            }
         }
     }
 

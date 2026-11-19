@@ -22,10 +22,11 @@ pub enum Command {
     Documents,
     Drafts,
     Settings,
+    RemoveRecent,
 }
 
 impl Command {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 16] = [
         Self::Back,
         Self::Forward,
         Self::ToggleMode,
@@ -41,6 +42,7 @@ impl Command {
         Self::Documents,
         Self::Drafts,
         Self::Settings,
+        Self::RemoveRecent,
     ];
 
     pub const fn id(self) -> &'static str {
@@ -60,6 +62,7 @@ impl Command {
             Self::Documents => "documents",
             Self::Drafts => "drafts",
             Self::Settings => "settings",
+            Self::RemoveRecent => "remove-recent",
         }
     }
 
@@ -84,6 +87,7 @@ impl Command {
             Self::Documents => "Open documents",
             Self::Drafts => "Recover local edits",
             Self::Settings => "Settings",
+            Self::RemoveRecent => "Remove from recents",
         }
     }
 
@@ -105,6 +109,7 @@ impl Command {
             Self::Documents => "square.stack",
             Self::Drafts => "arrow.counterclockwise",
             Self::Settings => "gearshape",
+            Self::RemoveRecent => "minus.circle",
         }
     }
 

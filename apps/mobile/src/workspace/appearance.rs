@@ -1,10 +1,7 @@
 use super::{THEMES, Workspace};
 use datalith_ui::fonts::ResolvedFonts;
-use gpui_kit::component::{
-    ActiveTheme as _,
-    button::{Button, ButtonVariants as _},
-};
-use gpui_kit::{App, Context, Global, Styled as _, Window, px};
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::{App, Context, Global, Window};
 
 pub struct FontCatalog {
     pub(super) families: Vec<String>,
@@ -39,7 +36,10 @@ pub enum Choice {
     Ancestor(Vec<std::path::PathBuf>),
 }
 impl Workspace {
-    pub(super) fn appearance_controls(&self, cx: &Context<Self>) -> Vec<Button> {
+    pub(super) fn appearance_controls(
+        &self,
+        cx: &Context<Self>,
+    ) -> Vec<gpui_kit::component::list::ListItem> {
         let selected = &self.preferences;
         let mut settings = vec![
             (Choice::Theme, "Theme", selected.theme.clone()),
@@ -64,10 +64,7 @@ impl Workspace {
         settings
             .into_iter()
             .map(|(choice, title, value)| {
-                Button::new(title)
-                    .ghost()
-                    .h(px(48.))
-                    .label(format!("{title} · {value}"))
+                super::setting_row(title, title, Some(value), cx)
                     .on_click(cx.listener(move |s, _, w, cx| s.choose(choice.clone(), w, cx)))
             })
             .collect()

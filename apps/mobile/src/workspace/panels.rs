@@ -4,9 +4,10 @@ use std::sync::LazyLock;
 use super::{Workspace, name};
 use datalith_vault::{VaultCatalog, source};
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Theme, ThemeMode,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Theme, ThemeMode,
     button::{Button, ButtonVariants},
     h_flex,
+    list::ListItem,
     theme::ThemeSet,
     v_flex,
 };
@@ -36,7 +37,7 @@ impl Page {
     }
     const fn title(self) -> &'static str {
         match self {
-            Self::Library => "Library",
+            Self::Library => "Vaults",
             Self::Documents => "Open documents",
             Self::Drafts => "Recover local edits",
             Self::Settings => "Settings",
@@ -334,35 +335,45 @@ impl Workspace {
         body = body.child(div().text_xl().py_2().child(page.title()));
         match page {
             Page::Library => {
-                for (label, root) in [
-                    ("Datalith", self.local_root.clone()),
-                    ("Documentation · read only", Some(super::super::DOCS.root())),
+                body = body.child(section("Vaults", cx));
+                for (id, label, root, read_only) in [
+                    ("vault-local", "Datalith", self.local_root.clone(), false),
+                    (
+                        "vault-documentation",
+                        "Documentation",
+                        Some(super::super::DOCS.root()),
+                        true,
+                    ),
                 ] {
                     let Some(root) = root else { continue };
-                    body = body.child(Button::new(label).ghost().h(px(48.)).label(label).on_click(
-                        cx.listener(move |s, _, w, cx| {
-                            if s.root.as_ref() == Some(&root) {
-                                s.page = None;
-                                cx.notify();
-                            } else {
-                                s.switch_vault(root.clone(), false, w, cx);
-                            }
-                        }),
-                    ));
+                    let current = self.root.as_ref() == Some(&root);
+                    body = body.child(
+                        vault_row(id, label, read_only.then_some("Read only"), current, cx)
+                            .on_click(cx.listener(move |s, _, w, cx| {
+                                if s.root.as_ref() == Some(&root) {
+                                    s.back(w, cx);
+                                } else {
+                                    s.switch_vault(root.clone(), false, w, cx);
+                                }
+                            })),
+                    );
                 }
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 {
-                    body = body.children(self.folder_buttons(cx));
+                    body = body.children(self.folder_rows(cx));
                 }
-                if self.root.as_ref().is_some_and(|r| !source::is_read_only(r)) {
-                    body = body
-                        .child(Self::create_button(false, cx))
-                        .child(Self::create_button(true, cx));
+                let drafts = datalith_vault::draft::pending_paths().map_or(0, |p| p.len());
+                if drafts > 0 {
+                    body = body.child(section("Recover", cx)).child(
+                        setting_row(
+                            "drafts",
+                            "Recover local edits",
+                            Some(format!("{drafts} unsaved")),
+                            cx,
+                        )
+                        .on_click(cx.listener(|s, _, w, cx| s.open_page(Page::Drafts, w, cx))),
+                    );
                 }
-                body = body
-                    .child(page_link(Page::Documents, cx))
-                    .child(page_link(Page::Drafts, cx))
-                    .child(page_link(Page::Settings, cx));
             }
             Page::Drafts => return Self::recover_drafts(body, cx),
             Page::Documents => {
@@ -373,17 +384,23 @@ impl Workspace {
             }
             Page::About => {
                 body = body
-                    .child(format!("Datalith {}", env!("CARGO_PKG_VERSION")))
+                    .child(
+                        setting_row(
+                            "version",
+                            "Version",
+                            Some(env!("CARGO_PKG_VERSION").to_owned()),
+                            cx,
+                        )
+                        .disabled(true),
+                    )
                     .child(page_link(Page::License, cx))
                     .child(page_link(Page::Notices, cx))
                     .child(
-                        Button::new("source")
-                            .ghost()
-                            .h(px(48.))
-                            .label("Source code")
-                            .on_click(|_, _, cx| {
+                        setting_row("source", "Source code", Some("GitHub".into()), cx).on_click(
+                            |_, _, cx| {
                                 cx.open_url("https://github.com/mycelium-build/datalith-app");
-                            }),
+                            },
+                        ),
                     );
             }
             Page::License => {
@@ -471,36 +488,50 @@ impl Workspace {
     }
 
     fn settings(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let size = self.preferences.text_size;
+        let step = |id: &'static str, icon: IconName, label: &'static str, delta: i8| {
+            let limit = if delta < 0 { size <= 12 } else { size >= 26 };
+            Button::new(id)
+                .ghost()
+                .h(px(48.))
+                .w(px(48.))
+                .icon(icon)
+                .accessibility_label(label)
+                .disabled(limit)
+                .on_click(cx.listener(move |s, _, _, cx| {
+                    s.preferences.text_size = s
+                        .preferences
+                        .text_size
+                        .saturating_add_signed(delta)
+                        .clamp(12, 26);
+                    s.preferences.apply_size(cx);
+                    s.save_preferences(cx);
+                    cx.refresh_windows();
+                }))
+        };
         v_flex()
+            .child(section("Appearance", cx))
             .children(self.appearance_controls(cx))
             .child(
                 h_flex()
+                    .min_h(px(48.))
+                    .px_2()
+                    .gap_2()
+                    .child(div().flex_1().child("Text size"))
                     .child(
                         div()
-                            .flex_1()
-                            .child(format!("Text size · {}", self.preferences.text_size)),
+                            .text_color(cx.theme().muted_foreground)
+                            .child(size.to_string()),
                     )
-                    .children([("smaller", "−", -2_i8), ("larger", "+", 2)].map(
-                        |(id, label, delta)| {
-                            Button::new(id)
-                                .ghost()
-                                .h(px(48.))
-                                .w(px(48.))
-                                .label(label)
-                                .accessibility_label(id)
-                                .on_click(cx.listener(move |s, _, _, cx| {
-                                    s.preferences.text_size = s
-                                        .preferences
-                                        .text_size
-                                        .saturating_add_signed(delta)
-                                        .clamp(12, 26);
-                                    s.preferences.apply_size(cx);
-                                    s.save_preferences(cx);
-                                    cx.refresh_windows();
-                                }))
-                        },
-                    )),
+                    .child(step(
+                        "text-smaller",
+                        IconName::Minus,
+                        "Decrease text size",
+                        -2,
+                    ))
+                    .child(step("text-larger", IconName::Plus, "Increase text size", 2)),
             )
+            .child(section("Datalith", cx))
             .child(page_link(Page::About, cx))
     }
     fn notices(&self, body: gpui_kit::Stateful<gpui_kit::Div>, cx: &Context<Self>) -> AnyElement {
@@ -511,13 +542,18 @@ impl Workspace {
         });
         let current = self.notice_index.min(SECTIONS.len().saturating_sub(1));
         body.child(
-            h_flex().children([("previous", "‹", false), ("next", "›", true)].map(
-                |(id, label, next)| {
+            h_flex().children(
+                [
+                    ("previous", IconName::ChevronLeft, "Previous notice", false),
+                    ("next", IconName::ChevronRight, "Next notice", true),
+                ]
+                .map(|(id, icon, label, next)| {
                     Button::new(id)
                         .ghost()
                         .h(px(48.))
-                        .label(label)
-                        .accessibility_label(id)
+                        .w(px(48.))
+                        .icon(icon)
+                        .accessibility_label(label)
                         .on_click(cx.listener(move |s, _, _, cx| {
                             s.notice_index = if next {
                                 current
@@ -528,8 +564,8 @@ impl Workspace {
                             };
                             cx.notify();
                         }))
-                },
-            )),
+                }),
+            ),
         )
         .child(format!(
             "{} / {}",
@@ -540,55 +576,189 @@ impl Workspace {
         .into_any_element()
     }
 }
-fn page_link(page: Page, cx: &Context<Workspace>) -> Button {
-    Button::new(page.title())
-        .ghost()
-        .h(px(48.))
-        .label(page.title())
+fn page_link(page: Page, cx: &Context<Workspace>) -> ListItem {
+    setting_row(page.title(), page.title(), None, cx)
         .on_click(cx.listener(move |s, _, w, cx| s.open_page(page, w, cx)))
+}
+
+/// A section heading in a settings-style page.
+fn section(title: &'static str, cx: &Context<Workspace>) -> impl IntoElement + use<> {
+    div()
+        .px_2()
+        .pt_4()
+        .pb_1()
+        .text_sm()
+        .text_color(cx.theme().muted_foreground)
+        .child(title)
+}
+
+/// A row that opens something: its title, an optional current value, then a chevron.
+pub(super) fn setting_row(
+    id: &'static str,
+    title: impl Into<gpui_kit::SharedString>,
+    value: Option<String>,
+    cx: &Context<Workspace>,
+) -> ListItem {
+    let title = title.into();
+    let label = value
+        .as_ref()
+        .map_or_else(|| title.clone(), |v| format!("{title}, {v}").into());
+    ListItem::new(id)
+        .min_h(px(48.))
+        .px_2()
+        .accessibility_label(label)
+        .child(
+            h_flex()
+                .w_full()
+                .gap_2()
+                .child(div().flex_1().min_w_0().truncate().child(title))
+                .children(value.map(|v| {
+                    div()
+                        .max_w(gpui_kit::relative(0.5))
+                        .truncate()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(v)
+                }))
+                .child(Icon::new(IconName::ChevronRight).size_4()),
+        )
+}
+
+/// A vault in the Vaults page: a check marks the open one, a lock a read-only one.
+fn vault_row(
+    id: impl Into<gpui_kit::ElementId>,
+    label: impl Into<gpui_kit::SharedString>,
+    detail: Option<&'static str>,
+    current: bool,
+    cx: &Context<Workspace>,
+) -> ListItem {
+    let label = label.into();
+    let spoken = if current {
+        format!("{label}, open").into()
+    } else {
+        label.clone()
+    };
+    ListItem::new(id)
+        .flex_1()
+        .min_w_0()
+        .min_h(px(48.))
+        .px_2()
+        .accessibility_label(spoken)
+        .child(
+            h_flex()
+                .w_full()
+                .gap_3()
+                .child(Icon::new(IconName::Folder).size_4())
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .py_1()
+                        .child(div().truncate().child(label))
+                        .children(detail.map(|d| {
+                            h_flex()
+                                .gap_1()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(Icon::new(datalith_ui::icons::DatalithIcon::Lock).size_3())
+                                .child(d)
+                        })),
+                )
+                .when(current, |row| {
+                    row.child(
+                        Icon::new(IconName::Check)
+                            .size_4()
+                            .text_color(cx.theme().primary),
+                    )
+                }),
+        )
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 impl Workspace {
-    fn folder_buttons(&self, cx: &Context<Self>) -> Vec<Button> {
-        let choose = Button::new("open-external")
-            .ghost()
-            .h(px(48.))
-            .label("Open external folder…");
+    fn folder_rows(&self, cx: &Context<Self>) -> Vec<AnyElement> {
+        let mut rows = Vec::new();
+        for recent in &self.preferences.recent {
+            let grant = recent.grant.clone();
+            let id = recent.id.clone();
+            let current = self.root.as_ref() == Some(&id);
+            let menu_title = recent.label.clone();
+            rows.push(
+                h_flex()
+                    .w_full()
+                    .child(
+                        vault_row(
+                            gpui_kit::SharedString::from(format!("recent:{}", id.display())),
+                            recent.label.clone(),
+                            None,
+                            current,
+                            cx,
+                        )
+                        .on_click(cx.listener(move |s, _, w, cx| {
+                            if let Err(e) = s.open_bookmark(&grant, false, w, cx) {
+                                s.message = Some(e.to_string());
+                                cx.notify();
+                            }
+                        })),
+                    )
+                    .child(
+                        Button::new(gpui_kit::SharedString::from(format!(
+                            "recent-actions:{}",
+                            id.display()
+                        )))
+                        .ghost()
+                        .w(px(48.))
+                        .h(px(48.))
+                        .text_color(cx.theme().muted_foreground)
+                        .icon(IconName::Ellipsis)
+                        .accessibility_label(format!("Actions for {menu_title}"))
+                        .on_click(cx.listener(move |s, _, w, cx| {
+                            let choice = super::Choice::Actions {
+                                title: menu_title.clone(),
+                                target: Some(id.clone()),
+                                commands: vec![crate::workspace::Command::RemoveRecent],
+                            };
+                            s.choose(choice, w, cx);
+                        })),
+                    )
+                    .into_any_element(),
+            );
+        }
+        let choose = ListItem::new("open-external")
+            .min_h(px(48.))
+            .px_2()
+            .accessibility_label("Open folder…")
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_3()
+                    .child(Icon::new(IconName::FolderOpen).size_4())
+                    .child(div().flex_1().child("Open folder…")),
+            );
         #[cfg(target_os = "ios")]
         let choose = choose.on_click(|_, _, _| crate::ios_folder::pick());
         #[cfg(target_os = "android")]
         let choose = choose.on_click(cx.listener(|_, _, w, cx| Self::pick_folder(w, cx)));
-        let mut buttons = vec![choose];
-        for (ix, recent) in self.preferences.recent.iter().enumerate() {
-            let grant = recent.grant.clone();
-            let id = recent.id.clone();
-            buttons.push(
-                Button::new(("recent-folder", ix))
-                    .ghost()
-                    .h(px(48.))
-                    .label(recent.label.clone())
-                    .on_click(cx.listener(move |s, _, w, cx| {
-                        if let Err(e) = s.open_bookmark(&grant, false, w, cx) {
-                            s.message = Some(e.to_string());
-                            cx.notify();
-                        }
-                    })),
-            );
-            let label = format!("Forget {}", recent.label);
-            buttons.push(
-                Button::new(("forget-folder", ix))
-                    .ghost()
-                    .icon(IconName::Close)
-                    .accessibility_label(label)
-                    .on_click(cx.listener(move |s, _, w, cx| {
-                        s.forget_folder(&id, w, cx);
-                    })),
+        rows.push(choose.into_any_element());
+        if !self.preferences.recent.is_empty() {
+            rows.push(
+                div()
+                    .px_2()
+                    .pt_1()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .whitespace_normal()
+                    .child("Removing a folder from recents keeps its files.")
+                    .into_any_element(),
             );
         }
-        buttons
+        rows
     }
-    fn forget_folder(&mut self, id: &std::path::Path, w: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn forget_folder(
+        &mut self,
+        id: &std::path::Path,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(ix) = self.preferences.recent.iter().position(|r| r.id == id) else {
             return;
         };

@@ -166,20 +166,6 @@ impl Workspace {
             self.begin_form(action, dir.path.clone(), w, cx);
         }
     }
-    pub(super) fn create_button(folder: bool, cx: &Context<Self>) -> Button {
-        let action = if folder {
-            Action::Folder
-        } else {
-            Action::Create
-        };
-        Button::new(action.label())
-            .ghost()
-            .h(px(48.))
-            .label(action.label())
-            .on_click(cx.listener(move |s, _, w, cx| {
-                s.begin_creation(action == Action::Folder, w, cx);
-            }))
-    }
     fn begin_form(
         &mut self,
         action: Action,
