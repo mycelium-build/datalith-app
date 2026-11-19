@@ -89,6 +89,7 @@ impl Workspace {
         if !self.in_vault(&path) {
             return;
         }
+        self.message = None;
         self.advance(false);
         self.document_deleted = false;
         if let Some(index) = self.history.iter().rposition(|doc| doc.path == path) {
@@ -114,10 +115,22 @@ impl Workspace {
             }));
         }
         let from = path.clone();
-        subscriptions.push(cx.subscribe_in(
-            &handler,
-            window,
-            move |view, _, FileHandlerEvent::LinkClicked(url, _), window, cx| {
+        subscriptions.push(
+            cx.subscribe_in(&handler, window, move |view, _, event, window, cx| {
+                let url = match event {
+                    FileHandlerEvent::VaultFileRequested(relative, _) => {
+                        if let Some(path) = view.root.as_ref().map(|root| root.join(relative)) {
+                            if view.in_vault(&path) {
+                                view.open(path, window, cx);
+                            } else {
+                                view.message = Some(format!("Cannot open {}", relative.display()));
+                                cx.notify();
+                            }
+                        }
+                        return;
+                    }
+                    FileHandlerEvent::LinkClicked(url, _) => url,
+                };
                 let raw = url.split(['#', '?']).next().unwrap_or_default();
                 let target = percent_encoding::percent_decode_str(raw).decode_utf8_lossy();
                 let resolved = view
@@ -144,8 +157,8 @@ impl Workspace {
                     view.message = Some(format!("Cannot open {target}"));
                     cx.notify();
                 }
-            },
-        ));
+            }),
+        );
         self.history.push(Document {
             path,
             handler,

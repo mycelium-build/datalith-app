@@ -269,7 +269,7 @@ impl GraphState {
             match &mut self.snapshot {
                 Some(snapshot) => snapshot.nodes.get_mut(index).map(|node| {
                     node.velocity = Point::default();
-                    node.relative_path.to_string_lossy().replace('\\', "/")
+                    node.relative_path.clone()
                 }),
                 None => None,
             }
@@ -282,7 +282,7 @@ impl GraphState {
         {
             let new_tab = event.modifiers.secondary(cx);
             if let Err(error) = self.handler.update(cx, |_handler, cx| {
-                cx.emit(FileHandlerEvent::LinkClicked(target, new_tab));
+                cx.emit(FileHandlerEvent::VaultFileRequested(target, new_tab));
             }) {
                 window.push_notification(notifications::graph_link_open_failed(&error), cx);
             }

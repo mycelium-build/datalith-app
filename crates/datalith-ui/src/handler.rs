@@ -36,6 +36,7 @@ pub enum ViewMode {
 
 pub enum FileHandlerEvent {
     LinkClicked(String, bool),
+    VaultFileRequested(std::path::PathBuf, bool),
 }
 
 pub struct FileHandler {
