@@ -20,7 +20,7 @@ enum Command {
 type OpenDocument = Box<dyn FnMut(Command)>;
 thread_local! { static OPEN: RefCell<Option<OpenDocument>> = RefCell::default(); }
 
-/// Receives a UTF-8 filesystem path from the vault column on the UIKit main thread.
+/// Receives a UTF-8 filesystem path from the vault column on the main thread of the native host.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn datalith_open_document(path: *const c_char) {
     if path.is_null() {
@@ -37,7 +37,7 @@ unsafe extern "C" fn datalith_open_document(path: *const c_char) {
     });
 }
 
-pub(super) fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
+pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
     let Some(root) = view
         .read(cx)
         .root
@@ -64,7 +64,7 @@ pub(super) fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
                     Command::Delete => v.delete(cx),
                 })
             });
-        }))
+        }));
     });
     // UIKit retains the GPUI controller and copies the directory before returning.
     unsafe {
@@ -85,7 +85,7 @@ extern "C" fn datalith_document_action(delete: bool) {
     });
 }
 
-pub(super) fn show_link(path: &std::path::Path) {
+pub fn show_link(path: &std::path::Path) {
     if let Ok(path) = CString::new(path.as_os_str().as_encoded_bytes()) {
         // The main-thread host copies the path before scheduling the push.
         unsafe {
@@ -94,7 +94,7 @@ pub(super) fn show_link(path: &std::path::Path) {
     }
 }
 
-pub(super) fn update_controls(handler: Option<&datalith_ui::handler::FileHandler>) {
+pub fn update_controls(handler: Option<&datalith_ui::handler::FileHandler>) {
     let mode = handler
         .filter(|h| h.can_toggle_mode())
         .map_or(0, |h| if h.is_editing() { 2 } else { 1 });
@@ -104,7 +104,7 @@ pub(super) fn update_controls(handler: Option<&datalith_ui::handler::FileHandler
     }
 }
 
-pub(super) fn refresh_files() {
+pub fn refresh_files() {
     // The host schedules the vault list update on its main queue.
     unsafe {
         datalith_refresh_files();

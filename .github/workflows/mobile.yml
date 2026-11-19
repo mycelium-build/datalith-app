@@ -40,7 +40,7 @@ jobs:
       - run: |
           source scripts/tool-versions.env
           cargo install --locked cargo-ndk --version "$CARGO_NDK_VERSION"
-          sdkmanager "platforms;android-34" "build-tools;36.0.0" "ndk;27.3.13750724"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;36.0.0" "ndk;27.3.13750724"
       - run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724" apps/mobile/android/build.sh
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
