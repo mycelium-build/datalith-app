@@ -111,6 +111,8 @@ void datalith_install_controls(void *pointer) {
         UINavigationController *navigation = [[DatalithNavigation alloc] initWithRootViewController:content];
         surface = content;
         window.rootViewController = navigation;
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIContentSizeCategoryDidChangeNotification
+            object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { send(@"text-size"); }];
         applyControls();
     });
 }
@@ -130,6 +132,12 @@ void datalith_set_controls_json(const char *json, uint32_t background) {
 }
 
 UIViewController *datalith_presenter(void) { return surface; }
+
+// The body text size the person chose in Settings › Display & Brightness ›
+// Text Size (Dynamic Type): 17 pt by default.
+double datalith_preferred_text_size(void) {
+    return [UIFont preferredFontForTextStyle:UIFontTextStyleBody].pointSize;
+}
 
 extern void datalith_chose(int32_t index);
 @interface DatalithChoices : UITableViewController <UIAdaptivePresentationControllerDelegate>

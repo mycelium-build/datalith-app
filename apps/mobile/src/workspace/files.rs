@@ -112,14 +112,24 @@ impl Workspace {
         .text_color(cx.theme().muted_foreground)
         .icon(IconName::Ellipsis)
         .accessibility_label(format!("Actions for {}", name(&path)))
-        .on_click(cx.listener(move |s, _, w, cx| {
-            let choice = super::Choice::Actions {
-                title: name(&path),
-                target: Some(path.clone()),
-                commands: Command::for_file(directory),
-            };
-            s.choose(choice, w, cx);
-        }))
+        .on_click(cx.listener(move |s, _, w, cx| s.show_file_actions(&path, directory, w, cx)))
+    }
+
+    /// The native action sheet for one file or folder, from its "…" button or
+    /// a long press on its row.
+    pub(crate) fn show_file_actions(
+        &mut self,
+        path: &Path,
+        directory: bool,
+        w: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let choice = super::Choice::Actions {
+            title: name(path),
+            target: Some(path.to_owned()),
+            commands: Command::for_file(directory),
+        };
+        self.choose(choice, w, cx);
     }
 
     pub(super) fn perform_file_action(

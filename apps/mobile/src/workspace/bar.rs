@@ -6,13 +6,15 @@ use super::{Choice, Command, ScreenControls, Workspace};
 use datalith_ui::icons::DatalithIcon;
 use datalith_ui::touch::TouchSize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, div, px};
+use gpui_kit::{Context, div};
 
+/// Material's top app bar: 48 dp targets holding 24 dp icons.
 fn icon_button(id: &'static str, label: &str) -> Button {
     Button::new(id)
         .ghost()
+        .large()
         .touch_size(48.)
         .accessibility_label(label.to_owned())
 }
@@ -22,7 +24,7 @@ pub(super) fn render(controls: &ScreenControls, cx: &Context<Workspace>) -> impl
     let mut bar = h_flex()
         .gap_1()
         .px_1()
-        .min_h(px(48.))
+        .touch_h(56.)
         .border_b_1()
         .border_color(cx.theme().border)
         .when(controls.back, |bar| {
@@ -32,7 +34,15 @@ pub(super) fn render(controls: &ScreenControls, cx: &Context<Workspace>) -> impl
                     .on_click(cx.listener(|v, _, w, cx| v.run(Command::Back, None, w, cx))),
             )
         })
-        .child(div().flex_1().min_w_0().px_2().truncate().child(title));
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .px_2()
+                .text_lg()
+                .truncate()
+                .child(title),
+        );
     if let Some(primary) = &controls.primary {
         let editing = controls.editing;
         bar = bar.child(

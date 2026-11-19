@@ -31,3 +31,37 @@ pub trait TouchSize: Styled + Sized {
 }
 
 impl<E: Styled> TouchSize for E {}
+
+/// Covers its parent and calls `action` when a long press starts inside it.
+///
+/// GPUI recognizes long presses but offers no element listener for them, so
+/// this registers one while painting, scoped to the parent's visible bounds.
+/// Give the parent `relative()`. The overlay has no hitbox, so taps and hover
+/// still reach the parent.
+pub fn long_press_area(
+    action: impl Fn(gpui_kit::Point<gpui_kit::Pixels>, &mut gpui_kit::Window, &mut gpui_kit::App)
+    + 'static,
+) -> impl gpui_kit::IntoElement {
+    use gpui_kit::{DispatchPhase, LongPressEvent, TouchPhase};
+    gpui_kit::canvas(
+        |_, _, _| {},
+        move |bounds, (), window, _| {
+            // Clip to what is visible, so a row scrolled out of its list never
+            // answers a press on whatever now sits at its old position.
+            let bounds = bounds.intersect(&window.content_mask().bounds);
+            window.on_mouse_event(move |event: &LongPressEvent, phase, window, cx| {
+                if phase == DispatchPhase::Bubble
+                    && event.phase == TouchPhase::Started
+                    && bounds.contains(&event.start_position)
+                    && !window.default_prevented()
+                {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                    action(event.start_position, window, cx);
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_full()
+}

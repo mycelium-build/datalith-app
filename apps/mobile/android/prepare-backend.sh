@@ -24,3 +24,7 @@ fi
 if ! git -C "$backend" apply --reverse --check "$PWD/android-dispatch.patch" 2>/dev/null; then
     git -C "$backend" apply "$PWD/android-dispatch.patch"
 fi
+# Report the status and navigation bars to GPUI, so content stays clear of them.
+if ! git -C "$backend" apply --reverse --check "$PWD/android-insets.patch" 2>/dev/null; then
+    git -C "$backend" apply "$PWD/android-insets.patch"
+fi

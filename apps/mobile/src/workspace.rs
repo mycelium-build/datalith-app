@@ -864,6 +864,18 @@ impl Render for Workspace {
         {
             panel = panel.child(bar::render(&controls, cx));
         }
+        #[cfg(target_os = "android")]
+        {
+            crate::android_folder::set_system_bars(cx.theme().background, !cx.theme().is_dark());
+            // The Activity registers after native startup, so the first read of
+            // the system text size can miss it: read it once more when it answers.
+            if self.preferences.follows_system_text()
+                && crate::android_folder::text_size_first_available()
+            {
+                self.preferences.apply_size(cx);
+                cx.refresh_windows();
+            }
+        }
         let show_browser = matches!(
             surface,
             Surface::Folder | Surface::Document | Surface::Deleted

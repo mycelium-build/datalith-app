@@ -12,9 +12,12 @@ public final class DatalithActivity extends GpuiInputActivity {
 
     private static native void openLink(String url);
     private static native void choseOption(int index);
+    /** Gives Rust this Activity: the JNI context GPUI exposes is the Application. */
+    private static native void attach(DatalithActivity activity);
 
     @Override protected void onCreate(android.os.Bundle state) {
         super.onCreate(state);
+        attach(this);
         if (state == null) deliverLink(getIntent());
     }
     @Override protected void onNewIntent(Intent intent) {
@@ -27,8 +30,37 @@ public final class DatalithActivity extends GpuiInputActivity {
                 && "datalith".equals(intent.getData().getScheme())) openLink(intent.getDataString());
     }
 
+    /** Body text size for the person's font size setting: 16 sp at the default scale. */
+    public float preferredTextSize() {
+        return 16f * getResources().getConfiguration().fontScale;
+    }
+
+    /** Whether the app shows a light theme; dialogs follow it. */
+    private volatile boolean lightTheme = true;
+
+    /** The device's own alert style (One UI on Samsung), light or dark like the app. */
+    private int dialogTheme() {
+        return lightTheme ? android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
+            : android.R.style.Theme_DeviceDefault_Dialog_Alert;
+    }
+
+    /** Paints the status and navigation bars with the theme background and picks icons that contrast with it. */
+    public void setSystemBars(int background, boolean lightBackground) {
+        lightTheme = lightBackground;
+        runOnUiThread(() -> {
+            android.view.Window window = getWindow();
+            window.setStatusBarColor(background);
+            window.setNavigationBarColor(background);
+            android.view.WindowInsetsController controller = window.getInsetsController();
+            if (controller == null) return;
+            int light = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            controller.setSystemBarsAppearance(lightBackground ? light : 0, light);
+        });
+    }
+
     public void chooseOption(String title, String[] options, int selected) {
-        runOnUiThread(() -> new android.app.AlertDialog.Builder(this)
+        runOnUiThread(() -> new android.app.AlertDialog.Builder(this, dialogTheme())
             .setTitle(title)
             .setSingleChoiceItems(options, selected, (dialog, index) -> {
                 dialog.dismiss();
@@ -54,7 +86,7 @@ public final class DatalithActivity extends GpuiInputActivity {
                     rows[i] = actions[i];
                 }
             }
-            new android.app.AlertDialog.Builder(this)
+            new android.app.AlertDialog.Builder(this, dialogTheme())
                 .setTitle(title)
                 .setItems(rows, (dialog, index) -> choseOption(index))
                 .setNegativeButton(android.R.string.cancel, (dialog, button) -> choseOption(-1))

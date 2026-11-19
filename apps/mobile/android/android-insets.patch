@@ -1,0 +1,46 @@
+--- a/src/android/window.rs
++++ b/src/android/window.rs
+@@ -297,7 +297,7 @@
+ /// These represent the areas of the screen occupied by system UI elements
+ /// (status bar, navigation bar, camera notch, etc.) that the app content
+ /// should avoid drawing into — or at least pad/account for.
+-#[derive(Debug, Clone, Copy, Default)]
++#[derive(Debug, Clone, Copy, Default, PartialEq)]
+ pub struct SafeAreaInsets {
+     /// Top inset in device pixels (status bar / camera notch).
+     pub top: f32,
+@@ -1119,7 +1119,14 @@
+             insets.left,
+             insets.right,
+         );
++        let changed = state.safe_area_insets != insets;
+         state.safe_area_insets = insets;
++        drop(state);
++        // GPUI reads the insets during layout; lay out again so content leaves
++        // the status and navigation bars as soon as the system reports them.
++        if changed {
++            self.notify_resize();
++        }
+     }
+ 
+     // ── state queries ─────────────────────────────────────────────────────────
+@@ -1506,6 +1513,19 @@
+         gpui::Bounds {
+             origin: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+             size: gpui::size(gpui::px(w), gpui::px(h)),
++        }
++    }
++
++    fn insets(&self) -> gpui::WindowInsets {
++        let insets = self.window.safe_area_insets_logical();
++        gpui::WindowInsets {
++            safe_area: gpui::Edges {
++                top: gpui::px(insets.top),
++                right: gpui::px(insets.right),
++                bottom: gpui::px(insets.bottom),
++                left: gpui::px(insets.left),
++            },
++            ..Default::default()
+         }
+     }
+ 

@@ -54,7 +54,13 @@ pub(super) struct Preferences {
     theme: String,
     variant: Option<String>,
     fonts: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+    /// The chosen size, used when the size does not follow the system.
     text_size: u8,
+    /// Whether text follows the system size setting. Absent from older
+    /// preferences: a size other than the former default 16 was a choice.
+    /// Field-level default, so an older file reads `None`, not `Some(true)`.
+    #[serde(default)]
+    system_text: Option<bool>,
     pub(super) documentation: bool,
     folder: PathBuf,
     pub(super) sessions: std::collections::BTreeMap<String, super::session::Session>,
@@ -69,6 +75,7 @@ impl Default for Preferences {
             variant: None,
             fonts: std::collections::BTreeMap::new(),
             text_size: 16,
+            system_text: Some(true),
             documentation: false,
             folder: PathBuf::new(),
             sessions: std::collections::BTreeMap::new(),
@@ -78,6 +85,29 @@ impl Default for Preferences {
         }
     }
 }
+const MIN_TEXT: u8 = 12;
+const MAX_TEXT: u8 = 32;
+
+/// The body text size the platform's accessibility setting asks for.
+#[cfg_attr(
+    not(any(target_os = "ios", target_os = "android")),
+    allow(clippy::missing_const_for_fn)
+)]
+fn system_text_size() -> Option<f32> {
+    #[cfg(target_os = "ios")]
+    {
+        crate::ios::preferred_text_size()
+    }
+    #[cfg(target_os = "android")]
+    {
+        crate::android_folder::preferred_text_size().ok()
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    {
+        None
+    }
+}
+
 static THEMES: LazyLock<Vec<ThemeSet>> = LazyLock::new(|| {
     datalith_ui::themes::THEME_SETS
         .iter()
@@ -104,8 +134,23 @@ impl Preferences {
         file.persist(dir.join(".mobile-preferences.json"))?;
         Ok(())
     }
+    /// Whether text follows the system size setting.
+    pub(super) fn follows_system_text(&self) -> bool {
+        self.system_text.unwrap_or(self.text_size == 16)
+    }
+    /// The text size in use: the system's body size, or the chosen one.
+    pub(super) fn effective_text_size(&self) -> u8 {
+        let size = if self.follows_system_text() {
+            system_text_size().unwrap_or(16.)
+        } else {
+            f32::from(self.text_size)
+        };
+        // Whole points between the smallest and largest supported sizes.
+        let size = size.round().clamp(f32::from(MIN_TEXT), f32::from(MAX_TEXT));
+        format!("{size:.0}").parse().unwrap_or(16)
+    }
     pub(super) fn apply_size(&self, cx: &mut App) {
-        Theme::global_mut(cx).font_size = px(f32::from(self.text_size.clamp(12, 26)));
+        Theme::global_mut(cx).font_size = px(f32::from(self.effective_text_size()));
     }
     pub(super) fn apply_theme(&self, w: &mut Window, cx: &mut App) {
         for set in THEMES
@@ -490,10 +535,25 @@ impl Workspace {
         Ok(())
     }
 
+    /// Follows a change of Dynamic Type while the app runs. Android recreates
+    /// the Activity on a font scale change, which reads the size again.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn system_text_size_changed(&self, cx: &mut Context<Self>) {
+        if self.preferences.follows_system_text() {
+            self.preferences.apply_size(cx);
+            cx.refresh_windows();
+        }
+    }
+
     fn settings(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let size = self.preferences.text_size;
+        let size = self.preferences.effective_text_size();
+        let system = self.preferences.follows_system_text();
         let step = |id: &'static str, icon: IconName, label: &'static str, delta: i8| {
-            let limit = if delta < 0 { size <= 12 } else { size >= 26 };
+            let limit = if delta < 0 {
+                size <= MIN_TEXT
+            } else {
+                size >= MAX_TEXT
+            };
             Button::new(id)
                 .ghost()
                 .touch_size(48.)
@@ -501,29 +561,39 @@ impl Workspace {
                 .accessibility_label(label)
                 .disabled(limit)
                 .on_click(cx.listener(move |s, _, _, cx| {
-                    s.preferences.text_size = s
-                        .preferences
-                        .text_size
+                    // Adjusting the size leaves the system size for a chosen one.
+                    let current = s.preferences.effective_text_size();
+                    s.preferences.text_size = current
                         .saturating_add_signed(delta)
-                        .clamp(12, 26);
+                        .clamp(MIN_TEXT, MAX_TEXT);
+                    s.preferences.system_text = Some(false);
                     s.preferences.apply_size(cx);
                     s.save_preferences(cx);
                     cx.refresh_windows();
                 }))
         };
+        let value = if system {
+            format!("System · {size}")
+        } else {
+            size.to_string()
+        };
         v_flex()
             .child(section("Appearance", cx))
             .children(self.appearance_controls(cx))
             .child(
+                // The value sits under its label so the steppers keep their
+                // place at any text size.
                 h_flex()
                     .min_h(px(48.))
                     .px_2()
                     .gap_2()
-                    .child(div().flex_1().child("Text size"))
                     .child(
-                        div()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(size.to_string()),
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .py_1()
+                            .child("Text size")
+                            .child(div().text_color(cx.theme().muted_foreground).child(value)),
                     )
                     .child(step(
                         "text-smaller",
@@ -533,6 +603,18 @@ impl Workspace {
                     ))
                     .child(step("text-larger", IconName::Plus, "Increase text size", 2)),
             )
+            .when(!system, |el| {
+                el.child(
+                    setting_row("text-system", "Use system text size", None, cx).on_click(
+                        cx.listener(|s, _, _, cx| {
+                            s.preferences.system_text = Some(true);
+                            s.preferences.apply_size(cx);
+                            s.save_preferences(cx);
+                            cx.refresh_windows();
+                        }),
+                    ),
+                )
+            })
             .child(section("Datalith", cx))
             .child(page_link(Page::About, cx))
     }
@@ -604,6 +686,33 @@ pub(super) fn setting_row(
     let label = value
         .as_ref()
         .map_or_else(|| title.clone(), |v| format!("{title}, {v}").into());
+    // At accessibility text sizes a label and its value no longer fit side by
+    // side: stack them, as iOS and Android settings do.
+    let stacked = large_text(cx);
+    let value = value.map(|v| {
+        div()
+            .when(!stacked, |el| el.max_w(gpui_kit::relative(0.5)).truncate())
+            .when(stacked, gpui_kit::Styled::whitespace_normal)
+            .text_color(cx.theme().muted_foreground)
+            .child(v)
+    });
+    let text = if stacked {
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .py_1()
+            .child(div().whitespace_normal().child(title))
+            .children(value)
+            .into_any_element()
+    } else {
+        h_flex()
+            .flex_1()
+            .min_w_0()
+            .gap_2()
+            .child(div().flex_1().min_w_0().truncate().child(title))
+            .children(value)
+            .into_any_element()
+    };
     ListItem::new(id)
         .min_h(px(48.))
         .px_2()
@@ -612,16 +721,14 @@ pub(super) fn setting_row(
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(div().flex_1().min_w_0().truncate().child(title))
-                .children(value.map(|v| {
-                    div()
-                        .max_w(gpui_kit::relative(0.5))
-                        .truncate()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(v)
-                }))
+                .child(text)
                 .child(Icon::new(IconName::ChevronRight).size_4()),
         )
+}
+
+/// Whether text is at an accessibility size, where rows stack their parts.
+fn large_text(cx: &Context<Workspace>) -> bool {
+    cx.theme().font_size >= px(24.)
 }
 
 /// A vault in the Vaults page: a check marks the open one, a lock a read-only one.
@@ -917,10 +1024,24 @@ mod tests {
         let prefs: Preferences =
             serde_json::from_str(r#"{"theme":"Catppuccin","text_size":20,"folder":"Notes"}"#)?;
         anyhow::ensure!(prefs.theme == "Catppuccin" && prefs.text_size == 20);
+        anyhow::ensure!(!prefs.follows_system_text(), "a size of 20 was chosen");
         anyhow::ensure!(prefs.folder == PathBuf::from("Notes"));
         anyhow::ensure!(
             prefs.sessions.is_empty() && prefs.fonts.is_empty() && prefs.variant.is_none()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn text_follows_the_system_unless_a_size_was_chosen() -> anyhow::Result<()> {
+        let default: Preferences = serde_json::from_str(r#"{"text_size":16}"#)?;
+        anyhow::ensure!(default.follows_system_text());
+        anyhow::ensure!(Preferences::default().follows_system_text());
+        let chosen: Preferences = serde_json::from_str(r#"{"text_size":16,"system_text":false}"#)?;
+        anyhow::ensure!(!chosen.follows_system_text());
+        anyhow::ensure!(chosen.effective_text_size() == 16);
+        let huge: Preferences = serde_json::from_str(r#"{"text_size":90,"system_text":false}"#)?;
+        anyhow::ensure!(huge.effective_text_size() == MAX_TEXT);
         Ok(())
     }
 

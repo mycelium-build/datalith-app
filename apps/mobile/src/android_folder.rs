@@ -14,6 +14,24 @@ use std::{
 
 type PickResult = anyhow::Result<Option<String>>;
 static PICKER: Mutex<Option<oneshot::Sender<PickResult>>> = Mutex::new(None);
+/// The running `DatalithActivity`, registered from its `onCreate`.
+static ACTIVITY: Mutex<Option<jni::objects::GlobalRef>> = Mutex::new(None);
+
+#[unsafe(no_mangle)]
+extern "system" fn Java_build_mycelium_datalith_DatalithActivity_attach(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    activity: JObject<'_>,
+) {
+    if let Ok(reference) = env.new_global_ref(activity) {
+        *ACTIVITY
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(reference);
+    }
+}
+
+/// Runs `f` with the Activity, which hosts dialogs, pickers and system bars.
+/// The JNI context GPUI exposes is the Application, which has none of them.
 fn activity<T>(
     f: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
@@ -21,9 +39,14 @@ fn activity<T>(
     // android-activity owns both the VM and global Activity reference until shutdown.
     let vm = unsafe { JavaVM::from_raw(context.vm().cast()) }?;
     let mut env = vm.attach_current_thread()?;
+    let registered = ACTIVITY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
     env.with_local_frame(16, |env| {
-        let object = unsafe { JObject::from_raw(context.context().cast()) };
-        let result = f(env, &object);
+        let fallback = unsafe { JObject::from_raw(context.context().cast()) };
+        let object: &JObject<'_> = registered.as_ref().map_or(&fallback, |r| r.as_obj());
+        let result = f(env, object);
         if env.exception_check()? {
             let error = env.exception_occurred()?;
             env.exception_clear()?;
@@ -195,6 +218,50 @@ pub fn release(grant: &str) -> anyhow::Result<()> {
         )?;
         Ok(())
     })
+}
+
+/// Gives the status and navigation bars the theme background, with dark icons
+/// on a light theme so the clock and battery stay readable.
+///
+/// Called on every render: it does nothing until the colors change, and keeps
+/// trying while the Activity is not yet the JNI context during startup.
+pub fn set_system_bars(background: gpui_kit::Hsla, light: bool) {
+    static APPLIED: Mutex<Option<(u32, bool)>> = Mutex::new(None);
+    let rgba: u32 = gpui_kit::Rgba::from(background).into();
+    let mut applied = APPLIED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *applied == Some((rgba, light)) {
+        return;
+    }
+    // Android colors are ARGB.
+    let argb = i32::from_be_bytes(rgba.rotate_right(8).to_be_bytes());
+    let result = activity(|env, app| {
+        env.call_method(
+            app,
+            "setSystemBars",
+            "(IZ)V",
+            &[JValue::Int(argb), JValue::Bool(u8::from(light))],
+        )?;
+        Ok(())
+    });
+    if result.is_ok() {
+        *applied = Some((rgba, light));
+    }
+}
+
+/// The body text size for Android's font size setting, in points.
+pub fn preferred_text_size() -> anyhow::Result<f32> {
+    activity(|env, app| Ok(env.call_method(app, "preferredTextSize", "()F", &[])?.f()?))
+}
+
+/// True once: the first time the Activity reports the system text size.
+pub fn text_size_first_available() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static SIZED: AtomicBool = AtomicBool::new(false);
+    !SIZED.load(Ordering::Relaxed)
+        && preferred_text_size().is_ok()
+        && !SIZED.swap(true, Ordering::Relaxed)
 }
 
 pub fn show_options(title: &str, items: &[String], selected: i32) -> anyhow::Result<()> {

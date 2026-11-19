@@ -76,9 +76,18 @@ impl Folder {
             .child(div().truncate().child(label.clone()))
             .children(detail);
         let target = path.to_owned();
-        let menu = (!source::is_read_only(path)).then(|| Workspace::file_menu(path, folder, cx));
+        let writable = !source::is_read_only(path);
+        let menu = writable.then(|| Workspace::file_menu(path, folder, cx));
+        let press = writable.then(|| {
+            let view = cx.entity().downgrade();
+            let path = path.to_owned();
+            datalith_ui::touch::long_press_area(move |_, w, cx| {
+                let _ = view.update(cx, |s, cx| s.show_file_actions(&path, folder, w, cx));
+            })
+        });
         let id = gpui_kit::SharedString::from(format!("entry:{}", path.display()));
         h_flex()
+            .relative()
             .w_full()
             .child(
                 ListItem::new(id)
@@ -102,6 +111,7 @@ impl Folder {
                     .on_click(cx.listener(move |v, _, w, cx| v.select(target.clone(), w, cx))),
             )
             .children(menu)
+            .children(press)
     }
 
     fn subtitle(text: String, cx: &Context<Workspace>) -> AnyElement {

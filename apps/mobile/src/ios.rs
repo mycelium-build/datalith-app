@@ -10,11 +10,13 @@ unsafe extern "C" {
     fn UIAccessibilityIsReduceMotionEnabled() -> bool;
     fn datalith_install_controls(view: *mut c_void);
     fn datalith_set_controls_json(json: *const c_char, background: u32);
+    fn datalith_preferred_text_size() -> f64;
 }
 
 /// Host events that are not user commands.
 pub const LAYOUT: &str = "layout";
 pub const FOLDER_PICKED: &str = "folder-picked";
+pub const TEXT_SIZE: &str = "text-size";
 
 type Dispatch = Box<dyn FnMut(&str)>;
 thread_local! {
@@ -38,6 +40,7 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
                 view.update(cx, |v, cx| match id {
                     LAYOUT => cx.notify(),
                     FOLDER_PICKED => v.receive_folder(window, cx),
+                    TEXT_SIZE => v.system_text_size_changed(cx),
                     id => {
                         if let Some(command) = Command::from_id(id) {
                             v.run(command, None, window, cx);
@@ -89,6 +92,13 @@ pub fn update(controls: &ScreenControls, background: gpui_kit::Hsla) {
     unsafe {
         datalith_set_controls_json(json.as_ptr(), background);
     }
+}
+
+/// The Dynamic Type body size, in points, when `UIKit` reports a usable one.
+pub fn preferred_text_size() -> Option<f32> {
+    let size = unsafe { datalith_preferred_text_size() };
+    // Dynamic Type sizes are whole points from 14 to 53.
+    format!("{size:.0}").parse().ok().filter(|s: &f32| *s > 0.)
 }
 
 /// `UIKit` exposes the active device preference on its main thread.

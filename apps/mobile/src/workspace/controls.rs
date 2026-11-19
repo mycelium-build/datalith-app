@@ -233,11 +233,17 @@ impl ScreenControls {
             if screen.can_forward {
                 places.push(Command::Forward.item());
             }
-            places.extend([
-                Command::Vaults.item(),
-                Command::Documents.item(),
-                Command::Settings.item(),
-            ]);
+            // A document keeps its menu short enough to fit at large text
+            // sizes: Vaults and Settings are one Back away, in the folder's menu.
+            if document.is_some() {
+                places.push(Command::Documents.item());
+            } else {
+                places.extend([
+                    Command::Vaults.item(),
+                    Command::Documents.item(),
+                    Command::Settings.item(),
+                ]);
+            }
             menu.push(places);
             if document.is_some_and(|d| d.writable) {
                 menu.push(vec![Command::Delete.item()]);
