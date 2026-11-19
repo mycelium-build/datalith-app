@@ -5,6 +5,7 @@ mod bar;
 mod controls;
 mod navigation;
 mod panels;
+mod search;
 mod session;
 pub use controls::{Command, Item, ScreenControls};
 use datalith_vault::source;
@@ -51,10 +52,7 @@ pub struct Workspace {
     local_root: Option<PathBuf>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     external: Option<crate::external_folder::Folder>,
-    search_task: Option<gpui_kit::Task<()>>,
-    pub(super) search_results: Vec<PathBuf>,
-
-    pub(super) whole_vault: bool,
+    pub(super) search: search::SearchState,
     navigation_step: usize,
     returning: bool,
     deleted: Option<file_ops::Deleted>,
@@ -93,6 +91,7 @@ impl Workspace {
             }
         })
         .detach();
+        let search = search::SearchState::new(window, cx);
         let mut view = Self {
             root: None,
             folders: Vec::new(),
@@ -112,10 +111,7 @@ impl Workspace {
             local_root: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             external: None,
-            search_task: None,
-            search_results: Vec::new(),
-
-            whole_vault: false,
+            search,
             navigation_step: 0,
             returning: false,
             deleted: None,
@@ -214,6 +210,9 @@ impl Workspace {
         self.advance(false);
         self.deleted_document = None;
         self.page = None;
+        if !self.restoring {
+            search::remember(&mut self.search.recent, path.clone());
+        }
         if self.documents.contains_key(&path) {
             self.active = Some(path.clone());
             self.record_route(previous, cx);
@@ -452,14 +451,17 @@ impl Workspace {
         self.focus.focus(window, cx);
         if source::is_dir(&path) {
             let previous = self.route(cx);
-            match super::browser::Folder::new(path, window, cx) {
+            match super::browser::Folder::new(path) {
                 Ok(folder) => {
                     if !self.folders.is_empty() {
                         self.advance(false);
                     }
                     self.folders.push(folder);
-                    self.search_task = None;
-                    self.search_results.clear();
+                    if !self.search.query(cx).is_empty() {
+                        self.search
+                            .input
+                            .update(cx, |i, cx| i.set_value("", window, cx));
+                    }
 
                     self.remember_folder(cx);
                     self.active = None;

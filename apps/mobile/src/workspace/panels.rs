@@ -224,7 +224,8 @@ impl Workspace {
         self.folders.clear();
         self.deleted = None;
         self.deleted_document = None;
-        self.whole_vault = false;
+        self.search.folder_only = false;
+        self.search.recent.clear();
         self.page = None;
         self.message = None;
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -265,46 +266,48 @@ impl Workspace {
     pub(crate) fn show_library(&mut self, w: &Window, cx: &mut Context<Self>) {
         self.open_page(Page::Library, w, cx);
     }
-    pub(crate) const fn is_searching(&self) -> bool {
-        self.search_task.is_some()
+    pub(crate) fn set_search_scope(&mut self, folder_only: bool, cx: &mut Context<Self>) {
+        if self.search.folder_only != folder_only {
+            self.search.folder_only = folder_only;
+            self.search_changed(cx);
+        }
+    }
+    /// The vault-relative folder holding `path`, unless it is the root.
+    pub(crate) fn parent_label(&self, path: &std::path::Path) -> Option<String> {
+        let parent = path.strip_prefix(self.root.as_ref()?).ok()?.parent()?;
+        (!parent.as_os_str().is_empty()).then(|| parent.display().to_string())
     }
     pub(crate) fn search_changed(&mut self, cx: &mut Context<Self>) {
         self.schedule_session_save(cx);
-        self.search_task = None;
-        self.search_results.clear();
-
+        self.search.task = None;
+        self.search.results = super::search::Results::default();
         cx.notify();
-        let Some(folder) = self.folders.last() else {
+        let query = self.search.query(cx).trim().to_owned();
+        let Some(catalog) = self.catalog.clone().filter(|_| !query.is_empty()) else {
             return;
         };
-        let query = folder.query(cx).trim().to_lowercase();
-        if !self.whole_vault || query.is_empty() {
-            return;
-        }
-        let Some(catalog) = self.catalog.clone() else {
-            return;
-        };
-
-        self.search_task = Some(cx.spawn(async move |this, cx| {
-            let hits = cx
+        let scope = self
+            .search
+            .folder_only
+            .then(|| self.folders.last().map(|f| f.path.clone()))
+            .flatten();
+        let open: Vec<PathBuf> = self.documents.keys().cloned().collect();
+        self.search.task = Some(cx.spawn(async move |this, cx| {
+            let results = cx
                 .background_spawn(async move {
-                    let mut paths: Vec<_> = catalog
-                        .paths()
-                        .into_iter()
-                        .filter(|p| name(p).to_lowercase().contains(&query))
-                        .collect();
-                    let mut seen: std::collections::HashSet<_> = paths.iter().cloned().collect();
-                    for hit in catalog.search(&query) {
-                        if seen.insert(hit.path.clone()) {
-                            paths.push(hit.path);
-                        }
-                    }
-                    paths
+                    let names =
+                        super::search::names(catalog.paths(), &open, &query, scope.as_deref());
+                    let contents = if super::search::searches_contents(&query) {
+                        super::search::contents(catalog.search(&query), &names, scope.as_deref())
+                    } else {
+                        Vec::new()
+                    };
+                    super::search::Results { names, contents }
                 })
                 .await;
             let _ = this.update(cx, |s, cx| {
-                s.search_results = hits;
-                s.search_task = None;
+                s.search.results = results;
+                s.search.task = None;
                 cx.notify();
             });
         }));

@@ -13,7 +13,10 @@ pub(super) struct Route {
     folder: PathBuf,
     document: Option<PathBuf>,
     query: String,
+    /// Written for earlier builds, which searched the folder by default.
     whole: bool,
+    #[serde(default)]
+    folder_only: bool,
     scroll: f32,
 }
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -29,6 +32,9 @@ pub(super) struct Session {
     back: Vec<Route>,
     forward: Vec<Route>,
     documents: BTreeMap<PathBuf, DocumentState>,
+    /// Vault-relative, most recently used first.
+    #[serde(default)]
+    recent: Vec<PathBuf>,
 }
 
 fn inside(root: &Path, relative: &Path) -> Option<PathBuf> {
@@ -56,8 +62,9 @@ impl Workspace {
                 .as_ref()
                 .and_then(|p| p.strip_prefix(root).ok())
                 .map(Path::to_owned),
-            query: folder.query(cx),
-            whole: self.whole_vault,
+            query: self.search.query(cx),
+            whole: !self.search.folder_only,
+            folder_only: self.search.folder_only,
             scroll: folder.scroll_y(),
         })
     }
@@ -102,6 +109,12 @@ impl Workspace {
             Session {
                 current,
                 documents,
+                recent: self
+                    .search
+                    .recent
+                    .iter()
+                    .filter_map(|p| p.strip_prefix(root).ok().map(Path::to_owned))
+                    .collect(),
                 back: self.history.backward.clone(),
                 forward: self.history.forward.clone(),
             },
@@ -122,6 +135,12 @@ impl Workspace {
             return;
         };
         self.restoring = true;
+        self.search.recent = session
+            .recent
+            .iter()
+            .filter_map(|relative| inside(&root, relative))
+            .filter(|p| self.in_vault(p))
+            .collect();
         for (relative, state) in session.documents {
             let Some(path) = inside(&root, &relative) else {
                 continue;
@@ -193,7 +212,7 @@ impl Workspace {
             .count();
         self.folders.truncate(shared);
         for dir in dirs.into_iter().skip(shared) {
-            match crate::browser::Folder::new(dir, w, cx) {
+            match crate::browser::Folder::new(dir) {
                 Ok(f) => self.folders.push(f),
                 Err(e) => {
                     self.message = Some(e.to_string());
@@ -202,9 +221,15 @@ impl Workspace {
             }
         }
         if let Some(f) = self.folders.last() {
-            f.restore(&route.query, route.scroll, w, cx);
+            f.restore(route.scroll);
         }
-        self.whole_vault = route.whole;
+        if self.search.query(cx) != route.query {
+            let query = route.query.clone();
+            self.search
+                .input
+                .update(cx, |i, cx| i.set_value(query, w, cx));
+        }
+        self.search.folder_only = route.folder_only;
         self.active = None;
         self.page = None;
         self.file_form = None;
@@ -245,7 +270,8 @@ impl Workspace {
         let previous = self.route(cx);
         let route = Route {
             folder,
-            whole: self.whole_vault,
+            whole: !self.search.folder_only,
+            folder_only: self.search.folder_only,
             ..Route::default()
         };
         self.restoring = true;
@@ -260,5 +286,25 @@ impl Workspace {
     }
     pub fn go_forward(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.travel(true, w, cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sessions_from_earlier_builds_still_restore() -> anyhow::Result<()> {
+        let old = r#"{"current":{"folder":"Notes","document":"Notes/a.md","query":"x","whole":false,"scroll":12.0},
+            "back":[{"folder":"","document":null,"query":"","whole":true,"scroll":0.0}],
+            "forward":[],"documents":{}}"#;
+        let session: Session = serde_json::from_str(old)?;
+        anyhow::ensure!(session.recent.is_empty());
+        anyhow::ensure!(
+            !session.current.folder_only,
+            "the vault is the default scope"
+        );
+        anyhow::ensure!(session.back.len() == 1 && session.current.query == "x");
+        Ok(())
     }
 }

@@ -1,45 +1,27 @@
 use std::path::{Path, PathBuf};
 
 use datalith_ui::fonts::ResolvedFonts;
-use datalith_vault::source;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use datalith_vault::{CatalogState, source};
+use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::{
-    ActiveTheme, Icon, IconName, h_flex,
-    input::{Input, InputState},
-    list::ListItem,
-    v_flex,
+    ActiveTheme, Icon, IconName, Selectable as _, h_flex, input::Input, list::ListItem, v_flex,
 };
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, Entity, Window, div, px};
+use gpui_kit::{AnyElement, Context, HighlightStyle, StyledText, div, px};
 
-use super::workspace::Workspace;
+use super::workspace::{Workspace, name};
 
 pub struct Folder {
     pub path: PathBuf,
     files: Vec<(PathBuf, bool)>,
-    query: Entity<InputState>,
-    _change: gpui_kit::Subscription,
     scroll: gpui_kit::ScrollHandle,
 }
 
 impl Folder {
-    pub fn new(
-        path: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) -> std::io::Result<Self> {
-        let placeholder = "Search…";
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
-        let change = cx.subscribe(&query, |view: &mut Workspace, _, event, cx| {
-            if matches!(event, gpui_kit::component::input::InputEvent::Change) {
-                view.search_changed(cx);
-            }
-        });
+    pub fn new(path: PathBuf) -> std::io::Result<Self> {
         let mut folder = Self {
             path,
             files: Vec::new(),
-            query,
-            _change: change,
             scroll: gpui_kit::ScrollHandle::new(),
         };
         folder.reload()?;
@@ -49,13 +31,12 @@ impl Folder {
     pub fn reload(&mut self) -> std::io::Result<()> {
         let mut files = Vec::new();
         for path in source::read_dir(&self.path)? {
-            if !super::workspace::name(&path).starts_with('.')
-                && (source::is_read_only(&path) || !path.is_symlink())
+            if !name(&path).starts_with('.') && (source::is_read_only(&path) || !path.is_symlink())
             {
                 files.push((path.clone(), source::is_dir(&path)));
             }
         }
-        files.sort_by_cached_key(|(path, dir)| (!dir, super::workspace::name(path).to_lowercase()));
+        files.sort_by_cached_key(|(path, dir)| (!dir, name(path).to_lowercase()));
         self.files = files;
         Ok(())
     }
@@ -63,20 +44,91 @@ impl Folder {
     pub(super) fn scroll_y(&self) -> f32 {
         self.scroll.offset().y.into()
     }
-    pub(super) fn restore(&self, query: &str, y: f32, w: &mut Window, cx: &mut Context<Workspace>) {
-        if self.query(cx) != query {
-            self.query.update(cx, |i, cx| i.set_value(query, w, cx));
-        }
+    pub(super) fn restore(&self, y: f32) {
         self.scroll.set_offset(gpui_kit::point(px(0.), px(y)));
     }
-    pub(super) fn query(&self, cx: &gpui_kit::App) -> String {
-        self.query.read(cx).value().to_string()
+
+    /// One file or folder row; the path is its identity.
+    fn row(
+        workspace: &Workspace,
+        path: &Path,
+        folder: bool,
+        detail: Option<AnyElement>,
+        selected: Option<&Path>,
+        cx: &Context<Workspace>,
+    ) -> impl IntoElement + use<> {
+        let label = name(path);
+        let icon = if folder {
+            Icon::new(IconName::Folder)
+        } else {
+            Icon::new(workspace.registry.config_for(Some(path)).icon)
+        };
+        let active = Some(path) == selected;
+        let text = v_flex()
+            .flex_1()
+            .min_w_0()
+            .py_1()
+            .child(div().truncate().child(label.clone()))
+            .children(detail);
+        let target = path.to_owned();
+        let menu = (!source::is_read_only(path)).then(|| Workspace::file_menu(path, folder, cx));
+        let id = gpui_kit::SharedString::from(format!("entry:{}", path.display()));
+        h_flex()
+            .w_full()
+            .child(
+                ListItem::new(id)
+                    .flex_1()
+                    .min_w_0()
+                    .accessibility_label(label)
+                    .flex_shrink_0()
+                    .min_h(px(48.))
+                    .px_2()
+                    .when(active, |row| row.bg(cx.theme().selection))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_3()
+                            .child(icon.size_4())
+                            .child(text)
+                            .when(folder, |row| {
+                                row.child(Icon::new(IconName::ChevronRight).size_4())
+                            }),
+                    )
+                    .on_click(cx.listener(move |v, _, w, cx| v.select(target.clone(), w, cx))),
+            )
+            .children(menu)
     }
 
-    fn file_rows(
+    fn subtitle(text: String, cx: &Context<Workspace>) -> AnyElement {
+        div()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .truncate()
+            .child(text)
+            .into_any_element()
+    }
+
+    fn section(title: &'static str, cx: &Context<Workspace>) -> impl IntoElement + use<> {
+        div()
+            .px_2()
+            .pt_3()
+            .pb_1()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(title)
+    }
+
+    fn notice(text: String, cx: &Context<Workspace>) -> impl IntoElement + use<> {
+        div()
+            .p_2()
+            .text_color(cx.theme().muted_foreground)
+            .whitespace_normal()
+            .child(text)
+    }
+
+    fn rows(
         &self,
         workspace: &Workspace,
-        query: &str,
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement + use<> {
@@ -87,99 +139,162 @@ impl Folder {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .p_2();
-        let mut has_matches = false;
-        let results: Vec<_>;
-        let global = workspace.whole_vault && !query.is_empty();
-        let entries = if global {
-            results = workspace
-                .search_results
-                .iter()
-                .map(|p| (p.clone(), false))
-                .collect();
-            &results
-        } else {
-            &self.files
-        };
-        for (path, folder) in entries {
-            let name = super::workspace::name(path);
-            if !global && !name.to_lowercase().contains(query) {
-                continue;
+        let search = &workspace.search;
+        let query = search.query(cx);
+        let query = query.trim();
+        if query.is_empty() {
+            if search.focused && !search.recent.is_empty() {
+                rows = rows.child(Self::section("Recent", cx));
+                for path in &search.recent {
+                    let parent = workspace.parent_label(path).map(|p| Self::subtitle(p, cx));
+                    rows = rows.child(Self::row(workspace, path, false, parent, selected, cx));
+                }
+                return rows;
             }
-            has_matches = true;
-            let icon = if *folder {
-                Icon::new(IconName::Folder)
-            } else {
-                Icon::new(workspace.registry.config_for(Some(path)).icon)
-            };
-            let active = Some(path.as_path()) == selected;
-            let parent = global
-                .then(|| {
-                    workspace
-                        .root
-                        .as_ref()
-                        .and_then(|r| path.strip_prefix(r).ok())
-                        .and_then(Path::parent)
-                })
-                .flatten()
-                .filter(|dir| !dir.as_os_str().is_empty())
-                .map(|dir| dir.display().to_string());
-            let label = v_flex()
-                .flex_1()
-                .min_w_0()
-                .child(div().truncate().child(name.clone()))
-                .children(parent.map(|p| {
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .truncate()
-                        .child(p)
-                }));
-            let path = path.clone();
-            let menu =
-                (!source::is_read_only(&path)).then(|| Workspace::file_menu(&path, *folder, cx));
-            let id = gpui_kit::SharedString::from(format!("entry:{}", path.display()));
-            rows = rows.child(
-                h_flex()
-                    .w_full()
-                    .child(
-                        ListItem::new(id)
-                            .flex_1()
-                            .min_w_0()
-                            .accessibility_label(name)
-                            .flex_shrink_0()
-                            .h(px(48.))
-                            .px_2()
-                            .when(active, |row| row.bg(cx.theme().selection))
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .gap_3()
-                                    .child(icon.size_4())
-                                    .child(label)
-                                    .when(*folder, |row| {
-                                        row.child(Icon::new(IconName::ChevronRight).size_4())
-                                    }),
-                            )
-                            .on_click(
-                                cx.listener(move |v, _, w, cx| v.select(path.clone(), w, cx)),
-                            ),
-                    )
-                    .children(menu),
-            );
+            for (path, folder) in &self.files {
+                rows = rows.child(Self::row(workspace, path, *folder, None, selected, cx));
+            }
+            if self.files.is_empty() {
+                rows = rows.child(Self::notice("Empty folder".into(), cx));
+            }
+            return rows;
         }
-        if !has_matches {
-            rows = rows.child(div().p_2().text_color(cx.theme().muted_foreground).child(
-                if global && workspace.is_searching() {
-                    "Searching…"
-                } else if query.is_empty() {
-                    "Empty folder"
-                } else {
-                    "No matching files"
-                },
-            ));
+        let results = &search.results;
+        if !results.names.is_empty() {
+            rows = rows.child(Self::section("Names", cx));
+            for path in &results.names {
+                let parent = workspace.parent_label(path).map(|p| Self::subtitle(p, cx));
+                rows = rows.child(Self::row(workspace, path, false, parent, selected, cx));
+            }
+        }
+        if !results.contents.is_empty() {
+            rows = rows.child(Self::section("Contents", cx));
+            let highlight = HighlightStyle {
+                background_color: Some(cx.theme().warning.opacity(0.3)),
+                font_weight: Some(gpui_kit::FontWeight::SEMIBOLD),
+                ..Default::default()
+            };
+            for hit in &results.contents {
+                let snippet = StyledText::new(hit.snippet.clone())
+                    .with_highlights(hit.highlights.iter().cloned().map(|r| (r, highlight)));
+                let detail = v_flex()
+                    .children(
+                        workspace
+                            .parent_label(&hit.path)
+                            .map(|p| Self::subtitle(p, cx)),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .whitespace_normal()
+                            .line_clamp(2)
+                            .child(snippet),
+                    )
+                    .into_any_element();
+                rows = rows.child(Self::row(
+                    workspace,
+                    &hit.path,
+                    false,
+                    Some(detail),
+                    selected,
+                    cx,
+                ));
+            }
+        }
+        if results.names.is_empty() && results.contents.is_empty() {
+            rows = rows.children(self.empty_results(workspace, query, cx));
         }
         rows
     }
+
+    /// Progress, or what was searched and how to widen it.
+    fn empty_results(
+        &self,
+        workspace: &Workspace,
+        query: &str,
+        cx: &Context<Workspace>,
+    ) -> Vec<AnyElement> {
+        let search = &workspace.search;
+        let mut rows = Vec::new();
+        let indexing = workspace
+            .catalog
+            .as_ref()
+            .is_some_and(|c| c.state() == CatalogState::Syncing);
+        if search.task.is_some() || indexing {
+            rows.push(
+                Self::notice(
+                    if indexing {
+                        "Indexing…"
+                    } else {
+                        "Searching…"
+                    }
+                    .into(),
+                    cx,
+                )
+                .into_any_element(),
+            );
+        } else {
+            let scope = if search.folder_only {
+                workspace.folder_name(&self.path)
+            } else {
+                "the vault".into()
+            };
+            rows.push(
+                Self::notice(format!("No results for “{query}” in {scope}"), cx).into_any_element(),
+            );
+            if search.folder_only {
+                rows.push(
+                    div()
+                        .px_2()
+                        .child(
+                            Button::new("search-everywhere")
+                                .outline()
+                                .h(px(44.))
+                                .label("Search entire vault")
+                                .on_click(cx.listener(|s, _, _, cx| s.set_search_scope(false, cx))),
+                        )
+                        .into_any_element(),
+                );
+            }
+        }
+        rows
+    }
+
+    /// Vault | ‹folder›: visible from a subfolder so the limit is a choice.
+    fn scope(
+        &self,
+        workspace: &Workspace,
+        cx: &Context<Workspace>,
+    ) -> Option<impl IntoElement + use<>> {
+        if workspace.root.as_ref() == Some(&self.path) {
+            return None;
+        }
+        let folder_only = workspace.search.folder_only;
+        Some(
+            div().px_3().pb_1().child(
+                ButtonGroup::new("search-scope")
+                    .outline()
+                    .child(
+                        Button::new("scope-vault")
+                            .h(px(36.))
+                            .label("Vault")
+                            .selected(!folder_only),
+                    )
+                    .child(
+                        Button::new("scope-folder")
+                            .h(px(36.))
+                            .label(workspace.folder_name(&self.path))
+                            .selected(folder_only),
+                    )
+                    .on_click(cx.listener(|s, clicks: &Vec<usize>, _, cx| {
+                        if let Some(ix) = clicks.first() {
+                            s.set_search_scope(*ix == 1, cx);
+                        }
+                    })),
+            ),
+        )
+    }
+
     /// Names the place: the vault or folder, with a lock for read-only
     /// vaults. Touching it lists the enclosing folders, which is the only way
     /// up the tree; Back always returns to the previous place.
@@ -250,38 +365,17 @@ impl Folder {
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement {
-        let search = div()
-            .px_3()
-            .py_1()
-            .child(Input::new(&self.query).cleanable(true));
+        let input = &workspace.search.input;
+        let search = div().px_3().py_1().child(Input::new(input).cleanable(true));
         #[cfg(target_os = "ios")]
-        let search = search.child(super::ios_input::registration(&self.query));
-        let query = self.query.read(cx).value().to_lowercase();
-        let rows = self.file_rows(workspace, &query, selected, cx);
+        let search = search.child(super::ios_input::registration(input));
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child(self.header(workspace, cx))
             .child(search)
-            .when(!query.is_empty() || workspace.whole_vault, |el| {
-                el.child(
-                    h_flex().px_2().child(
-                        Button::new("search-scope")
-                            .ghost()
-                            .h(px(44.))
-                            .label(if workspace.whole_vault {
-                                "Entire vault"
-                            } else {
-                                "This folder"
-                            })
-                            .on_click(cx.listener(|s, _, _, cx| {
-                                s.whole_vault = !s.whole_vault;
-                                s.search_changed(cx);
-                            })),
-                    ),
-                )
-            })
-            .child(rows)
+            .children(self.scope(workspace, cx))
+            .child(self.rows(workspace, selected, cx))
     }
 }

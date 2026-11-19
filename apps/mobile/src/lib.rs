@@ -130,3 +130,20 @@ fn launch(app: Application, documents: PathBuf) {
         }
     });
 }
+
+/// Initializes the vault environment once for tests, as `launch` does.
+#[cfg(test)]
+pub(crate) fn test_environment() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let data =
+            std::env::temp_dir().join(format!("datalith-mobile-tests-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&data);
+        DATA.get_or_init(|| data);
+        environment::init(VaultEnvironment {
+            embedded_vaults: &[DOCS],
+            channel_directory: None,
+            app_data_dir: || DATA.get().cloned().unwrap_or_default(),
+        });
+    });
+}
