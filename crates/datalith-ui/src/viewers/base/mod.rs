@@ -7,6 +7,7 @@ mod preview;
 mod snapshot;
 mod table;
 mod touch;
+mod touch_choice;
 
 use cells::centered_message;
 use cells::{format_scalar_text, render_property_cell};
@@ -49,7 +50,23 @@ impl BaseViewer {
             let dismissed = if s.choosing_view {
                 s.choosing_view = false;
                 true
+            } else if let Some(rows) = s
+                .selected_view
+                .as_ref()
+                .and_then(|name| s.touch_rows.get_mut(name))
+                .filter(|rows| rows.choosing_property)
+            {
+                rows.choosing_property = false;
+                true
+            } else if let Some(graph) = s.graph.clone()
+                && graph.update(cx, graph::GraphState::close_note_choice)
+            {
+                true
             } else if s.fullscreen_image.take().is_some() {
+                true
+            } else if let Some(graph) = s.graph.clone()
+                && graph.update(cx, graph::GraphState::clear_selection)
+            {
                 true
             } else {
                 s.selected_view
@@ -623,54 +640,64 @@ impl BaseViewState {
         active: Option<&str>,
         cx: &Context<Self>,
     ) -> AnyElement {
-        use gpui_kit::component::IconName;
-        use gpui_kit::{StatefulInteractiveElement as _, px};
         let current = active.unwrap_or("Views");
+        // A table compares one property at a time; its column choice shares
+        // the view's line so the two choosers cost one row.
+        let table = definition
+            .views
+            .iter()
+            .find(|v| Some(v.name.as_str()) == active)
+            .filter(|v| v.view_type == ViewType::Table)
+            .and_then(|v| Some((v, self.touch_rows.get(&v.name)?)));
+        let view_trigger = touch_choice::trigger(
+            "choose-base-view",
+            current.to_owned(),
+            "Choose view",
+            self.choosing_view,
+        )
+        .flex_1()
+        .min_w_0()
+        .on_click(cx.listener(|state, _, _, cx| {
+            state.choosing_view = !state.choosing_view;
+            if let Some(rows) = state
+                .selected_view
+                .as_ref()
+                .and_then(|name| state.touch_rows.get_mut(name))
+            {
+                rows.choosing_property = false;
+            }
+            cx.notify();
+        }));
         let mut chooser = v_flex()
             .flex_shrink_0()
             .px_2()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(
-                Button::new("choose-base-view")
-                    .ghost()
-                    .w_full()
-                    .h(px(48.))
-                    .icon(if self.choosing_view {
-                        IconName::ChevronUp
-                    } else {
-                        IconName::ChevronDown
-                    })
-                    .label(current.to_owned())
-                    .accessibility_label(format!("Choose view, current view {current}"))
-                    .on_click(cx.listener(|state, _, _, cx| {
-                        state.choosing_view = !state.choosing_view;
-                        cx.notify();
-                    })),
-            );
+            .child(h_flex().w_full().gap_1().child(view_trigger).children(
+                table.map(|(view, rows)| Self::property_picker(definition, view, rows, cx)),
+            ));
+        if let Some((view, rows)) = table.filter(|(_, rows)| rows.choosing_property) {
+            chooser = chooser.child(Self::property_options(definition, view, rows.property, cx));
+        }
         if self.choosing_view {
-            let rows = v_flex()
-                .id("base-view-options")
-                .overflow_y_scroll()
-                .max_h(px(240.))
-                .children(definition.views.iter().map(|view| {
+            let rows = touch_choice::options(
+                "base-view-options",
+                definition.views.iter().map(|view| {
                     let name = view.name.clone();
-                    Button::new(ElementId::Name(format!("base-option-{name}").into()))
-                        .ghost()
-                        .w_full()
-                        .h(px(48.))
-                        .flex_shrink_0()
-                        .label(name.clone())
-                        .accessibility_label(name.clone())
-                        .when(active == Some(name.as_str()), |b| b.icon(IconName::Check))
-                        .on_click(cx.listener(move |state, _, _, cx| {
-                            state.choosing_view = false;
-                            if state.selected_view.as_deref() != Some(&name) {
-                                state.select_view(name.clone(), cx);
-                            }
-                            cx.notify();
-                        }))
-                }));
+                    touch_choice::option(
+                        ElementId::Name(format!("base-option-{name}").into()),
+                        name.clone(),
+                        active == Some(name.as_str()),
+                    )
+                    .on_click(cx.listener(move |state, _, _, cx| {
+                        state.choosing_view = false;
+                        if state.selected_view.as_deref() != Some(&name) {
+                            state.select_view(name.clone(), cx);
+                        }
+                        cx.notify();
+                    }))
+                }),
+            );
             chooser = chooser.child(rows);
         }
         chooser.into_any_element()

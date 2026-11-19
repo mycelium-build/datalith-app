@@ -28,6 +28,29 @@ use self::physics::Simulation;
 
 use paint::HOVER_DIM_OPACITY;
 
+/// Which notes the touch list offers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NoteChoice {
+    All,
+    /// The notes connected to node `ix`.
+    Connections(usize),
+}
+
+impl NoteChoice {
+    const fn new(source: Option<usize>) -> Self {
+        match source {
+            Some(ix) => Self::Connections(ix),
+            None => Self::All,
+        }
+    }
+    const fn source(self) -> Option<usize> {
+        match self {
+            Self::Connections(ix) => Some(ix),
+            Self::All => None,
+        }
+    }
+}
+
 /// Owns camera, simulation, and pointer state for one embedded graph view.
 pub(super) struct GraphState {
     /// Theme previews disable link navigation.
@@ -41,6 +64,8 @@ pub(super) struct GraphState {
     pointer_position: Option<Point<f32>>,
     hovered_node: Option<usize>,
     selected: Option<PathBuf>,
+    /// The open touch note list, if any.
+    choosing_note: Option<NoteChoice>,
     interaction: Option<PointerInteraction>,
     simulation: Simulation,
 }
@@ -73,6 +98,7 @@ impl GraphState {
             pointer_position: None,
             hovered_node: None,
             selected: None,
+            choosing_note: None,
             interaction: None,
             simulation: Simulation::default(),
         }

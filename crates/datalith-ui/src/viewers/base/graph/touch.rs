@@ -1,11 +1,10 @@
-use super::{GraphFocus, GraphState};
+use super::super::touch_choice;
+use super::{GraphFocus, GraphState, NoteChoice};
 use crate::handler::FileHandlerEvent;
 use gpui_kit::component::{
     ActiveTheme, IconName,
     button::{Button, ButtonVariants},
-    h_flex,
-    menu::{DropdownMenu as _, PopupMenuItem},
-    v_flex,
+    h_flex, v_flex,
 };
 use gpui_kit::{
     AnyElement, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _, Stateful,
@@ -61,17 +60,17 @@ impl GraphState {
             .as_ref()
             .and_then(|p| snapshot.nodes.iter().position(|n| n.relative_path == *p));
         let mut controls = h_flex().w_full().items_center().bg(cx.theme().background);
-        for (id, symbol, name, factor) in [
-            ("graph-out", "−", "Zoom out", 0.8),
-            ("graph-in", "+", "Zoom in", 1.25),
-            ("graph-fit", "⊡", "Fit graph", 0.),
+        for (id, icon, name, factor) in [
+            ("graph-out", IconName::Minus, "Zoom out", 0.8),
+            ("graph-in", IconName::Plus, "Zoom in", 1.25),
+            ("graph-fit", IconName::Maximize, "Fit graph", 0.),
         ] {
             controls = controls.child(
                 Button::new(id)
                     .ghost()
                     .w(px(48.))
                     .h(px(48.))
-                    .label(symbol)
+                    .icon(icon)
                     .accessibility_label(name)
                     .on_click(cx.listener(move |state, _, _, cx| {
                         if factor == 0. {
@@ -82,24 +81,87 @@ impl GraphState {
                     })),
             );
         }
-        controls = controls.child(Self::note_picker(None, cx));
+        controls = controls.child(Self::note_picker(
+            None,
+            self.choosing_note == Some(NoteChoice::All),
+            cx,
+        ));
         let mut screen = v_flex()
             .size_full()
             .child(div().flex_1().min_h_0().child(canvas));
         if let Some((ix, node)) = active.and_then(|ix| Some((ix, snapshot.nodes.get(ix)?))) {
-            let path = node.relative_path.clone();
-            let handler = self.handler.clone();
-            screen = screen.child(
+            screen = screen.child(self.selection_sheet(ix, node, cx));
+        }
+        if let Some(choice) = self.choosing_note {
+            screen = screen.children(self.note_options(choice.source(), cx));
+        }
+        screen.child(controls).into_any_element()
+    }
+
+    fn selection_sheet(
+        &self,
+        ix: usize,
+        node: &super::model::ViewNode,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let path = node.relative_path.clone();
+        let handler = self.handler.clone();
+        let folder = path
+            .parent()
+            .map(|p| p.display().to_string())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "Vault".into());
+        // A selection sheet like the table's: the name is text, and
+        // opening is an explicit, labelled action.
+        v_flex()
+            .px_3()
+            .py_2()
+            .gap_1()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover)
+            .child(
                 h_flex()
-                    .px_2()
-                    .gap_1()
+                    .gap_2()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .truncate()
+                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                    .child(node.label.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .truncate()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(folder),
+                            ),
+                    )
+                    .child(
+                        Button::new("close-selection")
+                            .ghost()
+                            .w(px(44.))
+                            .h(px(44.))
+                            .icon(IconName::Close)
+                            .accessibility_label("Clear selection")
+                            .on_click(cx.listener(|s, _, _, cx| {
+                                s.selected = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
                     .child(
                         Button::new("open-graph-note")
-                            .ghost()
-                            .flex_1()
-                            .h(px(48.))
-                            .label(node.label.clone())
-                            .accessibility_label(format!("Open {}", path.display()))
+                            .primary()
+                            .h(px(44.))
+                            .label("Open note")
                             .on_click(move |_, _, cx| {
                                 let _ = handler.update(cx, |_, cx| {
                                     cx.emit(FileHandlerEvent::VaultFileRequested(
@@ -109,21 +171,21 @@ impl GraphState {
                                 });
                             }),
                     )
-                    .child(Self::note_picker(Some(ix), cx))
-                    .child(
-                        Button::new("close-selection")
-                            .ghost()
-                            .h(px(48.))
-                            .icon(IconName::Close)
-                            .accessibility_label("Clear selection")
-                            .on_click(cx.listener(|s, _, _, cx| {
-                                s.selected = None;
-                                cx.notify();
-                            })),
-                    ),
-            );
+                    .child(Self::note_picker(
+                        Some(ix),
+                        self.choosing_note == Some(NoteChoice::Connections(ix)),
+                        cx,
+                    )),
+            )
+    }
+
+    /// Back closes the selection sheet before leaving the Base.
+    pub(crate) fn clear_selection(&mut self, cx: &mut Context<Self>) -> bool {
+        let cleared = self.selected.take().is_some();
+        if cleared {
+            cx.notify();
         }
-        screen.child(controls).into_any_element()
+        cleared
     }
 
     fn center_note(&mut self, path: &std::path::Path) {
@@ -140,73 +202,94 @@ impl GraphState {
         }
     }
 
-    fn note_picker(source: Option<usize>, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let state = cx.weak_entity();
-        let title = if source.is_some() {
-            "Connections"
+    fn note_picker(
+        source: Option<usize>,
+        open: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let (id, title) = if source.is_some() {
+            ("graph-connections", "Connections")
         } else {
-            "Notes"
+            ("graph-notes", "Notes")
         };
-        Button::new(title)
-            .ghost()
-            .h(px(48.))
-            .label(title)
-            .dropdown_caret(true)
-            .dropdown_menu(move |menu, window, cx| {
-                let mut menu = menu.scrollable(true).max_h(px(f32::from(
-                    window.fully_visible_bounds().size.height,
-                ) * 0.55));
-                let Some(entity) = state.upgrade() else {
-                    return menu;
-                };
-                let Some(snapshot) = &entity.read(cx).snapshot else {
-                    return menu;
-                };
-                let focus = source.map(|ix| GraphFocus::new(snapshot, ix));
-                let mut nodes: Vec<_> = snapshot
-                    .nodes
-                    .iter()
-                    .enumerate()
-                    .filter(|(ix, _)| {
-                        Some(*ix) != source && focus.as_ref().is_none_or(|f| f.includes_node(*ix))
-                    })
-                    .collect();
-                nodes.sort_by(|(_, a), (_, b)| {
-                    a.label
-                        .cmp(&b.label)
-                        .then_with(|| a.relative_path.cmp(&b.relative_path))
-                });
-                let mut labels = std::collections::HashSet::new();
-                let duplicates: std::collections::HashSet<_> = nodes
-                    .iter()
-                    .filter_map(|(_, n)| (!labels.insert(&n.label)).then_some(&n.label))
-                    .collect();
-                for (_, node) in nodes {
-                    let state = state.clone();
-                    let path = node.relative_path.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(if duplicates.contains(&node.label) {
-                            format!(
-                                "{} · {}",
-                                node.label,
-                                path.parent()
-                                    .and_then(|p| p.to_str())
-                                    .filter(|p| !p.is_empty())
-                                    .unwrap_or("Vault")
-                            )
-                        } else {
-                            node.label.clone()
-                        })
-                        .on_click(move |_, _, cx| {
-                            let _ = state.update(cx, |s, cx| {
-                                s.center_note(&path);
-                                cx.notify();
-                            });
-                        }),
-                    );
-                }
-                menu
+        touch_choice::trigger(id, title, "Choose a note", open).on_click(cx.listener(
+            move |s, _, _, cx| {
+                let choice = NoteChoice::new(source);
+                s.choosing_note = (s.choosing_note != Some(choice)).then_some(choice);
+                cx.notify();
+            },
+        ))
+    }
+
+    /// Back closes the note list before the selection and the Base.
+    pub(crate) fn close_note_choice(&mut self, cx: &mut Context<Self>) -> bool {
+        let closed = self.choosing_note.take().is_some();
+        if closed {
+            cx.notify();
+        }
+        closed
+    }
+
+    fn note_options(
+        &self,
+        source: Option<usize>,
+        cx: &Context<Self>,
+    ) -> Option<impl IntoElement + use<>> {
+        let snapshot = self.snapshot.as_ref()?;
+        let focus = source.map(|ix| GraphFocus::new(snapshot, ix));
+        let mut nodes: Vec<_> = snapshot
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(ix, _)| {
+                Some(*ix) != source && focus.as_ref().is_none_or(|f| f.includes_node(*ix))
             })
+            .map(|(_, node)| node)
+            .collect();
+        nodes.sort_by(|a, b| {
+            a.label
+                .cmp(&b.label)
+                .then_with(|| a.relative_path.cmp(&b.relative_path))
+        });
+        let mut labels = std::collections::HashSet::new();
+        let duplicates: std::collections::HashSet<_> = nodes
+            .iter()
+            .filter_map(|n| (!labels.insert(&n.label)).then_some(n.label.clone()))
+            .collect();
+        let selected = self.selected.clone();
+        Some(
+            touch_choice::options(
+                "graph-note-options",
+                nodes.into_iter().map(|node| {
+                    let path = node.relative_path.clone();
+                    let label = if duplicates.contains(&node.label) {
+                        format!(
+                            "{} · {}",
+                            node.label,
+                            path.parent()
+                                .and_then(|p| p.to_str())
+                                .filter(|p| !p.is_empty())
+                                .unwrap_or("Vault")
+                        )
+                    } else {
+                        node.label.clone()
+                    };
+                    touch_choice::option(
+                        gpui_kit::SharedString::from(format!("graph-note:{}", path.display())),
+                        label,
+                        selected.as_ref() == Some(&path),
+                    )
+                    .on_click(cx.listener(move |s, _, _, cx| {
+                        s.choosing_note = None;
+                        s.center_note(&path);
+                        cx.notify();
+                    }))
+                }),
+            )
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover),
+        )
     }
 }
 

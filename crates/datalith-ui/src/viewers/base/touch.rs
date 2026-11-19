@@ -1,16 +1,15 @@
 use super::{
     BaseItem, BaseRow, BaseSnapshot, BaseStatus, BaseViewState, snapshot::summary_inline_line,
-    table::table_cell_text,
+    table::table_cell_text, touch_choice,
 };
 use crate::handler::FileHandlerEvent;
-use datalith_core::base::{BaseView, ViewType};
+use datalith_core::base::{BaseDefinition, BaseView, ViewType};
 use gpui_kit::component::{
     ActiveTheme, ElementExt, IconName,
     button::{Button, ButtonVariants},
-    h_flex,
-    menu::{DropdownMenu as _, PopupMenuItem},
-    v_flex,
+    h_flex, v_flex,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement,
     StatefulInteractiveElement as _, Styled, UniformListScrollHandle, div, px, uniform_list,
@@ -20,9 +19,10 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub(super) struct Rows {
     scroll: UniformListScrollHandle,
-    property: usize,
+    pub(super) property: usize,
     extra_columns: usize,
     pub(super) detail: Option<PathBuf>,
+    pub(super) choosing_property: bool,
 }
 
 #[derive(Default)]
@@ -84,13 +84,10 @@ impl BaseViewState {
         let Some(rows) = self.touch_rows.get(&view.name) else {
             return div().into_any_element();
         };
-        if let Some(row) = rows
+        let selected = rows
             .detail
             .as_ref()
-            .and_then(|p| snap.rows.iter().find(|r| r.path == *p))
-        {
-            return self.touch_detail(snap, view, row, cx);
-        }
+            .and_then(|p| snap.rows.iter().find(|r| r.path == *p));
         let table = view.view_type == ViewType::Table;
         let mut layout = v_flex().size_full().min_h_0();
         if table {
@@ -106,7 +103,11 @@ impl BaseViewState {
                             .flex_shrink_0()
                             .child("File"),
                     )
-                    .child(Self::property_picker(snap, view, rows.property, cx))
+                    .child(div().flex_1().min_w_0().truncate().child(
+                        view.order.get(rows.property).map_or_else(String::new, |p| {
+                            snap.definition.display_label(p).to_string()
+                        }),
+                    ))
                     .children(
                         other_columns(view, rows.property, rows.extra_columns).map(|p| {
                             div()
@@ -135,12 +136,15 @@ impl BaseViewState {
         )
         .track_scroll(&rows.scroll)
         .flex_1();
+        // The selected row's sheet sits under the table, which stays visible
+        // and scrollable above it.
         layout
             .child(list)
             .children(
                 summary_inline_line(&snap.summaries)
                     .map(|s| div().px_3().text_sm().truncate().child(s)),
             )
+            .children(selected.map(|row| self.touch_detail(snap, view, row, cx)))
             .into_any_element()
     }
 
@@ -238,8 +242,12 @@ impl BaseViewState {
                 let entity = cx.entity();
                 let key = view.name.clone();
                 let handler = self.handler.clone();
+                let selected = rows.detail.as_ref() == Some(&path);
                 div()
-                    .id(("base-result", ix))
+                    .id(gpui_kit::SharedString::from(format!(
+                        "base-result:{}",
+                        path.display()
+                    )))
                     .w_full()
                     .h(px(56.))
                     .px_3()
@@ -247,6 +255,7 @@ impl BaseViewState {
                     .items_center()
                     .border_b_1()
                     .border_color(cx.theme().border)
+                    .when(selected, |el| el.bg(cx.theme().selection))
                     .child(body)
                     .on_click(move |_, _, cx| {
                         if table {
@@ -266,45 +275,64 @@ impl BaseViewState {
         })
     }
 
-    fn property_picker(
-        snap: &BaseSnapshot,
+    /// The compared column, beside the view trigger on the same line.
+    pub(super) fn property_picker(
+        definition: &BaseDefinition,
+        view: &BaseView,
+        rows: &Rows,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let value = view
+            .order
+            .get(rows.property)
+            .map_or_else(String::new, |p| definition.display_label(p).to_string());
+        let key = view.name.clone();
+        touch_choice::trigger(
+            "compare-property",
+            value,
+            "Choose property to compare",
+            rows.choosing_property,
+        )
+        .flex_1()
+        .min_w_0()
+        .on_click(cx.listener(move |s, _, _, cx| {
+            s.choosing_view = false;
+            let rows = s.touch_rows.entry(key.clone()).or_default();
+            rows.choosing_property = !rows.choosing_property;
+            cx.notify();
+        }))
+    }
+
+    pub(super) fn property_options(
+        definition: &BaseDefinition,
         view: &BaseView,
         active: usize,
         cx: &Context<Self>,
     ) -> impl IntoElement + use<> {
-        let names: Vec<_> = view
-            .order
-            .iter()
-            .map(|p| snap.definition.display_label(p).to_string())
-            .collect();
-        let key = view.name.clone();
-        let state = cx.weak_entity();
-        Button::new("compare-property")
-            .ghost()
-            .h(px(48.))
-            .flex_1()
-            .label(names.get(active).cloned().unwrap_or_default())
-            .dropdown_caret(true)
-            .accessibility_label("Choose property to compare")
-            .dropdown_menu(move |mut menu, _, _| {
-                for (ix, name) in names.iter().enumerate() {
-                    let state = state.clone();
-                    let key = key.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(name.clone())
-                            .checked(ix == active)
-                            .on_click(move |_, _, cx| {
-                                let _ = state.update(cx, |s, cx| {
-                                    s.touch_rows.entry(key.clone()).or_default().property = ix;
-                                    cx.notify();
-                                });
-                            }),
-                    );
-                }
-                menu
-            })
+        touch_choice::options(
+            "compare-property-options",
+            view.order.iter().enumerate().map(|(ix, p)| {
+                let key = view.name.clone();
+                touch_choice::option(
+                    gpui_kit::SharedString::from(format!("compare-property:{}", p.source)),
+                    definition.display_label(p).to_string(),
+                    ix == active,
+                )
+                .on_click(cx.listener(move |s, _, _, cx| {
+                    let rows = s.touch_rows.entry(key.clone()).or_default();
+                    rows.property = ix;
+                    rows.choosing_property = false;
+                    cx.notify();
+                }))
+            }),
+        )
+        .border_b_1()
+        .border_color(cx.theme().border)
     }
 
+    /// The bottom sheet for one table row: the note's name and folder, an
+    /// explicit Open note action, Close, then every property of the view.
+    /// Back closes it first (see `dismiss_control`).
     fn touch_detail(
         &self,
         snapshot: &BaseSnapshot,
@@ -315,69 +343,101 @@ impl BaseViewState {
         let key = view.name.clone();
         let path = row.path.clone();
         let handler = self.handler.clone();
-        v_flex()
-            .size_full()
+        let title = super::file_name(&path).unwrap_or_default().to_string();
+        let folder = path
+            .parent()
+            .map(|p| p.display().to_string())
+            .filter(|p| !p.is_empty());
+        let header = h_flex()
+            .gap_2()
+            .px_3()
+            .pt_2()
             .child(
-                h_flex()
-                    .child(
-                        Button::new("dismiss-row")
-                            .ghost()
-                            .h(px(48.))
-                            .icon(IconName::ChevronLeft)
-                            .accessibility_label("Back to table")
-                            .on_click(cx.listener(move |s, _, _, cx| {
-                                s.touch_rows.entry(key.clone()).or_default().detail = None;
-                                cx.notify();
-                            })),
-                    )
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
                     .child(
                         div()
-                            .flex_1()
                             .truncate()
-                            .child(path.to_string_lossy().into_owned()),
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .child(title),
                     )
-                    .child(
-                        Button::new("open-row")
-                            .ghost()
-                            .h(px(48.))
-                            .icon(IconName::ArrowRight)
-                            .accessibility_label("Open note")
-                            .on_click(move |_, _, cx| {
-                                let _ = handler.update(cx, |_, cx| {
-                                    cx.emit(FileHandlerEvent::VaultFileRequested(
-                                        path.clone(),
-                                        false,
-                                    ));
-                                });
-                            }),
-                    ),
+                    .children(folder.map(|f| {
+                        div()
+                            .text_sm()
+                            .truncate()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(f)
+                    })),
             )
+            .child(
+                Button::new("open-row")
+                    .primary()
+                    .h(px(44.))
+                    .label("Open note")
+                    .on_click(move |_, _, cx| {
+                        let _ = handler.update(cx, |_, cx| {
+                            cx.emit(FileHandlerEvent::VaultFileRequested(path.clone(), false));
+                        });
+                    }),
+            )
+            .child(
+                Button::new("dismiss-row")
+                    .ghost()
+                    .w(px(44.))
+                    .h(px(44.))
+                    .icon(IconName::Close)
+                    .accessibility_label("Close")
+                    .on_click(cx.listener(move |s, _, _, cx| {
+                        s.touch_rows.entry(key.clone()).or_default().detail = None;
+                        cx.notify();
+                    })),
+            );
+        v_flex()
+            .id("row-sheet")
+            .flex_shrink_0()
+            .max_h(gpui_kit::relative(0.5))
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover)
+            .rounded_t(cx.theme().radius_lg)
+            .shadow_lg()
+            .child(header)
             .child(
                 v_flex()
                     .id("row-properties")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .children(view.order.iter().enumerate().map(|(ix, p)| {
-                        v_flex()
-                            .px_3()
-                            .py_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(snapshot.definition.display_label(p).to_string()),
-                            )
-                            .child(super::render_property_cell(
-                                snapshot,
-                                row,
-                                p,
-                                &self.handler,
-                                ("detail-property", ix).into(),
-                                false,
-                                cx.theme(),
-                            ))
-                    })),
+                    .pb_2()
+                    .children(
+                        view.order
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, p)| p.source != "file.name")
+                            .map(|(ix, p)| {
+                                v_flex()
+                                    .px_3()
+                                    .py_1()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(
+                                                snapshot.definition.display_label(p).to_string(),
+                                            ),
+                                    )
+                                    .child(super::render_property_cell(
+                                        snapshot,
+                                        row,
+                                        p,
+                                        &self.handler,
+                                        ("detail-property", ix).into(),
+                                        false,
+                                        cx.theme(),
+                                    ))
+                            }),
+                    ),
             )
             .into_any_element()
     }
