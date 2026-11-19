@@ -36,6 +36,8 @@ La première itération réutilise les éditeurs et visionneuses de `datalith-ui
 2. **Retour et changement de document.** Proposition : « Retour » ramène au point de départ, y compris aux résultats d’une recherche. Le bouton d’arborescence ouvre toujours le coffre. Le passage rapide entre notes ouvertes reste une action distincte. Comparer les variantes avec les mêmes notes dans le prototype.
 3. **Bases et personnalisation.** Confirmer si le graphe et l’éditeur YAML sont indispensables dès la première version téléphone, et si l’atelier de thèmes peut attendre sur les deux formats. Ces priorités conditionnent directement le lot de maquettes.
 
+La [proposition d’architecture tactile](mobile-interactions.md) détaille le parcours graphe → note → retour, les responsabilités des couches et les essais sur téléphone et grand écran.
+
 ## Passage aux maquettes
 
 Le premier prototype couvre recherche → note → édition → retour aux résultats. Sur le Duo, déplier pendant l’édition ; sur l’iPad, rétrécir la fenêtre ; sur Android, utiliser Retour avec le clavier ouvert puis fermé. Vérifier le texte, la sélection et la requête après chaque transition. Les autres familles retenues auront ensuite leurs maquettes, avec au moins un état vide, bloqué ou en erreur pertinent pour la tâche.
