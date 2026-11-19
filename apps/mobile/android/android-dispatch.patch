@@ -1,0 +1,15 @@
+diff --git a/src/android/platform.rs b/src/android/platform.rs
+index 7c93b06..2487654 100644
+--- a/src/android/platform.rs
++++ b/src/android/platform.rs
+@@ -1066,7 +1066,9 @@ impl AndroidPlatform {
+     ///
+     /// Useful in headless tests where there is no real ALooper.
+     pub fn flush_main_thread_tasks(&self) {
+-        self.state.lock().dispatcher.flush_main_thread_tasks();
++        // Tasks such as opening a GPUI window acquire the platform state again.
++        let dispatcher = self.state.lock().dispatcher.clone();
++        dispatcher.flush_main_thread_tasks();
+     }
+ }
+ 
