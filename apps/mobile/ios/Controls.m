@@ -122,10 +122,11 @@ static void applyControls(void) {
         [bottom addObject:menu(@"More actions", @"ellipsis.circle", groups)];
     }
     controller.toolbarItems = bottom;
-    // While editing, the keyboard bar takes the toolbar's place, as the
-    // keyboard would cover it anyway; Done stays in the top bar.
-    BOOL editing = [model[@"editing"] boolValue];
-    [navigation setToolbarHidden:editing || bottom.count < 2 animated:NO];
+    // While typing in a note or the search, the toolbar steps aside, as the
+    // keyboard would cover it; in a note the keyboard bar takes its place and
+    // Done stays in the top bar.
+    BOOL typing = [model[@"typing"] boolValue];
+    [navigation setToolbarHidden:typing || bottom.count < 2 animated:NO];
     [navigation setNavigationBarHidden:!(controller.navigationItem.rightBarButtonItems.count
         || controller.navigationItem.title) animated:NO];
 }

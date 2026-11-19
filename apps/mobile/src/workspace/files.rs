@@ -352,6 +352,40 @@ impl Workspace {
         v_flex().size_full().child(body).child(footer)
     }
 
+    /// Creates the note `name` (with `.md` unless it has an extension) in the
+    /// current folder from a search, then opens it in Edit. An existing file
+    /// of that name opens instead.
+    pub(crate) fn create_note_named(&mut self, name: &str, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(dir) = self.folders.last().map(|f| f.path.clone()) else {
+            return;
+        };
+        if let Err(e) = validate_name(name) {
+            self.message = Some(e.into());
+            cx.notify();
+            return;
+        }
+        let mut path = dir.join(name);
+        if path.extension().is_none() {
+            path.set_extension("md");
+        }
+        if !source::exists(&path) {
+            if let Err(e) = file_ops::create(&dir, &super::name(&path), "") {
+                self.message = Some(e.to_string());
+                cx.notify();
+                return;
+            }
+            self.changed_files(vec![path.clone()], cx);
+        }
+        w.dismiss_virtual_keyboard();
+        self.select(path, w, cx);
+        if self
+            .current()
+            .is_some_and(|d| !d.handler.read(cx).is_editing() && !d.handler.read(cx).is_read_only())
+        {
+            self.toggle_mode(w, cx);
+        }
+    }
+
     fn submit_file(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let Some(form) = &mut self.file_form else {
             return;

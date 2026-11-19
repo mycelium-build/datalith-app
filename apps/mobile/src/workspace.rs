@@ -7,7 +7,7 @@ mod controls;
 mod keyboard_bar;
 mod navigation;
 mod panels;
-mod search;
+pub mod search;
 mod session;
 pub use controls::{Command, Item, ScreenControls};
 use datalith_vault::source;
@@ -731,6 +731,7 @@ impl Workspace {
             can_forward: self.history.can_forward(),
             vault_writable: self.root.as_ref().is_some_and(|r| !source::is_read_only(r)),
             document,
+            searching: self.search.focused && surface == Surface::Folder,
         })
     }
 
@@ -862,7 +863,7 @@ impl Render for Workspace {
         super::ios::update(&controls, cx.theme().background);
         #[cfg(not(target_os = "ios"))]
         {
-            panel = panel.child(bar::render(&controls, cx));
+            panel = panel.children(bar::top(&controls, cx));
         }
         #[cfg(target_os = "android")]
         {
@@ -907,6 +908,10 @@ impl Render for Workspace {
         panel = panel
             .overflow_hidden()
             .child(self.navigation_content(content, wide, cx));
+        #[cfg(not(target_os = "ios"))]
+        {
+            panel = panel.children(bar::bottom(&controls, cx));
+        }
         if surface == Surface::Document && self.editing_note(cx).is_some() {
             panel = panel.child(keyboard_bar::render(cx));
         }

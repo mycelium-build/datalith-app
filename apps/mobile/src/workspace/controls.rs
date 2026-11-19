@@ -163,6 +163,10 @@ pub struct DocumentControls {
 
 /// Facts about the visible screen from which the commands are derived.
 #[derive(Clone, Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent facts about one screen"
+)]
 pub struct Screen {
     pub surface: Surface,
     pub title: Option<String>,
@@ -170,6 +174,8 @@ pub struct Screen {
     pub can_forward: bool,
     pub vault_writable: bool,
     pub document: Option<DocumentControls>,
+    /// The search field has the keyboard.
+    pub searching: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -177,6 +183,9 @@ pub struct ScreenControls {
     pub title: Option<String>,
     pub back: bool,
     pub editing: bool,
+    /// The keyboard is up for a note or the search: the bottom bar steps
+    /// aside, as the keyboard would cover it.
+    pub typing: bool,
     pub primary: Option<Item>,
     pub create: Vec<Item>,
     pub menu: Vec<Vec<Item>>,
@@ -254,6 +263,7 @@ impl ScreenControls {
             title: screen.title.clone(),
             back: screen.can_back,
             editing: document.is_some_and(|d| d.editing),
+            typing: document.is_some_and(|d| d.editing) || screen.searching,
             primary,
             create,
             menu,
@@ -288,6 +298,7 @@ mod tests {
             can_forward: false,
             vault_writable: true,
             document: None,
+            searching: false,
         }
     }
 
@@ -301,6 +312,22 @@ mod tests {
             assert_eq!(Command::from_id(command.id()), Some(command));
         }
         assert_eq!(Command::from_id("Delete"), None);
+    }
+
+    #[test]
+    fn the_bottom_bar_steps_aside_while_typing() {
+        assert!(!ScreenControls::new(&screen(Surface::Folder)).typing);
+        let mut searching = screen(Surface::Folder);
+        searching.searching = true;
+        assert!(ScreenControls::new(&searching).typing);
+        let mut editing = screen(Surface::Document);
+        editing.document = Some(DocumentControls {
+            writable: true,
+            can_toggle: true,
+            editing: true,
+            definition: false,
+        });
+        assert!(ScreenControls::new(&editing).typing);
     }
 
     #[test]

@@ -114,6 +114,23 @@ impl Folder {
             .children(press)
     }
 
+    /// Creates a note named after the query, like a quick switcher.
+    fn create_row(name: String, cx: &Context<Workspace>) -> impl IntoElement + use<> {
+        let label = format!("Create “{name}”");
+        ListItem::new("create-from-search")
+            .min_h(px(48.))
+            .px_2()
+            .accessibility_label(label.clone())
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_3()
+                    .child(Icon::new(IconName::Plus).size_4())
+                    .child(div().flex_1().min_w_0().truncate().child(label)),
+            )
+            .on_click(cx.listener(move |v, _, w, cx| v.create_note_named(&name, w, cx)))
+    }
+
     fn subtitle(text: String, cx: &Context<Workspace>) -> AnyElement {
         div()
             .text_xs()
@@ -175,6 +192,16 @@ impl Folder {
             return rows;
         }
         let results = &search.results;
+        let writable = workspace
+            .root
+            .as_ref()
+            .is_some_and(|root| !source::is_read_only(root));
+        if writable
+            && search.task.is_none()
+            && let Some(name) = super::workspace::search::creatable_name(query, &results.names)
+        {
+            rows = rows.child(Self::create_row(name, cx));
+        }
         if !results.names.is_empty() {
             rows = rows.child(Self::section("Names", cx));
             for path in &results.names {

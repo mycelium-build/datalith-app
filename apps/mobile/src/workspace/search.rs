@@ -87,6 +87,21 @@ pub fn contents(hits: Vec<SearchHit>, names: &[PathBuf], scope: Option<&Path>) -
         .collect()
 }
 
+/// The note to offer creating for `query`, as in a quick switcher: none when
+/// the query is not a plain file name or a listed file already has that name.
+pub fn creatable_name(query: &str, names: &[PathBuf]) -> Option<String> {
+    let query = query.trim();
+    if query.is_empty() || query.starts_with('.') || query.contains(['/', '\\']) {
+        return None;
+    }
+    let taken = names.iter().any(|path| {
+        let name = path.file_name().map_or_default(|n| n.to_string_lossy());
+        let stem = path.file_stem().map_or_default(|n| n.to_string_lossy());
+        name.eq_ignore_ascii_case(query) || stem.eq_ignore_ascii_case(query)
+    });
+    (!taken).then(|| query.to_owned())
+}
+
 pub fn searches_contents(query: &str) -> bool {
     query.trim().chars().count() >= MIN_CONTENT_CHARS
 }
@@ -100,6 +115,21 @@ pub fn remember(recent: &mut Vec<PathBuf>, path: PathBuf) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_new_name_can_be_created_but_an_existing_one_opens() {
+        let names = vec![
+            PathBuf::from("v/Deep Work.md"),
+            PathBuf::from("v/Library.base"),
+        ];
+        assert_eq!(creatable_name(" Ideas ", &names), Some("Ideas".to_owned()));
+        assert_eq!(creatable_name("deep work", &names), None);
+        assert_eq!(creatable_name("Library.base", &names), None);
+        assert_eq!(creatable_name("a/b", &names), None);
+        assert_eq!(creatable_name(".hidden", &names), None);
+        assert_eq!(creatable_name("  ", &names), None);
+    }
+
     use super::*;
 
     fn docs() -> Vec<PathBuf> {
