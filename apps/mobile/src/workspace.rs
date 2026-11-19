@@ -25,6 +25,8 @@ pub struct Workspace {
     catalog: Option<VaultCatalog>,
     registry: FileRegistry,
     history: Vec<Document>,
+    navigation_step: usize,
+    returning: bool,
     deleted: Option<file_ops::Deleted>,
     message: Option<String>,
     document_deleted: bool,
@@ -48,6 +50,8 @@ impl Workspace {
             catalog: None,
             registry: default_registry(),
             history: Vec::new(),
+            navigation_step: 0,
+            returning: false,
             deleted: None,
             message: None,
             document_deleted: false,
@@ -85,6 +89,7 @@ impl Workspace {
         if !self.in_vault(&path) {
             return;
         }
+        self.advance(false);
         self.document_deleted = false;
         if let Some(index) = self.history.iter().rposition(|doc| doc.path == path) {
             self.history.truncate(index.saturating_add(1));
@@ -155,6 +160,9 @@ impl Workspace {
         if path.is_dir() {
             match super::browser::Folder::new(path, window, cx) {
                 Ok(folder) => {
+                    if !self.folders.is_empty() {
+                        self.advance(false);
+                    }
                     self.folders.push(folder);
                     self.history.clear();
                     self.document_deleted = false;
@@ -168,6 +176,11 @@ impl Workspace {
         cx.notify();
     }
 
+    const fn advance(&mut self, returning: bool) {
+        self.navigation_step = self.navigation_step.wrapping_add(1);
+        self.returning = returning;
+    }
+
     fn refresh_folder(&mut self) {
         if let Some(folder) = self.folders.last_mut()
             && let Err(error) = folder.reload()
@@ -179,6 +192,7 @@ impl Workspace {
     pub(super) fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.dismiss_virtual_keyboard();
         self.focus.focus(window, cx);
+        self.advance(true);
         if self.document_deleted {
             self.document_deleted = false;
         } else if self.history.pop().is_none() && self.folders.len() > 1 {
@@ -251,6 +265,33 @@ pub fn name(path: &Path) -> String {
 }
 
 impl Workspace {
+    fn navigation_content(
+        &self,
+        content: gpui_kit::Div,
+        wide: bool,
+        cx: &Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        let reduce_motion = cx.reduce_motion();
+        #[cfg(target_os = "ios")]
+        let reduce_motion = reduce_motion || super::ios::reduce_motion();
+        if !wide && self.navigation_step > 0 && !reduce_motion {
+            use gpui_kit::{Animation, AnimationExt as _};
+            let offset = if self.returning { -24.0 } else { 24.0 };
+            let transition = Animation::new(std::time::Duration::from_millis(190))
+                .with_easing(gpui_kit::ease_out_quint());
+            content
+                .relative()
+                .with_animation(
+                    ("navigation-step", self.navigation_step),
+                    transition,
+                    move |el, progress| el.left(px((1.0 - progress) * offset)).opacity(progress),
+                )
+                .into_any_element()
+        } else {
+            content.into_any_element()
+        }
+    }
+
     fn detail(&self, wide: bool, has_detail: bool, cx: &Context<Self>) -> impl IntoElement {
         let mut detail = v_flex().flex_1().min_w_0();
         let mut bar = h_flex()
@@ -299,9 +340,14 @@ impl Workspace {
                         .on_click(cx.listener(|v, _, _, cx| v.delete(cx))),
                 );
             }
+            let body = div().flex_1().min_h_0().child(doc.handler.clone());
+            #[cfg(target_os = "ios")]
+            let body = body.when(h.is_editing() && !h.is_read_only(), |el| {
+                el.children(h.input().map(super::ios_input::registration))
+            });
             detail = detail
                 .when(!cfg!(target_os = "ios"), |el| el.child(bar))
-                .child(div().flex_1().min_h_0().child(doc.handler.clone()));
+                .child(body);
         } else {
             detail = detail
                 .when(has_detail && !cfg!(target_os = "ios"), |el| el.child(bar))
@@ -379,7 +425,10 @@ impl Render for Workspace {
         if wide || has_detail {
             content = content.child(self.detail(wide, has_detail, cx));
         }
-        panel = panel.child(content).track_focus(&self.focus);
+        panel = panel
+            .overflow_hidden()
+            .child(self.navigation_content(content, wide, cx));
+        panel = panel.track_focus(&self.focus);
         if let Some(error) = &self.message {
             panel = panel.child(div().px_2().child(error.clone()));
         }

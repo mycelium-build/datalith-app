@@ -39,3 +39,11 @@ La première itération réutilise les éditeurs et visionneuses de `datalith-ui
 ## Passage aux maquettes
 
 Le premier prototype couvre recherche → note → édition → retour aux résultats. Sur le Duo, déplier pendant l’édition ; sur l’iPad, rétrécir la fenêtre ; sur Android, utiliser Retour avec le clavier ouvert puis fermé. Vérifier le texte, la sélection et la requête après chaque transition. Les autres familles retenues auront ensuite leurs maquettes, avec au moins un état vide, bloqué ou en erreur pertinent pour la tâche.
+
+## Saisie iOS et mises à jour GPUI
+
+La démo de chat épinglée par GPUI Kit utilise un champ GPUI `Input`. Au focus, elle appelle `gpui_mobile::show_keyboard()` et son hôte UIKit ajuste le contenu au guide du clavier. Elle associe le fork mobile à GPUI 0.3.4. [Champ et gestion du focus](https://github.com/longbridge/gpui-mobile/blob/0b882efdac7f524e0bb0b1d4c886b2aa752f9f20/example/src/screens/ai_chat.rs#L39) · [Versions du guide](https://github.com/longbridge/gpui-kit/blob/v0.9.1/website/docs/mobile.md#dependencies)
+
+Datalith utilise GPUI Kit 0.9.1 et le backend iOS de gpui-pre 0.3.12. Ce backend demande au champ actif sa plage éditable ou sa longueur en unités UTF-16 avant d’ouvrir le clavier. Dans cette combinaison, le champ de recherche et l’éditeur exposent le texte et la sélection mais omettent sa longueur. L’adaptateur iOS lit cette longueur dans le tampon du composant et lui délègue les opérations de saisie. [Adaptateur de Datalith](../../apps/mobile/src/ios_input.rs)
+
+Lors d’une mise à jour Renovate de GPUI, vérifier la recherche au clavier, la composition de texte accentué, la saisie d’un emoji puis la relecture de la note après relance. Si les champs fournissent eux-mêmes la plage ou la longueur UTF-16, rejouer ces parcours avec l’adaptateur retiré. Android a son propre backend et son propre lockfile.

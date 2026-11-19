@@ -67,6 +67,12 @@ impl Folder {
         selected: Option<&Path>,
         cx: &Context<Workspace>,
     ) -> impl IntoElement {
+        let search = div()
+            .px_3()
+            .py_1()
+            .child(Input::new(&self.query).cleanable(true));
+        #[cfg(target_os = "ios")]
+        let search = search.child(super::ios_input::registration(&self.query));
         let query = self.query.read(cx).value().to_lowercase();
         let mut rows = v_flex()
             .id("files")
@@ -132,12 +138,7 @@ impl Folder {
                         .child(super::workspace::name(&self.path)),
                 )
             })
-            .child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .child(Input::new(&self.query).cleanable(true)),
-            )
+            .child(search)
             .child(rows)
     }
 }

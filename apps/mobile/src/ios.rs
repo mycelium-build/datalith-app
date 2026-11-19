@@ -4,6 +4,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{cell::RefCell, ffi::c_void};
 
 unsafe extern "C" {
+    fn UIAccessibilityIsReduceMotionEnabled() -> bool;
     fn datalith_install_controls(view: *mut c_void);
     fn datalith_set_controls(back: bool, mode: i32, writable: bool, background: u32);
 }
@@ -66,4 +67,9 @@ pub fn update(
             gpui_kit::Rgba::from(background).into(),
         );
     }
+}
+
+/// `UIKit` exposes the active device preference on its main thread.
+pub fn reduce_motion() -> bool {
+    unsafe { UIAccessibilityIsReduceMotionEnabled() }
 }

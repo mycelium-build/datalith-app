@@ -12,6 +12,8 @@ use gpui_kit::{AppContext, Application, WindowOptions};
 mod browser;
 #[cfg(target_os = "ios")]
 mod ios;
+#[cfg(target_os = "ios")]
+mod ios_input;
 mod workspace;
 
 include!(concat!(env!("OUT_DIR"), "/docs_vault.rs"));

@@ -50,7 +50,15 @@ static void applyControls(void) {
     controller.navigationItem.leftBarButtonItem = canGoBack ? item(@"Back", @"chevron.backward", 0) : nil;
     NSMutableArray *actions = [NSMutableArray array];
     if (editMode) [actions addObject:editMode == 1 ? item(@"Edit", @"pencil", 1) : item(@"Read", @"book", 1)];
-    if (canDelete) [actions addObject:item(@"Delete", @"trash", 2)];
+    if (canDelete) {
+        UIAction *remove = [UIAction actionWithTitle:@"Delete" image:[UIImage systemImageNamed:@"trash"]
+            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(2); }];
+        remove.attributes = UIMenuElementAttributesDestructive;
+        UIBarButtonItem *more = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
+            menu:[UIMenu menuWithChildren:@[remove]]];
+        more.accessibilityLabel = @"More actions";
+        [actions addObject:more];
+    }
     controller.navigationItem.rightBarButtonItems = actions;
     [controller.navigationController setNavigationBarHidden:!(canGoBack || actions.count) animated:NO];
 }

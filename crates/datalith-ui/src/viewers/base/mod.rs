@@ -96,6 +96,7 @@ pub struct BaseViewState {
     /// graph camera/simulation reset only when this changes.
     last_source: String,
     selected_view: Option<String>,
+    choosing_view: bool,
     generation: u64,
     /// Monotonic identity handed to each stored snapshot,
     /// so viewers can cache derived data per snapshot instead of per render.
@@ -126,6 +127,7 @@ impl BaseViewState {
             fullscreen_image: None,
             last_source: String::new(),
             selected_view: None,
+            choosing_view: false,
             generation: 0,
             next_snapshot_id: 0,
             build_task: Task::ready(()),
@@ -541,6 +543,9 @@ impl BaseViewState {
         let active = selected_name
             .map(str::to_string)
             .or_else(|| definition.views.first().map(|view| view.name.clone()));
+        if cfg!(any(target_os = "ios", target_os = "android")) && !self.preview {
+            return self.touch_view_switcher(definition, active.as_deref(), cx);
+        }
         h_flex()
             .gap_1()
             .px_2()
@@ -576,6 +581,65 @@ impl BaseViewState {
                     .into_any_element()
             }))
             .into_any_element()
+    }
+
+    fn touch_view_switcher(
+        &self,
+        definition: &BaseDefinition,
+        active: Option<&str>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        use gpui_kit::component::IconName;
+        use gpui_kit::{StatefulInteractiveElement as _, px};
+        let current = active.unwrap_or("Views");
+        let mut chooser = v_flex()
+            .flex_shrink_0()
+            .px_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                Button::new("choose-base-view")
+                    .ghost()
+                    .w_full()
+                    .h(px(48.))
+                    .icon(if self.choosing_view {
+                        IconName::ChevronUp
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .label(current.to_owned())
+                    .accessibility_label(format!("Choose view, current view {current}"))
+                    .on_click(cx.listener(|state, _, _, cx| {
+                        state.choosing_view = !state.choosing_view;
+                        cx.notify();
+                    })),
+            );
+        if self.choosing_view {
+            let rows = v_flex()
+                .id("base-view-options")
+                .overflow_y_scroll()
+                .max_h(px(240.))
+                .children(definition.views.iter().map(|view| {
+                    let name = view.name.clone();
+                    Button::new(ElementId::Name(format!("base-option-{name}").into()))
+                        .ghost()
+                        .w_full()
+                        .h(px(48.))
+                        .flex_shrink_0()
+                        .label(name.clone())
+                        .accessibility_label(name.clone())
+                        .when(active == Some(name.as_str()), |b| b.icon(IconName::Check))
+                        .on_click(cx.listener(move |state, _, _, cx| {
+                            state.choosing_view = false;
+                            if state.selected_view.as_deref() != Some(&name) {
+                                state.select_view(name.clone(), cx);
+                            }
+                            cx.notify();
+                        }))
+                }));
+            chooser = chooser.child(rows);
+        }
+        chooser.into_any_element()
     }
 
     fn render_content(
