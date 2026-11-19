@@ -766,12 +766,11 @@ mod tests {
     fn older_preferences_keep_their_theme_and_gain_session_storage() -> anyhow::Result<()> {
         let prefs: Preferences =
             serde_json::from_str(r#"{"theme":"Catppuccin","text_size":20,"folder":"Notes"}"#)?;
-        assert_eq!(prefs.theme, "Catppuccin");
-        assert_eq!(prefs.text_size, 20);
-        assert_eq!(prefs.folder, PathBuf::from("Notes"));
-        assert!(prefs.sessions.is_empty());
-        assert!(prefs.fonts.is_empty());
-        assert!(prefs.variant.is_none());
+        anyhow::ensure!(prefs.theme == "Catppuccin" && prefs.text_size == 20);
+        anyhow::ensure!(prefs.folder == PathBuf::from("Notes"));
+        anyhow::ensure!(
+            prefs.sessions.is_empty() && prefs.fonts.is_empty() && prefs.variant.is_none()
+        );
         Ok(())
     }
 
