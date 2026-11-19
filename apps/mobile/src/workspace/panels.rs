@@ -4,10 +4,9 @@ use std::sync::LazyLock;
 use super::{Workspace, name};
 use datalith_vault::{VaultCatalog, source};
 use gpui_kit::component::{
-    IconName, Theme, ThemeMode,
+    ActiveTheme as _, IconName, Theme, ThemeMode,
     button::{Button, ButtonVariants},
     h_flex,
-    menu::{DropdownMenu as _, PopupMenuItem},
     theme::ThemeSet,
     v_flex,
 };
@@ -59,9 +58,12 @@ struct RecentFolder {
 #[serde(default)]
 pub(super) struct Preferences {
     theme: String,
+    variant: Option<String>,
+    fonts: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     text_size: u8,
     pub(super) documentation: bool,
     folder: PathBuf,
+    pub(super) sessions: std::collections::BTreeMap<String, super::session::Session>,
     bookmark: Option<String>,
     external_active: bool,
     recent: Vec<RecentFolder>,
@@ -70,9 +72,12 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             theme: "Datalith".into(),
+            variant: None,
+            fonts: std::collections::BTreeMap::new(),
             text_size: 16,
             documentation: false,
             folder: PathBuf::new(),
+            sessions: std::collections::BTreeMap::new(),
             bookmark: None,
             external_active: false,
             recent: Vec::new(),
@@ -85,6 +90,9 @@ static THEMES: LazyLock<Vec<ThemeSet>> = LazyLock::new(|| {
         .filter_map(|json| serde_json::from_str(json).ok())
         .collect()
 });
+#[path = "appearance.rs"]
+mod settings_choices;
+pub use settings_choices::{Choice, FontCatalog};
 impl Preferences {
     pub(super) fn load() -> Self {
         super::super::DATA
@@ -93,7 +101,7 @@ impl Preferences {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
     }
-    fn save(&self) -> anyhow::Result<()> {
+    pub(super) fn save(&self) -> anyhow::Result<()> {
         let Some(dir) = super::super::DATA.get() else {
             return Ok(());
         };
@@ -118,7 +126,53 @@ impl Preferences {
                 }
             }
         }
-        Theme::sync_system_appearance(Some(w), cx);
+        let set = THEMES.iter().find(|set| set.name.as_ref() == self.theme);
+        let variant = set.and_then(|s| {
+            s.themes
+                .iter()
+                .find(|v| Some(v.name.as_ref()) == self.variant.as_deref())
+        });
+        let system = ThemeMode::from(w.appearance());
+        let config = variant.or_else(|| {
+            set.and_then(|s| {
+                s.themes
+                    .iter()
+                    .find(|v| v.mode == system)
+                    .or_else(|| s.themes.first())
+            })
+        });
+        if let Some(config) = config {
+            match config.mode {
+                ThemeMode::Light => Theme::global_mut(cx).light_theme = config.clone().into(),
+                ThemeMode::Dark => Theme::global_mut(cx).dark_theme = config.clone().into(),
+            }
+            Theme::change(config.mode, Some(w), cx);
+        } else {
+            Theme::sync_system_appearance(Some(w), cx);
+        }
+        let defaults = cx.global::<settings_choices::FontCatalog>();
+        let overrides = self.fonts.get(cx.theme().theme_name().as_str());
+        let selected = |role: &str| {
+            overrides
+                .and_then(|map| map.get(role))
+                .filter(|name| defaults.families.contains(name))
+                .map(|s| gpui_kit::SharedString::from(s.clone()))
+        };
+        let interface = selected("Interface")
+            .or_else(|| config.and_then(|v| v.font_family.clone()))
+            .unwrap_or_else(|| defaults.defaults.interface.clone());
+        let resolved = datalith_ui::fonts::ResolvedFonts {
+            reading: selected("Reading").unwrap_or_else(|| interface.clone()),
+            headings: selected("Headings").unwrap_or_else(|| defaults.defaults.headings.clone()),
+            code: selected("Code")
+                .or_else(|| config.and_then(|v| v.mono_font_family.clone()))
+                .unwrap_or_else(|| defaults.defaults.code.clone()),
+            interface,
+        };
+        Theme::global_mut(cx).font_family = resolved.interface.clone();
+        Theme::global_mut(cx).mono_font_family = resolved.code.clone();
+        cx.set_global(resolved);
+        Theme::sync_base(cx);
         self.apply_size(cx);
         cx.refresh_windows();
     }
@@ -126,6 +180,9 @@ impl Preferences {
 
 impl Workspace {
     pub(in crate::workspace) fn remember_folder(&mut self, cx: &mut Context<Self>) {
+        if self.restoring {
+            return;
+        }
         if let Some(relative) = self
             .folders
             .last()
@@ -136,7 +193,7 @@ impl Workspace {
             self.save_preferences(cx);
         }
     }
-    fn save_preferences(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn save_preferences(&mut self, cx: &mut Context<Self>) {
         if let Err(err) = self.preferences.save() {
             self.message = Some(err.to_string());
         }
@@ -158,9 +215,13 @@ impl Workspace {
                     return;
                 }
             };
+        self.persist_session(cx);
+        self.restoring = true;
         let saved = self.preferences.folder.clone();
         self.documents.clear();
-        self.history.clear();
+        self.active = None;
+        self.backward.clear();
+        self.forward.clear();
         self.folders.clear();
         self.deleted = None;
         self.deleted_document = None;
@@ -191,6 +252,20 @@ impl Workspace {
                 self.select(dir.clone(), w, cx);
             }
         }
+        self.restore_session(w, cx);
+        self.restoring = false;
+        self.persist_session(cx);
+    }
+    #[cfg(target_os = "ios")]
+    pub fn open_panel(&mut self, settings: bool, w: &Window, cx: &mut Context<Self>) {
+        w.dismiss_virtual_keyboard();
+        self.page = Some(if settings {
+            Page::Settings
+        } else {
+            Page::Documents
+        });
+        self.advance(false);
+        cx.notify();
     }
     pub(crate) fn show_library(&mut self, w: &Window, cx: &mut Context<Self>) {
         w.dismiss_virtual_keyboard();
@@ -205,12 +280,13 @@ impl Workspace {
             .h(px(48.))
             .icon(IconName::Ellipsis)
             .accessibility_label("Library and settings")
-            .on_click(cx.listener(|s, _, w, cx| s.show_library(w, cx)))
+            .on_click(cx.listener(|s, _, w, cx| s.choose(Choice::Navigation, w, cx)))
     }
     pub(crate) const fn is_searching(&self) -> bool {
         self.search_task.is_some()
     }
     pub(crate) fn search_changed(&mut self, cx: &mut Context<Self>) {
+        self.schedule_session_save(cx);
         self.search_task = None;
         self.search_results.clear();
 
@@ -410,7 +486,7 @@ impl Workspace {
 
     fn settings(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         v_flex()
-            .child(self.theme_picker(cx))
+            .children(self.appearance_controls(cx))
             .child(
                 h_flex()
                     .child(
@@ -440,28 +516,6 @@ impl Workspace {
                     )),
             )
             .child(page_link(Page::About, cx))
-    }
-    fn theme_picker(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let state = cx.weak_entity();
-        Button::new("choose-theme")
-            .ghost()
-            .h(px(48.))
-            .label(format!("Theme · {}", self.preferences.theme))
-            .dropdown_caret(true)
-            .dropdown_menu(move |mut menu, _, _| {
-                for set in &*THEMES {
-                    let name = set.name.clone();
-                    let state = state.clone();
-                    menu = menu.item(PopupMenuItem::new(name.clone()).on_click(move |_, w, cx| {
-                        let _ = state.update(cx, |s, cx| {
-                            s.preferences.theme = name.to_string();
-                            s.preferences.apply_theme(w, cx);
-                            s.save_preferences(cx);
-                        });
-                    }));
-                }
-                menu
-            })
     }
     fn notices(&self, body: gpui_kit::Stateful<gpui_kit::Div>, cx: &Context<Self>) -> AnyElement {
         static SECTIONS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
@@ -645,5 +699,95 @@ impl Workspace {
         self.external = Some(folder);
         self.save_preferences(cx);
         Ok(())
+    }
+}
+
+impl Workspace {
+    pub fn open_link(&mut self, url: &str, w: &mut Window, cx: &mut Context<Self>) {
+        use datalith_core::deeplink::{DeepLink, parse, resolve_in_vault};
+        let Some(DeepLink::OpenNote { vault, path }) = parse(url) else {
+            return;
+        };
+        let local = self.local_root.as_ref().filter(|root| name(root) == vault);
+        let docs = super::super::DOCS;
+        let mut candidates = Vec::new();
+        if let Some(root) = local {
+            candidates.push((root.clone(), None::<String>));
+        }
+        if vault == docs.name() || vault == docs.id() {
+            candidates.push((docs.root(), None));
+        }
+        for recent in &self.preferences.recent {
+            if recent.label == vault || recent.id.to_str() == Some(&vault) {
+                candidates.push((recent.id.clone(), Some(recent.grant.clone())));
+            }
+        }
+        let result = (|| -> anyhow::Result<()> {
+            let [(root, grant)] = candidates.as_slice() else {
+                anyhow::bail!(
+                    "Cannot uniquely identify the vault ‘{vault}’. Open it from Library."
+                );
+            };
+            let target = resolve_in_vault(root, &path)
+                .ok_or_else(|| anyhow::anyhow!("Invalid note path"))?;
+            if self.root.as_ref() != Some(root) {
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                if let Some(grant) = grant {
+                    self.open_bookmark(grant, false, w, cx)?;
+                } else {
+                    self.switch_vault(root.clone(), false, w, cx);
+                }
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                {
+                    let _ = grant;
+                    self.switch_vault(root.clone(), false, w, cx);
+                }
+            }
+            anyhow::ensure!(
+                self.root.as_ref() == Some(root) && self.in_vault(&target),
+                "Cannot open ‘{path}’"
+            );
+            self.file_form = None;
+            self.open(target, w, cx);
+            Ok(())
+        })();
+        if let Err(e) = result {
+            self.message = Some(e.to_string());
+            cx.notify();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn older_preferences_keep_their_theme_and_gain_session_storage() -> anyhow::Result<()> {
+        let prefs: Preferences =
+            serde_json::from_str(r#"{"theme":"Catppuccin","text_size":20,"folder":"Notes"}"#)?;
+        assert_eq!(prefs.theme, "Catppuccin");
+        assert_eq!(prefs.text_size, 20);
+        assert_eq!(prefs.folder, PathBuf::from("Notes"));
+        assert!(prefs.sessions.is_empty());
+        assert!(prefs.fonts.is_empty());
+        assert!(prefs.variant.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn every_bundled_variant_can_be_selected_and_owns_its_font_preferences() {
+        assert_eq!(THEMES.len(), datalith_ui::themes::THEME_SETS.len());
+        let mut names = std::collections::BTreeSet::new();
+        for set in THEMES.iter() {
+            assert!(!set.themes.is_empty());
+            for config in &set.themes {
+                assert!(
+                    names.insert(config.name.to_string()),
+                    "Duplicate theme variant {}",
+                    config.name
+                );
+            }
+        }
     }
 }

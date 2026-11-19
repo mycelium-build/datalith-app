@@ -6,7 +6,7 @@ use std::{cell::RefCell, ffi::c_void};
 unsafe extern "C" {
     fn UIAccessibilityIsReduceMotionEnabled() -> bool;
     fn datalith_install_controls(view: *mut c_void);
-    fn datalith_set_controls(back: bool, mode: i32, writable: bool, background: u32);
+    fn datalith_set_controls(back: bool, forward: bool, mode: i32, writable: bool, background: u32);
 }
 
 type Dispatch = Box<dyn FnMut(i32)>;
@@ -31,6 +31,8 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
                     2 => v.delete(cx),
                     3 => cx.notify(),
                     4 => v.show_library(window, cx),
+                    6 => v.go_forward(window, cx),
+                    7 | 8 => v.open_panel(action == 8, window, cx),
                     5 => v.receive_folder(window, cx),
                     _ => {}
                 })
@@ -54,6 +56,7 @@ pub extern "C" fn datalith_mobile_action(action: i32) {
 
 pub fn update(
     can_back: bool,
+    can_forward: bool,
     handler: Option<&datalith_ui::handler::FileHandler>,
     background: gpui_kit::Hsla,
 ) {
@@ -64,6 +67,7 @@ pub fn update(
     unsafe {
         datalith_set_controls(
             can_back,
+            can_forward,
             mode,
             handler.is_some_and(|h| !h.is_read_only()),
             gpui_kit::Rgba::from(background).into(),

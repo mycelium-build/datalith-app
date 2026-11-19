@@ -1,12 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:label="Datalith" android:icon="@drawable/datalith" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name="build.mycelium.datalith.DatalithActivity"
-            android:exported="true" android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTop" android:exported="true" android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density">
             <meta-data android:name="android.app.lib_name" android:value="datalith_android" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="datalith" android:host="open" />
+                <data android:scheme="datalith" android:host="launch" />
             </intent-filter>
         </activity>
     </application>

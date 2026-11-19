@@ -60,6 +60,15 @@ impl Folder {
         Ok(())
     }
 
+    pub(super) fn scroll_y(&self) -> f32 {
+        self.scroll.offset().y.into()
+    }
+    pub(super) fn restore(&self, query: &str, y: f32, w: &mut Window, cx: &mut Context<Workspace>) {
+        if self.query(cx) != query {
+            self.query.update(cx, |i, cx| i.set_value(query, w, cx));
+        }
+        self.scroll.set_offset(gpui_kit::point(px(0.), px(y)));
+    }
     pub(super) fn query(&self, cx: &gpui_kit::App) -> String {
         self.query.read(cx).value().to_string()
     }

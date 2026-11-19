@@ -10,6 +10,34 @@ public final class DatalithActivity extends GpuiInputActivity {
     private static final int PICK_FOLDER = 841;
     private static native void folderPicked(String uri, String error);
 
+    private static native void openLink(String url);
+    private static native void choseOption(int index);
+
+    @Override protected void onCreate(android.os.Bundle state) {
+        super.onCreate(state);
+        if (state == null) deliverLink(getIntent());
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        deliverLink(intent);
+    }
+    private void deliverLink(Intent intent) {
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null
+                && "datalith".equals(intent.getData().getScheme())) openLink(intent.getDataString());
+    }
+
+    public void chooseOption(String title, String[] options, int selected) {
+        runOnUiThread(() -> new android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(options, selected, (dialog, index) -> {
+                dialog.dismiss();
+                choseOption(index);
+            })
+            .setNegativeButton(android.R.string.cancel, (dialog, button) -> choseOption(-1))
+            .setOnCancelListener(dialog -> choseOption(-1)).show());
+    }
+
     public void chooseVault() {
         runOnUiThread(() -> {
             try {

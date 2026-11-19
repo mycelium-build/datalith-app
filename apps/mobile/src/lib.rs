@@ -10,6 +10,7 @@ use gpui_kit::component::{ActiveTheme, Root, Theme, ThemeMode, theme::ThemeSet};
 use gpui_kit::{AppContext, Application, WindowOptions};
 
 mod browser;
+mod commands;
 use datalith_vault::draft;
 #[cfg(target_os = "ios")]
 mod ios;
@@ -86,6 +87,12 @@ fn launch(app: Application, documents: PathBuf) {
         channel_directory: None,
         app_data_dir: || DATA.get().cloned().unwrap_or_default(),
     });
+    #[cfg(target_os = "ios")]
+    app.on_open_urls(|urls| {
+        for url in urls {
+            commands::link(url);
+        }
+    });
     app.with_assets(DatalithAssets).run(move |cx| {
         gpui_kit::init(cx);
         let theme = include_str!("../../../assets/themes/datalith.json");
@@ -111,8 +118,10 @@ fn launch(app: Application, documents: PathBuf) {
             reading: cx.theme().font_family.clone(),
             code: cx.theme().mono_font_family.clone(),
         });
+        workspace::FontCatalog::install(cx);
         if let Err(error) = cx.open_window(WindowOptions::default(), |window, cx| {
             let view = cx.new(|cx| workspace::Workspace::new(starter(&documents), window, cx));
+            commands::attach(&view, window, cx);
             #[cfg(target_os = "ios")]
             ios::attach(&view, window, cx);
             cx.new(|cx| Root::new(view, window, cx))

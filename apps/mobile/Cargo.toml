@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+async-channel = "2"
 datalith-core.workspace = true
 datalith-ui.workspace = true
 datalith-vault.workspace = true

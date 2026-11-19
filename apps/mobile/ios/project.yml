@@ -17,6 +17,9 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Datalith
+        CFBundleURLTypes:
+          - CFBundleURLName: build.mycelium.datalith
+            CFBundleURLSchemes: [datalith]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}

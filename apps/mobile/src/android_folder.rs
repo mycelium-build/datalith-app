@@ -196,3 +196,48 @@ pub fn release(grant: &str) -> anyhow::Result<()> {
         Ok(())
     })
 }
+
+pub fn show_options(title: &str, items: &[String], selected: i32) -> anyhow::Result<()> {
+    activity(|env, app| {
+        let title = env.new_string(title)?;
+        let array = env.new_object_array(
+            i32::try_from(items.len())?,
+            "java/lang/String",
+            JObject::null(),
+        )?;
+        for (index, item) in items.iter().enumerate() {
+            let value = env.new_string(item)?;
+            env.set_object_array_element(&array, i32::try_from(index)?, &value)?;
+            env.delete_local_ref(value)?;
+        }
+        env.call_method(
+            app,
+            "chooseOption",
+            "(Ljava/lang/String;[Ljava/lang/String;I)V",
+            &[
+                JValue::Object(&title),
+                JValue::Object(&array),
+                JValue::Int(selected),
+            ],
+        )?;
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+extern "system" fn Java_build_mycelium_datalith_DatalithActivity_openLink(
+    mut env: JNIEnv<'_>,
+    _: JClass<'_>,
+    url: JString<'_>,
+) {
+    if let Ok(url) = env.get_string(&url) {
+        crate::commands::link(url.into());
+    }
+}
+#[unsafe(no_mangle)]
+extern "system" fn Java_build_mycelium_datalith_DatalithActivity_choseOption(
+    _: JNIEnv<'_>,
+    _: JClass<'_>,
+    index: i32,
+) {
+    crate::commands::choice(index);
+}

@@ -4,7 +4,6 @@ use gpui_kit::component::{
     IconName,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
-    menu::{DropdownMenu as _, PopupMenuItem},
     v_flex,
 };
 use gpui_kit::{
@@ -39,7 +38,6 @@ pub(super) struct FileForm {
 }
 impl Workspace {
     pub(crate) fn file_menu(path: &Path, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let entity = cx.weak_entity();
         let path = path.to_owned();
         Button::new(format!("actions-{}", path.display()))
             .ghost()
@@ -47,34 +45,38 @@ impl Workspace {
             .h(px(48.))
             .icon(IconName::Ellipsis)
             .accessibility_label(format!("Actions for {}", name(&path)))
-            .dropdown_menu(move |mut menu, _, _| {
-                for action in [Action::Rename, Action::Move] {
-                    let state = entity.clone();
-                    let path = path.clone();
-                    menu = menu.item(PopupMenuItem::new(action.label()).on_click(
-                        move |_, w, cx| {
-                            let _ =
-                                state.update(cx, |s, cx| s.begin_form(action, path.clone(), w, cx));
-                        },
-                    ));
+            .on_click(cx.listener(move |s, _, w, cx| {
+                s.choose(super::Choice::File(path.clone()), w, cx);
+            }))
+    }
+
+    pub(super) fn perform_file_action(
+        &mut self,
+        path: PathBuf,
+        label: &str,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self
+            .root
+            .as_ref()
+            .is_some_and(|r| path.starts_with(r) && !source::is_read_only(r))
+        {
+            return;
+        }
+        match label {
+            "Rename" => self.begin_form(Action::Rename, path, w, cx),
+            "Move" => self.begin_form(Action::Move, path, w, cx),
+            "Delete" => self.remove_file(&path, cx),
+            "Duplicate" => match file_ops::duplicate(&path) {
+                Ok(p) => self.changed_files(vec![p], cx),
+                Err(e) => {
+                    self.message = Some(e.to_string());
+                    cx.notify();
                 }
-                let duplicate = path.clone();
-                let state = entity.clone();
-                let target = path.clone();
-                let owner = entity.clone();
-                menu.item(PopupMenuItem::new("Duplicate").on_click(move |_, _, cx| {
-                    let _ = state.update(cx, |s, cx| match file_ops::duplicate(&duplicate) {
-                        Ok(p) => s.changed_files(vec![p], cx),
-                        Err(err) => {
-                            s.message = Some(err.to_string());
-                            cx.notify();
-                        }
-                    });
-                }))
-                .item(PopupMenuItem::new("Delete").on_click(move |_, _, cx| {
-                    let _ = owner.update(cx, |s, cx| s.remove_file(&target, cx));
-                }))
-            })
+            },
+            _ => {}
+        }
     }
     pub(super) fn create_button(folder: bool, cx: &Context<Self>) -> Button {
         let action = if folder {
@@ -287,12 +289,15 @@ impl Workspace {
     }
     fn forget_files(&mut self, target: &Path) {
         self.documents.retain(|path, _| !path.starts_with(target));
-        self.history.retain(|path| !path.starts_with(target));
+        if self.active.as_ref().is_some_and(|p| p.starts_with(target)) {
+            self.active = None;
+        }
     }
     pub(super) fn changed_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         if let Some(c) = &self.catalog {
             c.refresh_paths(paths);
         }
+        self.persist_session(cx);
         self.refresh_folder();
         self.search_changed(cx);
         cx.notify();

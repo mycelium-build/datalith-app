@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 mod panels;
+mod session;
 use datalith_vault::source;
+pub use panels::{Choice, FontCatalog};
 use panels::{Page, Preferences};
 
 mod files;
@@ -31,9 +33,14 @@ pub struct Workspace {
     pub(super) catalog: Option<VaultCatalog>,
     pub(super) registry: FileRegistry,
     documents: BTreeMap<PathBuf, Document>,
-    history: Vec<PathBuf>,
+    active: Option<PathBuf>,
+    backward: Vec<session::Route>,
+    forward: Vec<session::Route>,
+    restoring: bool,
+    session_save: Option<gpui_kit::Task<()>>,
     page: Option<Page>,
     preferences: Preferences,
+    choice: Option<(Choice, Vec<String>)>,
     notice_index: usize,
     file_form: Option<files::FileForm>,
     local_root: Option<PathBuf>,
@@ -57,15 +64,17 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe_window_appearance(window, |state: &mut Self, window, cx| {
-            gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
-            state.preferences.apply_size(cx);
+            state.preferences.apply_theme(window, cx);
             cx.notify();
         })
         .detach();
         cx.observe_window_activation(window, |state: &mut Self, w, cx| {
+            if !w.is_window_active() {
+                state.persist_session(cx);
+            }
             if w.is_window_active() && state.root.as_deref().is_some_and(source::is_provider) {
                 state.refresh_folder();
-                if let Some(p) = state.history.last().cloned() {
+                if let Some(p) = state.active.clone() {
                     state.refresh_document(&p, w, cx);
                 }
                 if let Some(c) = &state.catalog {
@@ -85,12 +94,17 @@ impl Workspace {
             focus: cx.focus_handle(),
             catalog: None,
             registry: default_registry(),
-            history: Vec::new(),
+            active: None,
+            backward: Vec::new(),
+            forward: Vec::new(),
+            restoring: false,
+            session_save: None,
             documents: BTreeMap::new(),
             page: None,
             notice_index: 0,
             file_form: None,
             preferences: Preferences::load(),
+            choice: None,
             local_root: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             external: None,
@@ -148,8 +162,8 @@ impl Workspace {
         name(path)
     }
     fn current(&self) -> Option<&Document> {
-        self.history
-            .last()
+        self.active
+            .as_ref()
             .and_then(|path| self.documents.get(path))
             .filter(|_| self.deleted_document.is_none())
     }
@@ -159,27 +173,48 @@ impl Workspace {
         let Ok(relative) = path.strip_prefix(root) else {
             return false;
         };
+        if !relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(n) if n != ".datalith"))
+        {
+            return false;
+        }
         if source::is_read_only(root) || source::is_provider(root) {
             return source::is_file(path);
         }
-        relative.components().all(|component|matches!(component,std::path::Component::Normal(name) if name != ".datalith"))
-            && path.is_file()
-            && path.canonicalize().ok().zip(root.canonicalize().ok()).is_some_and(|(file,root)|file.starts_with(root))
+        path.is_file()
+            && path
+                .canonicalize()
+                .ok()
+                .zip(root.canonicalize().ok())
+                .is_some_and(|(file, root)| file.starts_with(root))
     }
 
+    fn schedule_session_save(&mut self, cx: &Context<Self>) {
+        if self.restoring {
+            return;
+        }
+        self.session_save = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(180))
+                .await;
+            let _ = this.update(cx, |s, cx| s.persist_session(cx));
+        }));
+    }
     pub(super) fn open(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         if !self.in_vault(&path) {
             return;
         }
+        let previous = self.route(cx);
         self.message = None;
         self.advance(false);
         self.deleted_document = None;
         self.page = None;
-        if self.history.last() != Some(&path) {
-            self.history.push(path.clone());
-        }
         if self.documents.contains_key(&path) {
+            self.active = Some(path.clone());
+            self.record_route(previous, cx);
             self.refresh_document(&path, window, cx);
+            self.persist_session(cx);
             cx.notify();
             return;
         }
@@ -191,6 +226,9 @@ impl Workspace {
         if !handler.read(cx).is_read_only()
             && let Some(input) = handler.read(cx).input().cloned()
         {
+            subscriptions.push(cx.observe(&input, |s, _, cx| {
+                s.schedule_session_save(cx);
+            }));
             let path = path.clone();
             if source::is_provider(&path) {
                 match crate::draft::Edit::open(&path, input.read(cx).value().to_string()) {
@@ -231,6 +269,8 @@ impl Workspace {
             }));
         }
         subscriptions.push(Self::observe_links(path.clone(), &handler, window, cx));
+        self.active = Some(path.clone());
+        self.record_route(previous, cx);
         self.documents.insert(
             path.clone(),
             Document {
@@ -241,6 +281,7 @@ impl Workspace {
                 _subscriptions: subscriptions,
             },
         );
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -373,7 +414,7 @@ impl Workspace {
         }
     }
     fn resolve_draft(&mut self, copy: bool, w: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = self.history.last().cloned() else {
+        let Some(path) = self.active.clone() else {
             return;
         };
         let Some(edit) = self.documents.get_mut(&path).and_then(|d| d.edit.as_mut()) else {
@@ -406,6 +447,7 @@ impl Workspace {
         window.dismiss_virtual_keyboard();
         self.focus.focus(window, cx);
         if source::is_dir(&path) {
+            let previous = self.route(cx);
             match super::browser::Folder::new(path, window, cx) {
                 Ok(folder) => {
                     if !self.folders.is_empty() {
@@ -416,13 +458,14 @@ impl Workspace {
                     self.search_results.clear();
 
                     self.remember_folder(cx);
-                    self.history.clear();
+                    self.active = None;
+                    self.record_route(previous, cx);
+                    self.persist_session(cx);
                     self.deleted_document = None;
                 }
                 Err(error) => self.message = Some(error.to_string()),
             }
         } else if self.in_vault(&path) {
-            self.history.clear();
             self.open(path, window, cx);
         }
         cx.notify();
@@ -463,16 +506,20 @@ impl Workspace {
 
         if self.deleted_document.is_some() {
             self.deleted_document = None;
-        } else if self.history.pop().is_none() && self.folders.len() > 1 {
+        } else if !self.backward.is_empty() {
+            self.travel(false, window, cx);
+            return;
+        } else if self.active.take().is_none() && self.folders.len() > 1 {
             self.folders.pop();
             self.refresh_folder();
             self.remember_folder(cx);
             self.search_changed(cx);
         }
+        self.persist_session(cx);
         cx.notify();
     }
 
-    pub(super) fn toggle_mode(&self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn toggle_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(doc) = self.current() {
             doc.handler.update(cx, |handler, cx| {
                 if handler.can_toggle_mode() {
@@ -490,6 +537,7 @@ impl Workspace {
                     }
                 }
             });
+            self.persist_session(cx);
             cx.notify();
         }
     }
@@ -622,7 +670,7 @@ impl Workspace {
             .min_h(px(48.))
             .border_b_1()
             .border_color(cx.theme().border);
-        if has_detail && (!wide || self.history.len() > 1) {
+        if has_detail && (!wide || !self.backward.is_empty()) {
             bar = bar.child(
                 Button::new("back")
                     .ghost()
@@ -709,10 +757,11 @@ impl Render for Workspace {
             || self.deleted_document.is_some()
             || self.page.is_some()
             || self.file_form.is_some();
-        let can_back = has_detail || self.folders.len() > 1;
+        let can_back = has_detail || self.folders.len() > 1 || !self.backward.is_empty();
         #[cfg(target_os = "ios")]
         super::ios::update(
             can_back,
+            !self.forward.is_empty(),
             self.current()
                 .filter(|_| self.page.is_none() && self.file_form.is_none())
                 .map(|d| d.handler.read(cx)),
@@ -737,9 +786,16 @@ impl Render for Workspace {
                             .w(px(48.))
                             .accessibility_label("Back")
                             .on_click(cx.listener(|v, _, w, cx| {
-                                v.history.clear();
+                                let previous = v.route(cx);
+                                w.dismiss_virtual_keyboard();
+                                v.active = None;
                                 v.deleted_document = None;
-                                v.back(w, cx);
+                                v.folders.pop();
+                                v.refresh_folder();
+                                v.record_route(previous, cx);
+                                v.search_changed(cx);
+                                v.persist_session(cx);
+                                cx.notify();
                             })),
                     ),
                 );

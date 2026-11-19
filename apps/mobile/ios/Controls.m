@@ -3,6 +3,7 @@
 extern void datalith_mobile_action(int32_t action);
 static __weak UIViewController *surface;
 static BOOL canGoBack;
+static BOOL canGoForward;
 static int32_t editMode;
 static BOOL canDelete;
 static uint32_t backgroundRGBA;
@@ -50,14 +51,19 @@ static void applyControls(void) {
     controller.navigationItem.leftBarButtonItem = canGoBack ? item(@"Back", @"chevron.backward", 0) : nil;
     NSMutableArray *actions = [NSMutableArray array];
     if (editMode) [actions addObject:editMode == 1 ? item(@"Edit", @"pencil", 1) : item(@"Read", @"book", 1)];
+    if (canGoForward) [actions addObject:item(@"Forward", @"chevron.forward", 6)];
     if (canGoBack || editMode || canDelete) {
         UIAction *library = [UIAction actionWithTitle:@"Library" image:[UIImage systemImageNamed:@"books.vertical"]
             identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(4); }];
+        UIAction *documents = [UIAction actionWithTitle:@"Open documents" image:[UIImage systemImageNamed:@"square.stack"]
+            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(7); }];
+        UIAction *settings = [UIAction actionWithTitle:@"Settings" image:[UIImage systemImageNamed:@"gearshape"]
+            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(8); }];
         UIAction *remove = [UIAction actionWithTitle:@"Delete" image:[UIImage systemImageNamed:@"trash"]
             identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(2); }];
         remove.attributes = UIMenuElementAttributesDestructive;
         UIBarButtonItem *more = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
-            menu:[UIMenu menuWithChildren:canDelete ? @[library, remove] : @[library]]];
+            menu:[UIMenu menuWithChildren:canDelete ? @[library, documents, settings, remove] : @[library, documents, settings]]];
         more.accessibilityLabel = @"More actions";
         [actions addObject:more];
     }
@@ -82,13 +88,53 @@ void datalith_install_controls(void *pointer) {
     });
 }
 
-void datalith_set_controls(bool back, int32_t mode, bool writable, uint32_t background) {
-    if (back == canGoBack && mode == editMode && writable == canDelete && background == backgroundRGBA) return;
+void datalith_set_controls(bool back, bool forward, int32_t mode, bool writable, uint32_t background) {
+    if (forward == canGoForward && back == canGoBack && mode == editMode && writable == canDelete && background == backgroundRGBA) return;
     backgroundRGBA = background;
     canGoBack = back;
+    canGoForward = forward;
     editMode = mode;
     canDelete = writable;
     dispatch_async(dispatch_get_main_queue(), ^{ applyControls(); });
 }
 
 UIViewController *datalith_presenter(void) { return surface; }
+
+extern void datalith_chose(int32_t index);
+@interface DatalithChoices : UITableViewController <UIAdaptivePresentationControllerDelegate>
+@property(nonatomic, copy) NSArray<NSString *> *options;
+@property(nonatomic) NSInteger selected;
+@end
+@implementation DatalithChoices
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return self.options.count; }
+- (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
+    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"choice"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"choice"];
+    cell.textLabel.text = self.options[index.row];
+    cell.accessoryType = index.row == self.selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    return cell;
+}
+- (void)finish:(NSInteger)result {
+    [self dismissViewControllerAnimated:YES completion:^{ datalith_chose((int32_t)result); }];
+}
+- (void)cancel { [self finish:-1]; }
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController { datalith_chose(-1); }
+- (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index { [self finish:index.row]; }
+@end
+
+void datalith_choose(const char *title, const char *json, int32_t selected) {
+    NSString *heading = [NSString stringWithUTF8String:title];
+    NSData *data = [[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding];
+    NSArray *options = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!surface || surface.presentedViewController) { datalith_chose(-1); return; }
+        DatalithChoices *choices = [[DatalithChoices alloc] initWithStyle:UITableViewStyleInsetGrouped];
+        choices.options = options;
+        choices.selected = selected;
+        choices.title = heading;
+        choices.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:choices action:@selector(cancel)];
+        UINavigationController *sheet = [[UINavigationController alloc] initWithRootViewController:choices];
+        sheet.presentationController.delegate = choices;
+        [surface presentViewController:sheet animated:YES completion:nil];
+    });
+}
