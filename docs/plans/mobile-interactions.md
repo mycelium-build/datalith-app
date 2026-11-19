@@ -1,21 +1,45 @@
-# Architecture proposée pour Datalith mobile
+# De chaque vue desktop à son usage tactile
 
-Revue de la PR #89 au commit `06d30d2`. Ce document décrit des choix de conception à essayer. Claude Opus 5.5 a examiné le code, les parcours et la répartition des responsabilités. Le premier parcours à rendre utilisable est **retrouver une note à partir de ses liens dans un graphe, la lire et revenir au même endroit**.
+Ce plan pour la PR #89 part de ce que l’on vient faire dans chaque vue desktop. Les parcours tactiles sont des propositions à essayer. Les observations du prototype sont consignées à la fin. Un changement de largeur peut modifier la disposition pendant que l’utilisateur lit, écrit ou déplace une carte.
 
-## Tour de Claude sur iPhone 17, iOS 27.2
+## Coffres, fichiers et documents ouverts
 
-| Parcours effectivement joué | Observation | Conséquence pour la refonte |
+| Vue desktop et tâche | Parcours tactile proposé | Essai de la vue |
 | --- | --- | --- |
-| `Overview.base → Wiki`, glissé vertical, horizontal, pincement | Le glissé vertical change le zoom. Le glissé horizontal et le pincement n’ont pas déplacé la carte. Après plusieurs gestes, Claude a dû quitter et rouvrir la Base pour retrouver les nœuds. | Priorité au panoramique et à Ajuster, accessibles immédiatement. |
-| Toucher un nœud → ouvrir sa note | Claude a obtenu « Cannot open …/formats/bases/Overview.md ». Le même fichier s’ouvrait depuis le coffre. Le bandeau d’erreur a persisté jusque dans l’éditeur. | Une seule commande d’ouverture, avec des entrées distinctes pour chemin du coffre et lien relatif au document. Tester le même fichier depuis trois origines. Rattacher l’erreur à la destination, avec fermeture accessible. |
-| Recherche depuis la racine | « Welc » retrouve Welcome.md. « Library » donne zéro résultat alors que la Base existe dans un sous-dossier. Retour conserve la requête. | Afficher la portée effective et brancher la recherche du coffre sur le catalogue. |
-| `Library.base`, table, Covers, Reading board, Cross references | Le tableau groupé défile horizontalement. Le changement de vue fonctionne. Cross references hérite du décalage de la table précédente. Sur le board, Claude a défilé dans une colonne, mais n’a pu ni atteindre la colonne reading au doigt ni ouvrir une carte. | Conserver le défilement par vue. Donner un accès direct aux colonnes et une action explicite sur chaque carte. |
-| Note Markdown, éditeur et clavier | Lecture, défilement, passage au source, saisie et effacement ont fonctionné. Le texte d’origine a été vérifié sur disque. | Préserver ce parcours pendant la refonte de la navigation et des erreurs. |
-| Navigation assistée | L’outil d’inspection a trouvé les commandes UIKit, mais pas les nœuds ou lignes GPUI dans les écrans parcourus. | Tester la sémantique exposée et faire le parcours avec VoiceOver puis TalkBack. |
+| **Lancement et choix du coffre.** Retrouver ses fichiers ou découvrir le coffre de documentation. | Depuis l’accueil, toucher le nom du coffre pour retrouver le dernier dossier. Pour un coffre externe, passer par le sélecteur système si la prise en charge de l’accès persistant est retenue. Identifier la documentation en lecture seule. | Relancer depuis un coffre vide, puis depuis un coffre déjà parcouru. Si l’accès a été révoqué, permettre de le redonner depuis le coffre concerné. |
+| **Arborescence.** Explorer les dossiers et agir sur un fichier. | Sur téléphone, toucher une ligne ouvre son dossier ou son document. En grand format, garder la liste visible et la sélection marquée. Le menu de la ligne présente les actions autorisées sur ce fichier. Pour déplacer, choisir un dossier de destination. Après suppression, afficher Annuler dans la bannière basse. | Supprimer puis restaurer une note dans un sous-dossier. Vérifier son chemin, la position dans la liste et l’absence d’actions d’écriture sur la documentation. |
+| **Palette de recherche.** Retrouver une note par nom ou contenu. | La loupe ouvre le champ et les résultats. Afficher la portée effective. Toucher un résultat ouvre le document. Retour retrouve la requête, le résultat et la position. Réutiliser le catalogue desktop pour une éventuelle recherche dans tout le coffre. | Depuis la racine, chercher « Library ». Un filtre du dossier doit indiquer sa limite. La recherche dans tout le coffre doit retrouver la Base du sous-dossier. |
+| **Onglets et changement rapide.** Reprendre un autre document en cours. | L’historique sert à revenir au point de départ. Pour passer directement entre documents ouverts, essayer une liste des titres avec leur dossier si deux noms coïncident. Chaque document garde sa session. | Saisir dans A, consulter B, reprendre A et retrouver son tampon et sa sélection. Annuler à mi-course le geste Retour depuis B doit laisser B affiché. |
 
-Claude a effectué ce tour sur un simulateur distinct après que `DEVICE_IN_USE` a bloqué le pilotage du premier iPhone 18 Pro. Les interactions Android, iPad et du téléphone physique n’ont pas été rejouées dans cet audit.
+Le sélecteur et le contenu utilisent le thème GPUI de Datalith. Sur un téléphone classique, le système anime le passage liste → document. Sur le Duo fermé, Retour occupe le rail de droite et le contenu utilise toute la hauteur, sans en-tête ajouté. Sur le Duo ouvert et sur iPad, afficher liste et détail ensemble dès que les deux restent lisibles à la taille de texte choisie. Sur Android, le geste Retour et la commande visible agissent sur la même destination. [Arbre desktop](../../apps/desktop/src/ui/sidebar/file_tree.rs) · [Palette](../../apps/desktop/src/ui/palette.rs) · [Documents ouverts](../../apps/desktop/src/ui/tabs/workspace.rs) · [Guide Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo) · [Disposition Android](https://developer.android.com/develop/adaptive-apps/guides/list-detail)
 
-## Pourquoi le graphe échoue au toucher
+## Documents
+
+| Vue desktop et tâche | Parcours tactile proposé | Essai de la vue |
+| --- | --- | --- |
+| **Lecture Markdown.** Lire le texte rendu, ses propriétés et ses wikiliens. | Garder le rendu des blocs et la typographie Datalith. Glisser pour lire, toucher un lien pour le suivre, revenir au paragraphe d’origine. L’icône crayon ouvre la source si le document est éditable. | Depuis une note longue, suivre un wikilien, revenir, puis passer en édition. Vérifier le passage retrouvé, le nom du document et son contenu. |
+| **Édition Markdown.** Écrire et compléter un wikilien. | Le toucher place le curseur dans l’éditeur partagé. Garder le passage actif et les suggestions visibles au-dessus du clavier. Toucher une suggestion insère le lien. La lecture reprend le même tampon. | Composer un accent, insérer un emoji et un wikilien, puis déplier le Duo pendant la saisie. Vérifier la sélection, l’aperçu et le texte enregistré. |
+| **Texte brut et fichiers sans vue spécialisée.** Lire ou corriger le contenu. | Utiliser le traitement du registre et le même éditeur texte. Autoriser la sélection et la copie en lecture seule. | Ouvrir un fichier texte d’extension inconnue, modifier puis rouvrir. Rejouer sur un fichier protégé et vérifier qu’il reste intact. |
+| **todo.txt.** Cocher une tâche, en saisir une autre, filtrer ou trier. | Distinguer la case à cocher de la zone de texte qui ouvre l’édition. Rendre priorité, filtre et tri accessibles au toucher. Garder la tâche en cours visible au-dessus du clavier. | Avec un filtre actif, terminer une tâche qui disparaît des résultats. Vérifier dans le fichier que seule cette tâche a changé, puis ajouter une tâche. |
+| **Image.** Examiner une pièce jointe. | Ouvrir l’image entière sur le fond du thème. Sur un grand écran, ajuster au panneau de lecture. Pour examiner un détail, essayer le zoom et une commande de retour au cadrage initial. | Ouvrir une image en portrait, pivoter, revenir au dossier et retrouver sa ligne. Vérifier que la visionneuse propose uniquement des actions de consultation. |
+
+Le registre construit éditeurs et visionneuses. Le lecteur Markdown et l’aperçu de Base observent chacun le tampon de leur éditeur. Conserver cette relation lorsque le clavier, le mode ou le nombre de panneaux change. [Registre](../../crates/datalith-ui/src/registry.rs) · [Lecture Markdown](../../crates/datalith-ui/src/viewers/markdown/mod.rs) · [Tâches](../../crates/datalith-ui/src/editors/todo_txt/render.rs) · [Images](../../crates/datalith-ui/src/viewers/image.rs)
+
+## Bases
+
+Le nom de la vue active sert de sélecteur. Le toucher affiche **les vues définies dans ce fichier**, dans leur ordre, avec la sélection actuelle. Ce nom identifie du contenu et doit rester lisible, y compris sur le Duo où le sélecteur peut s’ouvrir depuis le rail. Chaque vue garde son défilement et sa sélection pendant la session. Le catalogue, les filtres et les regroupements du fichier alimentent toutes les présentations. [Visionneuse](../../crates/datalith-ui/src/viewers/base/mod.rs) · [Library.base](../vault/examples/bases/Library.base) · [Overview.base](../vault/Overview.base)
+
+| Vue desktop et tâche | Parcours tactile proposé | Essai de la vue |
+| --- | --- | --- |
+| **Liste.** Parcourir rapidement des entrées déjà triées ou groupées. | Faire défiler une seule liste verticale. Garder le nom et les propriétés configurées lisibles sur plusieurs lignes au besoin. Toucher le nom ouvre la note. | Dans *Recently touched*, ouvrir une entrée puis revenir. Retrouver la ligne au même endroit et vérifier l’ordre des résultats. |
+| **Table.** Comparer la même propriété sur plusieurs notes. | Garder les valeurs alignées et l’identité de la ligne visible pendant le défilement horizontal. Toucher une ligne ouvre ses propriétés en fiche, avec une action pour ouvrir la note. Sur grand écran, utiliser la largeur pour montrer davantage de colonnes. | Dans *Library by status*, comparer deux livres sur une colonne éloignée. Passer à *Cross references* puis revenir. Chaque table retrouve son propre décalage. |
+| **Cartes.** Reconnaître un livre par sa couverture puis l’ouvrir. | Conserver couverture, titre et propriétés de la carte GPUI. Adapter le nombre de colonnes à la largeur et au texte agrandi. Toute la carte ouvre le document. | Dans *Covers*, ouvrir un livre en touchant son image puis revenir au même rang. Tester aussi un titre long et une couverture absente. |
+| **Kanban.** Lire les livres d’une colonne ou changer leur classement. | En compact, afficher une colonne et son nom comme sélecteur donnant accès à toutes les colonnes. En large, en montrer plusieurs. Toucher une carte ouvre la note. Son menu permet de choisir une destination lorsque la règle desktop autorise le déplacement. | Dans *Reading board*, atteindre la colonne *reading* et ouvrir une carte. Dans une copie éditable, déplacer un livre puis vérifier son classement après réouverture. En lecture seule, conserver la consultation. |
+| **Source YAML.** Modifier la définition et examiner son effet. | Lorsque l’édition est offerte, ouvrir l’éditeur de Base partagé et revenir à la vue nommée si elle existe encore. Rattacher les erreurs de définition à cette Base. La disponibilité sur téléphone reste à arbitrer. | Dans une copie, renommer une vue en YAML et vérifier le sélecteur. Introduire puis corriger une erreur avec le clavier affiché. |
+
+La commande tactile de déplacement du kanban doit partager les conditions déjà utilisées pour le glisser desktop, notamment pour les groupes calculés et les fichiers protégés. [Liste](../../crates/datalith-ui/src/viewers/base/list.rs) · [Table](../../crates/datalith-ui/src/viewers/base/table.rs) · [Cartes](../../crates/datalith-ui/src/viewers/base/cards/mod.rs) · [Kanban](../../crates/datalith-ui/src/viewers/base/kanban.rs) · [Source YAML](../../crates/datalith-ui/src/editors/base.rs)
+
+### Graphe — identifier une note à partir de ses liens
 
 Le canevas écoute la souris et la molette. Le même déplacement fait bouger un nœud ou déplace la caméra selon l’endroit où le doigt tombe. Quatre unités de déplacement suffisent pour transformer un appui en glissement. La cible est le rayon dessiné dans le repère du graphe : dézoomer la rend de plus en plus petite. Le cadrage initial plafonne le zoom à 1,5 ; le rendu attend 2,5 avant d’afficher les noms sans survol. Un graphe fraîchement cadré démarre donc sans libellés persistants. Relâcher un nœud ouvre directement son document. Un utilisateur au doigt doit donc identifier une note avant de pouvoir lire son nom. [Interactions](../../crates/datalith-ui/src/viewers/base/graph/mod.rs) · [Cibles et libellés](../../crates/datalith-ui/src/viewers/base/graph/model.rs)
 
@@ -32,51 +56,40 @@ Les gestes proposés suivent les conventions iOS ; l’alternative à une manipu
 
 **Option pour les graphes denses.** Permettre d’isoler les voisins de la note sélectionnée, puis de revenir à la carte entière. Da Lozzo, Di Battista et Ingrassia ont implémenté une exploration de graphe par voisinage sur smartphone. Pour Datalith, l’essai doit déterminer si ce mode aide à retrouver une note sans faire perdre le contexte de la Base. [Étude originale, *Drawing Graphs on a Smartphone*](https://jgaa.info/index.php/jgaa/article/view/paper252)
 
-## Parcours et propriétaires de l’état
+Sur grand écran, essayer la fiche de sélection à côté du graphe. Dans *Overview.base → Wiki*, ouvrir une note depuis sa fiche puis revenir à la même caméra et à la sélection. Ouvrir ensuite le même fichier depuis le coffre et un wikilien pour vérifier la résolution des chemins.
 
-| Parcours | Présentation mobile | État à conserver |
-| --- | --- | --- |
-| Coffre → recherche → note | Afficher le dossier courant et la portée de la recherche. Au toucher d’un résultat, ouvrir le document. | Chemin du dossier, requête, position de la liste, résultat actif. Aujourd’hui le filtre porte sur les noms du dossier courant. Une recherche globale devrait utiliser le catalogue et annoncer sa portée. |
-| Note → lien → Retour | Conserver un historique unique des destinations visitées. Le système pilote le geste de retour et son annulation. | Document, mode de lecture ou d’édition, défilement et sélection. La fermeture du clavier, d’une fiche et d’un document sont des transitions distinctes. |
-| Base → vue → élément | Donner accès aux vues du fichier depuis leur nom courant. Sur un écran étroit, rendre l’identité de chaque ligne lisible ; ouvrir sa fiche pour les propriétés longues. Vérifier séparément cartes, tableau et colonnes kanban. | Nom de vue, tri, sélection et défilement par vue. Les options de présentation du téléphone restent en mémoire d’interface. |
-| Supprimer → annuler | Action destructive dans le menu, bannière basse avec Annuler à portée du pouce. | Le coffre gère le déplacement en corbeille ; la navigation mémorise où revenir après restauration. |
-| Changement de largeur ou de posture | Sur téléphone, une destination au premier plan. Sur grand écran, coffre et document côte à côte quand les deux sont lisibles. Sur le Duo fermé, Retour et actions dans le rail système. | La même session de document et les mêmes destinations survivent au changement de présentation, y compris pendant la saisie. |
+## Réglages, thèmes et informations
 
-La largeur utile, le clavier et les réserves système déterminent la place disponible. Évaluer les deux colonnes avec des notes longues et la taille de texte agrandie. Android documente le passage liste/détail entre un et deux panneaux ; UIKit déplace les contrôles dans le rail du Duo. Les composants, icônes et couleurs du contenu restent ceux de Datalith. [Disposition Android](https://developer.android.com/develop/adaptive-apps/guides/list-detail) · [iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo)
+| Vue desktop | Transposition et vérification |
+| --- | --- |
+| **Général et apparence.** | Présenter les préférences pertinentes sous forme de lignes tactiles. Essayer une taille de texte supérieure puis rouvrir la note et les réglages. Vérifier que les libellés restent lisibles sur les deux surfaces. |
+| **Choix du thème et aperçu.** | Toucher un thème pour examiner son rendu sur la liste et le document. Conserver les couleurs, polices et tokens du thème Datalith. La création et l’import/export de thèmes relèvent de l’atelier desktop, dont le port est différé dans la proposition de périmètre. |
+| **À propos, licences et documentation.** | Regrouper leurs entrées dans les réglages. Ouvrir le texte d’une licence ou une note de documentation, le parcourir en texte agrandi puis revenir à l’entrée d’origine. |
+| **Raccourcis, serveur et mises à jour.** | Les commandes tactiles appellent les actions partagées. Les raccourcis desktop restent dans l’application desktop. Le serveur Clipper et la gestion des mises à jour desktop y gardent leurs écrans. |
 
-### Exemple de retour depuis le graphe
+[Réglages desktop](../../apps/desktop/src/ui/settings/mod.rs) · [Atelier de thèmes](../../apps/desktop/src/ui/themes/editor/mod.rs) · [Licences](../../apps/desktop/src/ui/licenses.rs) · [Périmètre mobile et arbitrages](mobile-scope.md)
 
-```mermaid
-flowchart LR
-    B["Base · vue Wiki"] -->|toucher une note| S["Graphe · note sélectionnée"]
-    S -->|Ouvrir| N["Lecture de la note"]
-    N -->|Retour| S
-    S -->|fermer la fiche| B
-    B -->|Retour| D["Dossier ou résultats d’origine"]
-```
+## Responsabilités communes aux vues
 
-Sur grand écran, la fiche peut prendre place à côté du graphe. Ouvrir la note utilise d’abord le panneau de détail existant. Une troisième colonne permanente réduirait la surface de lecture et ajouterait un historique ; la tester seulement si les usages sur iPad la justifient.
-
-### Découpage technique
 
 - **`datalith-core` et `datalith-vault`** conservent les définitions de vues, les chemins, les relations, la recherche et les opérations sur les fichiers.
 - **`datalith-ui`** conserve les tampons, visionneuses, modèles de Base, caméra et moteur du graphe. Ajouter une interaction tactile qui exploite ces modèles. GPUI 0.3.12 expose `on_pinch`, mais son reconnaisseur tactile ignore les contacts supplémentaires. Son glissé à un doigt peut produire un événement de défilement que le graphe interprète comme un zoom. Prototyper la prise en charge du déplacement tactile via `TouchDragEvent` et vérifier tap, glissé et annulation sur chaque backend avant de toucher aux dépendances. [Reconnaisseur de GPUI 0.3.12](https://docs.rs/crate/gpui-pre/0.3.12/source/src/gestures.rs#527) La sélection persistante doit être distincte du survol desktop.
 - **`apps/mobile`** possède l’historique de navigation, les présentations temporaires et la restauration. La couche GPUI rend le contenu et expose des actions sémantiques pour les lignes et les nœuds. La coque native relaie les contrôles système, le clavier, les zones réservées et le cycle du geste Retour. Éviter deux historiques qui peuvent diverger.
 - **Accessibilité** : vérifier avec VoiceOver et TalkBack que les éléments annoncent nom, rôle, sélection et action. Tester des cibles de 44 points sur iOS et de 48 dp sur Android, texte agrandi, réduction des animations et alternative à chaque geste complexe. [Apple](https://developer.apple.com/design/human-interface-guidelines/accessibility) · [Android](https://developer.android.com/guide/topics/ui/accessibility/apps)
 
-## Autres décisions de la revue de Claude
+Chaque parcours ci-dessus doit pouvoir être rejoué sur téléphone classique, Duo et iPad, puis sur Android avec le Retour système. Vérifier les transitions avec réduction des animations, l’annulation du geste Retour et la restauration après changement de largeur. Pour une erreur d’ouverture, l’afficher sur la vue à l’origine de la demande et permettre de la fermer sur place.
 
-- **Commandes de l’écran.** Remplacer les entiers et booléens transmis au chrome iOS par des commandes nommées et un état dérivé de la destination active. Rendre le nom du document identifiable en édition même si le fichier ne contient aucun titre Markdown. Sur le Duo fermé, préserver la hauteur du contenu et laisser le système placer les commandes.
-- **Recherche et retour.** Distinguer « Ce dossier » et « Tout le coffre ». La recherche globale, la création de notes et la gestion des documents ouverts constituent des lots produit à arbitrer. Une feuille de documents ouverts peut se tester séparément de l’historique de navigation.
-- **Édition.** Garder le clavier, le tampon et la sélection déjà vérifiés. Évaluer les commandes Markdown difficiles à saisir (par exemple `[[`) avec un clavier affiché. Garder la sauvegarde actuelle pendant ces essais ; modifier sa politique demanderait des tests de suspension, d’arrêt inattendu et de conflit.
-- **Bases.** En compact, essayer une fiche de ligne avec le nom du fichier et toutes ses propriétés. Quand le tableau est utile pour comparer deux livres, garder la colonne d’identité visible en défilement horizontal. Vérifier les propriétés longues dans les cartes. Donner accès à « Déplacer vers la colonne… » depuis la carte kanban.
-- **Feedback et accessibilité.** Afficher une confirmation réversible et refermable après suppression. Vérifier que le lecteur d’écran annonce la bannière et qu’Annuler reste accessible lorsque le clavier est visible. Rendre la légende du graphe repliable, avec une alternative aux couleurs seules.
+## Tour de Claude sur iPhone 17, iOS 27.2
 
-## Livraison et essais
+| Parcours effectivement joué | Observation | Conséquence pour la refonte |
+| --- | --- | --- |
+| `Overview.base → Wiki`, glissé vertical, horizontal, pincement | Le glissé vertical change le zoom. Le glissé horizontal et le pincement n’ont pas déplacé la carte. Après plusieurs gestes, Claude a dû quitter et rouvrir la Base pour retrouver les nœuds. | Priorité au panoramique et à Ajuster, accessibles immédiatement. |
+| Toucher un nœud → ouvrir sa note | Claude a obtenu « Cannot open …/formats/bases/Overview.md ». Le même fichier s’ouvrait depuis le coffre. Le bandeau d’erreur a persisté jusque dans l’éditeur. | Une seule commande d’ouverture, avec des entrées distinctes pour chemin du coffre et lien relatif au document. Tester le même fichier depuis trois origines. Rattacher l’erreur à la destination, avec fermeture accessible. |
+| Recherche depuis la racine | « Welc » retrouve Welcome.md. « Library » donne zéro résultat alors que la Base existe dans un sous-dossier. Retour conserve la requête. | Afficher la portée effective et brancher la recherche du coffre sur le catalogue. |
+| `Library.base`, table, Covers, Reading board, Cross references | Le tableau groupé défile horizontalement. Le changement de vue fonctionne. Cross references hérite du décalage de la table précédente. Sur le board, Claude a défilé dans une colonne, mais n’a pu ni atteindre la colonne reading au doigt ni ouvrir une carte. | Conserver le défilement par vue. Donner un accès direct aux colonnes et une action explicite sur chaque carte. |
+| Note Markdown, éditeur et clavier | Lecture, défilement, passage au source, saisie et effacement ont fonctionné. Le texte d’origine a été vérifié sur disque. | Préserver ce parcours pendant la refonte de la navigation et des erreurs. |
+| Navigation assistée | L’outil d’inspection a trouvé les commandes UIKit, mais pas les nœuds ou lignes GPUI dans les écrans parcourus. | Tester la sémantique exposée et faire le parcours avec VoiceOver puis TalkBack. |
 
-1. **Prototype graphe sur un vrai parcours.** Ouvrir `Overview.base → Wiki`, identifier une note par son nom, inspecter ses liens, ouvrir la note, revenir, puis retrouver la vue d’ensemble. Observer les erreurs de ciblage avec une main sur un iPhone classique et avec le rail sur le Duo. Rejouer avec un graphe dense, vide et à un seul nœud. Valider le modèle de sélection avant de modifier tous les écrans.
-2. **Navigation et adaptation.** Rejouer dossier → recherche → note → lien → Retour, y compris un geste annulé à mi-chemin. Replier le Duo pendant l’édition, redimensionner l’iPad et ouvrir le clavier sous Android. Le document, le curseur, le défilement et la requête doivent rester reconnaissables ; vérifier l’ordre de fermeture du clavier et des présentations temporaires.
-3. **Bases et outils de lecture.** Dans `examples/bases/Library.base`, changer de vue, identifier le livre sur une ligne large, lire toutes ses propriétés dans Covers et revenir à la même ligne. Pour le kanban, proposer le choix d’une colonne depuis la carte en plus du glisser-déposer. Tester avec le fichier existant à quatre vues et le fichier livré à cinq vues, qui contient Reading board.
-4. **Vérification avant livraison.** Essayer sur téléphone physique avec VoiceOver et TalkBack. Couvrir tap, défilement, pincement, clavier avec composition, retour système et réduction des animations. Lancer les mêmes scénarios sur Android avant de conclure à la parité. Un build réussi ne valide pas les gestes.
+Claude a effectué ce tour sur un simulateur distinct après que `DEVICE_IN_USE` a bloqué le pilotage du premier iPhone 18 Pro. Les interactions Android, iPad et du téléphone physique n’ont pas été rejouées dans cet audit.
 
 Sur le Duo simulé, le test de cette revue a ouvert `Overview.base → Wiki` sur l’écran externe puis déplié l’appareil. Le rail est resté à droite et le coffre est apparu à gauche. Les points et la légende étaient visibles dans les deux postures ; aucun nom de note n’était affiché dans le graphe au cadrage initial. Android et iPad restent à vérifier sur appareil dans cette revue.

@@ -36,7 +36,7 @@ La première itération réutilise les éditeurs et visionneuses de `datalith-ui
 2. **Retour et changement de document.** Proposition : « Retour » ramène au point de départ, y compris aux résultats d’une recherche. Le bouton d’arborescence ouvre toujours le coffre. Le passage rapide entre notes ouvertes reste une action distincte. Comparer les variantes avec les mêmes notes dans le prototype.
 3. **Bases et personnalisation.** Confirmer si le graphe et l’éditeur YAML sont indispensables dès la première version téléphone, et si l’atelier de thèmes peut attendre sur les deux formats. Ces priorités conditionnent directement le lot de maquettes.
 
-La [proposition d’architecture tactile](mobile-interactions.md) détaille le parcours graphe → note → retour, les responsabilités des couches et les essais sur téléphone et grand écran.
+La [proposition d’architecture tactile](mobile-interactions.md) reprend chaque vue desktop, décrit son usage tactile et donne un parcours de vérification pour le coffre, les documents, les cinq présentations de Base et les réglages.
 
 ## Passage aux maquettes
 
