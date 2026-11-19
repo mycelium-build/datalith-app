@@ -589,11 +589,6 @@ jobs:
             --submit
 
   finalize:
-    concurrency:
-      group: publish-updates
-      cancel-in-progress: false
-    environment:
-      name: github-pages
     needs: [package, source]
     if: >-
       always()
@@ -610,8 +605,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
-      pages: write
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -711,6 +704,27 @@ jobs:
                 source_ref: process.env.RELEASE_TAG,
               },
             })
+
+  # Its own job, like update-manifest.yml: deploy-pages found no artifact when this
+  # ran inside finalize (1.2.0-rc.1), and a failed deploy no longer skips the notifications.
+  publish-updates:
+    concurrency:
+      group: publish-updates
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+    needs: finalize
+    if: always() && needs.finalize.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Publish update manifests
         uses: ./.github/actions/publish-updates
