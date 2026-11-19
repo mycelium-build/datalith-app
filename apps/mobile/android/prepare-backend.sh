@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 # Prepare the pinned GPUI Android backend before compiling the NativeActivity bridge.
+# Git hooks export the parent repository's GIT_DIR and index. Clear them
+# before discovering this worktree or running Git in the backend checkout.
+for variable in $(git rev-parse --local-env-vars); do
+    unset "$variable"
+done
 cd "$(dirname "$0")"
 root=$(git rev-parse --show-toplevel)
 backend="$root/target/android/gpui-mobile"

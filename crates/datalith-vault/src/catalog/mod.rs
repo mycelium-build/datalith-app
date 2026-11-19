@@ -372,7 +372,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
         if !path.starts_with(&root) || path.starts_with(root.join(DATALITH_DIR_NAME)) {
             continue;
         }
-        if path.is_dir() {
+        if crate::source::is_dir(&path) {
             let Ok(current) = walk_tracked_files(&path, &inner.file_types) else {
                 continue;
             };
@@ -385,7 +385,7 @@ fn reconcile_paths(inner: &CatalogInner, event_paths: Vec<PathBuf>) {
                     })
                     .cloned(),
             );
-        } else if path.is_file() && inner.file_types.is_tracked(&path) {
+        } else if crate::source::is_file(&path) && inner.file_types.is_tracked(&path) {
             changed.insert(path);
         } else {
             removed.extend(

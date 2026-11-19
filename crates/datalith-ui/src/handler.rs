@@ -103,6 +103,11 @@ impl FileHandler {
         Ok(outcome)
     }
 
+    pub fn dismiss_view_control(&self, cx: &mut App) -> bool {
+        self.mode == ViewMode::View
+            && matches!(&self.viewer, Some(ViewerKind::Base(base)) if base.dismiss_control(cx))
+    }
+
     #[must_use]
     pub fn is_editing(&self) -> bool {
         self.mode == ViewMode::Edit

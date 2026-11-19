@@ -76,3 +76,15 @@ license = "MIT"
 files = [
     { path = "../../LICENSE", checksum = "c41f3989590266fd675a3fad6371b9f51620f41e093f4a193f625337d6535407" },
 ]
+
+[datalith-mobile.clarify]
+license = "MIT"
+files = [
+    { path = "../../LICENSE", checksum = "c41f3989590266fd675a3fad6371b9f51620f41e093f4a193f625337d6535407" },
+]
+
+[datalith-android.clarify]
+license = "MIT"
+files = [
+    { path = "../../../LICENSE", checksum = "c41f3989590266fd675a3fad6371b9f51620f41e093f4a193f625337d6535407" },
+]

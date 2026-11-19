@@ -8,6 +8,9 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
+pub mod provider;
+pub use provider::is_provider;
+
 const EMBEDDED_NAMESPACE: &str = "datalith-embedded:";
 
 /// An immutable resource collection. Register additional bundles alongside documentation.
@@ -62,6 +65,7 @@ impl EmbeddedVault {
 pub enum VaultSource {
     Directory(PathBuf),
     Embedded(EmbeddedVault),
+    Provider(PathBuf),
 }
 
 impl VaultSource {
@@ -74,6 +78,8 @@ impl VaultSource {
                 .filter(|vault| vault.root() == root)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Unknown embedded vault"))?;
             Ok(Self::Embedded(vault))
+        } else if is_provider(root) && is_dir(root) {
+            Ok(Self::Provider(root.to_owned()))
         } else if root.is_dir() {
             Ok(Self::Directory(root.to_path_buf()))
         } else {
@@ -88,7 +94,7 @@ impl VaultSource {
     #[must_use]
     pub fn root(&self) -> Cow<'_, Path> {
         match self {
-            Self::Directory(root) => Cow::Borrowed(root),
+            Self::Directory(root) | Self::Provider(root) => Cow::Borrowed(root),
             Self::Embedded(vault) => Cow::Owned(vault.root()),
         }
     }
@@ -100,6 +106,26 @@ impl VaultSource {
     pub fn paths(&self) -> io::Result<Vec<PathBuf>> {
         match self {
             Self::Embedded(vault) => Ok(vault.paths()),
+            Self::Provider(root) => {
+                let mut files = Vec::new();
+                let mut pending = vec![root.clone()];
+                while let Some(directory) = pending.pop() {
+                    for child in read_dir(&directory)? {
+                        if child
+                            .file_name()
+                            .is_some_and(|n| n == crate::DATALITH_DIR_NAME)
+                        {
+                            continue;
+                        }
+                        if is_dir(&child) {
+                            pending.push(child);
+                        } else {
+                            files.push(child);
+                        }
+                    }
+                }
+                Ok(files)
+            }
             Self::Directory(root) => {
                 let mut files = Vec::new();
                 let mut pending = vec![root.clone()];
@@ -183,6 +209,10 @@ pub fn embedded_bytes(path: &Path) -> Option<&'static [u8]> {
 /// # Errors
 /// Returns an I/O error if the file is missing or inaccessible.
 pub fn read(path: &Path) -> io::Result<Cow<'static, [u8]>> {
+    if is_provider(path) {
+        let (p, r) = provider::resolve(path)?;
+        return p.read(r).map(Cow::Owned);
+    }
     if is_read_only(path) {
         embedded_bytes(path)
             .map(Cow::Borrowed)
@@ -202,6 +232,11 @@ pub fn read_to_string(path: &Path) -> io::Result<String> {
 
 #[must_use]
 pub fn is_file(path: &Path) -> bool {
+    if is_provider(path) {
+        return provider::resolve(path)
+            .and_then(|(p, r)| p.is_directory(r))
+            .is_ok_and(|d| !d);
+    }
     if is_read_only(path) {
         embedded_bytes(path).is_some()
     } else {
@@ -211,6 +246,11 @@ pub fn is_file(path: &Path) -> bool {
 
 #[must_use]
 pub fn is_dir(path: &Path) -> bool {
+    if is_provider(path) {
+        return provider::resolve(path)
+            .and_then(|(p, r)| p.is_directory(r))
+            .unwrap_or(false);
+    }
     if is_read_only(path) {
         embedded_vault(path).is_some_and(|vault| {
             path.strip_prefix(vault.root())
@@ -238,6 +278,13 @@ pub fn exists(path: &Path) -> bool {
 /// # Errors
 /// Returns an I/O error if the directory cannot be read.
 pub fn read_dir(path: &Path) -> io::Result<Vec<PathBuf>> {
+    if is_provider(path) {
+        let (p, r) = provider::resolve(path)?;
+        return p.list(r)?.into_iter().map(|name| {
+            if !matches!(Path::new(&name).components().collect::<Vec<_>>().as_slice(),[Component::Normal(n)] if *n==name.as_str()) {return Err(io::Error::other("Invalid provider filename"));}
+            Ok(path.join(name))
+        }).collect();
+    }
     if is_read_only(path) {
         if !is_dir(path) {
             return Err(io::Error::new(
@@ -266,6 +313,75 @@ pub fn read_dir(path: &Path) -> io::Result<Vec<PathBuf>> {
         std::fs::read_dir(path)?
             .map(|entry| entry.map(|entry| entry.path()))
             .collect()
+    }
+}
+
+/// Reads catalog attributes without loading the file body.
+///
+/// # Errors
+/// Returns the provider or filesystem error when the file cannot be queried.
+pub fn attributes(path: &Path) -> io::Result<provider::Attributes> {
+    if is_provider(path) {
+        let (p, r) = provider::resolve(path)?;
+        p.attributes(r)
+    } else if is_read_only(path) {
+        Ok(provider::Attributes {
+            size: i64::try_from(read(path)?.len()).unwrap_or(i64::MAX),
+            ..Default::default()
+        })
+    } else {
+        Ok((&std::fs::metadata(path)?).into())
+    }
+}
+/// Saves a new document or replaces the version the editor actually read.
+///
+/// # Errors
+/// Returns an error if the provider rejects the write or the document changed.
+pub fn save_version(path: &Path, expected: Option<&[u8]>, content: &[u8]) -> io::Result<()> {
+    use std::io::Write as _;
+    ensure_writable(path)?;
+    if is_provider(path) {
+        let (p, r) = provider::resolve(path)?;
+        return p.save(r, expected, content);
+    }
+    if let Some(base) = expected {
+        if std::fs::read(path)? != base {
+            return Err(io::Error::other("Document changed in another app"));
+        }
+        std::fs::write(path, content)
+    } else {
+        std::fs::File::create_new(path)?.write_all(content)
+    }
+}
+/// Creates a directory within a writable vault.
+///
+/// # Errors
+/// Returns the storage error when creation fails.
+pub fn create_dir(path: &Path) -> io::Result<()> {
+    ensure_writable(path)?;
+    if is_provider(path) {
+        let (p, r) = provider::resolve(path)?;
+        p.mkdir(r)
+    } else {
+        std::fs::create_dir(path)
+    }
+}
+/// Moves an item within its vault.
+///
+/// # Errors
+/// Returns an error if the provider cannot move the item.
+pub fn rename(from: &Path, to: &Path) -> io::Result<()> {
+    ensure_writable(from)?;
+    ensure_writable(to)?;
+    if is_provider(from) || is_provider(to) {
+        let (p, f) = provider::resolve(from)?;
+        let (q, t) = provider::resolve(to)?;
+        if !std::sync::Arc::ptr_eq(&p, &q) {
+            return Err(io::Error::other("Cannot move between vaults"));
+        }
+        p.rename(f, t)
+    } else {
+        std::fs::rename(from, to)
     }
 }
 

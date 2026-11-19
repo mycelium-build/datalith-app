@@ -6,8 +6,8 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Styled, Window, div, px,
 };
 
+use crate::LINE_HEIGHT;
 use crate::actions::{Bold, InsertWikiLink, Italic};
-use crate::{BASE_FONT_SIZE, LINE_HEIGHT};
 use datalith_vault::VaultCatalog;
 
 mod wikilink;
@@ -63,8 +63,8 @@ impl MarkdownEditor {
         &self.input
     }
 
-    pub fn render(&self, _cx: &mut App) -> AnyElement {
-        let base_font_size = BASE_FONT_SIZE;
+    pub fn render(&self, cx: &mut App) -> AnyElement {
+        let base_font_size = crate::fonts::editor_font_size(cx);
         let line_height = LINE_HEIGHT;
 
         let mut container = div().relative().size_full();

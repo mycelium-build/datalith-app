@@ -30,6 +30,8 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
                     1 => v.toggle_mode(window, cx),
                     2 => v.delete(cx),
                     3 => cx.notify(),
+                    4 => v.show_library(window, cx),
+                    5 => v.receive_folder(window, cx),
                     _ => {}
                 })
             });
@@ -42,7 +44,7 @@ pub fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn datalith_mobile_action(action: i32) {
+pub extern "C" fn datalith_mobile_action(action: i32) {
     ACTION.with_borrow_mut(|slot| {
         if let Some(dispatch) = slot {
             dispatch(action);

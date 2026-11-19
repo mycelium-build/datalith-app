@@ -45,3 +45,12 @@ pub fn load_pixeloid(cx: &gpui_kit::App) -> gpui_kit::Result<()> {
     let fonts = vec![Cow::Borrowed(REGULAR), Cow::Borrowed(BOLD)];
     cx.text_system().add_fonts(fonts)
 }
+
+pub(crate) fn editor_font_size(cx: &gpui_kit::App) -> f32 {
+    use gpui_kit::component::ActiveTheme as _;
+    if cfg!(any(target_os = "ios", target_os = "android")) {
+        f32::from(cx.theme().font_size)
+    } else {
+        crate::BASE_FONT_SIZE
+    }
+}

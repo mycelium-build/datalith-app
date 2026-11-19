@@ -1,5 +1,13 @@
-pub(super) const TODO_ROW_HEIGHT: f32 = 32.0;
-pub(super) const TODO_NEW_ROW_HEIGHT: f32 = 36.0;
+pub(super) const TODO_ROW_HEIGHT: f32 = if cfg!(any(target_os = "android", target_os = "ios")) {
+    96.
+} else {
+    32.
+};
+pub(super) const TODO_NEW_ROW_HEIGHT: f32 = if cfg!(any(target_os = "android", target_os = "ios")) {
+    48.
+} else {
+    36.
+};
 
 pub(super) const TODO_HEADER_HEIGHT: f32 = 40.0;
 

@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
+#[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -42,23 +43,11 @@ impl TrackedDocument {
     pub(super) fn read(root: &Path, path: &Path, file_types: &RegisteredFileTypes) -> Option<Self> {
         let capabilities = file_types.capabilities(path)?;
         let relative = path.strip_prefix(root).ok()?.to_path_buf();
-        let embedded_bytes = if source::is_read_only(path) {
-            Some(source::read(path).ok()?)
-        } else {
-            None
-        };
-        let metadata = if embedded_bytes.is_some() {
-            None
-        } else {
-            Some(fs::metadata(path).ok()?)
-        };
+        let attributes = source::attributes(path).ok()?;
         let needs_text =
             capabilities.text_search || capabilities.wiki_links || capabilities.yaml_frontmatter;
         let content = if needs_text {
-            Some(match &embedded_bytes {
-                Some(bytes) => String::from_utf8(bytes.to_vec()).ok()?,
-                None => source::read_to_string(path).ok()?,
-            })
+            Some(source::read_to_string(path).ok()?)
         } else {
             None
         };
@@ -83,28 +72,13 @@ impl TrackedDocument {
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .map_or_default(|parent| parent.to_string_lossy().replace('\\', "/"));
-        let modified_ns = metadata
-            .as_ref()
-            .and_then(|metadata| metadata.modified().ok())
-            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
-        let created_ns = metadata
-            .as_ref()
-            .and_then(|metadata| metadata.created().ok())
-            .and_then(|created| created.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
-        let size_bytes = match (&embedded_bytes, &metadata) {
-            (Some(bytes), _) => i64::try_from(bytes.len()).unwrap_or(i64::MAX),
-            (_, Some(metadata)) => i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-            (None, None) => return None,
-        };
         Some(Self {
             path: relative,
             extension,
             folder,
-            size_bytes,
-            modified_ns,
-            created_ns,
+            size_bytes: attributes.size,
+            modified_ns: attributes.modified_ns,
+            created_ns: attributes.created_ns,
             metadata: document_metadata,
             links: document_links,
         })
@@ -116,17 +90,11 @@ impl TrackedDocument {
         file_types: &RegisteredFileTypes,
     ) -> Option<(i64, i64)> {
         file_types.capabilities(path)?;
-        if source::is_read_only(path) {
+        if source::is_read_only(path) || source::is_provider(path) {
             return None;
         }
-        let metadata = fs::metadata(path).ok()?;
-        let modified_ns = metadata
-            .modified()
-            .ok()
-            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or_default(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX));
-        let size_bytes = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
-        Some((size_bytes, modified_ns))
+        let attributes = source::attributes(path).ok()?;
+        Some((attributes.size, attributes.modified_ns))
     }
 }
 

@@ -511,7 +511,7 @@ fn measure_text(
         .fold(0.0, f32::max)
 }
 
-fn table_cell_text(
+pub(super) fn table_cell_text(
     snapshot: &BaseSnapshot,
     property: &datalith_core::base::DisplayProperty,
     row: &BaseRow,

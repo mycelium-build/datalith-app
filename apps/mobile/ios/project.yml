@@ -9,6 +9,7 @@ targets:
     sources:
       - main.c
       - Controls.m
+      - Folders.m
       - path: ../../../assets/logo/stable/datalith.icon
         buildPhase: resources
         type: file

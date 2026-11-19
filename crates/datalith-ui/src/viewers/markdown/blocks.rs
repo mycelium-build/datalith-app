@@ -269,7 +269,14 @@ pub(super) fn flush_inline_text(
     }
     let styled = StyledText::new(SharedString::from(std::mem::take(text)))
         .with_highlights(std::mem::take(highlights));
-    elements.push(div().min_w_0().child(styled).into_any_element());
+    elements.push(
+        div()
+            .min_w_0()
+            .max_w(gpui_kit::relative(1.))
+            .whitespace_normal()
+            .child(styled)
+            .into_any_element(),
+    );
 }
 
 pub(super) fn adjacent_image_run_end(inlines: &[MarkdownInline], start: usize) -> Option<usize> {

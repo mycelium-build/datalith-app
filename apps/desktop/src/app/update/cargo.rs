@@ -206,6 +206,11 @@ mod tests {
     }
 
     fn serve(mut stream: TcpStream, routes: &Arc<Mutex<HashMap<String, Vec<u8>>>>) {
+        // Darwin inherits O_NONBLOCK from the listener. Read the accepted
+        // request through BufReader with the same timeout on every platform.
+        stream
+            .set_nonblocking(false)
+            .expect("blocking test connection");
         let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
         let mut reader = BufReader::new(stream.try_clone().expect("clone"));
         let mut request_line = String::new();

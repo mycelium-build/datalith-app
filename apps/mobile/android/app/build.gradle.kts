@@ -6,6 +6,7 @@ android {
     ndkVersion = "27.3.13750724"
     defaultConfig {
         applicationId = "build.mycelium.datalith"
+        testInstrumentationRunner = "build.mycelium.datalith.FolderInstrumentation"
         minSdk = 31
         targetSdk = 34
         versionCode = 1

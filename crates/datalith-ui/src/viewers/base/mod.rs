@@ -6,6 +6,7 @@ mod list;
 mod preview;
 mod snapshot;
 mod table;
+mod touch;
 
 use cells::centered_message;
 use cells::{format_scalar_text, render_property_cell};
@@ -43,6 +44,27 @@ pub struct BaseViewer {
 }
 
 impl BaseViewer {
+    pub(crate) fn dismiss_control(&self, cx: &mut App) -> bool {
+        self.state.update(cx, |s, cx| {
+            let dismissed = if s.choosing_view {
+                s.choosing_view = false;
+                true
+            } else if s.fullscreen_image.take().is_some() {
+                true
+            } else {
+                s.selected_view
+                    .as_ref()
+                    .and_then(|name| s.touch_rows.get_mut(name))
+                    .and_then(|rows| rows.detail.take())
+                    .is_some()
+            };
+            if dismissed {
+                cx.notify();
+            }
+            dismissed
+        })
+    }
+
     pub(crate) fn new(
         input: Entity<EditorState>,
         catalog: Option<VaultCatalog>,
@@ -97,6 +119,9 @@ pub struct BaseViewState {
     last_source: String,
     selected_view: Option<String>,
     choosing_view: bool,
+    touch_rows: std::collections::HashMap<String, touch::Rows>,
+    view_states: std::collections::HashMap<String, touch::SavedView>,
+    active_state: Option<String>,
     generation: u64,
     /// Monotonic identity handed to each stored snapshot,
     /// so viewers can cache derived data per snapshot instead of per render.
@@ -128,6 +153,9 @@ impl BaseViewState {
             last_source: String::new(),
             selected_view: None,
             choosing_view: false,
+            touch_rows: std::collections::HashMap::new(),
+            view_states: std::collections::HashMap::new(),
+            active_state: None,
             generation: 0,
             next_snapshot_id: 0,
             build_task: Task::ready(()),
@@ -184,11 +212,17 @@ impl BaseViewState {
                         state.next_snapshot_id = state.next_snapshot_id.wrapping_add(1);
                         snapshot.id = state.next_snapshot_id;
                         state.last_source.clone_from(&source);
+                        state.restore_mobile_view(&snapshot);
                         state.selected_view = snapshot
                             .definition
                             .views
                             .get(snapshot.view_index)
                             .map(|view| view.name.clone());
+                        if cfg!(any(target_os = "ios", target_os = "android"))
+                            && let Some(name) = &state.selected_view
+                        {
+                            state.touch_rows.entry(name.clone()).or_default();
+                        }
                         match snapshot.definition.views.get(snapshot.view_index) {
                             Some(view) if view.view_type == ViewType::List => {
                                 state
@@ -651,6 +685,12 @@ impl BaseViewState {
         let Some(view) = snapshot.definition.views.get(snapshot.view_index) else {
             return centered_message("Base view is missing", cx);
         };
+        if cfg!(any(target_os = "ios", target_os = "android"))
+            && !self.preview
+            && matches!(view.view_type, ViewType::List | ViewType::Table)
+        {
+            return self.render_touch_rows(snapshot, view, cx);
+        }
         match view.view_type {
             ViewType::List => self.render_list(snapshot, view, cx),
             ViewType::Table => self.render_table(snapshot, view, window, cx),

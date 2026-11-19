@@ -45,17 +45,19 @@ pub(in crate::viewers::base) fn render_card_image(
         .rounded(px(CARD_RADIUS))
         .bg(cx.theme().background);
     let preview_image = image.clone();
-    container =
-        container
-            .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                fullscreen_entity.update(cx, |state, cx| {
-                    state.fullscreen_image = Some(preview_image.clone());
-                    // Take the focus, so Escape reaches the viewer to close it.
-                    state.focus_handle.focus(window, cx);
-                    cx.notify();
+    if !cfg!(any(target_os = "ios", target_os = "android")) || view.as_cards().is_none() {
+        container =
+            container
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    fullscreen_entity.update(cx, |state, cx| {
+                        state.fullscreen_image = Some(preview_image.clone());
+                        // Take the focus, so Escape reaches the viewer to close it.
+                        state.focus_handle.focus(window, cx);
+                        cx.notify();
+                    });
                 });
-            });
+    }
     let image_element = match image {
         CardImage::Local(path) => img(crate::viewers::image::image_source(&path))
             .size_full()

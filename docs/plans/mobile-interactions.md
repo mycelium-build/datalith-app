@@ -93,3 +93,14 @@ Chaque parcours ci-dessus doit pouvoir être rejoué sur téléphone classique, 
 Claude a effectué ce tour sur un simulateur distinct après que `DEVICE_IN_USE` a bloqué le pilotage du premier iPhone 18 Pro. Les interactions Android, iPad et du téléphone physique n’ont pas été rejouées dans cet audit.
 
 Sur le Duo simulé, le test de cette revue a ouvert `Overview.base → Wiki` sur l’écran externe puis déplié l’appareil. Le rail est resté à droite et le coffre est apparu à gauche. Les points et la légende étaient visibles dans les deux postures ; aucun nom de note n’était affiché dans le graphe au cadrage initial. Android et iPad restent à vérifier sur appareil dans cette revue.
+
+## Parcours vérifiés dans la PR mobile
+
+| Surface | Parcours exécuté |
+| --- | --- |
+| iPhone 18 Pro simulé | Sol a ouvert les vues de Library.base, comparé les propriétés du tableau, lu les cartes, changé de colonne du kanban et ouvert une note depuis le graphe. Le retour retrouve la Base. |
+| Coffre et recherche | Création, renommage, déplacement, suppression et annulation d’une note de test. Recherche par dossier puis sur tout le coffre. Documentation intégrée en lecture seule. |
+| Fichiers sur iPhone | Création d’un dossier de test dans Fichiers, édition d’une note puis réouverture du coffre après relance. Une écriture externe pendant l’édition a déclenché le choix de conserver les deux versions. Les deux contenus ont été comparés sur disque. |
+| Fournisseur Android | Instrumentation Android 14 avec un fournisseur installé sous un autre UID. Création, écriture conditionnelle, refus d’une écriture périmée, copie de conflit, déplacement et réouverture de l’URI dans un nouveau processus avec l’autorisation persistante. |
+
+Les boutons de zoom et de cadrage du graphe restent disponibles indépendamment des événements de pincement émis par le backend. Le test de fournisseur Android peut être rejoué avec les phases `write` et `reopen` de `FolderInstrumentation`. Les interactions avec un compte iCloud Drive ou deux pairs Syncthing restent à vérifier.

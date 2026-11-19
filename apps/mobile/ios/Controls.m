@@ -50,12 +50,14 @@ static void applyControls(void) {
     controller.navigationItem.leftBarButtonItem = canGoBack ? item(@"Back", @"chevron.backward", 0) : nil;
     NSMutableArray *actions = [NSMutableArray array];
     if (editMode) [actions addObject:editMode == 1 ? item(@"Edit", @"pencil", 1) : item(@"Read", @"book", 1)];
-    if (canDelete) {
+    if (canGoBack || editMode || canDelete) {
+        UIAction *library = [UIAction actionWithTitle:@"Library" image:[UIImage systemImageNamed:@"books.vertical"]
+            identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(4); }];
         UIAction *remove = [UIAction actionWithTitle:@"Delete" image:[UIImage systemImageNamed:@"trash"]
             identifier:nil handler:^(__kindof UIAction *sender) { datalith_mobile_action(2); }];
         remove.attributes = UIMenuElementAttributesDestructive;
         UIBarButtonItem *more = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
-            menu:[UIMenu menuWithChildren:@[remove]]];
+            menu:[UIMenu menuWithChildren:canDelete ? @[library, remove] : @[library]]];
         more.accessibilityLabel = @"More actions";
         [actions addObject:more];
     }
@@ -88,3 +90,5 @@ void datalith_set_controls(bool back, int32_t mode, bool writable, uint32_t back
     canDelete = writable;
     dispatch_async(dispatch_get_main_queue(), ^{ applyControls(); });
 }
+
+UIViewController *datalith_presenter(void) { return surface; }

@@ -11,6 +11,11 @@ impl AssetSource for DatalithAssets {
         if let Some((_, bytes)) = ICON_ASSETS.iter().find(|(icon, _)| *icon == path) {
             return Ok(Some(Cow::Borrowed(bytes.as_bytes())));
         }
+        if datalith_vault::source::is_provider(std::path::Path::new(path)) {
+            return Ok(Some(datalith_vault::source::read(std::path::Path::new(
+                path,
+            ))?));
+        }
         if let Some(bytes) = datalith_vault::source::embedded_bytes(std::path::Path::new(path)) {
             return Ok(Some(Cow::Borrowed(bytes)));
         }

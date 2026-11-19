@@ -1,6 +1,10 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+mod panels;
+use datalith_vault::source;
+use panels::{Page, Preferences};
 
-use datalith_core::file_types::registered_file_types;
+mod files;
 use datalith_ui::handler::{FileHandler, FileHandlerEvent, ViewMode};
 use datalith_ui::registry::{FileRegistry, ViewerDependencies, default_registry};
 use datalith_vault::{VaultCatalog, file_ops};
@@ -15,6 +19,8 @@ use gpui_kit::{
 struct Document {
     path: PathBuf,
     handler: Entity<FileHandler>,
+    edit: Option<crate::draft::Edit>,
+    saving: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -22,14 +28,26 @@ pub struct Workspace {
     pub(super) root: Option<PathBuf>,
     folders: Vec<super::browser::Folder>,
     focus: gpui_kit::FocusHandle,
-    catalog: Option<VaultCatalog>,
-    registry: FileRegistry,
-    history: Vec<Document>,
+    pub(super) catalog: Option<VaultCatalog>,
+    pub(super) registry: FileRegistry,
+    documents: BTreeMap<PathBuf, Document>,
+    history: Vec<PathBuf>,
+    page: Option<Page>,
+    preferences: Preferences,
+    notice_index: usize,
+    file_form: Option<files::FileForm>,
+    local_root: Option<PathBuf>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    external: Option<crate::external_folder::Folder>,
+    search_task: Option<gpui_kit::Task<()>>,
+    pub(super) search_results: Vec<PathBuf>,
+
+    pub(super) whole_vault: bool,
     navigation_step: usize,
     returning: bool,
     deleted: Option<file_ops::Deleted>,
     message: Option<String>,
-    document_deleted: bool,
+    deleted_document: Option<PathBuf>,
 }
 
 impl Workspace {
@@ -38,9 +56,27 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe_window_appearance(window, |_, window, cx| {
+        cx.observe_window_appearance(window, |state: &mut Self, window, cx| {
             gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
+            state.preferences.apply_size(cx);
             cx.notify();
+        })
+        .detach();
+        cx.observe_window_activation(window, |state: &mut Self, w, cx| {
+            if w.is_window_active() && state.root.as_deref().is_some_and(source::is_provider) {
+                state.refresh_folder();
+                if let Some(p) = state.history.last().cloned() {
+                    state.refresh_document(&p, w, cx);
+                }
+                if let Some(c) = &state.catalog {
+                    let catalog = c.clone();
+                    cx.background_spawn(async move {
+                        catalog.refresh_paths(vec![catalog.root()]);
+                    })
+                    .detach();
+                }
+                cx.notify();
+            }
         })
         .detach();
         let mut view = Self {
@@ -50,29 +86,72 @@ impl Workspace {
             catalog: None,
             registry: default_registry(),
             history: Vec::new(),
+            documents: BTreeMap::new(),
+            page: None,
+            notice_index: 0,
+            file_form: None,
+            preferences: Preferences::load(),
+            local_root: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            external: None,
+            search_task: None,
+            search_results: Vec::new(),
+
+            whole_vault: false,
             navigation_step: 0,
             returning: false,
             deleted: None,
             message: None,
-            document_deleted: false,
+            deleted_document: None,
         };
         match root {
             Ok(root) => {
-                match VaultCatalog::open(&root, registered_file_types()) {
-                    Ok(catalog) => view.catalog = Some(catalog),
-                    Err(error) => view.message = Some(error.to_string()),
+                view.local_root = Some(root.clone());
+                view.preferences.apply_theme(window, cx);
+                let active = if view.preferences.documentation {
+                    super::DOCS.root()
+                } else {
+                    root
+                };
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                let restored = view.restore_external(window, cx);
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                let restored: anyhow::Result<bool> = Ok(false);
+                if !matches!(restored, Ok(true)) {
+                    view.switch_vault(active, true, window, cx);
+                    if let Err(err) = restored {
+                        view.message = Some(err.to_string());
+                    }
                 }
-                view.root = Some(root.clone());
-                view.select(root, window, cx);
                 view.focus.focus(window, cx);
             }
             Err(error) => view.message = Some(error.to_string()),
         }
+        if view.folders.is_empty() {
+            view.page = Some(Page::Library);
+        }
         view
     }
 
+    pub(super) fn folder_name(&self, path: &Path) -> String {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        if let Some(folder) = &self.external
+            && folder.path == path
+        {
+            return folder.label.clone();
+        }
+        if self.root.as_deref() == Some(path)
+            && let Some(vault) = source::embedded_vault(path)
+        {
+            return vault.name().into();
+        }
+        name(path)
+    }
     fn current(&self) -> Option<&Document> {
-        self.history.last().filter(|_| !self.document_deleted)
+        self.history
+            .last()
+            .and_then(|path| self.documents.get(path))
+            .filter(|_| self.deleted_document.is_none())
     }
 
     fn in_vault(&self, path: &Path) -> bool {
@@ -80,6 +159,9 @@ impl Workspace {
         let Ok(relative) = path.strip_prefix(root) else {
             return false;
         };
+        if source::is_read_only(root) || source::is_provider(root) {
+            return source::is_file(path);
+        }
         relative.components().all(|component|matches!(component,std::path::Component::Normal(name) if name != ".datalith"))
             && path.is_file()
             && path.canonicalize().ok().zip(root.canonicalize().ok()).is_some_and(|(file,root)|file.starts_with(root))
@@ -91,9 +173,13 @@ impl Workspace {
         }
         self.message = None;
         self.advance(false);
-        self.document_deleted = false;
-        if let Some(index) = self.history.iter().rposition(|doc| doc.path == path) {
-            self.history.truncate(index.saturating_add(1));
+        self.deleted_document = None;
+        self.page = None;
+        if self.history.last() != Some(&path) {
+            self.history.push(path.clone());
+        }
+        if self.documents.contains_key(&path) {
+            self.refresh_document(&path, window, cx);
             cx.notify();
             return;
         }
@@ -101,84 +187,237 @@ impl Workspace {
         let handler = cx.new(|cx| self.registry.create_handler(&path, &deps, window, cx));
         handler.update(cx, |h, cx| h.set_mode(ViewMode::View, cx));
         let mut subscriptions = Vec::new();
+        let mut edit = None;
         if !handler.read(cx).is_read_only()
             && let Some(input) = handler.read(cx).input().cloned()
         {
             let path = path.clone();
+            if source::is_provider(&path) {
+                match crate::draft::Edit::open(&path, input.read(cx).value().to_string()) {
+                    Ok(state) => {
+                        if let Some(pending) = &state.pending {
+                            input.update(cx, |i, cx| i.set_value(pending, window, cx));
+                            self.message = Some("Recovered local edits awaiting save".into());
+                        }
+                        edit = Some(state);
+                    }
+                    Err(e) => {
+                        self.message = Some(e.to_string());
+                        cx.notify();
+                        return;
+                    }
+                }
+            }
             subscriptions.push(cx.subscribe(&input, move |view, input, event, cx| {
-                if matches!(event, InputEvent::Change)
-                    && let Err(error) = file_ops::update(&path, &input.read(cx).value())
-                {
-                    view.message = Some(error.to_string());
+                if !matches!(event, InputEvent::Change) {
+                    return;
+                }
+                let text = input.read(cx).value();
+                let result = if source::is_provider(&path) {
+                    let Some(edit) = view.documents.get_mut(&path).and_then(|d| d.edit.as_mut())
+                    else {
+                        return;
+                    };
+                    edit.stage(&text)
+                } else {
+                    file_ops::update(&path, &text)
+                };
+                if let Err(e) = result {
+                    view.message = Some(format!("Unsaved edits in {}. {e}", name(&path)));
                     cx.notify();
+                } else if source::is_provider(&path) {
+                    view.schedule_save(&path, cx);
                 }
             }));
         }
-        let from = path.clone();
-        subscriptions.push(
-            cx.subscribe_in(&handler, window, move |view, _, event, window, cx| {
-                let url = match event {
-                    FileHandlerEvent::VaultFileRequested(relative, _) => {
-                        if let Some(path) = view.root.as_ref().map(|root| root.join(relative)) {
-                            if view.in_vault(&path) {
-                                view.open(path, window, cx);
-                            } else {
-                                view.message = Some(format!("Cannot open {}", relative.display()));
-                                cx.notify();
-                            }
-                        }
-                        return;
-                    }
-                    FileHandlerEvent::LinkClicked(url, _) => url,
-                };
-                let raw = url.split(['#', '?']).next().unwrap_or_default();
-                let target = percent_encoding::percent_decode_str(raw).decode_utf8_lossy();
-                let resolved = view
-                    .root
-                    .as_ref()
-                    .and_then(|root| {
-                        datalith_vault::path::resolve_relative_link(&from, &target, root)
-                    })
-                    .and_then(|path| {
-                        if view.in_vault(&path) {
-                            Some(path)
-                        } else if path.extension().is_none()
-                            && view.in_vault(&path.with_extension("md"))
-                        {
-                            Some(path.with_extension("md"))
-                        } else {
-                            None
-                        }
-                    })
-                    .or_else(|| view.catalog.as_ref()?.resolve(&target));
-                if let Some(path) = resolved {
-                    view.open(path, window, cx);
-                } else if !target.is_empty() {
-                    view.message = Some(format!("Cannot open {target}"));
-                    cx.notify();
-                }
-            }),
+        subscriptions.push(Self::observe_links(path.clone(), &handler, window, cx));
+        self.documents.insert(
+            path.clone(),
+            Document {
+                path,
+                handler,
+                edit,
+                saving: false,
+                _subscriptions: subscriptions,
+            },
         );
-        self.history.push(Document {
-            path,
-            handler,
-            _subscriptions: subscriptions,
-        });
+        cx.notify();
+    }
+
+    fn schedule_save(&mut self, path: &Path, cx: &Context<Self>) {
+        let Some(doc) = self.documents.get_mut(path) else {
+            return;
+        };
+        if doc.saving || doc.edit.as_ref().is_none_or(|e| e.pending.is_none()) {
+            return;
+        }
+        doc.saving = true;
+        let path = path.to_owned();
+        let handler = doc.handler.entity_id();
+        let catalog = self.catalog.clone();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(350))
+                .await;
+            let request = this
+                .update(cx, |s, _| {
+                    s.documents
+                        .get(&path)
+                        .filter(|d| d.handler.entity_id() == handler)?
+                        .edit
+                        .as_ref()?
+                        .write_request()
+                })
+                .ok()
+                .flatten();
+            let Some(request) = request else {
+                return;
+            };
+            let changed = path.clone();
+            let result = cx
+                .background_spawn(async move {
+                    let saved = request.commit()?;
+                    if let Some(c) = catalog {
+                        c.refresh_paths(vec![changed]);
+                    }
+                    anyhow::Ok(saved)
+                })
+                .await;
+            let _ = this.update(cx, |s, cx| {
+                let Some(doc) = s
+                    .documents
+                    .get_mut(&path)
+                    .filter(|d| d.handler.entity_id() == handler)
+                else {
+                    return;
+                };
+                doc.saving = false;
+                let Some(edit) = &mut doc.edit else {
+                    return;
+                };
+                match result.and_then(|saved| edit.accept(saved)) {
+                    Ok(()) => s.schedule_save(&path, cx),
+                    Err(e) => s.message = Some(format!("Unsaved edits in {}. {e}", name(&path))),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn observe_links(
+        from: PathBuf,
+        handler: &Entity<FileHandler>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        cx.subscribe_in(handler, window, move |view, _, event, window, cx| {
+            let url = match event {
+                FileHandlerEvent::VaultFileRequested(relative, _) => {
+                    if let Some(path) = view.root.as_ref().map(|root| root.join(relative)) {
+                        if view.in_vault(&path) {
+                            view.open(path, window, cx);
+                        } else {
+                            view.message = Some(format!("Cannot open {}", relative.display()));
+                            cx.notify();
+                        }
+                    }
+                    return;
+                }
+                FileHandlerEvent::LinkClicked(url, _) => url,
+            };
+            let raw = url.split(['#', '?']).next().unwrap_or_default();
+            let target = percent_encoding::percent_decode_str(raw).decode_utf8_lossy();
+            let resolved = view
+                .root
+                .as_ref()
+                .and_then(|root| datalith_vault::path::resolve_relative_link(&from, &target, root))
+                .and_then(|path| {
+                    if view.in_vault(&path) {
+                        Some(path)
+                    } else if path.extension().is_none()
+                        && view.in_vault(&path.with_extension("md"))
+                    {
+                        Some(path.with_extension("md"))
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| view.catalog.as_ref()?.resolve(&target));
+            if let Some(path) = resolved {
+                view.open(path, window, cx);
+            } else if !target.is_empty() {
+                view.message = Some(format!("Cannot open {target}"));
+                cx.notify();
+            }
+        })
+    }
+    fn refresh_document(&mut self, path: &Path, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(doc) = self.documents.get_mut(path) else {
+            return;
+        };
+        if let Some(edit) = &mut doc.edit {
+            match edit.refresh() {
+                Ok(Some(text)) => {
+                    if let Some(input) = doc.handler.read(cx).input().cloned() {
+                        input.update(cx, |i, cx| i.set_value(text, w, cx));
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => self.message = Some(e.to_string()),
+            }
+        } else if let Err(e) = doc
+            .handler
+            .update(cx, |h, cx| h.reload_from_disk(path, w, cx))
+        {
+            self.message = Some(e.to_string());
+        }
+    }
+    fn resolve_draft(&mut self, copy: bool, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.history.last().cloned() else {
+            return;
+        };
+        let Some(edit) = self.documents.get_mut(&path).and_then(|d| d.edit.as_mut()) else {
+            return;
+        };
+        let result = if copy {
+            edit.keep_both().map(Some)
+        } else if let Some(text) = edit.pending.clone() {
+            edit.save(&text).map(|()| None)
+        } else {
+            return;
+        };
+        match result {
+            Ok(new) => {
+                self.message = None;
+                if let Some(new) = new {
+                    self.documents.remove(&path);
+                    if let Some(c) = &self.catalog {
+                        c.refresh_paths(vec![new.clone()]);
+                    }
+                    self.open(new, w, cx);
+                }
+            }
+            Err(e) => self.message = Some(e.to_string()),
+        }
         cx.notify();
     }
 
     pub(super) fn select(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         window.dismiss_virtual_keyboard();
         self.focus.focus(window, cx);
-        if path.is_dir() {
+        if source::is_dir(&path) {
             match super::browser::Folder::new(path, window, cx) {
                 Ok(folder) => {
                     if !self.folders.is_empty() {
                         self.advance(false);
                     }
                     self.folders.push(folder);
+                    self.search_task = None;
+                    self.search_results.clear();
+
+                    self.remember_folder(cx);
                     self.history.clear();
-                    self.document_deleted = false;
+                    self.deleted_document = None;
                 }
                 Err(error) => self.message = Some(error.to_string()),
             }
@@ -206,11 +445,29 @@ impl Workspace {
         window.dismiss_virtual_keyboard();
         self.focus.focus(window, cx);
         self.advance(true);
-        if self.document_deleted {
-            self.document_deleted = false;
+        self.message = None;
+        if self.file_form.take().is_some() {
+            cx.notify();
+            return;
+        }
+        if let Some(page) = self.page.take() {
+            self.page = page.parent();
+            cx.notify();
+            return;
+        }
+        if let Some(doc) = self.current()
+            && doc.handler.update(cx, |h, cx| h.dismiss_view_control(cx))
+        {
+            return;
+        }
+
+        if self.deleted_document.is_some() {
+            self.deleted_document = None;
         } else if self.history.pop().is_none() && self.folders.len() > 1 {
             self.folders.pop();
             self.refresh_folder();
+            self.remember_folder(cx);
+            self.search_changed(cx);
         }
         cx.notify();
     }
@@ -238,19 +495,9 @@ impl Workspace {
     }
 
     pub(super) fn delete(&mut self, cx: &mut Context<Self>) {
-        let (Some(root), Some(doc)) = (&self.root, self.current()) else {
-            return;
-        };
-        match file_ops::delete(root, &doc.path) {
-            Ok(deleted) => {
-                self.history.retain(|doc| doc.path != deleted.original);
-                self.document_deleted = true;
-                self.deleted = Some(deleted);
-                self.refresh_folder();
-            }
-            Err(error) => self.message = Some(error.to_string()),
+        if let Some(path) = self.current().map(|doc| doc.path.clone()) {
+            self.remove_file(&path, cx);
         }
-        cx.notify();
     }
 
     fn undo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -259,9 +506,9 @@ impl Workspace {
             Ok(()) => {
                 let path = deleted.original.clone();
                 self.deleted = None;
-                self.refresh_folder();
-                if self.document_deleted {
-                    self.open(path, window, cx);
+                self.changed_files(vec![path], cx);
+                if let Some(document) = self.deleted_document.take() {
+                    self.open(document, window, cx);
                 }
             }
             Err(error) => self.message = Some(error.to_string()),
@@ -278,6 +525,68 @@ pub fn name(path: &Path) -> String {
 }
 
 impl Workspace {
+    fn feedback(&self, mut panel: gpui_kit::Div, cx: &Context<Self>) -> gpui_kit::Div {
+        if let Some(error) = &self.message {
+            panel = panel.child(
+                h_flex()
+                    .px_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .whitespace_normal()
+                            .child(error.clone()),
+                    )
+                    .child(
+                        Button::new("dismiss-error")
+                            .ghost()
+                            .icon(gpui_kit::component::IconName::Close)
+                            .accessibility_label("Dismiss error")
+                            .on_click(cx.listener(|s, _, _, cx| {
+                                s.message = None;
+                                cx.notify();
+                            })),
+                    ),
+            );
+        }
+        if self
+            .current()
+            .filter(|doc| !doc.saving)
+            .and_then(|doc| doc.edit.as_ref())
+            .is_some_and(|edit| edit.pending.is_some())
+        {
+            panel = panel.child(
+                h_flex()
+                    .child(
+                        Button::new("retry-write")
+                            .label("Retry save")
+                            .on_click(cx.listener(|s, _, w, cx| s.resolve_draft(false, w, cx))),
+                    )
+                    .child(
+                        Button::new("keep-both")
+                            .label("Keep both")
+                            .on_click(cx.listener(|s, _, w, cx| s.resolve_draft(true, w, cx))),
+                    ),
+            );
+        }
+        if let Some(deleted) = &self.deleted {
+            panel = panel.child(
+                h_flex()
+                    .px_3()
+                    .min_h(px(52.))
+                    .justify_between()
+                    .bg(cx.theme().secondary)
+                    .child(format!("Deleted {}", name(&deleted.original)))
+                    .child(
+                        Button::new("undo")
+                            .label("Undo")
+                            .h(px(44.))
+                            .on_click(cx.listener(|v, _, w, cx| v.undo(w, cx))),
+                    ),
+            );
+        }
+        panel
+    }
     fn navigation_content(
         &self,
         content: gpui_kit::Div,
@@ -326,7 +635,9 @@ impl Workspace {
         }
         if let Some(doc) = self.current() {
             let h = doc.handler.read(cx);
-            bar = bar.child(div().flex_1().truncate().child(name(&doc.path)));
+            bar = bar
+                .child(div().flex_1().truncate().child(name(&doc.path)))
+                .child(Self::library_menu(cx));
             if h.can_toggle_mode() {
                 bar = bar.child(
                     Button::new("mode")
@@ -371,7 +682,7 @@ impl Workspace {
                         .items_center()
                         .justify_center()
                         .text_color(cx.theme().muted_foreground)
-                        .child(if self.document_deleted {
+                        .child(if self.deleted_document.is_some() {
                             "File deleted"
                         } else {
                             "Select a file"
@@ -394,15 +705,20 @@ impl Render for Workspace {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground);
         let wide = bounds.size.width >= px(700.);
-        let has_detail = self.current().is_some() || self.document_deleted;
+        let has_detail = self.current().is_some()
+            || self.deleted_document.is_some()
+            || self.page.is_some()
+            || self.file_form.is_some();
         let can_back = has_detail || self.folders.len() > 1;
         #[cfg(target_os = "ios")]
         super::ios::update(
             can_back,
-            self.current().map(|d| d.handler.read(cx)),
+            self.current()
+                .filter(|_| self.page.is_none() && self.file_form.is_none())
+                .map(|d| d.handler.read(cx)),
             cx.theme().background,
         );
-        let show_browser = wide || !has_detail;
+        let show_browser = self.file_form.is_none() && self.page.is_none() && (wide || !has_detail);
         let mut content = h_flex().flex_1().min_h_0().items_stretch();
         if show_browser && let Some(folder) = self.folders.last() {
             let mut browser = v_flex()
@@ -422,45 +738,31 @@ impl Render for Workspace {
                             .accessibility_label("Back")
                             .on_click(cx.listener(|v, _, w, cx| {
                                 v.history.clear();
-                                v.document_deleted = false;
+                                v.deleted_document = None;
                                 v.back(w, cx);
                             })),
                     ),
                 );
             }
             content = content.child(browser.child(folder.render(
-                &self.registry,
+                self,
                 wide || !cfg!(target_os = "ios"),
                 self.current().map(|d| d.path.as_path()),
                 cx,
             )));
         }
-        if wide || has_detail {
+        if let Some(form) = &self.file_form {
+            content = content.child(self.render_form(form, cx));
+        } else if let Some(page) = &self.page {
+            content = content.child(self.render_page(*page, cx));
+        } else if wide || has_detail {
             content = content.child(self.detail(wide, has_detail, cx));
         }
         panel = panel
             .overflow_hidden()
             .child(self.navigation_content(content, wide, cx));
         panel = panel.track_focus(&self.focus);
-        if let Some(error) = &self.message {
-            panel = panel.child(div().px_2().child(error.clone()));
-        }
-        if let Some(deleted) = &self.deleted {
-            panel = panel.child(
-                h_flex()
-                    .px_3()
-                    .min_h(px(52.))
-                    .justify_between()
-                    .bg(cx.theme().secondary)
-                    .child(format!("Deleted {}", name(&deleted.original)))
-                    .child(
-                        Button::new("undo")
-                            .label("Undo")
-                            .h(px(44.))
-                            .on_click(cx.listener(|v, _, w, cx| v.undo(w, cx))),
-                    ),
-            );
-        }
+        panel = self.feedback(panel, cx);
         panel.when(can_back, |el| {
             el.on_key_down(cx.listener(|v, event: &gpui_kit::KeyDownEvent, w, cx| {
                 if event.keystroke.key == "escape" {

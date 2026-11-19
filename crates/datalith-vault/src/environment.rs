@@ -71,6 +71,11 @@ pub fn vault_dir_with(
     channel_directory: Option<&str>,
     app_data_dir: &Path,
 ) -> Result<PathBuf> {
+    if source::is_provider(root) {
+        return Ok(app_data_dir
+            .join("provider-caches")
+            .join(root.file_name().context("Missing folder grant")?));
+    }
     if source::is_read_only(root) {
         let vault = source::embedded_vault(root)
             .filter(|vault| vault.root() == root)
@@ -82,4 +87,10 @@ pub fn vault_dir_with(
         None => directory,
         Some(channel) => directory.join(channel),
     })
+}
+
+pub(crate) fn app_data_dir() -> Result<PathBuf> {
+    Ok((current()
+        .context("Vault environment unavailable")?
+        .app_data_dir)())
 }

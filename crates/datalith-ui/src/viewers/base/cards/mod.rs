@@ -451,10 +451,11 @@ fn render_card(
         .gap_1()
         .p_3()
         .children(properties);
-    let is_auto = matches!(
-        context.view.as_cards().map(|cards| cards.body_height),
-        Some(CardBodyHeight::Auto)
-    );
+    let is_auto = cfg!(any(target_os = "ios", target_os = "android"))
+        || matches!(
+            context.view.as_cards().map(|cards| cards.body_height),
+            Some(CardBodyHeight::Auto)
+        );
     let body = if is_auto {
         let entity = context.fullscreen_entity.clone();
         div()
@@ -496,6 +497,22 @@ fn render_card(
     } else {
         card.h(px(card_height(context.view, card_width)))
     };
+    let card = if cfg!(any(target_os = "ios", target_os = "android")) {
+        use gpui_kit::StatefulInteractiveElement as _;
+        let path = row.path.clone();
+        let handler = context.handler.clone();
+        card.on_click(move |_, _, cx| {
+            let _ = handler.update(cx, |_, cx| {
+                cx.emit(crate::handler::FileHandlerEvent::VaultFileRequested(
+                    path.clone(),
+                    false,
+                ));
+            });
+            cx.stop_propagation();
+        })
+    } else {
+        card
+    };
     card.flex_shrink_0()
         .overflow_hidden()
         .rounded(px(CARD_RADIUS))
@@ -519,7 +536,11 @@ fn body_height_for_row(
     measured: Option<&HashMap<usize, f32>>,
 ) -> f32 {
     let config = view.as_cards().cloned().unwrap_or_default();
-    match config.body_height {
+    match if cfg!(any(target_os = "android", target_os = "ios")) {
+        CardBodyHeight::Auto
+    } else {
+        config.body_height
+    } {
         CardBodyHeight::Fixed(height) => height,
         CardBodyHeight::Auto => {
             let measured_max = indices

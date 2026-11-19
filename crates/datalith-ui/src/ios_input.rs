@@ -7,6 +7,7 @@ use gpui_kit::{
 };
 use std::ops::Range;
 
+#[must_use]
 pub fn registration<M: InputModeKind>(
     input: &Entity<InputBaseState<M>>,
 ) -> impl gpui_kit::IntoElement {

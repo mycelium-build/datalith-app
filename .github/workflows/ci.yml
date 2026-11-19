@@ -64,7 +64,7 @@ jobs:
           flag() { if has "$1"; then echo true; else echo false; fi; }
 
           # check_assets.py checks every tracked file under assets/ against assets/licenses.toml.
-          licenses="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
+          licenses="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|apps/mobile/android/(Cargo\.(toml|lock)|.*\.patch|prepare-backend\.sh)|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"

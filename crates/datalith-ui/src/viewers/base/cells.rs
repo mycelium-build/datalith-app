@@ -272,6 +272,7 @@ fn render_link(
         .active(|style| style.text_color(theme.link_active))
         .cursor_pointer()
         .on_click(move |event: &ClickEvent, _window, cx| {
+            cx.stop_propagation();
             if let Some(handler) = handler.upgrade() {
                 handler.update(cx, |_, cx| {
                     cx.emit(FileHandlerEvent::LinkClicked(

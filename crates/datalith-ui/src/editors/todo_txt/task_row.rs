@@ -49,6 +49,9 @@ impl TodoTxtState {
         let has_subtasks = !task.subtasks.is_empty();
         let is_expanded = self.workspace.is_expanded(flat_index);
         let read_only = self.workspace.is_read_only();
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            return self.touch_task(flat_index, task, indent.min(32.), cx);
+        }
 
         let row_bg = if is_selected {
             cx.theme().list_active
@@ -188,6 +191,10 @@ impl TodoTxtState {
             .readonly(self.workspace.is_read_only())
             .text_color(date_color);
         let fi = flat_index;
+        #[cfg(target_os = "ios")]
+        let date_input = div()
+            .child(date_input)
+            .child(crate::ios_input::registration(date_entity));
         div()
             .id(element_id("todo-date-wrap", fi))
             .flex_shrink_0()
@@ -209,6 +216,75 @@ impl TodoTxtState {
             .into_any_element()
     }
 
+    fn touch_task(&self, index: usize, task: &Task, indent: f32, cx: &Context<Self>) -> AnyElement {
+        let read_only = self.workspace.is_read_only();
+        let toggle = Checkbox::new(element_id("touch-check", index))
+            .checked(task.completed)
+            .disabled(read_only)
+            .on_click(cx.listener(move |s, _, w, cx| s.toggle_complete(index, w, cx)));
+        let mut details = h_flex().w_full().items_center().gap_2();
+        if !task.subtasks.is_empty() {
+            details = details.child(
+                Button::new(element_id("touch-expand", index))
+                    .ghost()
+                    .icon(if self.workspace.is_expanded(index) {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .accessibility_label("Toggle subtasks")
+                    .w(px(48.))
+                    .h(px(48.))
+                    .on_click(cx.listener(move |s, _, _, cx| s.toggle_expand(index, cx))),
+            );
+        }
+        details = details
+            .child(if read_only {
+                Self::render_read_only_priority(task, cx)
+            } else {
+                self.render_priority_picker(index, cx)
+            })
+            .child(self.render_date_cell(index, task, cx))
+            .child(div().flex_1());
+        if !read_only {
+            details = details
+                .child(
+                    Button::new(element_id("touch-subtask", index))
+                        .ghost()
+                        .icon(IconName::Plus)
+                        .w(px(48.))
+                        .h(px(48.))
+                        .accessibility_label("Add subtask")
+                        .on_click(cx.listener(move |s, _, _, cx| s.add_subtask(index, cx))),
+                )
+                .child(
+                    Button::new(element_id("touch-remove", index))
+                        .ghost()
+                        .icon(IconName::Delete)
+                        .w(px(48.))
+                        .h(px(48.))
+                        .accessibility_label("Delete task")
+                        .on_click(cx.listener(move |s, _, w, cx| s.delete_task(index, w, cx))),
+                );
+        }
+        v_flex()
+            .w_full()
+            .h(px(TODO_ROW_HEIGHT))
+            .pl(px(indent + 8.))
+            .pr_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                h_flex()
+                    .h(px(48.))
+                    .gap_2()
+                    .child(toggle)
+                    .child(self.render_description_cell(index, task, cx)),
+            )
+            .child(details)
+            .into_any_element()
+    }
+
     fn render_description_cell(
         &self,
         flat_index: usize,
@@ -227,6 +303,10 @@ impl TodoTxtState {
         if task.completed {
             desc_input = desc_input.text_color(cx.theme().muted_foreground);
         }
+        #[cfg(target_os = "ios")]
+        let desc_input = div()
+            .child(desc_input)
+            .child(crate::ios_input::registration(desc_entity));
         div()
             .id(element_id("todo-desc-wrap", fi))
             .flex_1()

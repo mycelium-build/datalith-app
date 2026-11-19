@@ -10,10 +10,22 @@ use gpui_kit::component::{ActiveTheme, Root, Theme, ThemeMode, theme::ThemeSet};
 use gpui_kit::{AppContext, Application, WindowOptions};
 
 mod browser;
+use datalith_vault::draft;
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]
-mod ios_input;
+mod ios_folder;
+#[cfg(target_os = "ios")]
+mod ios_provider;
+#[cfg(target_os = "ios")]
+use ios_folder as external_folder;
+#[cfg(target_os = "android")]
+mod android_folder;
+#[cfg(target_os = "android")]
+use android_folder as external_folder;
+
+#[cfg(target_os = "ios")]
+use datalith_ui::ios_input;
 mod workspace;
 
 include!(concat!(env!("OUT_DIR"), "/docs_vault.rs"));
@@ -53,7 +65,22 @@ pub fn run_android(app: Application, files: &Path) {
 }
 
 fn launch(app: Application, documents: PathBuf) {
-    DATA.get_or_init(|| documents.clone());
+    #[cfg(target_os = "ios")]
+    let private = dirs::data_local_dir()
+        .unwrap_or_else(|| documents.clone())
+        .join("Datalith");
+    #[cfg(not(target_os = "ios"))]
+    let private = documents.parent().unwrap_or(&documents).join("workspace");
+    if let Err(e) = std::fs::create_dir_all(&private) {
+        eprintln!("Cannot prepare mobile storage: {e}");
+        return;
+    }
+    // Preserve settings from earlier mobile builds.
+    let preferences = private.join(".mobile-preferences.json");
+    if !preferences.exists() {
+        let _ = std::fs::rename(documents.join(".mobile-preferences.json"), &preferences);
+    }
+    DATA.get_or_init(|| private);
     environment::init(VaultEnvironment {
         embedded_vaults: &[DOCS],
         channel_directory: None,

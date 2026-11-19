@@ -59,7 +59,7 @@ pub fn parent_dir(target: &Path) -> PathBuf {
 /// embedded and missing paths are normalized lexically.
 #[must_use]
 pub fn normalized_path(path: &Path) -> PathBuf {
-    let source_path = source::is_read_only(path);
+    let source_path = source::is_read_only(path) || source::is_provider(path);
     let absolute = if path.is_absolute() || source_path {
         path.to_path_buf()
     } else {
