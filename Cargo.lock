@@ -1749,6 +1749,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "datalith-mobile"
+version = "1.1.2"
+dependencies = [
+ "anyhow",
+ "datalith-core",
+ "datalith-ui",
+ "datalith-vault",
+ "dirs 7.0.0",
+ "gpui-kit",
+ "gpui-pre-platform",
+ "percent-encoding",
+ "raw-window-handle",
+ "tempfile",
+]
+
+[[package]]
 name = "datalith-server"
 version = "1.1.2"
 dependencies = [

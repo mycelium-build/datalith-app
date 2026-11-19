@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use gpui_kit::{AssetSource, Result, SharedString};
 
-use datalith_ui::icons::ICON_ASSETS;
+use crate::icons::ICON_ASSETS;
 
 pub struct DatalithAssets;
 

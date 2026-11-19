@@ -19,7 +19,12 @@
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value == 'datalith-core' || @.name.value == 'datalith-desktop' || @.name.value == 'datalith-server' || @.name.value == 'datalith-ui' || @.name.value == 'datalith-vault')].version"
+          "jsonpath": "$.package[?(@.name.value == 'datalith-mobile' || @.name.value == 'datalith-core' || @.name.value == 'datalith-desktop' || @.name.value == 'datalith-server' || @.name.value == 'datalith-ui' || @.name.value == 'datalith-vault')].version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/mobile/android/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'datalith-mobile' || @.name.value == 'datalith-core' || @.name.value == 'datalith-desktop' || @.name.value == 'datalith-server' || @.name.value == 'datalith-ui' || @.name.value == 'datalith-vault')].version"
         }
       ]
     }

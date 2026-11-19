@@ -13,6 +13,7 @@
 )]
 
 pub mod actions;
+pub mod assets;
 pub mod contexts;
 pub mod editors;
 pub mod handler;

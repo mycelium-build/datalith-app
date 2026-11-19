@@ -1,0 +1,46 @@
+name: Mobile builds
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'crates/**'
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - 'scripts/build/**'
+      - 'scripts/tool-versions.env'
+      - 'docs/vault/**'
+      - 'assets/logo/stable/**'
+      - '.github/workflows/mobile.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-builds-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup target add aarch64-apple-ios-sim
+      - run: brew list xcodegen >/dev/null || brew install xcodegen
+      - working-directory: apps/mobile/ios
+        run: |
+          xcodegen generate
+          xcodebuild -quiet -scheme Datalith -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+
+  android:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup target add aarch64-linux-android
+      - run: |
+          source scripts/tool-versions.env
+          cargo install --locked cargo-ndk --version "$CARGO_NDK_VERSION"
+          sdkmanager "platforms;android-34" "build-tools;36.0.0" "ndk;27.3.13750724"
+      - run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724" apps/mobile/android/build.sh
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0

@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Datalith" android:icon="@drawable/datalith" android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity android:name=".DocumentActivity"
+            android:exported="false" android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density">
+            <meta-data android:name="android.app.lib_name" android:value="datalith_android" />
+        </activity>
+        <activity android:name=".FolderActivity" android:exported="false" android:theme="@android:style/Theme.Material" />
+        <activity android:name=".VaultActivity" android:exported="true" android:theme="@android:style/Theme.Material">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
