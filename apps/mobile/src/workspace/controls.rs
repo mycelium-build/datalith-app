@@ -10,6 +10,7 @@ pub enum Command {
     Back,
     Forward,
     ToggleMode,
+    EditDefinition,
     NewNote,
     NewFolder,
     Rename,
@@ -24,10 +25,11 @@ pub enum Command {
 }
 
 impl Command {
-    const ALL: [Self; 14] = [
+    const ALL: [Self; 15] = [
         Self::Back,
         Self::Forward,
         Self::ToggleMode,
+        Self::EditDefinition,
         Self::NewNote,
         Self::NewFolder,
         Self::Rename,
@@ -46,6 +48,7 @@ impl Command {
             Self::Back => "back",
             Self::Forward => "forward",
             Self::ToggleMode => "toggle-mode",
+            Self::EditDefinition => "edit-definition",
             Self::NewNote => "new-note",
             Self::NewFolder => "new-folder",
             Self::Rename => "rename",
@@ -69,6 +72,7 @@ impl Command {
             Self::Back => "Back",
             Self::Forward => "Forward",
             Self::ToggleMode => "Edit",
+            Self::EditDefinition => "Edit definition…",
             Self::NewNote => "New note",
             Self::NewFolder => "New folder",
             Self::Rename => "Rename…",
@@ -89,6 +93,7 @@ impl Command {
             Self::Back => "chevron.backward",
             Self::Forward => "chevron.forward",
             Self::ToggleMode => "pencil",
+            Self::EditDefinition => "curlybraces",
             Self::NewNote => "square.and.pencil",
             Self::NewFolder => "folder.badge.plus",
             Self::Rename => "character.cursor.ibeam",
@@ -137,10 +142,17 @@ pub struct Item {
 
 /// The document shown by the screen, as far as commands are concerned.
 #[derive(Clone, Copy, Debug, Default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent facts about one document"
+)]
 pub struct DocumentControls {
     pub writable: bool,
     pub can_toggle: bool,
     pub editing: bool,
+    /// A Base: its YAML definition is edited from the menu, not a top-level
+    /// pencil, so the views stay the primary use.
+    pub definition: bool,
 }
 
 /// Facts about the visible screen from which the commands are derived.
@@ -173,14 +185,16 @@ impl ScreenControls {
         let document = screen
             .document
             .filter(|_| screen.surface == Surface::Document);
-        let primary = document.filter(|d| d.writable && d.can_toggle).map(|d| {
-            let mut item = Command::ToggleMode.item();
-            if d.editing {
-                item.label = "Done";
-                item.symbol = "checkmark";
-            }
-            item
-        });
+        let primary = document
+            .filter(|d| d.writable && d.can_toggle && (d.editing || !d.definition))
+            .map(|d| {
+                let mut item = Command::ToggleMode.item();
+                if d.editing {
+                    item.label = "Done";
+                    item.symbol = "checkmark";
+                }
+                item
+            });
         let browsing = matches!(
             screen.surface,
             Surface::Folder | Surface::Document | Surface::Deleted
@@ -192,17 +206,21 @@ impl ScreenControls {
         };
         let mut menu = Vec::new();
         if screen.surface != Surface::Form {
-            if document.is_some_and(|d| d.writable) {
-                menu.push(
+            if let Some(d) = document.filter(|d| d.writable) {
+                let mut section = Vec::new();
+                if d.definition && d.can_toggle && !d.editing {
+                    section.push(Command::EditDefinition.item());
+                }
+                section.extend(
                     [
                         Command::Rename,
                         Command::Move,
                         Command::Duplicate,
                         Command::Reveal,
                     ]
-                    .map(Command::item)
-                    .to_vec(),
+                    .map(Command::item),
                 );
+                menu.push(section);
             } else if document.is_some() {
                 menu.push(vec![Command::Reveal.item()]);
             }
@@ -299,6 +317,7 @@ mod tests {
             writable: true,
             can_toggle: true,
             editing: false,
+            definition: false,
         });
         let controls = ScreenControls::new(&s);
         assert!(controls.back);
@@ -319,6 +338,7 @@ mod tests {
             writable: true,
             can_toggle: true,
             editing: true,
+            definition: false,
         });
         let primary = ScreenControls::new(&s).primary;
         assert!(primary.is_some_and(|i| i.label == "Done" && i.id == "toggle-mode"));
@@ -332,11 +352,49 @@ mod tests {
             writable: false,
             can_toggle: true,
             editing: false,
+            definition: false,
         });
         let controls = ScreenControls::new(&s);
         assert!(controls.primary.is_none() && controls.create.is_empty());
         let commands = controls.menu_commands();
         assert!(!commands.contains(&Command::Delete) && !commands.contains(&Command::Rename));
+    }
+
+    #[test]
+    fn writable_base_edits_its_definition_from_the_menu() {
+        let mut s = screen(Surface::Document);
+        s.document = Some(DocumentControls {
+            writable: true,
+            can_toggle: true,
+            editing: false,
+            definition: true,
+        });
+        let controls = ScreenControls::new(&s);
+        assert!(controls.primary.is_none(), "no pencil for a Base");
+        assert_eq!(
+            controls.menu_commands().first(),
+            Some(&Command::EditDefinition)
+        );
+        s.document = s.document.map(|d| DocumentControls { editing: true, ..d });
+        let editing = ScreenControls::new(&s);
+        assert!(editing.primary.as_ref().is_some_and(|i| i.label == "Done"));
+        assert!(!editing.menu_commands().contains(&Command::EditDefinition));
+    }
+
+    #[test]
+    fn read_only_base_has_no_definition_editor() {
+        let mut s = screen(Surface::Document);
+        s.document = Some(DocumentControls {
+            writable: false,
+            can_toggle: true,
+            editing: false,
+            definition: true,
+        });
+        assert!(
+            !ScreenControls::new(&s)
+                .menu_commands()
+                .contains(&Command::EditDefinition)
+        );
     }
 
     #[test]
@@ -356,6 +414,7 @@ mod tests {
             writable: true,
             can_toggle: true,
             editing: false,
+            definition: false,
         });
         let json: serde_json::Value = serde_json::to_value(ScreenControls::new(&s))?;
         let at = |pointer| json.pointer(pointer).cloned();

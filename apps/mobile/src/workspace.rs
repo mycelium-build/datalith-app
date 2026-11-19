@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "ios"))]
 mod bar;
 mod controls;
+mod keyboard_bar;
 mod navigation;
 mod panels;
 mod search;
@@ -699,6 +700,7 @@ impl Workspace {
                 writable: !h.is_read_only(),
                 can_toggle: h.can_toggle_mode(),
                 editing: h.is_editing(),
+                definition: doc.path.extension().is_some_and(|e| e == "base"),
             }
         });
         ScreenControls::new(&controls::Screen {
@@ -726,7 +728,7 @@ impl Workspace {
         match command {
             Command::Back => self.back(w, cx),
             Command::Forward => self.go_forward(w, cx),
-            Command::ToggleMode => self.toggle_mode(w, cx),
+            Command::ToggleMode | Command::EditDefinition => self.toggle_mode(w, cx),
             Command::NewNote | Command::NewFolder => {
                 self.begin_creation(command == Command::NewFolder, w, cx);
             }
@@ -773,6 +775,33 @@ impl Workspace {
                     }),
             )
         }
+    }
+
+    /// The open Markdown note while it is in Edit, which the keyboard bar
+    /// serves.
+    fn editing_note(&self, cx: &gpui_kit::App) -> Option<&Document> {
+        self.current().filter(|doc| {
+            let h = doc.handler.read(cx);
+            h.is_editing()
+                && !h.is_read_only()
+                && h.input().is_some()
+                && doc.path.extension().is_some_and(|e| e == "md")
+        })
+    }
+
+    /// Returns focus to the editor, which a touch on the bar may have taken,
+    /// then sends it the action.
+    fn editor_action(
+        &self,
+        action: Box<dyn gpui_kit::Action>,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(handler) = self.editing_note(cx).map(|d| d.handler.clone()) else {
+            return;
+        };
+        handler.focus_handle(cx).focus(w, cx);
+        w.dispatch_action(action, cx);
     }
 
     /// Escape leaves the editor first, then steps back.
@@ -837,6 +866,9 @@ impl Render for Workspace {
         panel = panel
             .overflow_hidden()
             .child(self.navigation_content(content, wide, cx));
+        if surface == Surface::Document && self.editing_note(cx).is_some() {
+            panel = panel.child(keyboard_bar::render(cx));
+        }
         panel = panel.track_focus(&self.focus);
         panel = self.feedback(panel, cx);
         panel
