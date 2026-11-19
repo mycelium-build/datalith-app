@@ -644,7 +644,7 @@ jobs:
       - name: Validate SBOM
         run: |
           VERSION="${RELEASE_TAG#v}"
-          python3 scripts/licenses/verify_sbom.py "datalith-${VERSION}.spdx.json" "${VERSION}"
+          python3 scripts/licenses/verify_sbom.py "datalith-${VERSION}.spdx.json" "${VERSION}" release-source/Cargo.lock
 
       - name: Download release assets
         env:
