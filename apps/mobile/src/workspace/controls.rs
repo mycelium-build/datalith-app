@@ -1,6 +1,7 @@
 //! One command policy for both hosts. Rust decides which commands a screen
-//! offers; `UIKit` renders them in its navigation bar (or the Duo side rail)
-//! and Android renders them in a GPUI bar. Hosts reply with stable ids, so a
+//! offers. `UIKit` shows the title and primary action in its navigation bar
+//! and Back, New and More in its bottom toolbar; on the iPhone Duo the system
+//! moves both into its vertical bar. Android renders them in a GPUI bar. Hosts reply with stable ids, so a
 //! translated label can never select the wrong action.
 use super::navigation::Surface;
 use serde::Serialize;

@@ -7,6 +7,7 @@ static __weak UIViewController *surface;
 static NSDictionary *controls;
 static NSString *appliedControls;
 static uint32_t backgroundRGBA;
+static BOOL darkTheme;
 
 static void send(NSString *identifier) { datalith_mobile_command(identifier.UTF8String); }
 
@@ -52,6 +53,13 @@ static NSArray<UIMenuElement *> *actions(NSArray *entries) {
     UIEdgeInsets previousInsets;
 }
 
+// The clock and battery contrast with the app's theme on every screen, with
+// or without a top bar; the GPUI surface does not choose the style itself.
+- (UIViewController *)childViewControllerForStatusBarStyle { return nil; }
+- (UIStatusBarStyle)preferredStatusBarStyle {
+    return darkTheme ? UIStatusBarStyleLightContent : UIStatusBarStyleDarkContent;
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     UIView *view = self.topViewController.view;
@@ -67,20 +75,43 @@ static NSArray<UIMenuElement *> *actions(NSArray *entries) {
 static void applyControls(void) {
     UIViewController *controller = surface;
     if (!controller) return;
-    UIColor *color = [UIColor colorWithRed:((backgroundRGBA >> 24) & 255) / 255.0
-        green:((backgroundRGBA >> 16) & 255) / 255.0 blue:((backgroundRGBA >> 8) & 255) / 255.0 alpha:1];
+    CGFloat red = ((backgroundRGBA >> 24) & 255) / 255.0;
+    CGFloat green = ((backgroundRGBA >> 16) & 255) / 255.0;
+    CGFloat blue = ((backgroundRGBA >> 8) & 255) / 255.0;
+    UIColor *color = [UIColor colorWithRed:red green:green blue:blue alpha:1];
     UINavigationController *navigation = controller.navigationController;
     navigation.view.backgroundColor = color;
     navigation.view.window.backgroundColor = color;
     navigation.navigationBar.backgroundColor = color;
+    // Native bars, menus and the status bar follow the app's theme, not the
+    // system's: a dark theme keeps a light clock even when the device is light.
+    BOOL dark = 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.5;
+    navigation.view.window.overrideUserInterfaceStyle = dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    if (dark != darkTheme) {
+        darkTheme = dark;
+        [navigation setNeedsStatusBarAppearanceUpdate];
+    }
     NSDictionary *model = controls;
     id title = model[@"title"];
     controller.navigationItem.title = [title isKindOfClass:NSString.class] ? title : nil;
-    BOOL back = [model[@"back"] boolValue];
-    controller.navigationItem.leftBarButtonItem = back
-        ? item(@{@"id": @"back", @"label": @"Back", @"symbol": @"chevron.backward"}) : nil;
-    // rightBarButtonItems run from the trailing edge: More, then New, then Edit.
-    NSMutableArray *trailing = [NSMutableArray array];
+    // The top bar names the document and holds its primary action (Edit or
+    // Done). Navigation, creation and the menu sit in the bottom toolbar,
+    // within thumb reach; on the iPhone Duo the system moves both bars into
+    // its vertical bar, the primary action in the top corner and the toolbar
+    // in the bottom one.
+    id primary = model[@"primary"];
+    controller.navigationItem.leftBarButtonItem = nil;
+    controller.navigationItem.rightBarButtonItems =
+        [primary isKindOfClass:NSDictionary.class] ? @[item(primary)] : @[];
+    NSMutableArray *bottom = [NSMutableArray array];
+    if ([model[@"back"] boolValue]) {
+        [bottom addObject:item(@{@"id": @"back", @"label": @"Back", @"symbol": @"chevron.backward"})];
+    }
+    [bottom addObject:[UIBarButtonItem flexibleSpaceItem]];
+    NSArray *create = model[@"create"];
+    if ([create isKindOfClass:NSArray.class] && create.count) {
+        [bottom addObject:menu(@"New", @"plus", actions(create))];
+    }
     NSArray *sections = model[@"menu"];
     if ([sections isKindOfClass:NSArray.class] && sections.count) {
         NSMutableArray *groups = [NSMutableArray array];
@@ -88,14 +119,15 @@ static void applyControls(void) {
             [groups addObject:[UIMenu menuWithTitle:@"" image:nil identifier:nil
                 options:UIMenuOptionsDisplayInline children:actions(section)]];
         }
-        [trailing addObject:menu(@"More actions", @"ellipsis.circle", groups)];
+        [bottom addObject:menu(@"More actions", @"ellipsis.circle", groups)];
     }
-    NSArray *create = model[@"create"];
-    if ([create isKindOfClass:NSArray.class] && create.count) [trailing addObject:menu(@"New", @"plus", actions(create))];
-    id primary = model[@"primary"];
-    if ([primary isKindOfClass:NSDictionary.class]) [trailing addObject:item(primary)];
-    controller.navigationItem.rightBarButtonItems = trailing;
-    [navigation setNavigationBarHidden:!(back || trailing.count || controller.navigationItem.title) animated:NO];
+    controller.toolbarItems = bottom;
+    // While editing, the keyboard bar takes the toolbar's place, as the
+    // keyboard would cover it anyway; Done stays in the top bar.
+    BOOL editing = [model[@"editing"] boolValue];
+    [navigation setToolbarHidden:editing || bottom.count < 2 animated:NO];
+    [navigation setNavigationBarHidden:!(controller.navigationItem.rightBarButtonItems.count
+        || controller.navigationItem.title) animated:NO];
 }
 
 // Keep the GPUI controller and text input view together. UIKit places only
