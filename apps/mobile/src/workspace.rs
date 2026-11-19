@@ -8,7 +8,9 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::{ActiveTheme, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{BackGesturePhase, Context, Entity, Render, Subscription, Window, div, px};
+use gpui_kit::{
+    BackGesturePhase, Context, Entity, Focusable, Render, Subscription, Window, div, px,
+};
 
 struct Document {
     path: PathBuf,
@@ -148,14 +150,16 @@ impl Workspace {
     }
 
     fn back(&mut self, cx: &mut Context<Self>) {
-        if self.history.len() > 1 {
+        if self.document_deleted {
+            self.document_deleted = false;
+        } else if self.history.len() > 1 {
             self.history.pop();
             self.document_deleted = false;
         }
         cx.notify();
     }
 
-    pub(super) fn toggle_mode(&self, cx: &mut Context<Self>) {
+    pub(super) fn toggle_mode(&self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(doc) = self.current() {
             doc.handler.update(cx, |handler, cx| {
                 if handler.can_toggle_mode() {
@@ -165,6 +169,12 @@ impl Workspace {
                         ViewMode::Edit
                     };
                     handler.set_mode(mode, cx);
+                    handler.focus_handle(cx).focus(window, cx);
+                    if mode == ViewMode::Edit && handler.input().is_some() {
+                        window.request_virtual_keyboard();
+                    } else {
+                        window.dismiss_virtual_keyboard();
+                    }
                 }
             });
             cx.notify();
@@ -177,6 +187,7 @@ impl Workspace {
         };
         match file_ops::delete(root, &doc.path) {
             Ok(deleted) => {
+                self.history.retain(|doc| doc.path != deleted.original);
                 self.document_deleted = true;
                 self.deleted = Some(deleted);
                 #[cfg(target_os = "ios")]
@@ -248,7 +259,7 @@ impl Render for Workspace {
                                 "Edit"
                             })
                             .h(px(44.))
-                            .on_click(cx.listener(|v, _, _, cx| v.toggle_mode(cx))),
+                            .on_click(cx.listener(|v, _, window, cx| v.toggle_mode(window, cx))),
                     );
                 }
                 if !doc.handler.read(cx).is_read_only() {

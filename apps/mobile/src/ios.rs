@@ -60,7 +60,7 @@ pub(super) fn attach(view: &Entity<Workspace>, window: &Window, cx: &App) {
             let _ = handle.update(&mut app, |_, window, cx| {
                 view.update(cx, |v, cx| match command {
                     Command::Open(path) => v.open(path, window, cx),
-                    Command::ToggleMode => v.toggle_mode(cx),
+                    Command::ToggleMode => v.toggle_mode(window, cx),
                     Command::Delete => v.delete(cx),
                 })
             });
