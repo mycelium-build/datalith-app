@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Validate a Syft-generated SPDX JSON SBOM for Datalith.
 
-Usage: verify_sbom.py <sbom.json> <version>
+Usage: verify_sbom.py <sbom.json> <version> <Cargo.lock>
 
-Checks that the SBOM is SPDX JSON, identifies Datalith, and lists the core Rust components.
-Bundled assets are covered by assets/licenses.toml.
+Checks that the SBOM is SPDX JSON, identifies Datalith, and lists every GPUI crate
+(gpui-kit, gpui-component, gpui-pre*) that the released Cargo.lock resolves. Reading the
+list from the lockfile keeps the check in step with gpui-kit upgrades, which add and drop
+gpui-pre crates. Bundled assets are covered by assets/licenses.toml.
 
 Exit codes follow the LICENSE-E* prefixes.
 """
@@ -13,6 +15,10 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
+
+GPUI_PREFIXES = ("gpui-kit", "gpui-component", "gpui-pre")
+ALWAYS_REQUIRED = {"gpui-kit", "gpui-component", "gpui-pre"}
 
 
 def fail(message: str) -> None:
@@ -20,12 +26,28 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def gpui_crates(lockfile: str) -> set[str]:
+    try:
+        with open(lockfile, "rb") as handle:
+            lock = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        fail(f"cannot read Cargo.lock: {error}")
+
+    names = {
+        package.get("name")
+        for package in lock.get("package", [])
+        if isinstance(package, dict) and isinstance(package.get("name"), str)
+    }
+    return {name for name in names if name.startswith(GPUI_PREFIXES)}
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        fail("usage: verify_sbom.py <sbom.json> <version>")
+    if len(sys.argv) != 4:
+        fail("usage: verify_sbom.py <sbom.json> <version> <Cargo.lock>")
 
     path = sys.argv[1]
     version = sys.argv[2]
+    lockfile = sys.argv[3]
 
     try:
         with open(path, encoding="utf-8") as handle:
@@ -53,14 +75,7 @@ def main() -> int:
         for package in packages
         if isinstance(package, dict) and isinstance(package.get("name"), str)
     }
-    required = {
-        "gpui-kit",
-        "gpui-component",
-        "gpui-pre",
-        "gpui-pre-zlog",
-        "gpui-pre-ztracing",
-        "gpui-pre-ztracing-macro",
-    }
+    required = ALWAYS_REQUIRED | gpui_crates(lockfile)
     missing = sorted(required - package_names)
     if missing:
         fail(f"SBOM missing expected components: components={','.join(missing)}")
