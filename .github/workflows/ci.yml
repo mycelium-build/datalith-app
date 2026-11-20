@@ -16,6 +16,8 @@ concurrency:
 jobs:
   # Decides what the other jobs must do, so nothing verifies the same inputs twice:
   # - a push to main whose tree was already verified on its PR skips the heavy jobs;
+  # - a push to a PR skips each job whose inputs did not change since the previous head, when
+  #   that head passed it, so a docs-only push to a code PR does not rerun the tests;
   # - jobs whose inputs did not change are skipped (a skipped required check counts as passed),
   #   including ci when only files it never reads change (docs, contributor and release tooling);
   # - a release-please PR that only bumps the version runs a light check.
@@ -25,7 +27,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      checks: read
+      actions: read
     outputs:
       ci-mode: ${{ steps.plan.outputs.ci-mode }}
       licenses: ${{ steps.plan.outputs.licenses }}
@@ -44,9 +46,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           BEFORE: ${{ github.event.before }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.head_ref }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
@@ -60,29 +64,47 @@ jobs:
             changed="*" # unknown base: treat everything as changed
             base=""
           fi
-          has() { [[ "$changed" == "*" ]] || grep -qE "$1" <<<"$changed"; }
-          flag() { if has "$1"; then echo true; else echo false; fi; }
+          # has LIST REGEX: whether a file of LIST matches REGEX ("*" matches everything).
+          has() { [[ "$1" == "*" ]] || grep -qE "$2" <<<"$1"; }
+          flag() { if has "$changed" "$1"; then echo true; else echo false; fi; }
 
           # check_assets.py checks every tracked file under assets/ against assets/licenses.toml.
-          licenses="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)')"
+          licenses_inputs='^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|deny\.toml|THIRD-PARTY-NOTICES\.md|assets/|scripts/licenses/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|\.github/workflows/ci\.yml$)'
+          licenses="$(flag "$licenses_inputs")"
           # Advisories depend on the advisory database; the daily Advisories workflow covers
           # main. Here they only run when the dependency set changes.
           advisories="$(flag '^(Cargo\.lock|deny\.toml)$')"
           # The update and release-preparation tests also read the packager configurations.
-          manifest="$(flag '^(scripts/(updates/|prepare-release\.py$|test_prepare_release\.py$)|packager\.(stable|preview)\.toml$|packaging/|assets/logo/|\.github/workflows/ci\.yml$)')"
+          manifest_inputs='^(scripts/(updates/|prepare-release\.py$|test_prepare_release\.py$)|packager\.(stable|preview)\.toml$|packaging/|assets/logo/|\.github/workflows/ci\.yml$)'
+          manifest="$(flag "$manifest_inputs")"
           # Files the ci job (fmt, clippy, tests) never reads: docs, contributor and release
           # tooling, other workflows. docs/vault/ is embedded in the binary and read by tests, and
           # ci.yml tests itself, so both count as code. Anything else counts as code too.
           untested='^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|todo\.txt|renovate\.json|\.pre-commit-config\.yaml|release-please-config\.json|\.release-please-manifest\.json|deny\.toml|nfpm\.yaml|packager\.(stable|preview)\.toml|\.agents/|\.github/|docs/|packaging/|scripts/(hooks|licenses)/|scripts/lib/tools\.sh$|scripts/tool-versions\.env$|scripts/[^/]+\.py$|scripts/updates/[^/]+\.py$)'
-          if [[ "$changed" == "*" ]] || grep -vE "$untested" <<<"$changed" | grep -q . \
-              || grep -qE '^(docs/vault/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
-            code=true
-          else
-            code=false
-          fi
+          touches_code() {
+            [[ "$1" == "*" ]] || grep -vE "$untested" <<<"$1" | grep -q . \
+              || grep -qE '^(docs/vault/|\.github/workflows/ci\.yml$)' <<<"$1"
+          }
+          if touches_code "$changed"; then code=true; else code=false; fi
           # Inputs of the Rust cache key: main must rebuild to refresh it when they change.
           rust_deps="$(flag '^(Cargo\.(toml|lock)|(crates|apps)/[^/]+/Cargo\.toml|rust-toolchain\.toml|\.cargo/)')"
           mode=full
+
+          # verified COMMIT JOB: whether JOB passed in the latest run of this workflow on COMMIT,
+          # and that run completed successfully (a cancelled run leaves its pending jobs skipped).
+          # ci must also have run its tests: it succeeds without them when it only commits
+          # formatting, and in its light and warm modes.
+          verified() {
+            local run
+            run="$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$1&per_page=1" \
+              --jq '.workflow_runs[0] | select(.conclusion == "success") | .id')"
+            [[ -n "$run" ]] || return 1
+            gh api "repos/$REPO/actions/runs/$run/jobs?per_page=100" --jq "
+              .jobs[] | select(.name == \"$2\")
+              | .conclusion == \"skipped\" or (.conclusion == \"success\" and (\"$2\" != \"ci\"
+                or any(.steps[]; .name == \"Run tests\" and .conclusion == \"success\")))" \
+              | grep -qx true
+          }
 
           if [[ "$EVENT" == push ]]; then
             tree="$(git rev-parse HEAD^{tree})"
@@ -92,14 +114,7 @@ jobs:
               head="$(gh api "repos/$REPO/pulls/$pr" --jq .head.sha)"
               head_tree="$(gh api "repos/$REPO/git/commits/$head" --jq .tree.sha)"
               [[ "$head_tree" == "$tree" ]] || continue
-              # Latest check run per name, from this workflow's jobs only.
-              passed="$(gh api "repos/$REPO/commits/$head/check-runs?filter=latest&per_page=100" --jq '
-                [.check_runs[]
-                 | select(.app.slug == "github-actions")
-                 | select(.name == "ci" or .name == "license-compliance")
-                 | select(.conclusion == "success" or .conclusion == "skipped")
-                 | .name] | unique | length')"
-              if [[ "$passed" == 2 ]]; then
+              if verified "$head" ci && verified "$head" license-compliance; then
                 verified=true
                 echo "::notice::Tree $tree was already verified on #$pr at $head: skipping the duplicate run."
                 break
@@ -132,6 +147,29 @@ jobs:
           if ! $code; then
             mode=skip
             echo "::notice::Only files the ci job never reads changed: skipping it."
+          fi
+
+          # A push to a PR: a job whose inputs are unchanged since the previous head reuses its
+          # result there. The main ruleset requires PRs to be up to date, so the previous head
+          # already contained the base it was verified with, and comparing the two heads covers
+          # every change, including a merge of main or a force-push.
+          if [[ "$EVENT" == pull_request && "$ACTION" == synchronize && -n "$BEFORE" ]] \
+              && { git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+                   || git fetch -q --no-tags --filter=blob:none origin "$BEFORE"; }; then
+            since="$(git diff --name-only "$BEFORE" "$PR_HEAD")"
+            if [[ "$mode" != skip ]] && ! touches_code "$since" && verified "$BEFORE" ci; then
+              mode=skip
+              echo "::notice::Only files the ci job never reads changed since $BEFORE, which passed it: skipping it."
+            fi
+            if $licenses && ! has "$since" "$licenses_inputs" && verified "$BEFORE" license-compliance; then
+              licenses=false
+              advisories=false
+              echo "::notice::License inputs are unchanged since $BEFORE, which passed license-compliance: skipping it."
+            fi
+            if $manifest && ! has "$since" "$manifest_inputs" && verified "$BEFORE" update-manifest; then
+              manifest=false
+              echo "::notice::Update manifest inputs are unchanged since $BEFORE, which passed them: skipping it."
+            fi
           fi
 
           {
