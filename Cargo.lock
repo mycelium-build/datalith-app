@@ -1709,7 +1709,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "datalith-core"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "percent-encoding",
@@ -1720,7 +1720,7 @@ dependencies = [
 
 [[package]]
 name = "datalith-desktop"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "datalith-server"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "datalith-core",
  "datalith-vault",
@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "datalith-ui"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "conv",
@@ -1780,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "datalith-vault"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "conv",

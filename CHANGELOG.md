@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/mycelium-build/datalith-app/compare/v1.1.2...v1.2.0) (2026-11-20)
+
+
+### Features
+
+* **base/cards:** body height ([7eb71d8](https://github.com/mycelium-build/datalith-app/commit/7eb71d8ef9ca06ef150a1c5a295b53cd9c8ed870))
+* **base:** pan a graph view with the arrow keys ([00ed73e](https://github.com/mycelium-build/datalith-app/commit/00ed73eb4c9f76655bea800aef0209a9dc08022b))
+* **bases:** editable table cell and list line ([1cad514](https://github.com/mycelium-build/datalith-app/commit/1cad51474e9c86d8af2e0f0fe12b582e71b93a90))
+* **base:** switch views and zoom the graph from the keyboard ([0049cb4](https://github.com/mycelium-build/datalith-app/commit/0049cb47748e854d351678c0475f4b56b27ca9af))
+* **catalog:** fn guarantee db updated ([ccc13f3](https://github.com/mycelium-build/datalith-app/commit/ccc13f3c115a2ebcb20d0ad840ccaa05d384b83e))
+* **document/base:** kanban ([4606c26](https://github.com/mycelium-build/datalith-app/commit/4606c267c151ba56e176f018d3732d70e4b9cd95))
+* **file_ops:** update frontmatter ([06dcb51](https://github.com/mycelium-build/datalith-app/commit/06dcb51b04dbeb7987ebbce6196786442d5490b3))
+* **file:** add New todo list and New base commands ([df0c028](https://github.com/mycelium-build/datalith-app/commit/df0c0281cca9ac747da1193e9e9ec5f90b861268))
+* **keymap:** add shortcuts for Open vault, Open themes and Documentation ([d1c58c5](https://github.com/mycelium-build/datalith-app/commit/d1c58c56344331b7bac20e8959cadeca86052d13))
+* **keymap:** bind each shortcut in its zone ([5666fc2](https://github.com/mycelium-build/datalith-app/commit/5666fc29b0c1f19bd7e2d9f07af245a084f67f9b))
+* **keymap:** keep character keys out of text fields ([cad903a](https://github.com/mycelium-build/datalith-app/commit/cad903a6c294461e71f519965d8aea0ed0573988))
+* **keymap:** replace the Interface zone with a Sidebar zone ([e2b56d2](https://github.com/mycelium-build/datalith-app/commit/e2b56d262811e60ca0e39ad97d678d0a0c4d7a32))
+* **keymap:** use file manager keys for Delete and bind the New commands ([088ae6d](https://github.com/mycelium-build/datalith-app/commit/088ae6de8c4a509bcbc614800bc87c9af0aa7241))
+* **note:** add Bold, Italic and Insert wiki link ([81764ba](https://github.com/mycelium-build/datalith-app/commit/81764ba16c2a20010acf73adf25c9c81e7023f03))
+* **settings:** store a zone with each shortcut override ([28aa750](https://github.com/mycelium-build/datalith-app/commit/28aa7509effd2162f0ba722ab4f927fc7790acf1))
+* **shortcuts:** choose the zone of a shortcut ([68e0fdd](https://github.com/mycelium-build/datalith-app/commit/68e0fdd8d8f9068988840c9f08727fccde64d35d))
+* **shortcuts:** flag shortcuts that another binding shadows ([f528e9f](https://github.com/mycelium-build/datalith-app/commit/f528e9f30d998a52b647f4936a59338f2611777a))
+* **shortcuts:** open the vault selector with Ctrl+Alt+V ([052e5d7](https://github.com/mycelium-build/datalith-app/commit/052e5d79be7ae4c8bf74b8f0e7af9a18cd5f01eb))
+* **shortcuts:** use Ctrl+Shift+T to create a todo list ([64a955f](https://github.com/mycelium-build/datalith-app/commit/64a955f3b7de01c9fb18e54e00ed13b80f777b9f))
+* **sidebar:** jump through the file tree with Home, End and page keys ([aeb0a45](https://github.com/mycelium-build/datalith-app/commit/aeb0a459905d5a0d6d593c153b9608a90a659be1))
+* **sidebar:** show and keep the file tree focus ([a47948e](https://github.com/mycelium-build/datalith-app/commit/a47948e3fa86582de1e49ad61e469aa68c9d199b))
+* **tabs:** switch to the next or previous tab ([ce0c121](https://github.com/mycelium-build/datalith-app/commit/ce0c12140d39ce66de1a8fcc2c8f5c2a6fe0e535))
+* **todo:** add keyboard commands for tasks ([4d66188](https://github.com/mycelium-build/datalith-app/commit/4d661887abd5615b2b5f0776a875efbe68058e52))
+* **todo:** turn todo list keys into shortcuts ([6633e15](https://github.com/mycelium-build/datalith-app/commit/6633e154379ea22a59d5aeb0e4669ac5183ad896))
+* **ui/viewers:** kanban base ([bfeed67](https://github.com/mycelium-build/datalith-app/commit/bfeed677074d1b3b93bc11b8d538640e3da3eeea))
+* **ui:** add key contexts for the workspace and document zones ([ef4aec1](https://github.com/mycelium-build/datalith-app/commit/ef4aec192e5612254aa916e436912f1e2becc000))
+
+
+### Bug Fixes
+
+* **base/cards:** card align at the start ([a79f18c](https://github.com/mycelium-build/datalith-app/commit/a79f18c71ff41e697f0d7e5fc8e9ad33f53cdd86))
+* **base:** close a full-screen card image with Escape ([cd3eaba](https://github.com/mycelium-build/datalith-app/commit/cd3eaba31268497ab965daec0c3639bd77cacdc4))
+* **base:** in kanban dropping note in same folder doesnt rename, ([25e6233](https://github.com/mycelium-build/datalith-app/commit/25e6233b4bcde692ead2694baabd2284caa3fa2a))
+* **base:** scroll list, table and cards views with the keyboard ([f178e54](https://github.com/mycelium-build/datalith-app/commit/f178e54b6092396f5c3768e680b0eeb3c7f757ea))
+* **bases:** evaluate prefix and suffix expressions per document ([ed9aa8e](https://github.com/mycelium-build/datalith-app/commit/ed9aa8e488b168cccb87e4efe5ee31ef98238368))
+* **ci:** apply Rust 1.100 clippy fixes and regenerate notices ([b0b43d7](https://github.com/mycelium-build/datalith-app/commit/b0b43d760581b156288e2ed4424b5a502c0e881c))
+* **deps:** adapt to gpui 0.9.1 API ([1881615](https://github.com/mycelium-build/datalith-app/commit/18816153ddd3850304913fcf0c1b4d3a77529042))
+* **deps:** update gpui ([7ab4b61](https://github.com/mycelium-build/datalith-app/commit/7ab4b61ae1d1c5ac338828b68d583d53ac81b658))
+* **deps:** update minor dependencies ([aaf66a2](https://github.com/mycelium-build/datalith-app/commit/aaf66a2273f9731759fa7b5f7e3c8de25f35a576))
+* **deps:** update patch dependencies ([a3ff5a3](https://github.com/mycelium-build/datalith-app/commit/a3ff5a39940653a709a9ea7d0a882951edeffcc0))
+* **deps:** update patch dependencies ([f5ba267](https://github.com/mycelium-build/datalith-app/commit/f5ba2677232fde4836a6d380c00733571cec0d07))
+* **deps:** update Rust crate dirs to v7 ([f1c4a00](https://github.com/mycelium-build/datalith-app/commit/f1c4a00fd563465ace65c5b1d6b92ad0b032619d))
+* drop Rows before execute_batch for turso 0.8 ([6d1be1b](https://github.com/mycelium-build/datalith-app/commit/6d1be1b21ea958b6e0c5d32629e143f18c108c39))
+* **editors/todotxt:** global search shortcuts dont work ([e1ec9ac](https://github.com/mycelium-build/datalith-app/commit/e1ec9ace677c507124514c19a965d6c8cbab0a78))
+* **focus:** restore keyboard focus after closing the palette ([4f82260](https://github.com/mycelium-build/datalith-app/commit/4f82260a125310b6a2a4fcdf5bb4dd01524f9d87))
+* hex-encode sha2 0.11 digest output ([9fa7c10](https://github.com/mycelium-build/datalith-app/commit/9fa7c105b15114b41a708e53988d39a0b9bf1809))
+* **keymap:** match document shortcuts outside text fields ([fc03bc4](https://github.com/mycelium-build/datalith-app/commit/fc03bc4c8c280d7d39b6c686642d1894dbb9c21d))
+* **keymap:** suspend workspace shortcuts in modals ([bdc9f15](https://github.com/mycelium-build/datalith-app/commit/bdc9f1527a1985a209a8eb429bd6e54d1deda61e))
+* **macos:** route scoped menu shortcuts through the keymap ([1603bd2](https://github.com/mycelium-build/datalith-app/commit/1603bd2f950051f97d98bbdbc9477f472053b4fe))
+* **macos:** satisfy visibility lints for menu registration ([64d0eaf](https://github.com/mycelium-build/datalith-app/commit/64d0eafe44874fb2699d1fb2f3a339e689e633ff))
+* **markdown:** format only the active selection ([59413be](https://github.com/mycelium-build/datalith-app/commit/59413beecccccbf66dd881062a594215b8389f17))
+* **note:** scroll a note being read with the keyboard ([eaad774](https://github.com/mycelium-build/datalith-app/commit/eaad77483d4f1e0ef497bfc255ef62248f83b069))
+* **release:** check the GPUI crates that Cargo.lock resolves in the SBOM ([f65bf58](https://github.com/mycelium-build/datalith-app/commit/f65bf588b13cdb260f269540c37e23ec12b57bd1))
+* **release:** publish preview packages to Linux repositories ([336749e](https://github.com/mycelium-build/datalith-app/commit/336749e812ce712906f34a2207101b6733013ab2))
+* **release:** publish the update manifests from their own job ([9c5309a](https://github.com/mycelium-build/datalith-app/commit/9c5309a2a0df81f40d1bdeb928a1676dca429a12))
+* **shortcuts:** align the zone column and rename the Interface zone ([3eaa013](https://github.com/mycelium-build/datalith-app/commit/3eaa013cc2a799805b248c5a5309909e25481180))
+* **shortcuts:** ctrl+alt+t for new todos ([6e1dd34](https://github.com/mycelium-build/datalith-app/commit/6e1dd340eea7e4cde81690699fee3296b5815c58))
+* **shortcuts:** keep sidebar focus and mode switching consistent ([ffad7f0](https://github.com/mycelium-build/datalith-app/commit/ffad7f0163b3fa3e4ea71671edbc7d07f2cf9381))
+* **shortcuts:** resolve menu targets and restore keyboard focus ([5c1a388](https://github.com/mycelium-build/datalith-app/commit/5c1a388d3beaf27ff8aab2da26213b5382e7621d))
+* **shortcuts:** restore the centered tables in the virtual list ([e060ca9](https://github.com/mycelium-build/datalith-app/commit/e060ca9501d1337c9e570b902092f73bf5513ede))
+* **sidebar:** keep the active note selected in the file tree ([aa3059b](https://github.com/mycelium-build/datalith-app/commit/aa3059bd0236a21ac4c724e9dc5f61a7c37ef93a))
+* **sidebar:** keep the open file highlighted during navigation ([2e35f7e](https://github.com/mycelium-build/datalith-app/commit/2e35f7efc8f431c174e66fe4c37b76070d2f6b06))
+* **sidebar:** keep the selection visible and frame it on keyboard focus ([a7e4708](https://github.com/mycelium-build/datalith-app/commit/a7e4708d4edd3c89c01b5091bbc1a4469fedb673))
+* **sidebar:** outline the selection while the file tree has focus ([53439bb](https://github.com/mycelium-build/datalith-app/commit/53439bba4f04b31d1871845844399f85dabd0f0e))
+* **sidebar:** preserve the file extension while typing a name ([bb91ef6](https://github.com/mycelium-build/datalith-app/commit/bb91ef6de4519addc8e2a7128ff4f30518ddaef5))
+* **sidebar:** right click ([9083625](https://github.com/mycelium-build/datalith-app/commit/9083625862c1065f90b2090a55311065e86fee9f))
+* **ui:** open in a new tab with the secondary modifier ([76edb3a](https://github.com/mycelium-build/datalith-app/commit/76edb3ae81fc8c2e67feeffc8f5129e40147b38a))
+* **ui:** stop shortcuts from firing when dismissing the startup screen ([76f75e3](https://github.com/mycelium-build/datalith-app/commit/76f75e3708613dcf171148bea54eb1b0a9339666))
+
+
+### Performance Improvements
+
+* **shortcuts:** render only the visible shortcut rows ([8800e8f](https://github.com/mycelium-build/datalith-app/commit/8800e8f04fa85f59947ea849033aa9db88efb212))
+* **sidebar:** reveal active documents in the cached tree ([b8f7eb3](https://github.com/mycelium-build/datalith-app/commit/b8f7eb3beed34f7289fe060a225f8c0d6d6144f0))
+
 ## [1.1.2](https://github.com/mycelium-build/datalith-app/compare/v1.1.1...v1.1.2) (2026-11-09)
 
 
