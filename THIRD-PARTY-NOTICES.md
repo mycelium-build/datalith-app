@@ -21062,11 +21062,11 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `datalith-desktop` 1.1.2 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
-- `datalith-core` 1.1.2 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
-- `datalith-server` 1.1.2 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
-- `datalith-ui` 1.1.2 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
-- `datalith-vault` 1.1.2 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith-desktop` 1.2.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith-core` 1.2.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith-server` 1.2.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith-ui` 1.2.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
+- `datalith-vault` 1.2.0 — `MIT` — <https://github.com/mycelium-build/datalith-app> <!-- x-release-please-version -->
 ```
 MIT License
 
