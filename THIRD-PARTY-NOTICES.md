@@ -3643,7 +3643,7 @@ Used by:
 - `write16` 1.0.0 — `Apache-2.0 OR MIT` — <https://github.com/hsivonen/write16>
 - `x11rb-protocol` 0.13.2 — `MIT OR Apache-2.0` — <https://github.com/psychon/x11rb>
 - `x11rb` 0.13.2 — `MIT OR Apache-2.0` — <https://github.com/psychon/x11rb>
-- `zeroize` 1.9.1 — `Apache-2.0 OR MIT` — <https://github.com/RustCrypto/utils>
+- `zeroize` 1.9.2 — `Apache-2.0 OR MIT` — <https://github.com/RustCrypto/utils>
 - `zeroize_derive` 1.5.0 — `Apache-2.0 OR MIT` — <https://github.com/RustCrypto/utils>
 ```
 
@@ -4822,8 +4822,8 @@ SPDX identifier: `Apache-2.0`
 
 Used by:
 
-- `zerocopy-derive` 0.8.63 — `BSD-2-Clause OR Apache-2.0 OR MIT` — <https://github.com/google/zerocopy>
-- `zerocopy` 0.8.63 — `BSD-2-Clause OR Apache-2.0 OR MIT` — <https://github.com/google/zerocopy>
+- `zerocopy-derive` 0.8.64 — `BSD-2-Clause OR Apache-2.0 OR MIT` — <https://github.com/google/zerocopy>
+- `zerocopy` 0.8.64 — `BSD-2-Clause OR Apache-2.0 OR MIT` — <https://github.com/google/zerocopy>
 ```
                                  Apache License
                            Version 2.0, January 2004
@@ -6104,11 +6104,13 @@ SPDX identifier: `Apache-2.0`
 Used by:
 
 - `annotate-snippets` 0.12.18 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/annotate-snippets-rs>
+- `env_filter` 2.1.0 — `MIT OR Apache-2.0` — <https://github.com/rust-cli/env_logger>
+- `env_logger` 0.11.12 — `MIT OR Apache-2.0` — <https://github.com/rust-cli/env_logger>
 - `serde_spanned` 1.1.3 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
-- `toml` 1.2.1+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
+- `toml` 1.2.2+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
 - `toml_datetime` 1.1.3+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
-- `toml_edit` 0.25.19+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
-- `toml_parser` 1.1.5+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
+- `toml_edit` 0.25.20+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
+- `toml_parser` 1.1.6+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
 - `toml_writer` 1.2.0+spec-1.1.0 — `MIT OR Apache-2.0` — <https://github.com/toml-rs/toml>
 ```
                                  Apache License
@@ -6751,8 +6753,6 @@ Used by:
 
 - `anstyle` 1.0.14 — `MIT OR Apache-2.0` — <https://github.com/rust-cli/anstyle.git>
 - `crc32fast` 1.5.5 — `MIT OR Apache-2.0` — <https://github.com/srijs/rust-crc32fast>
-- `env_filter` 2.0.0 — `MIT OR Apache-2.0` — <https://github.com/rust-cli/env_logger>
-- `env_logger` 0.11.11 — `MIT OR Apache-2.0` — <https://github.com/rust-cli/env_logger>
 - `fallible-iterator` 0.3.0 — `MIT OR Apache-2.0` — <https://github.com/sfackler/rust-fallible-iterator>
 - `float-ord` 0.3.2 — `MIT  OR  Apache-2.0` — <https://github.com/notriddle/rust-float-ord>
 - `foreign-types-macros` 0.2.4 — `MIT OR Apache-2.0` — <https://github.com/sfackler/foreign-types>
@@ -9308,7 +9308,7 @@ SPDX identifier: `Apache-2.0`
 
 Used by:
 
-- `notify-types` 2.3.0 — `MIT OR Apache-2.0` — <https://github.com/notify-rs/notify.git>
+- `notify-types` 2.3.1 — `MIT OR Apache-2.0` — <https://github.com/notify-rs/notify.git>
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -10397,9 +10397,9 @@ Used by:
 - `bitflags` 1.3.2 — `MIT OR Apache-2.0` — <https://github.com/bitflags/bitflags>
 - `bitflags` 2.13.2 — `MIT OR Apache-2.0` — <https://github.com/bitflags/bitflags>
 - `blocking` 1.7.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/blocking>
-- `bstr` 1.13.1 — `MIT OR Apache-2.0` — <https://github.com/BurntSushi/bstr>
+- `bstr` 1.14.0 — `MIT OR Apache-2.0` — <https://github.com/BurntSushi/bstr>
 - `bumpalo` 3.20.4 — `MIT OR Apache-2.0` — <https://github.com/fitzgen/bumpalo>
-- `cc` 1.11.2 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/cc-rs>
+- `cc` 1.11.3 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/cc-rs>
 - `cexpr` 0.6.0 — `Apache-2.0 OR MIT` — <https://github.com/jethrogb/rust-cexpr>
 - `cfg-if` 1.0.5 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/cfg-if>
 - `cmake` 0.1.58 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/cmake-rs>
@@ -10426,11 +10426,11 @@ Used by:
 - `event-listener-strategy` 0.5.4 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/event-listener-strategy>
 - `event-listener` 5.4.2 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/event-listener>
 - `fastrand` 2.5.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/fastrand>
-- `filetime` 0.2.29 — `MIT OR Apache-2.0` — <https://github.com/alexcrichton/filetime>
+- `filetime` 0.2.30 — `MIT OR Apache-2.0` — <https://github.com/alexcrichton/filetime>
 - `find-msvc-tools` 0.1.15 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/cc-rs>
 - `flate2` 1.1.11 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/flate2-rs>
 - `fnv` 1.0.7 — `Apache-2.0  OR  MIT` — <https://github.com/servo/rust-fnv>
-- `form_urlencoded` 1.2.2 — `MIT OR Apache-2.0` — <https://github.com/servo/rust-url>
+- `form_urlencoded` 1.2.3 — `MIT OR Apache-2.0` — <https://github.com/servo/rust-url>
 - `fs4` 0.13.1 — `MIT OR Apache-2.0` — <https://github.com/al8n/fs4-rs>
 - `futf` 0.1.5 — `MIT  OR  Apache-2.0` — <https://github.com/servo/futf>
 - `futures-lite` 2.6.1 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/futures-lite>
@@ -10442,7 +10442,7 @@ Used by:
 - `hashbrown` 0.14.5 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/hashbrown>
 - `hashbrown` 0.16.1 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/hashbrown>
 - `hashbrown` 0.17.1 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/hashbrown>
-- `heapless` 0.9.3 — `MIT OR Apache-2.0` — <https://github.com/rust-embedded/heapless>
+- `heapless` 0.9.4 — `MIT OR Apache-2.0` — <https://github.com/rust-embedded/heapless>
 - `heck` 0.4.1 — `MIT OR Apache-2.0` — <https://github.com/withoutboats/heck>
 - `heck` 0.5.0 — `MIT OR Apache-2.0` — <https://github.com/withoutboats/heck>
 - `html5ever` 0.27.0 — `MIT OR Apache-2.0` — <https://github.com/servo/html5ever>
@@ -10491,14 +10491,14 @@ Used by:
 - `png` 0.18.1 — `MIT OR Apache-2.0` — <https://github.com/image-rs/image-png>
 - `polling` 3.11.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/polling>
 - `pollster` 0.4.0 — `Apache-2.0 OR MIT` — <https://github.com/zesterer/pollster>
-- `pollster` 1.0.1 — `Apache-2.0 OR MIT` — <https://github.com/zesterer/pollster>
+- `pollster` 1.0.3 — `MIT OR Apache-2.0` — <https://github.com/zesterer/pollster>
 - `prost-derive` 0.14.6 — `Apache-2.0` — <https://github.com/tokio-rs/prost>
 - `prost` 0.14.6 — `Apache-2.0` — <https://github.com/tokio-rs/prost>
 - `rayon-core` 1.13.0 — `MIT OR Apache-2.0` — <https://github.com/rayon-rs/rayon>
 - `rayon` 1.12.0 — `MIT OR Apache-2.0` — <https://github.com/rayon-rs/rayon>
-- `regex-automata` 0.4.18 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
-- `regex-syntax` 0.8.11 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
-- `regex` 1.13.1 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
+- `regex-automata` 0.4.19 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
+- `regex-syntax` 0.8.12 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
+- `regex` 1.13.2 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/regex>
 - `renderdoc-sys` 1.1.0 — `MIT OR Apache-2.0` — <https://github.com/ebkalderon/renderdoc-rs>
 - `ring` 0.17.14 — `Apache-2.0 AND ISC` — <https://github.com/briansmith/ring>
 - `roaring` 0.11.5 — `MIT OR Apache-2.0` — <https://github.com/RoaringBitmap/roaring-rs>
@@ -10520,7 +10520,7 @@ Used by:
 - `signal-hook-registry` 1.4.8 — `MIT OR Apache-2.0` — <https://github.com/vorner/signal-hook>
 - `similar` 2.7.0 — `Apache-2.0` — <https://github.com/mitsuhiko/similar>
 - `simplecss` 0.2.2 — `Apache-2.0 OR MIT` — <https://github.com/linebender/simplecss>
-- `smallvec` 1.16.5 — `MIT OR Apache-2.0` — <https://github.com/servo/rust-smallvec>
+- `smallvec` 1.16.6 — `MIT OR Apache-2.0` — <https://github.com/smallvec/smallvec>
 - `smol` 2.0.2 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/smol>
 - `smol_str` 0.3.7 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/rust-analyzer/tree/master/lib/smol_str>
 - `socket2` 0.6.5 — `MIT OR Apache-2.0` — <https://github.com/rust-lang/socket2>
@@ -10550,8 +10550,8 @@ Used by:
 - `unicode-width` 0.2.3 — `MIT OR Apache-2.0` — <https://github.com/unicode-rs/unicode-width>
 - `unicode-xid` 0.2.6 — `MIT OR Apache-2.0` — <https://github.com/unicode-rs/unicode-xid>
 - `unwrap-infallible` 1.0.0 — `MIT OR Apache-2.0` — <https://github.com/mzabaluev/unwrap-infallible>
-- `url` 2.5.8 — `MIT OR Apache-2.0` — <https://github.com/servo/rust-url>
-- `uuid` 1.29.2 — `Apache-2.0 OR MIT` — <https://github.com/uuid-rs/uuid>
+- `url` 2.5.9 — `MIT OR Apache-2.0` — <https://github.com/servo/rust-url>
+- `uuid` 1.29.3 — `Apache-2.0 OR MIT` — <https://github.com/uuid-rs/uuid>
 - `version_check` 0.9.5 — `MIT OR Apache-2.0` — <https://github.com/SergioBenitez/version_check>
 - `waker-fn` 1.2.0 — `Apache-2.0 OR MIT` — <https://github.com/smol-rs/waker-fn>
 - `xattr` 1.7.0 — `MIT OR Apache-2.0` — <https://github.com/Stebalien/xattr>
@@ -15192,16 +15192,16 @@ Used by:
 - `pastey` 0.2.3 — `MIT OR Apache-2.0` — <https://github.com/as1100k/pastey>
 - `pathfinder_geometry` 0.5.1 — `MIT OR Apache-2.0` — <https://github.com/servo/pathfinder>
 - `pathfinder_simd` 0.5.6 — `MIT OR Apache-2.0` — <https://github.com/servo/pathfinder>
-- `pin-project-internal` 1.1.13 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project>
-- `pin-project-lite` 0.2.17 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project-lite>
-- `pin-project` 1.1.13 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project>
+- `pin-project-internal` 1.2.0 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project>
+- `pin-project-lite` 0.2.18 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project-lite>
+- `pin-project` 1.2.0 — `Apache-2.0 OR MIT` — <https://github.com/taiki-e/pin-project>
 - `prettyplease` 0.2.37 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/prettyplease>
 - `prettyplease` 0.3.0 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/prettyplease>
 - `proc-macro2` 1.0.107 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/proc-macro2>
 - `profiling-procmacros` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `profiling` 1.0.18 — `MIT OR Apache-2.0` — <https://github.com/aclysma/profiling>
 - `quote` 1.0.47 — `MIT OR Apache-2.0` — <https://github.com/dtolnay/quote>
-- `rand` 0.10.3 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
+- `rand` 0.10.4 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.8.8 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand` 0.9.5 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
 - `rand_chacha` 0.9.0 — `MIT OR Apache-2.0` — <https://github.com/rust-random/rand>
@@ -19454,7 +19454,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `bytes` 1.12.1 — `MIT` — <https://github.com/tokio-rs/bytes>
+- `bytes` 1.12.2 — `MIT` — <https://github.com/tokio-rs/bytes>
 ```
 Copyright (c) 2018 Carl Lerche
 
@@ -20006,9 +20006,9 @@ SPDX identifier: `MIT`
 Used by:
 
 - `zbus` 5.19.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
-- `zbus` 6.3.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
+- `zbus` 6.5.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
 - `zbus_macros` 5.19.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
-- `zbus_macros` 6.3.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
+- `zbus_macros` 6.5.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
 - `zbus_names` 4.3.5 — `MIT` — <https://github.com/z-galaxy/zbus/>
 - `zbus_utils` 6.1.0 — `MIT` — <https://github.com/z-galaxy/zbus/>
 - `zbus_xml` 5.2.1 — `MIT` — <https://github.com/z-galaxy/zbus/>
@@ -20116,7 +20116,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `zcheapstr` 1.2.0 — `MIT` — <https://github.com/z-galaxy/zcheapstr/>
+- `zcheapstr` 1.4.0 — `MIT` — <https://github.com/z-galaxy/zcheapstr/>
 ```
 Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
 
@@ -20152,7 +20152,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `zruntime` 0.2.3 — `MIT` — <https://github.com/z-galaxy/zruntime>
+- `zruntime` 0.2.4 — `MIT` — <https://github.com/z-galaxy/zruntime>
 ```
 Copyright (c) 2026 Zeeshan Ali Khan & zruntime contributors
 
@@ -20838,7 +20838,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `aegis` 0.9.21 — `MIT` — <https://github.com/jedisct1/rust-aegis>
+- `aegis` 0.9.22 — `MIT` — <https://github.com/jedisct1/rust-aegis>
 - `softaes` 0.1.8 — `MIT` — <https://github.com/jedisct1/rust-softaes>
 ```
 MIT License
@@ -21158,15 +21158,15 @@ Used by:
 - `tantivy-tokenizer-api` 0.7.0 — `MIT` — <https://github.com/quickwit-oss/tantivy>
 - `tree-sitter-json` 0.24.8 — `MIT` — <https://github.com/tree-sitter/tree-sitter-json>
 - `tree-sitter-md` 0.5.4 — `MIT` — <https://github.com/tree-sitter-grammars/tree-sitter-markdown>
-- `turso` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_core` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_ext` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_macros` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_parser` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sdk_kit` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sdk_kit_macros` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sync_engine` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
-- `turso_sync_sdk_kit` 0.8.3 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_core` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_ext` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_macros` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_parser` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sdk_kit` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sdk_kit_macros` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sync_engine` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
+- `turso_sync_sdk_kit` 0.8.4 — `MIT` — <https://github.com/tursodatabase/turso>
 - `xim-ctext` 0.3.0 — `MIT` — <https://github.com/Riey/xim-rs>
 - `xim-parser` 0.2.2 — `MIT` — <https://github.com/Riey/xim-rs>
 ```
@@ -21698,7 +21698,7 @@ Used by:
 - `ignore` 0.4.34 — `Unlicense OR MIT` — <https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore>
 - `memchr` 2.8.3 — `Unlicense OR MIT` — <https://github.com/BurntSushi/memchr>
 - `utf8-ranges` 1.0.5 — `Unlicense OR MIT` — <https://github.com/BurntSushi/utf8-ranges>
-- `walkdir` 2.5.0 — `Unlicense OR MIT` — <https://github.com/BurntSushi/walkdir>
+- `walkdir` 2.5.1 — `Unlicense OR MIT` — <https://github.com/BurntSushi/walkdir>
 ```
 The MIT License (MIT)
 
@@ -22191,7 +22191,7 @@ SPDX identifier: `MIT`
 
 Used by:
 
-- `lz4_flex` 0.14.0 — `MIT` — <https://github.com/pseitz/lz4_flex>
+- `lz4_flex` 0.14.2 — `MIT` — <https://github.com/pseitz/lz4_flex>
 ```
 The MIT License (MIT)
 
